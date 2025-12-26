@@ -1,6 +1,7 @@
 package tdmonitor
 
 import (
+	"strings"
 	"testing"
 )
 
@@ -138,8 +139,9 @@ func TestFormatIssueCount(t *testing.T) {
 		expected string
 	}{
 		{1, "1 issue"},
-		{5, "05 issues"},
+		{5, "5 issues"},
 		{10, "10 issues"},
+		{100, "100 issues"},
 	}
 
 	for _, tt := range tests {
@@ -152,5 +154,5 @@ func TestFormatIssueCount(t *testing.T) {
 }
 
 func contains(s, substr string) bool {
-	return len(s) >= len(substr) && (s == substr || len(s) > len(substr))
+	return strings.Contains(s, substr)
 }

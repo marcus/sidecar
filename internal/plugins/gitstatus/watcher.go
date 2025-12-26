@@ -2,6 +2,7 @@ package gitstatus
 
 import (
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -91,9 +92,10 @@ func (w *Watcher) run() {
 
 			// Only care about relevant files
 			name := filepath.Base(event.Name)
+			dir := filepath.Dir(event.Name)
 			if name != "index" && name != "HEAD" && name != "COMMIT_EDITMSG" && name != "FETCH_HEAD" {
 				// Check if it's a refs change
-				if filepath.Dir(event.Name) != filepath.Join(filepath.Dir(event.Name), "refs") {
+				if !strings.Contains(dir, "refs") {
 					continue
 				}
 			}

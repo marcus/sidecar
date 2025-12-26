@@ -1,6 +1,7 @@
 package tdmonitor
 
 import (
+	"fmt"
 	"os/exec"
 	"time"
 
@@ -341,7 +342,7 @@ func formatIssueCount(n int) string {
 	if n == 1 {
 		return "1 issue"
 	}
-	return string(rune('0'+n/10)) + string(rune('0'+n%10)) + " issues"
+	return fmt.Sprintf("%d issues", n)
 }
 
 // Message types

@@ -1,6 +1,7 @@
 package conversations
 
 import (
+	"fmt"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -355,7 +356,7 @@ func formatSessionCount(n int) string {
 	if n == 1 {
 		return "1 session"
 	}
-	return string(rune('0'+n/10)) + string(rune('0'+n%10)) + " sessions"
+	return fmt.Sprintf("%d sessions", n)
 }
 
 // Message types

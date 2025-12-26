@@ -162,8 +162,9 @@ func TestFormatSessionCount(t *testing.T) {
 		expected string
 	}{
 		{1, "1 session"},
-		{5, "05 sessions"},
+		{5, "5 sessions"},
 		{10, "10 sessions"},
+		{100, "100 sessions"},
 	}
 
 	for _, tt := range tests {
