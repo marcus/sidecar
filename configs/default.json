@@ -1,0 +1,32 @@
+{
+  "projects": {
+    "mode": "single",
+    "root": "."
+  },
+  "plugins": {
+    "git-status": {
+      "enabled": true,
+      "refreshInterval": "1s"
+    },
+    "td-monitor": {
+      "enabled": true,
+      "refreshInterval": "2s",
+      "dbPath": ".todos/issues.db"
+    },
+    "conversations": {
+      "enabled": true,
+      "claudeDataDir": "~/.claude"
+    }
+  },
+  "keymap": {
+    "overrides": {}
+  },
+  "ui": {
+    "showFooter": true,
+    "showClock": true,
+    "theme": {
+      "name": "default",
+      "overrides": {}
+    }
+  }
+}
