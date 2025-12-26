@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/sst/sidecar/internal/plugin"
 	"github.com/sst/sidecar/internal/styles"
 )
 
@@ -277,7 +278,25 @@ func (m Model) buildDiagnosticsContent() string {
 	plugins := m.registry.Plugins()
 	for _, p := range plugins {
 		status := styles.StatusCompleted.Render("✓")
-		b.WriteString(fmt.Sprintf("  %s %s\n", status, p.Name()))
+		b.WriteString(fmt.Sprintf("  %s %s: active\n", status, p.Name()))
+
+		// Check for plugin-specific diagnostics
+		if dp, ok := p.(plugin.DiagnosticProvider); ok {
+			for _, d := range dp.Diagnostics() {
+				statusIcon := "•"
+				switch d.Status {
+				case "ok":
+					statusIcon = styles.StatusCompleted.Render("•")
+				case "warning":
+					statusIcon = styles.StatusModified.Render("•")
+				case "error":
+					statusIcon = styles.StatusBlocked.Render("•")
+				default:
+					statusIcon = styles.Muted.Render("•")
+				}
+				b.WriteString(fmt.Sprintf("    %s %s\n", statusIcon, d.Detail))
+			}
+		}
 	}
 
 	unavail := m.registry.Unavailable()
@@ -292,6 +311,13 @@ func (m Model) buildDiagnosticsContent() string {
 
 	b.WriteString("\n")
 
+	// System info
+	b.WriteString(styles.Title.Render("System"))
+	b.WriteString("\n")
+	b.WriteString(fmt.Sprintf("  WorkDir: %s\n", styles.Muted.Render(m.ui.WorkDir)))
+	b.WriteString(fmt.Sprintf("  Refresh: %s\n", styles.Muted.Render(m.ui.LastRefresh.Format("15:04:05"))))
+	b.WriteString("\n")
+
 	// Last error
 	if m.lastError != nil {
 		b.WriteString(styles.Title.Render("Last Error"))
@@ -300,7 +326,7 @@ func (m Model) buildDiagnosticsContent() string {
 		b.WriteString("\n")
 	}
 
-	b.WriteString(styles.Subtle.Render("Press esc to close"))
+	b.WriteString(styles.Subtle.Render("Press ! or esc to close"))
 
 	return b.String()
 }

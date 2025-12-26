@@ -8,6 +8,7 @@ type UIState struct {
 	LastRefresh  time.Time
 	ToastMessage string
 	ToastExpiry  time.Time
+	WorkDir      string
 }
 
 // NewUIState creates a new UI state.
