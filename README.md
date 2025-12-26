@@ -9,12 +9,15 @@ Terminal UI for viewing AI coding agent sessions. Monitor Claude Code conversati
 ## Installation
 
 ```bash
-# Install globally (adds 'sidecar' to your PATH)
-go install github.com/sst/sidecar/cmd/sidecar@latest
-
-# Or clone and install locally
+# Clone and install with version info
 git clone https://github.com/sst/sidecar
 cd sidecar
+make install-dev
+
+# Or basic install (no version info)
+make install
+
+# Or direct go install
 go install ./cmd/sidecar
 ```
 
@@ -32,7 +35,32 @@ sidecar --config ~/.config/sidecar/config.json
 
 # Enable debug logging
 sidecar --debug
+
+# Check version
+sidecar --version
 ```
+
+## Plugins
+
+Sidecar includes three built-in plugins:
+
+### Git Status
+Shows changed files with staging actions.
+- View staged, modified, and untracked files
+- Stage/unstage files with `s`/`u`
+- View diffs with `d`
+
+### TD Monitor
+Shows tasks from the TD task management system.
+- View in-progress, ready, and reviewable issues
+- Approve issues with `a`
+- Switch lists with `tab`
+
+### Conversations
+Browse Claude Code session history.
+- View recent sessions for the current project
+- Read conversation messages and tool usage
+- Token usage stats
 
 ## Keyboard Shortcuts
 
@@ -71,16 +99,42 @@ Config file: `~/.config/sidecar/config.json`
 ## Development
 
 ```bash
-# Build
-go build ./cmd/sidecar
-
-# Run directly
-go run ./cmd/sidecar
+# Build binary to ./bin/
+make build
 
 # Run tests
-go test ./...
+make test
+
+# Run tests with verbose output
+make test-v
+
+# Install with version from git
+make install-dev
+
+# Format code
+make fmt
+
+# Show current version
+make version
 ```
 
-## Status
+## Releasing
 
-Early development. Core shell implemented, plugins in progress.
+```bash
+# Create a version tag (validates semver format)
+make tag VERSION=v0.1.0
+
+# Push tag to origin
+make release VERSION=v0.1.0
+```
+
+## Build Targets
+
+| Target | Description |
+|--------|-------------|
+| `make build` | Build binary to `./bin/sidecar` |
+| `make install` | Install to GOBIN |
+| `make install-dev` | Install with git-derived version |
+| `make test` | Run tests |
+| `make clean` | Remove build artifacts |
+| `make build-all` | Cross-platform builds |
