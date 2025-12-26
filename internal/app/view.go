@@ -175,32 +175,80 @@ func (m Model) buildHelpContent() string {
 	b.WriteString(styles.ModalTitle.Render("Keyboard Shortcuts"))
 	b.WriteString("\n\n")
 
-	// Global
+	// Global bindings
 	b.WriteString(styles.Title.Render("Global"))
 	b.WriteString("\n")
-	b.WriteString(styles.Muted.Render("  q, ctrl+c") + "  quit\n")
-	b.WriteString(styles.Muted.Render("  tab      ") + "  next plugin\n")
-	b.WriteString(styles.Muted.Render("  shift+tab") + "  prev plugin\n")
-	b.WriteString(styles.Muted.Render("  1-9      ") + "  focus plugin\n")
-	b.WriteString(styles.Muted.Render("  ?        ") + "  toggle help\n")
-	b.WriteString(styles.Muted.Render("  !        ") + "  toggle diagnostics\n")
-	b.WriteString(styles.Muted.Render("  ctrl+h   ") + "  toggle footer\n")
-	b.WriteString(styles.Muted.Render("  r        ") + "  refresh\n")
+	m.renderBindingSection(&b, "global")
 	b.WriteString("\n")
 
-	// Navigation
-	b.WriteString(styles.Title.Render("Navigation"))
-	b.WriteString("\n")
-	b.WriteString(styles.Muted.Render("  j/down   ") + "  cursor down\n")
-	b.WriteString(styles.Muted.Render("  k/up     ") + "  cursor up\n")
-	b.WriteString(styles.Muted.Render("  g g      ") + "  go to top\n")
-	b.WriteString(styles.Muted.Render("  G        ") + "  go to bottom\n")
-	b.WriteString(styles.Muted.Render("  enter    ") + "  select\n")
-	b.WriteString(styles.Muted.Render("  esc      ") + "  back/close\n")
-	b.WriteString("\n")
-	b.WriteString(styles.Subtle.Render("Press esc to close"))
+	// Active plugin bindings
+	if p := m.ActivePlugin(); p != nil {
+		ctx := p.FocusContext()
+		if ctx != "global" && ctx != "" {
+			bindings := m.keymap.BindingsForContext(ctx)
+			if len(bindings) > 0 {
+				b.WriteString(styles.Title.Render(p.Name()))
+				b.WriteString("\n")
+				m.renderBindingSection(&b, ctx)
+				b.WriteString("\n")
+			}
+		}
+	}
+
+	b.WriteString(styles.Subtle.Render("Press ? or esc to close"))
 
 	return b.String()
+}
+
+// renderBindingSection renders bindings for a context.
+func (m Model) renderBindingSection(b *strings.Builder, context string) {
+	bindings := m.keymap.BindingsForContext(context)
+
+	// Group similar bindings
+	seen := make(map[string]bool)
+	for _, binding := range bindings {
+		if seen[binding.Command] {
+			continue
+		}
+		seen[binding.Command] = true
+
+		// Find all keys for this command
+		var keys []string
+		for _, b2 := range bindings {
+			if b2.Command == binding.Command {
+				keys = append(keys, b2.Key)
+			}
+		}
+
+		keyStr := formatBindingKeys(keys)
+		cmdName := formatCommandName(binding.Command)
+
+		// Pad key to align commands
+		padded := fmt.Sprintf("%-11s", keyStr)
+		b.WriteString(fmt.Sprintf("  %s %s\n", styles.Muted.Render(padded), cmdName))
+	}
+}
+
+// formatBindingKeys formats multiple keys into a display string.
+func formatBindingKeys(keys []string) string {
+	if len(keys) == 0 {
+		return ""
+	}
+	if len(keys) == 1 {
+		return keys[0]
+	}
+	// Show up to 2 keys
+	if len(keys) > 2 {
+		keys = keys[:2]
+	}
+	return strings.Join(keys, ", ")
+}
+
+// formatCommandName converts a command ID to a display name.
+func formatCommandName(cmd string) string {
+	// Convert kebab-case to readable format
+	name := strings.ReplaceAll(cmd, "-", " ")
+	return name
 }
 
 // renderDiagnosticsOverlay renders the diagnostics modal.

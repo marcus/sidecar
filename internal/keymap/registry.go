@@ -166,6 +166,24 @@ func (r *Registry) ResetPending() {
 	r.pendingKey = ""
 }
 
+// BindingsForContext returns all bindings for a given context.
+func (r *Registry) BindingsForContext(context string) []Binding {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.bindings[context]
+}
+
+// AllContexts returns all contexts that have bindings.
+func (r *Registry) AllContexts() []string {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	contexts := make([]string, 0, len(r.bindings))
+	for ctx := range r.bindings {
+		contexts = append(contexts, ctx)
+	}
+	return contexts
+}
+
 // HasPending returns true if there's a pending key sequence.
 func (r *Registry) HasPending() bool {
 	r.mu.RLock()
