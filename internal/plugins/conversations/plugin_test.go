@@ -389,6 +389,171 @@ func TestDiagnosticsWatcherOn(t *testing.T) {
 	}
 }
 
+// Test WatchStartedMsg with nil channel
+func TestUpdateWatchStartedMsgNilChannel(t *testing.T) {
+	p := New()
+	p.adapter = &mockAdapter{}
+
+	msg := WatchStartedMsg{Channel: nil}
+	newPlugin, cmd := p.Update(msg)
+
+	if newPlugin == nil {
+		t.Fatal("expected non-nil plugin")
+	}
+	if cmd != nil {
+		t.Error("expected nil command when channel is nil")
+	}
+	if p.watchChan != nil {
+		t.Error("expected watchChan to remain nil")
+	}
+}
+
+// Test WatchStartedMsg with valid channel
+func TestUpdateWatchStartedMsgValidChannel(t *testing.T) {
+	p := New()
+	p.adapter = &mockAdapter{}
+
+	ch := make(chan adapter.Event)
+	msg := WatchStartedMsg{Channel: ch}
+	newPlugin, cmd := p.Update(msg)
+
+	if newPlugin == nil {
+		t.Fatal("expected non-nil plugin")
+	}
+	if cmd == nil {
+		t.Error("expected non-nil command to start listening")
+	}
+	if p.watchChan != ch {
+		t.Error("expected watchChan to be set to the provided channel")
+	}
+}
+
+// Test WatchEventMsg triggers session reload
+func TestUpdateWatchEventMsg(t *testing.T) {
+	p := New()
+	p.adapter = &mockAdapter{}
+	p.watchChan = make(chan adapter.Event)
+
+	msg := WatchEventMsg{}
+	newPlugin, cmd := p.Update(msg)
+
+	if newPlugin == nil {
+		t.Fatal("expected non-nil plugin")
+	}
+	// Should return a batch command for loadSessions and listenForWatchEvents
+	if cmd == nil {
+		t.Error("expected non-nil command for batch operation")
+	}
+}
+
+// Test listenForWatchEvents with nil channel
+func TestListenForWatchEventsNilChannel(t *testing.T) {
+	p := New()
+	p.watchChan = nil
+
+	cmd := p.listenForWatchEvents()
+	if cmd != nil {
+		t.Error("expected nil command when watchChan is nil")
+	}
+}
+
+// Test listenForWatchEvents with closed channel
+func TestListenForWatchEventsClosedChannel(t *testing.T) {
+	p := New()
+	ch := make(chan adapter.Event)
+	close(ch) // Close the channel
+	p.watchChan = ch
+
+	cmd := p.listenForWatchEvents()
+	if cmd == nil {
+		t.Fatal("expected non-nil command")
+	}
+
+	// Execute the command - should return nil when channel is closed
+	msg := cmd()
+	if msg != nil {
+		t.Errorf("expected nil message for closed channel, got %T", msg)
+	}
+}
+
+// Test listenForWatchEvents receives event
+func TestListenForWatchEventsReceivesEvent(t *testing.T) {
+	p := New()
+	ch := make(chan adapter.Event, 1) // Buffered to avoid blocking
+	p.watchChan = ch
+
+	cmd := p.listenForWatchEvents()
+	if cmd == nil {
+		t.Fatal("expected non-nil command")
+	}
+
+	// Send an event
+	ch <- adapter.Event{}
+
+	// Execute the command - should return WatchEventMsg
+	msg := cmd()
+	if _, ok := msg.(WatchEventMsg); !ok {
+		t.Errorf("expected WatchEventMsg, got %T", msg)
+	}
+}
+
+// Test SessionsLoadedMsg updates sessions
+func TestUpdateSessionsLoadedMsg(t *testing.T) {
+	p := New()
+	p.adapter = &mockAdapter{}
+
+	sessions := []adapter.Session{
+		{ID: "s1", Name: "Session 1"},
+		{ID: "s2", Name: "Session 2"},
+	}
+
+	msg := SessionsLoadedMsg{Sessions: sessions}
+	_, _ = p.Update(msg)
+
+	if len(p.sessions) != 2 {
+		t.Errorf("expected 2 sessions, got %d", len(p.sessions))
+	}
+	if p.sessions[0].ID != "s1" {
+		t.Errorf("expected session ID 's1', got %q", p.sessions[0].ID)
+	}
+}
+
+// Test MessagesLoadedMsg updates messages and hasMore flag
+func TestUpdateMessagesLoadedMsg(t *testing.T) {
+	p := New()
+	p.adapter = &mockAdapter{}
+	p.pageSize = 2
+
+	// Test with fewer messages than page size
+	messages := []adapter.Message{
+		{Role: "user", Content: "Hello"},
+	}
+	msg := MessagesLoadedMsg{Messages: messages}
+	_, _ = p.Update(msg)
+
+	if len(p.messages) != 1 {
+		t.Errorf("expected 1 message, got %d", len(p.messages))
+	}
+	if p.hasMore {
+		t.Error("expected hasMore to be false when messages < pageSize")
+	}
+
+	// Test with page size messages (indicates more might be available)
+	messages = []adapter.Message{
+		{Role: "user", Content: "Hello"},
+		{Role: "assistant", Content: "Hi"},
+	}
+	msg = MessagesLoadedMsg{Messages: messages}
+	_, _ = p.Update(msg)
+
+	if len(p.messages) != 2 {
+		t.Errorf("expected 2 messages, got %d", len(p.messages))
+	}
+	if !p.hasMore {
+		t.Error("expected hasMore to be true when messages == pageSize")
+	}
+}
+
 // mockAdapter is a minimal adapter for testing
 type mockAdapter struct{}
 
