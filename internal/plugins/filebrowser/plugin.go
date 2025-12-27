@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/sst/sidecar/internal/plugin"
 )
 
@@ -565,7 +566,10 @@ func (p *Plugin) expandParents(node *FileNode) {
 func (p *Plugin) View(width, height int) string {
 	p.width = width
 	p.height = height
-	return p.renderView()
+	content := p.renderView()
+	// Constrain output to allocated height to prevent header scrolling off-screen.
+	// MaxHeight truncates content that exceeds the allocated space.
+	return lipgloss.NewStyle().Width(width).Height(height).MaxHeight(height).Render(content)
 }
 
 // IsFocused returns whether the plugin is focused.

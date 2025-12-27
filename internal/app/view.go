@@ -114,7 +114,10 @@ func (m Model) renderContent(width, height int) string {
 	if height == 0 {
 		return ""
 	}
-	return lipgloss.NewStyle().Width(width).Height(height).Render(content)
+	// Use MaxHeight to truncate content that exceeds allocated space.
+	// Height() only pads short content; MaxHeight() also truncates tall content.
+	// This prevents plugin content from pushing the header off-screen.
+	return lipgloss.NewStyle().Width(width).Height(height).MaxHeight(height).Render(content)
 }
 
 // renderFooter renders the bottom bar with key hints and status.

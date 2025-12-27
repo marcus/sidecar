@@ -694,8 +694,9 @@ func (p *Plugin) View(width, height int) string {
 		content = p.renderThreePaneView()
 	}
 
-	// Constrain output to allocated height to prevent header scrolling off-screen
-	return lipgloss.NewStyle().Width(width).Height(height).Render(content)
+	// Constrain output to allocated height to prevent header scrolling off-screen.
+	// MaxHeight truncates content that exceeds the allocated space.
+	return lipgloss.NewStyle().Width(width).Height(height).MaxHeight(height).Render(content)
 }
 
 // IsFocused returns whether the plugin is focused.

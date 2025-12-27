@@ -5,6 +5,7 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/marcus/td/pkg/monitor"
 	"github.com/sst/sidecar/internal/app"
 	"github.com/sst/sidecar/internal/plugin"
@@ -119,15 +120,19 @@ func (p *Plugin) View(width, height int) string {
 	p.width = width
 	p.height = height
 
+	var content string
 	if p.model == nil {
-		return renderNoDatabase()
+		content = renderNoDatabase()
+	} else {
+		// Set dimensions on model before rendering
+		p.model.Width = width
+		p.model.Height = height
+		content = p.model.View()
 	}
 
-	// Set dimensions on model before rendering
-	p.model.Width = width
-	p.model.Height = height
-
-	return p.model.View()
+	// Constrain output to allocated height to prevent header scrolling off-screen.
+	// MaxHeight truncates content that exceeds the allocated space.
+	return lipgloss.NewStyle().Width(width).Height(height).MaxHeight(height).Render(content)
 }
 
 // IsFocused returns whether the plugin is focused.
