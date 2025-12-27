@@ -28,6 +28,15 @@ const (
 	ViewSessions View = iota
 	ViewMessages
 	ViewAnalytics
+	ViewMessageDetail
+)
+
+// FocusPane represents which pane is active in two-pane mode.
+type FocusPane int
+
+const (
+	PaneSidebar FocusPane = iota
+	PaneMessages
 )
 
 // Plugin implements the conversations plugin.
@@ -55,9 +64,18 @@ type Plugin struct {
 	sessionSummary   *SessionSummary // computed summary for current session
 	showToolSummary  bool            // toggle for tool impact view
 
+	// Message detail view state
+	detailMessage *adapter.Message
+	detailScroll  int
+
 	// Analytics view state
 	analyticsScrollOff int
 	analyticsLines     []string // pre-rendered lines for scrolling
+
+	// Two-pane layout state
+	twoPane      bool      // Enable when width >= 120
+	activePane   FocusPane // Which pane is focused
+	sidebarWidth int       // Calculated width (~30%)
 
 	// View dimensions
 	width  int
@@ -70,6 +88,11 @@ type Plugin struct {
 	searchMode    bool
 	searchQuery   string
 	searchResults []adapter.Session
+
+	// Filter state
+	filterMode   bool
+	filters      SearchFilters
+	filterActive bool // true when any filter is active
 }
 
 // New creates a new conversations plugin.
@@ -131,11 +154,17 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		switch p.view {
+		case ViewMessageDetail:
+			return p.updateMessageDetail(msg)
 		case ViewMessages:
 			return p.updateMessages(msg)
 		case ViewAnalytics:
 			return p.updateAnalytics(msg)
 		default:
+			// In two-pane mode, route based on active pane
+			if p.twoPane && p.activePane == PaneMessages {
+				return p.updateMessages(msg)
+			}
 			return p.updateSessions(msg)
 		}
 
@@ -188,6 +217,11 @@ func (p *Plugin) updateSessions(msg tea.KeyMsg) (plugin.Plugin, tea.Cmd) {
 		return p.updateSearch(msg)
 	}
 
+	// Handle filter mode input
+	if p.filterMode {
+		return p.updateFilter(msg)
+	}
+
 	sessions := p.visibleSessions()
 
 	switch msg.String() {
@@ -195,27 +229,114 @@ func (p *Plugin) updateSessions(msg tea.KeyMsg) (plugin.Plugin, tea.Cmd) {
 		if p.cursor < len(sessions)-1 {
 			p.cursor++
 			p.ensureCursorVisible()
+			// In two-pane mode, auto-load messages when cursor moves
+			if p.twoPane && p.cursor < len(sessions) {
+				p.selectedSession = sessions[p.cursor].ID
+				return p, tea.Batch(
+					p.loadMessages(p.selectedSession),
+					p.loadUsage(p.selectedSession),
+				)
+			}
 		}
 
 	case "k", "up":
 		if p.cursor > 0 {
 			p.cursor--
 			p.ensureCursorVisible()
+			// In two-pane mode, auto-load messages when cursor moves
+			if p.twoPane && p.cursor < len(sessions) {
+				p.selectedSession = sessions[p.cursor].ID
+				return p, tea.Batch(
+					p.loadMessages(p.selectedSession),
+					p.loadUsage(p.selectedSession),
+				)
+			}
 		}
 
 	case "g":
 		p.cursor = 0
 		p.scrollOff = 0
+		// In two-pane mode, auto-load messages when jumping
+		if p.twoPane && len(sessions) > 0 {
+			p.selectedSession = sessions[0].ID
+			return p, tea.Batch(
+				p.loadMessages(p.selectedSession),
+				p.loadUsage(p.selectedSession),
+			)
+		}
 
 	case "G":
 		if len(sessions) > 0 {
 			p.cursor = len(sessions) - 1
 			p.ensureCursorVisible()
+			// In two-pane mode, auto-load messages when jumping
+			if p.twoPane {
+				p.selectedSession = sessions[p.cursor].ID
+				return p, tea.Batch(
+					p.loadMessages(p.selectedSession),
+					p.loadUsage(p.selectedSession),
+				)
+			}
+		}
+
+	case "ctrl+d":
+		// Page down
+		pageSize := 10
+		if p.cursor+pageSize < len(sessions) {
+			p.cursor += pageSize
+		} else {
+			p.cursor = len(sessions) - 1
+		}
+		p.ensureCursorVisible()
+		if p.twoPane && p.cursor < len(sessions) {
+			p.selectedSession = sessions[p.cursor].ID
+			return p, tea.Batch(
+				p.loadMessages(p.selectedSession),
+				p.loadUsage(p.selectedSession),
+			)
+		}
+
+	case "ctrl+u":
+		// Page up
+		pageSize := 10
+		if p.cursor-pageSize >= 0 {
+			p.cursor -= pageSize
+		} else {
+			p.cursor = 0
+		}
+		p.ensureCursorVisible()
+		if p.twoPane && p.cursor < len(sessions) {
+			p.selectedSession = sessions[p.cursor].ID
+			return p, tea.Batch(
+				p.loadMessages(p.selectedSession),
+				p.loadUsage(p.selectedSession),
+			)
+		}
+
+	case "tab":
+		// In two-pane mode, toggle focus between sidebar and messages
+		if p.twoPane && p.selectedSession != "" {
+			p.activePane = PaneMessages
+		}
+
+	case "l", "right":
+		// In two-pane mode, switch focus to messages pane
+		if p.twoPane && p.selectedSession != "" {
+			p.activePane = PaneMessages
 		}
 
 	case "enter":
 		if len(sessions) > 0 && p.cursor < len(sessions) {
 			p.selectedSession = sessions[p.cursor].ID
+			// In two-pane mode, switch focus to messages pane
+			if p.twoPane {
+				p.activePane = PaneMessages
+				return p, tea.Batch(
+					p.loadMessages(p.selectedSession),
+					p.loadUsage(p.selectedSession),
+				)
+			}
+			// In single-pane mode, switch view
 			p.view = ViewMessages
 			p.msgCursor = 0
 			p.msgScrollOff = 0
@@ -227,6 +348,10 @@ func (p *Plugin) updateSessions(msg tea.KeyMsg) (plugin.Plugin, tea.Cmd) {
 		p.searchQuery = ""
 		p.cursor = 0
 		p.scrollOff = 0
+
+	case "f":
+		// Open filter menu
+		p.filterMode = true
 
 	case "r":
 		return p, p.loadSessions()
@@ -319,6 +444,18 @@ func (p *Plugin) visibleSessions() []adapter.Session {
 	if p.searchMode && p.searchQuery != "" {
 		return p.searchResults
 	}
+
+	// Apply filters if active
+	if p.filterActive && p.filters.IsActive() {
+		var filtered []adapter.Session
+		for _, s := range p.sessions {
+			if p.filters.Matches(s) {
+				filtered = append(filtered, s)
+			}
+		}
+		return filtered
+	}
+
 	return p.sessions
 }
 
@@ -370,12 +507,32 @@ func (p *Plugin) updateAnalytics(msg tea.KeyMsg) (plugin.Plugin, tea.Cmd) {
 func (p *Plugin) updateMessages(msg tea.KeyMsg) (plugin.Plugin, tea.Cmd) {
 	switch msg.String() {
 	case "esc", "q":
+		// In two-pane mode, ESC returns focus to sidebar
+		if p.twoPane {
+			p.activePane = PaneSidebar
+			return p, nil
+		}
+		// In single-pane mode, return to sessions view
 		p.view = ViewSessions
 		p.messages = nil
 		p.selectedSession = ""
 		p.expandedThinking = make(map[string]bool) // reset thinking state
 		p.sessionSummary = nil
 		p.showToolSummary = false
+
+	case "h", "left":
+		// In two-pane mode, return focus to sidebar
+		if p.twoPane {
+			p.activePane = PaneSidebar
+			return p, nil
+		}
+
+	case "tab":
+		// In two-pane mode, toggle focus between sidebar and messages
+		if p.twoPane {
+			p.activePane = PaneSidebar
+			return p, nil
+		}
 
 	case "j", "down":
 		if p.msgCursor < len(p.messages)-1 {
@@ -410,6 +567,26 @@ func (p *Plugin) updateMessages(msg tea.KeyMsg) (plugin.Plugin, tea.Cmd) {
 		// Toggle tool impact summary
 		p.showToolSummary = !p.showToolSummary
 
+	case "enter":
+		// Open full message detail view
+		if p.msgCursor < len(p.messages) {
+			p.detailMessage = &p.messages[p.msgCursor]
+			p.detailScroll = 0
+			p.view = ViewMessageDetail
+		}
+
+	case "c":
+		// Copy session to clipboard as markdown
+		if p.selectedSession != "" {
+			return p, p.copySessionToClipboard()
+		}
+
+	case "e":
+		// Export session to file
+		if p.selectedSession != "" {
+			return p, p.exportSessionToFile()
+		}
+
 	case " ":
 		// Load more messages (would need to implement paging in adapter)
 		return p, nil
@@ -423,17 +600,36 @@ func (p *Plugin) View(width, height int) string {
 	p.width = width
 	p.height = height
 
+	// Enable two-pane for wide terminals (>= 120 columns)
+	p.twoPane = width >= 120
+	if p.twoPane {
+		p.sidebarWidth = width * 30 / 100
+		if p.sidebarWidth < 25 {
+			p.sidebarWidth = 25
+		}
+	}
+
 	var content string
 	if p.adapter == nil {
 		content = renderNoAdapter()
 	} else {
 		switch p.view {
 		case ViewMessages:
-			content = p.renderMessages()
+			if p.twoPane {
+				content = p.renderTwoPane()
+			} else {
+				content = p.renderMessages()
+			}
+		case ViewMessageDetail:
+			content = p.renderMessageDetail()
 		case ViewAnalytics:
 			content = p.renderAnalytics()
 		default:
-			content = p.renderSessions()
+			if p.twoPane {
+				content = p.renderTwoPane()
+			} else {
+				content = p.renderSessions()
+			}
 		}
 	}
 
@@ -456,11 +652,24 @@ func (p *Plugin) Commands() []plugin.Command {
 			{ID: "cancel", Name: "Cancel", Context: "conversations-search"},
 		}
 	}
-	if p.view == ViewMessages {
+	if p.filterMode {
+		return []plugin.Command{
+			{ID: "select", Name: "Select", Context: "conversations-filter"},
+			{ID: "cancel", Name: "Cancel", Context: "conversations-filter"},
+		}
+	}
+	if p.view == ViewMessageDetail {
+		return []plugin.Command{
+			{ID: "back", Name: "Back", Context: "message-detail"},
+			{ID: "scroll", Name: "Scroll", Context: "message-detail"},
+		}
+	}
+	if p.view == ViewMessages || (p.twoPane && p.activePane == PaneMessages) {
 		return []plugin.Command{
 			{ID: "back", Name: "Back", Context: "conversation-detail"},
-			{ID: "tools", Name: "Tools", Context: "conversation-detail"},
-			{ID: "thinking", Name: "Thinking", Context: "conversation-detail"},
+			{ID: "copy", Name: "Copy", Context: "conversation-detail"},
+			{ID: "export", Name: "Export", Context: "conversation-detail"},
+			{ID: "detail", Name: "Detail", Context: "conversation-detail"},
 		}
 	}
 	if p.view == ViewAnalytics {
@@ -472,6 +681,7 @@ func (p *Plugin) Commands() []plugin.Command {
 		{ID: "view-session", Name: "View", Context: "conversations"},
 		{ID: "analytics", Name: "Analytics", Context: "conversations"},
 		{ID: "search", Name: "Search", Context: "conversations"},
+		{ID: "filter", Name: "Filter", Context: "conversations"},
 	}
 }
 
@@ -480,12 +690,23 @@ func (p *Plugin) FocusContext() string {
 	if p.searchMode {
 		return "conversations-search"
 	}
+	if p.filterMode {
+		return "conversations-filter"
+	}
 	switch p.view {
+	case ViewMessageDetail:
+		return "message-detail"
 	case ViewMessages:
 		return "conversation-detail"
 	case ViewAnalytics:
 		return "analytics"
 	default:
+		if p.twoPane {
+			if p.activePane == PaneSidebar {
+				return "conversations-sidebar"
+			}
+			return "conversations-main"
+		}
 		return "conversations"
 	}
 }
@@ -591,7 +812,15 @@ func (p *Plugin) listenForWatchEvents() tea.Cmd {
 
 // ensureCursorVisible adjusts scroll to keep cursor visible.
 func (p *Plugin) ensureCursorVisible() {
-	visibleRows := p.height - 2
+	var visibleRows int
+	if p.twoPane {
+		// In two-pane mode: pane height - borders(2) - header(1-2)
+		paneHeight := p.height - 2
+		visibleRows = paneHeight - 3 // -2 for inner height calc, -1 for header
+	} else {
+		// Single pane: total height - header lines
+		visibleRows = p.height - 4
+	}
 	if visibleRows < 1 {
 		visibleRows = 1
 	}
@@ -605,7 +834,15 @@ func (p *Plugin) ensureCursorVisible() {
 
 // ensureMsgCursorVisible adjusts scroll to keep message cursor visible.
 func (p *Plugin) ensureMsgCursorVisible() {
-	visibleRows := p.height - 2
+	var visibleRows int
+	if p.twoPane {
+		// In two-pane mode: pane height - borders(2) - header(4-5)
+		paneHeight := p.height - 2
+		visibleRows = paneHeight - 6 // Account for header, stats, resume cmd, separator
+	} else {
+		// Single pane: total height - header lines
+		visibleRows = p.height - 4
+	}
 	if visibleRows < 1 {
 		visibleRows = 1
 	}
@@ -633,7 +870,138 @@ func shortID(id string) string {
 	return id
 }
 
+// loadUsage loads usage stats for a session (placeholder for future implementation).
+func (p *Plugin) loadUsage(sessionID string) tea.Cmd {
+	// Usage is already computed from messages in MessagesLoadedMsg handler
+	return nil
+}
+
+// updateMessageDetail handles key events in the message detail view.
+func (p *Plugin) updateMessageDetail(msg tea.KeyMsg) (plugin.Plugin, tea.Cmd) {
+	switch msg.String() {
+	case "esc", "q":
+		p.view = ViewMessages
+		p.detailMessage = nil
+		p.detailScroll = 0
+
+	case "j", "down":
+		p.detailScroll++
+
+	case "k", "up":
+		if p.detailScroll > 0 {
+			p.detailScroll--
+		}
+
+	case "g":
+		p.detailScroll = 0
+
+	case "G":
+		// Scroll to bottom - calculate based on content
+		p.detailScroll = 100 // Placeholder, will be clamped by renderer
+
+	case "ctrl+d":
+		p.detailScroll += 10
+
+	case "ctrl+u":
+		p.detailScroll -= 10
+		if p.detailScroll < 0 {
+			p.detailScroll = 0
+		}
+	}
+	return p, nil
+}
+
+// updateFilter handles key events in filter mode.
+func (p *Plugin) updateFilter(msg tea.KeyMsg) (plugin.Plugin, tea.Cmd) {
+	switch msg.String() {
+	case "esc":
+		p.filterMode = false
+
+	case "enter":
+		p.filterMode = false
+		p.filterActive = p.filters.IsActive()
+		p.cursor = 0
+		p.scrollOff = 0
+
+	case "1":
+		// Toggle model filter: opus
+		p.filters.ToggleModel("opus")
+
+	case "2":
+		// Toggle model filter: sonnet
+		p.filters.ToggleModel("sonnet")
+
+	case "3":
+		// Toggle model filter: haiku
+		p.filters.ToggleModel("haiku")
+
+	case "t":
+		// Toggle date filter: today
+		p.filters.SetDateRange("today")
+
+	case "y":
+		// Toggle date filter: yesterday
+		p.filters.SetDateRange("yesterday")
+
+	case "w":
+		// Toggle date filter: week
+		p.filters.SetDateRange("week")
+
+	case "a":
+		// Toggle active only
+		p.filters.ActiveOnly = !p.filters.ActiveOnly
+
+	case "c":
+		// Clear all filters
+		p.filters = SearchFilters{}
+	}
+	return p, nil
+}
+
+// copySessionToClipboard copies the current session as markdown to clipboard.
+func (p *Plugin) copySessionToClipboard() tea.Cmd {
+	session := p.findSelectedSession()
+	messages := p.messages
+
+	return func() tea.Msg {
+		md := ExportSessionAsMarkdown(session, messages)
+		if err := CopyToClipboard(md); err != nil {
+			return ToastMsg{Message: "Copy failed: " + err.Error(), IsError: true}
+		}
+		return ToastMsg{Message: "Session copied to clipboard"}
+	}
+}
+
+// exportSessionToFile exports the current session to a markdown file.
+func (p *Plugin) exportSessionToFile() tea.Cmd {
+	session := p.findSelectedSession()
+	messages := p.messages
+	workDir := p.ctx.WorkDir
+
+	return func() tea.Msg {
+		filename, err := ExportSessionToFile(session, messages, workDir)
+		if err != nil {
+			return ToastMsg{Message: "Export failed: " + err.Error(), IsError: true}
+		}
+		return ToastMsg{Message: "Exported to " + filename}
+	}
+}
+
+// findSelectedSession returns the currently selected session.
+func (p *Plugin) findSelectedSession() *adapter.Session {
+	for i := range p.sessions {
+		if p.sessions[i].ID == p.selectedSession {
+			return &p.sessions[i]
+		}
+	}
+	return nil
+}
+
 // Message types
+type ToastMsg struct {
+	Message string
+	IsError bool
+}
 type SessionsLoadedMsg struct {
 	Sessions []adapter.Session
 }

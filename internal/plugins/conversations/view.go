@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/charmbracelet/lipgloss"
 	"github.com/sst/sidecar/internal/adapter"
 	"github.com/sst/sidecar/internal/styles"
 )
@@ -619,4 +620,551 @@ func extractFilePath(input string) string {
 		return fp
 	}
 	return ""
+}
+
+// renderTwoPane renders the two-pane layout with sessions on the left and messages on the right.
+func (p *Plugin) renderTwoPane() string {
+	// Calculate pane widths - account for borders (2 per pane = 4 total) plus gap
+	available := p.width - 5
+	sidebarWidth := available * 30 / 100
+	if sidebarWidth < 25 {
+		sidebarWidth = 25
+	}
+	mainWidth := available - sidebarWidth
+	if mainWidth < 40 {
+		mainWidth = 40
+	}
+
+	// Store for use by content renderers
+	p.sidebarWidth = sidebarWidth
+
+	// Pane height: total height - 2 for pane borders
+	paneHeight := p.height - 2
+	if paneHeight < 4 {
+		paneHeight = 4
+	}
+
+	// Inner content height = pane height - header lines (2)
+	innerHeight := paneHeight - 2
+	if innerHeight < 1 {
+		innerHeight = 1
+	}
+
+	// Determine border styles based on focus
+	sidebarBorder := styles.PanelInactive
+	mainBorder := styles.PanelInactive
+	if p.activePane == PaneSidebar {
+		sidebarBorder = styles.PanelActive
+	} else {
+		mainBorder = styles.PanelActive
+	}
+
+	// Render sidebar (session list)
+	sidebarContent := p.renderSidebarPane(innerHeight)
+
+	// Render main pane (messages)
+	mainContent := p.renderMainPane(mainWidth, innerHeight)
+
+	leftPane := sidebarBorder.
+		Width(sidebarWidth).
+		Height(paneHeight).
+		Render(sidebarContent)
+
+	rightPane := mainBorder.
+		Width(mainWidth).
+		Height(paneHeight).
+		Render(mainContent)
+
+	return lipgloss.JoinHorizontal(lipgloss.Top, leftPane, rightPane)
+}
+
+// renderSidebarPane renders the session list for the sidebar.
+func (p *Plugin) renderSidebarPane(height int) string {
+	var sb strings.Builder
+
+	sessions := p.visibleSessions()
+
+	// Content width = sidebar width - padding (2 chars for Padding(0,1))
+	contentWidth := p.sidebarWidth - 2
+	if contentWidth < 15 {
+		contentWidth = 15
+	}
+
+	// Header with count
+	countStr := fmt.Sprintf("%d", len(p.sessions))
+	if p.searchMode && p.searchQuery != "" {
+		countStr = fmt.Sprintf("%d/%d", len(sessions), len(p.sessions))
+	}
+	header := fmt.Sprintf("Sessions %s", countStr)
+	if len(header) > contentWidth {
+		header = header[:contentWidth]
+	}
+	sb.WriteString(styles.Title.Render("Sessions"))
+	sb.WriteString(styles.Muted.Render(" " + countStr))
+	sb.WriteString("\n")
+
+	linesUsed := 1
+
+	// Search bar (if in search mode)
+	if p.searchMode {
+		searchLine := fmt.Sprintf("/%s█", p.searchQuery)
+		if len(searchLine) > contentWidth {
+			searchLine = searchLine[:contentWidth]
+		}
+		sb.WriteString(styles.StatusInProgress.Render(searchLine))
+		sb.WriteString("\n")
+		linesUsed++
+	} else if p.filterActive {
+		filterStr := p.filters.String()
+		if len(filterStr) > contentWidth {
+			filterStr = filterStr[:contentWidth-3] + "..."
+		}
+		sb.WriteString(styles.Muted.Render(filterStr))
+		sb.WriteString("\n")
+		linesUsed++
+	}
+
+	// Filter menu (if in filter mode)
+	if p.filterMode {
+		sb.WriteString(p.renderFilterMenu(height - linesUsed))
+		return sb.String()
+	}
+
+	// Session list
+	if len(sessions) == 0 {
+		if p.searchMode {
+			sb.WriteString(styles.Muted.Render("No matching sessions"))
+		} else {
+			sb.WriteString(styles.Muted.Render("No sessions"))
+		}
+		return sb.String()
+	}
+
+	// Render sessions
+	contentHeight := height - linesUsed
+	if contentHeight < 1 {
+		contentHeight = 1
+	}
+	end := p.scrollOff + contentHeight
+	if end > len(sessions) {
+		end = len(sessions)
+	}
+
+	for i := p.scrollOff; i < end; i++ {
+		session := sessions[i]
+		selected := i == p.cursor
+		sb.WriteString(p.renderCompactSessionRow(session, selected, contentWidth))
+		sb.WriteString("\n")
+	}
+
+	return sb.String()
+}
+
+// renderCompactSessionRow renders a compact session row for the sidebar.
+func (p *Plugin) renderCompactSessionRow(session adapter.Session, selected bool, maxWidth int) string {
+	// Calculate prefix length for width calculations
+	// cursor(2) + active(1) + selected(0-1)
+	prefixLen := 3
+	if session.ID == p.selectedSession {
+		prefixLen++
+	}
+
+	// Session name/ID
+	name := session.Name
+	if name == "" {
+		name = shortID(session.ID)
+	}
+
+	// Calculate available width for name
+	nameWidth := maxWidth - prefixLen
+	if nameWidth < 5 {
+		nameWidth = 5
+	}
+
+	// Truncate name to fit
+	if len(name) > nameWidth {
+		name = name[:nameWidth-3] + "..."
+	}
+
+	// Build the row with styles
+	var sb strings.Builder
+	if selected {
+		sb.WriteString(styles.ListCursor.Render("> "))
+	} else {
+		sb.WriteString("  ")
+	}
+
+	if session.IsActive {
+		sb.WriteString(styles.StatusInProgress.Render("●"))
+	} else {
+		sb.WriteString(" ")
+	}
+
+	if session.ID == p.selectedSession {
+		sb.WriteString(styles.StatusStaged.Render("*"))
+	}
+
+	sb.WriteString(name)
+
+	result := sb.String()
+
+	// Apply selection background if selected
+	if selected {
+		return styles.ListItemSelected.Render(result)
+	}
+	return result
+}
+
+// renderMainPane renders the message list for the main pane.
+func (p *Plugin) renderMainPane(paneWidth, height int) string {
+	var sb strings.Builder
+
+	// Content width = pane width - padding (2 chars for Padding(0,1))
+	contentWidth := paneWidth - 2
+	if contentWidth < 20 {
+		contentWidth = 20
+	}
+
+	if p.selectedSession == "" {
+		sb.WriteString(styles.Muted.Render("Select a session to view messages"))
+		return sb.String()
+	}
+
+	// Find session info
+	var session *adapter.Session
+	for i := range p.sessions {
+		if p.sessions[i].ID == p.selectedSession {
+			session = &p.sessions[i]
+			break
+		}
+	}
+
+	// Header
+	sessionName := shortID(p.selectedSession)
+	if session != nil && session.Name != "" {
+		sessionName = session.Name
+	}
+	if len(sessionName) > contentWidth-5 {
+		sessionName = sessionName[:contentWidth-8] + "..."
+	}
+
+	sb.WriteString(styles.Title.Render(sessionName))
+	sb.WriteString("\n")
+
+	// Stats line
+	if p.sessionSummary != nil {
+		s := p.sessionSummary
+		modelShort := modelShortName(s.PrimaryModel)
+		if modelShort == "" {
+			modelShort = "claude"
+		}
+		statsLine := fmt.Sprintf("%s │ %d msgs │ %s→%s",
+			modelShort,
+			s.MessageCount,
+			formatK(s.TotalTokensIn),
+			formatK(s.TotalTokensOut))
+		if len(statsLine) > contentWidth {
+			statsLine = statsLine[:contentWidth-3] + "..."
+		}
+		sb.WriteString(styles.Muted.Render(statsLine))
+		sb.WriteString("\n")
+	}
+
+	// Resume command
+	if session != nil {
+		resumeCmd := fmt.Sprintf("claude --resume %s", session.ID)
+		if len(resumeCmd) > contentWidth {
+			resumeCmd = resumeCmd[:contentWidth-3] + "..."
+		}
+		sb.WriteString(styles.Code.Render(resumeCmd))
+		sb.WriteString("\n")
+	}
+
+	sepWidth := contentWidth
+	if sepWidth > 60 {
+		sepWidth = 60
+	}
+	sb.WriteString(styles.Muted.Render(strings.Repeat("─", sepWidth)))
+	sb.WriteString("\n")
+
+	// Messages
+	if len(p.messages) == 0 {
+		sb.WriteString(styles.Muted.Render("Loading messages..."))
+		return sb.String()
+	}
+
+	contentHeight := height - 4 // Account for header lines
+	if contentHeight < 1 {
+		contentHeight = 1
+	}
+
+	// Render messages
+	lineCount := 0
+	for i := p.msgScrollOff; i < len(p.messages) && lineCount < contentHeight; i++ {
+		msg := p.messages[i]
+		lines := p.renderCompactMessage(msg, i, contentWidth)
+		for _, line := range lines {
+			if lineCount >= contentHeight {
+				break
+			}
+			sb.WriteString(line)
+			sb.WriteString("\n")
+			lineCount++
+		}
+	}
+
+	return sb.String()
+}
+
+// renderCompactMessage renders a message in compact format for two-pane view.
+func (p *Plugin) renderCompactMessage(msg adapter.Message, msgIndex int, maxWidth int) []string {
+	var lines []string
+
+	// Header line: [timestamp] role  tokens
+	ts := msg.Timestamp.Local().Format("15:04")
+	roleStyle := styles.Muted
+	if msg.Role == "user" {
+		roleStyle = styles.StatusInProgress
+	} else {
+		roleStyle = styles.StatusStaged
+	}
+
+	// Cursor indicator
+	cursor := "  "
+	if msgIndex == p.msgCursor {
+		cursor = "> "
+	}
+
+	// Token info
+	tokens := ""
+	if msg.OutputTokens > 0 || msg.InputTokens > 0 {
+		tokens = fmt.Sprintf(" (%s→%s)", formatK(msg.InputTokens), formatK(msg.OutputTokens))
+	}
+
+	// Build header without styles first to check length
+	headerText := fmt.Sprintf("%s[%s] %s%s", cursor, ts, msg.Role, tokens)
+	if len(headerText) > maxWidth {
+		headerText = headerText[:maxWidth-3] + "..."
+	}
+
+	// Apply styles to truncated header
+	styledHeader := cursor
+	if msgIndex == p.msgCursor {
+		styledHeader = styles.ListCursor.Render("> ")
+	} else {
+		styledHeader = "  "
+	}
+	styledHeader += fmt.Sprintf("[%s] %s%s",
+		styles.Muted.Render(ts),
+		roleStyle.Render(msg.Role),
+		styles.Muted.Render(tokens))
+	lines = append(lines, styledHeader)
+
+	// Thinking indicator
+	if len(msg.ThinkingBlocks) > 0 {
+		var totalTokens int
+		for _, tb := range msg.ThinkingBlocks {
+			totalTokens += tb.TokenCount
+		}
+		thinkingLine := fmt.Sprintf("  ├─ [thinking] %s tokens", formatK(totalTokens))
+		if len(thinkingLine) > maxWidth {
+			thinkingLine = thinkingLine[:maxWidth-3] + "..."
+		}
+		lines = append(lines, styles.Muted.Render(thinkingLine))
+	}
+
+	// Content preview (truncated)
+	content := msg.Content
+	content = strings.ReplaceAll(content, "\n", " ")
+	content = strings.TrimSpace(content)
+	contentMaxLen := maxWidth - 4 // Account for "   " prefix
+	if contentMaxLen < 10 {
+		contentMaxLen = 10
+	}
+	if len(content) > contentMaxLen {
+		content = content[:contentMaxLen-3] + "..."
+	}
+	if content != "" {
+		lines = append(lines, "  "+styles.Body.Render(content))
+	}
+
+	// Tool uses (compact)
+	if len(msg.ToolUses) > 0 {
+		toolLine := fmt.Sprintf("  └─ %d tools", len(msg.ToolUses))
+		lines = append(lines, styles.Code.Render(toolLine))
+	}
+
+	return lines
+}
+
+// renderFilterMenu renders the filter selection menu.
+func (p *Plugin) renderFilterMenu(height int) string {
+	var sb strings.Builder
+
+	sb.WriteString(styles.Title.Render("Filters"))
+	sb.WriteString("                    ")
+	sb.WriteString(styles.Muted.Render("[esc to cancel]"))
+	sb.WriteString("\n")
+	sb.WriteString(styles.Muted.Render(strings.Repeat("─", p.sidebarWidth-4)))
+	sb.WriteString("\n\n")
+
+	// Model filters
+	sb.WriteString(styles.Subtitle.Render("Model:"))
+	sb.WriteString("\n")
+	models := []struct {
+		key   string
+		name  string
+		model string
+	}{
+		{"1", "Opus", "opus"},
+		{"2", "Sonnet", "sonnet"},
+		{"3", "Haiku", "haiku"},
+	}
+	for _, m := range models {
+		checkbox := "[ ]"
+		if p.filters.HasModel(m.model) {
+			checkbox = "[✓]"
+		}
+		sb.WriteString(fmt.Sprintf("  %s %s %s\n", styles.Code.Render(m.key), checkbox, m.name))
+	}
+	sb.WriteString("\n")
+
+	// Date filters
+	sb.WriteString(styles.Subtitle.Render("Date:"))
+	sb.WriteString("\n")
+	dates := []struct {
+		key    string
+		name   string
+		preset string
+	}{
+		{"t", "Today", "today"},
+		{"y", "Yesterday", "yesterday"},
+		{"w", "This Week", "week"},
+	}
+	for _, d := range dates {
+		checkbox := "[ ]"
+		if p.filters.DateRange.Preset == d.preset {
+			checkbox = "[✓]"
+		}
+		sb.WriteString(fmt.Sprintf("  %s %s %s\n", styles.Code.Render(d.key), checkbox, d.name))
+	}
+	sb.WriteString("\n")
+
+	// Active only
+	activeCheck := "[ ]"
+	if p.filters.ActiveOnly {
+		activeCheck = "[✓]"
+	}
+	sb.WriteString(fmt.Sprintf("  %s %s Active only\n", styles.Code.Render("a"), activeCheck))
+	sb.WriteString("\n")
+
+	// Clear filters
+	sb.WriteString(fmt.Sprintf("  %s Clear all filters\n", styles.Code.Render("c")))
+
+	return sb.String()
+}
+
+// renderMessageDetail renders the full message detail view.
+func (p *Plugin) renderMessageDetail() string {
+	var sb strings.Builder
+
+	if p.detailMessage == nil {
+		return styles.Muted.Render("No message selected")
+	}
+
+	msg := p.detailMessage
+
+	// Header
+	sb.WriteString(styles.PanelHeader.Render(" Message Detail                               [esc to close]"))
+	sb.WriteString("\n")
+	sb.WriteString(styles.Muted.Render(strings.Repeat("━", p.width-2)))
+	sb.WriteString("\n")
+
+	// Message metadata
+	ts := msg.Timestamp.Local().Format("2006-01-02 15:04:05")
+	sb.WriteString(fmt.Sprintf(" Role: %s\n", styles.StatusInProgress.Render(msg.Role)))
+	sb.WriteString(fmt.Sprintf(" Time: %s\n", ts))
+	if msg.Model != "" {
+		sb.WriteString(fmt.Sprintf(" Model: %s\n", styles.Code.Render(modelShortName(msg.Model))))
+	}
+	if msg.InputTokens > 0 || msg.OutputTokens > 0 {
+		sb.WriteString(fmt.Sprintf(" Tokens: in=%d, out=%d", msg.InputTokens, msg.OutputTokens))
+		if msg.CacheRead > 0 {
+			sb.WriteString(fmt.Sprintf(", cache=%d", msg.CacheRead))
+		}
+		sb.WriteString("\n")
+	}
+
+	sb.WriteString(styles.Muted.Render(strings.Repeat("─", p.width-2)))
+	sb.WriteString("\n\n")
+
+	// Build content lines
+	var contentLines []string
+
+	// Thinking blocks
+	for i, tb := range msg.ThinkingBlocks {
+		contentLines = append(contentLines, styles.PanelHeader.Render(fmt.Sprintf(" Thinking Block %d (%d tokens)", i+1, tb.TokenCount)))
+		contentLines = append(contentLines, styles.Muted.Render(strings.Repeat("─", p.width-4)))
+		// Wrap thinking content
+		thinkingLines := wrapText(tb.Content, p.width-4)
+		for _, line := range thinkingLines {
+			contentLines = append(contentLines, " "+styles.Muted.Render(line))
+		}
+		contentLines = append(contentLines, "")
+	}
+
+	// Main content
+	if msg.Content != "" {
+		contentLines = append(contentLines, styles.PanelHeader.Render(" Content"))
+		contentLines = append(contentLines, styles.Muted.Render(strings.Repeat("─", p.width-4)))
+		// Wrap content
+		msgLines := wrapText(msg.Content, p.width-4)
+		for _, line := range msgLines {
+			contentLines = append(contentLines, " "+styles.Body.Render(line))
+		}
+		contentLines = append(contentLines, "")
+	}
+
+	// Tool uses
+	if len(msg.ToolUses) > 0 {
+		contentLines = append(contentLines, styles.PanelHeader.Render(" Tool Uses"))
+		contentLines = append(contentLines, styles.Muted.Render(strings.Repeat("─", p.width-4)))
+		for _, tu := range msg.ToolUses {
+			contentLines = append(contentLines, " "+styles.Code.Render(tu.Name))
+			if filePath := extractFilePath(tu.Input); filePath != "" {
+				contentLines = append(contentLines, "   Path: "+filePath)
+			}
+			// Show input preview (truncated)
+			if tu.Input != "" && len(tu.Input) < 200 {
+				contentLines = append(contentLines, "   Input: "+tu.Input)
+			}
+			contentLines = append(contentLines, "")
+		}
+	}
+
+	// Apply scroll offset
+	headerLines := 8 // Lines used by header
+	contentHeight := p.height - headerLines
+	if contentHeight < 1 {
+		contentHeight = 1
+	}
+
+	start := p.detailScroll
+	if start >= len(contentLines) {
+		start = len(contentLines) - 1
+		if start < 0 {
+			start = 0
+		}
+	}
+	end := start + contentHeight
+	if end > len(contentLines) {
+		end = len(contentLines)
+	}
+
+	for i := start; i < end; i++ {
+		sb.WriteString(contentLines[i])
+		sb.WriteString("\n")
+	}
+
+	return sb.String()
 }
