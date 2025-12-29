@@ -156,13 +156,22 @@ func (m Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
-	// Global quit - always takes precedence
+	// Global quit - ctrl+c always takes precedence, 'q' only in global/empty context
 	switch msg.String() {
-	case "ctrl+c", "q":
+	case "ctrl+c":
 		if !m.showHelp && !m.showDiagnostics && !m.showPalette {
 			m.showQuitConfirm = true
 			return m, nil
 		}
+	case "q":
+		// 'q' is used for navigation in plugin contexts (back, escape)
+		// Only trigger quit in global context or when no plugin is active
+		if (m.activeContext == "global" || m.activeContext == "") &&
+			!m.showHelp && !m.showDiagnostics && !m.showPalette {
+			m.showQuitConfirm = true
+			return m, nil
+		}
+		// Fall through to forward to plugin
 	}
 
 	// Handle palette input when open

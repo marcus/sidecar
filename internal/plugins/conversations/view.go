@@ -157,9 +157,10 @@ func (p *Plugin) renderSessionRow(session adapter.Session, selected bool) string
 	}
 
 	// Sub-conversation indent (keep cursor aligned at far left)
+	// Use 4-space indent to clearly show parent-child relationship
 	indent := ""
 	if session.IsSubAgent {
-		indent = "  "
+		indent = "    "
 	}
 
 	// Type indicator: active (●), sub-agent (↳), or space
@@ -193,7 +194,12 @@ func (p *Plugin) renderSessionRow(session adapter.Session, selected bool) string
 	}
 
 	// Build the row: cursor + indent + active/sub + badge + length + name
-	maxNameWidth := p.width - 18 - len(badgeText)
+	// Base overhead: cursor(2) + indicator(1) + space(1) + badge + space(1) + length(6) + spaces(2)
+	overhead := 13 + len(badgeText)
+	if session.IsSubAgent {
+		overhead += 4 // sub-agent indent
+	}
+	maxNameWidth := p.width - overhead
 	if len(name) > maxNameWidth && maxNameWidth > 3 {
 		name = name[:maxNameWidth-3] + "..."
 	}

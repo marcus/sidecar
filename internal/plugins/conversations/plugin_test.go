@@ -1167,3 +1167,234 @@ func TestThinkingBlockToggleMultipleIndependent(t *testing.T) {
 		t.Error("expected msg-4 to still be expanded")
 	}
 }
+
+// TestSessionListNavigation tests j/k navigation in the main session list.
+func TestSessionListNavigation(t *testing.T) {
+	p := New()
+	p.adapters = map[string]adapter.Adapter{"mock": &mockAdapter{}}
+	p.sessions = []adapter.Session{
+		{ID: "test-1", Name: "Session 1"},
+		{ID: "test-2", Name: "Session 2"},
+		{ID: "test-3", Name: "Session 3"},
+	}
+	p.height = 20
+	p.width = 100
+
+	// Initial cursor should be at 0
+	if p.cursor != 0 {
+		t.Errorf("expected initial cursor 0, got %d", p.cursor)
+	}
+
+	// Press 'j' to move down
+	keyJ := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}}
+	_, _ = p.Update(keyJ)
+
+	if p.cursor != 1 {
+		t.Errorf("expected cursor 1 after 'j', got %d", p.cursor)
+	}
+
+	// Press 'down' to move down again
+	keyDown := tea.KeyMsg{Type: tea.KeyDown}
+	_, _ = p.Update(keyDown)
+
+	if p.cursor != 2 {
+		t.Errorf("expected cursor 2 after 'down', got %d", p.cursor)
+	}
+
+	// Press 'k' to move up
+	keyK := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'k'}}
+	_, _ = p.Update(keyK)
+
+	if p.cursor != 1 {
+		t.Errorf("expected cursor 1 after 'k', got %d", p.cursor)
+	}
+
+	// Press 'up' to move up
+	keyUp := tea.KeyMsg{Type: tea.KeyUp}
+	_, _ = p.Update(keyUp)
+
+	if p.cursor != 0 {
+		t.Errorf("expected cursor 0 after 'up', got %d", p.cursor)
+	}
+
+	// Press 'G' to jump to bottom
+	keyG := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'G'}}
+	_, _ = p.Update(keyG)
+
+	if p.cursor != 2 {
+		t.Errorf("expected cursor 2 after 'G', got %d", p.cursor)
+	}
+
+	// Press 'g' to jump to top
+	keyg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'g'}}
+	_, _ = p.Update(keyg)
+
+	if p.cursor != 0 {
+		t.Errorf("expected cursor 0 after 'g', got %d", p.cursor)
+	}
+}
+
+// TestSessionListNavigationBounds tests cursor bounds checking.
+func TestSessionListNavigationBounds(t *testing.T) {
+	p := New()
+	p.adapters = map[string]adapter.Adapter{"mock": &mockAdapter{}}
+	p.sessions = []adapter.Session{
+		{ID: "test-1", Name: "Session 1"},
+		{ID: "test-2", Name: "Session 2"},
+	}
+	p.height = 20
+	p.width = 100
+
+	// Try to move up when at top - should stay at 0
+	keyK := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'k'}}
+	_, _ = p.Update(keyK)
+
+	if p.cursor != 0 {
+		t.Errorf("expected cursor to stay at 0 when at top, got %d", p.cursor)
+	}
+
+	// Move to bottom
+	keyG := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'G'}}
+	_, _ = p.Update(keyG)
+
+	// Try to move down when at bottom - should stay at last
+	keyJ := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}}
+	_, _ = p.Update(keyJ)
+
+	if p.cursor != 1 {
+		t.Errorf("expected cursor to stay at 1 when at bottom, got %d", p.cursor)
+	}
+}
+
+// TestTwoPaneNavigationRouting tests that navigation is properly routed in two-pane mode.
+func TestTwoPaneNavigationRouting(t *testing.T) {
+	p := New()
+	p.adapters = map[string]adapter.Adapter{"mock": &mockAdapter{}}
+	p.sessions = []adapter.Session{
+		{ID: "test-1", Name: "Session 1"},
+		{ID: "test-2", Name: "Session 2"},
+		{ID: "test-3", Name: "Session 3"},
+	}
+	p.height = 30
+	p.width = 150 // >= 120, so twoPane should be enabled
+	p.twoPane = true
+	p.activePane = PaneSidebar
+
+	// With sidebar focused, j should move cursor in session list
+	keyJ := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}}
+	_, _ = p.Update(keyJ)
+
+	if p.cursor != 1 {
+		t.Errorf("expected cursor 1 after 'j' in sidebar, got %d", p.cursor)
+	}
+
+	// Switch to messages pane
+	p.activePane = PaneMessages
+	p.selectedSession = "test-1"
+	p.messages = []adapter.Message{
+		{ID: "msg-1", Role: "user"},
+		{ID: "msg-2", Role: "assistant"},
+	}
+	p.turns = GroupMessagesIntoTurns(p.messages)
+	p.view = ViewMessages
+
+	// With messages pane focused, j should move turn cursor, not session cursor
+	initialCursor := p.cursor
+	_, _ = p.Update(keyJ)
+
+	if p.cursor != initialCursor {
+		t.Errorf("expected session cursor to stay at %d in messages pane, got %d", initialCursor, p.cursor)
+	}
+}
+
+// TestTwoPaneFocusSwitching tests pane focus switching with tab, h, l keys.
+func TestTwoPaneFocusSwitching(t *testing.T) {
+	p := New()
+	p.adapters = map[string]adapter.Adapter{"mock": &mockAdapter{}}
+	p.sessions = []adapter.Session{
+		{ID: "test-1", Name: "Session 1"},
+	}
+	p.height = 30
+	p.width = 150
+	p.twoPane = true
+	p.activePane = PaneSidebar
+	p.selectedSession = "test-1"
+	p.messages = []adapter.Message{{ID: "msg-1", Role: "user"}}
+	p.turns = GroupMessagesIntoTurns(p.messages)
+
+	// Press 'l' to switch to messages pane
+	keyL := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'l'}}
+	_, _ = p.Update(keyL)
+
+	if p.activePane != PaneMessages {
+		t.Errorf("expected activePane to be PaneMessages after 'l', got %v", p.activePane)
+	}
+
+	// Press 'h' to switch back to sidebar
+	keyH := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'h'}}
+	_, _ = p.Update(keyH)
+
+	if p.activePane != PaneSidebar {
+		t.Errorf("expected activePane to be PaneSidebar after 'h', got %v", p.activePane)
+	}
+
+	// Switch to messages and test tab to switch back
+	p.activePane = PaneMessages
+	keyTab := tea.KeyMsg{Type: tea.KeyTab}
+	_, _ = p.Update(keyTab)
+
+	if p.activePane != PaneSidebar {
+		t.Errorf("expected activePane to be PaneSidebar after tab, got %v", p.activePane)
+	}
+}
+
+// TestTwoPaneModeActivation tests that two-pane mode activates based on width.
+func TestTwoPaneModeActivation(t *testing.T) {
+	p := New()
+	p.adapters = map[string]adapter.Adapter{"mock": &mockAdapter{}}
+	p.sessions = []adapter.Session{{ID: "test-1", Name: "Session 1"}}
+
+	// Narrow width - should not enable two-pane
+	_ = p.View(100, 30)
+	if p.twoPane {
+		t.Error("expected twoPane to be false for width 100")
+	}
+
+	// Wide width - should enable two-pane
+	_ = p.View(120, 30)
+	if !p.twoPane {
+		t.Error("expected twoPane to be true for width 120")
+	}
+
+	// Very wide width - should enable two-pane
+	_ = p.View(200, 30)
+	if !p.twoPane {
+		t.Error("expected twoPane to be true for width 200")
+	}
+}
+
+// TestGroupHeaderSpacing verifies spacing behavior for time-based group headers.
+func TestGroupHeaderSpacing(t *testing.T) {
+	now := time.Now()
+	today := time.Date(now.Year(), now.Month(), now.Day(), 12, 0, 0, 0, now.Location())
+	yesterday := today.AddDate(0, 0, -1)
+	thisWeek := today.AddDate(0, 0, -3)
+	older := today.AddDate(0, 0, -10)
+
+	tests := []struct {
+		timestamp time.Time
+		expected  string
+	}{
+		{today, "Today"},
+		{yesterday, "Yesterday"},
+		{thisWeek, "This Week"},
+		{older, "Older"},
+	}
+
+	for _, tt := range tests {
+		result := getSessionGroup(tt.timestamp)
+		if result != tt.expected {
+			t.Errorf("getSessionGroup(%v) = %q, expected %q", tt.timestamp, result, tt.expected)
+		}
+	}
+}

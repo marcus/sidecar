@@ -91,6 +91,30 @@ func DefaultBindings() []Binding {
 		{Key: "g", Command: "cursor-top", Context: "conversation-detail"},
 		{Key: "G", Command: "cursor-bottom", Context: "conversation-detail"},
 
+		// Conversations sidebar context (two-pane mode, left pane focused)
+		{Key: "enter", Command: "view-session", Context: "conversations-sidebar"},
+		{Key: "/", Command: "search", Context: "conversations-sidebar"},
+		{Key: "r", Command: "refresh", Context: "conversations-sidebar"},
+		{Key: "U", Command: "analytics", Context: "conversations-sidebar"},
+		{Key: "j", Command: "cursor-down", Context: "conversations-sidebar"},
+		{Key: "k", Command: "cursor-up", Context: "conversations-sidebar"},
+		{Key: "down", Command: "cursor-down", Context: "conversations-sidebar"},
+		{Key: "up", Command: "cursor-up", Context: "conversations-sidebar"},
+		{Key: "g", Command: "cursor-top", Context: "conversations-sidebar"},
+		{Key: "G", Command: "cursor-bottom", Context: "conversations-sidebar"},
+		{Key: "l", Command: "focus-right", Context: "conversations-sidebar"},
+		{Key: "right", Command: "focus-right", Context: "conversations-sidebar"},
+
+		// Conversations main context (two-pane mode, right pane focused)
+		{Key: "esc", Command: "back", Context: "conversations-main"},
+		{Key: "q", Command: "back", Context: "conversations-main"},
+		{Key: "j", Command: "scroll", Context: "conversations-main"},
+		{Key: "k", Command: "scroll", Context: "conversations-main"},
+		{Key: "g", Command: "cursor-top", Context: "conversations-main"},
+		{Key: "G", Command: "cursor-bottom", Context: "conversations-main"},
+		{Key: "h", Command: "focus-left", Context: "conversations-main"},
+		{Key: "left", Command: "focus-left", Context: "conversations-main"},
+
 		// File browser tree context
 		{Key: "/", Command: "search", Context: "file-browser-tree"},
 
