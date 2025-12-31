@@ -99,11 +99,9 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 	if wsm, ok := msg.(tea.WindowSizeMsg); ok {
 		p.width = wsm.Width
 		p.height = wsm.Height
-		p.ctx.Logger.Debug("tdmonitor WindowSizeMsg", "w", wsm.Width, "h", wsm.Height)
 		newModel, cmd := p.model.Update(wsm)
 		if m, ok := newModel.(monitor.Model); ok {
 			p.model = &m
-			p.ctx.Logger.Debug("tdmonitor after WindowSizeMsg", "modelW", p.model.Width, "modelH", p.model.Height, "panelBounds", len(p.model.PanelBounds))
 		}
 		return p, cmd
 	}
@@ -119,19 +117,6 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 			// Don't quit the app, just ignore
 			return p, nil
 		}
-	}
-
-	// Debug: log mouse events received by TD plugin
-	if mm, ok := msg.(tea.MouseMsg); ok {
-		// Check if TD model has valid dimensions and panel bounds
-		boundsCount := 0
-		if p.model != nil {
-			boundsCount = len(p.model.PanelBounds)
-		}
-		p.ctx.Logger.Debug("tdmonitor mouse",
-			"x", mm.X, "y", mm.Y, "btn", mm.Button, "action", mm.Action,
-			"modelW", p.model.Width, "modelH", p.model.Height,
-			"panelBounds", boundsCount)
 	}
 
 	// Delegate to monitor

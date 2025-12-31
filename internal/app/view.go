@@ -151,6 +151,62 @@ func (m Model) renderHeader() string {
 	return styles.Header.Width(m.width).Render(header)
 }
 
+// getTabBounds calculates the X position bounds for each tab in the header.
+// Used for mouse click detection on tabs.
+func (m Model) getTabBounds() []TabBounds {
+	// Title width
+	var title string
+	if m.intro.Active {
+		title = styles.BarTitle.Render(" " + m.intro.View() + " ")
+	} else {
+		title = styles.BarTitle.Render(" Sidecar ")
+	}
+	titleWidth := lipgloss.Width(title)
+
+	// Calculate tab widths
+	plugins := m.registry.Plugins()
+	var tabWidths []int
+	totalTabWidth := 0
+	for i, p := range plugins {
+		label := fmt.Sprintf(" %s ", p.Name())
+		var tab string
+		if i == m.activePlugin {
+			tab = styles.TabActive.Render(label)
+		} else {
+			tab = styles.TabInactive.Render(label)
+		}
+		w := lipgloss.Width(tab)
+		tabWidths = append(tabWidths, w)
+		totalTabWidth += w
+	}
+	// Add spaces between tabs
+	if len(plugins) > 1 {
+		totalTabWidth += len(plugins) - 1
+	}
+
+	// Clock width
+	clock := styles.BarText.Render(m.ui.Clock.Format("15:04"))
+	clockWidth := lipgloss.Width(clock)
+
+	// Calculate spacing
+	spacing := m.width - titleWidth - totalTabWidth - clockWidth
+	if spacing < 0 {
+		spacing = 0
+	}
+
+	// Calculate tab bounds
+	// Tabs start after: title + left spacing
+	tabStartX := titleWidth + spacing/2
+	bounds := make([]TabBounds, len(plugins))
+	x := tabStartX
+	for i, w := range tabWidths {
+		bounds[i] = TabBounds{Start: x, End: x + w}
+		x += w + 1 // +1 for space between tabs
+	}
+
+	return bounds
+}
+
 // renderContent renders the main content area.
 func (m Model) renderContent(width, height int) string {
 	p := m.ActivePlugin()

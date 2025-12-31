@@ -45,19 +45,30 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.showHelp || m.showDiagnostics || m.showQuitConfirm || m.showPalette {
 			return m, nil
 		}
+
+		// Handle header tab clicks (Y < 2 means header area)
+		if msg.Y < headerHeight && msg.Action == tea.MouseActionPress && msg.Button == tea.MouseButtonLeft {
+			// Check if click is on a tab
+			tabBounds := m.getTabBounds()
+			for i, bounds := range tabBounds {
+				if msg.X >= bounds.Start && msg.X < bounds.End {
+					return m, m.SetActivePlugin(i)
+				}
+			}
+			return m, nil
+		}
+
 		// Forward mouse events to active plugin with Y offset for app header (2 lines)
 		if p := m.ActivePlugin(); p != nil {
 			adjusted := tea.MouseMsg{
 				X:      msg.X,
-				Y:      msg.Y - 2, // Offset for app header
+				Y:      msg.Y - headerHeight, // Offset for app header
 				Button: msg.Button,
 				Action: msg.Action,
 				Ctrl:   msg.Ctrl,
 				Alt:    msg.Alt,
 				Shift:  msg.Shift,
 			}
-			// Debug: log mouse events
-			m.lastError = fmt.Errorf("mouse: x=%d y=%d btn=%v action=%v -> plugin=%s", msg.X, msg.Y, msg.Button, msg.Action, p.ID())
 			newPlugin, cmd := p.Update(adjusted)
 			plugins := m.registry.Plugins()
 			if m.activePlugin < len(plugins) {

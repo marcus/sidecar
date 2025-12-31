@@ -10,6 +10,11 @@ import (
 	"github.com/sst/sidecar/internal/version"
 )
 
+// TabBounds represents the X position range of a tab for mouse hit testing.
+type TabBounds struct {
+	Start, End int
+}
+
 // Model is the root Bubble Tea model for the sidecar application.
 type Model struct {
 	// Plugin management
