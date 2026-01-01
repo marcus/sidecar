@@ -122,6 +122,10 @@ type Plugin struct {
 	quickOpenFiles   []string // Cached file paths (relative)
 	quickOpenError   string   // Error message if scan failed/limited
 
+	// Project-wide search state (ctrl+s)
+	projectSearchMode  bool
+	projectSearchState *ProjectSearchState
+
 	// File operation state (move/rename)
 	fileOpMode          FileOpMode
 	fileOpTarget        *FileNode       // The file being operated on
@@ -436,6 +440,20 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 		p.fileOpError = ""
 		return p, p.refresh()
 
+	case ProjectSearchResultsMsg:
+		if p.projectSearchState != nil {
+			p.projectSearchState.IsSearching = false
+			if msg.Error != nil {
+				p.projectSearchState.Error = msg.Error.Error()
+				p.projectSearchState.Results = nil
+			} else {
+				p.projectSearchState.Error = ""
+				p.projectSearchState.Results = msg.Results
+				p.projectSearchState.Cursor = 0
+				p.projectSearchState.ScrollOffset = 0
+			}
+		}
+
 	case tea.KeyMsg:
 		return p.handleKey(msg)
 	}
@@ -447,8 +465,18 @@ func (p *Plugin) handleKey(msg tea.KeyMsg) (plugin.Plugin, tea.Cmd) {
 	key := msg.String()
 
 	// Quick open can be triggered from any context (except when already open)
-	if key == "ctrl+p" && !p.quickOpenMode {
+	if key == "ctrl+p" && !p.quickOpenMode && !p.projectSearchMode {
 		return p.openQuickOpen()
+	}
+
+	// Project search can be triggered from any context (except when already open)
+	if key == "ctrl+s" && !p.projectSearchMode && !p.quickOpenMode {
+		return p.openProjectSearch()
+	}
+
+	// Handle project search mode
+	if p.projectSearchMode {
+		return p.handleProjectSearchKey(msg)
 	}
 
 	// Handle quick open mode
@@ -1046,6 +1074,181 @@ func (p *Plugin) selectQuickOpenMatch() (plugin.Plugin, tea.Cmd) {
 	return p, LoadPreview(p.ctx.WorkDir, match.Path)
 }
 
+// openProjectSearch enters project-wide search mode.
+func (p *Plugin) openProjectSearch() (plugin.Plugin, tea.Cmd) {
+	p.projectSearchMode = true
+	p.projectSearchState = NewProjectSearchState()
+	return p, nil
+}
+
+// handleProjectSearchKey handles key input during project search mode.
+func (p *Plugin) handleProjectSearchKey(msg tea.KeyMsg) (plugin.Plugin, tea.Cmd) {
+	key := msg.String()
+	state := p.projectSearchState
+
+	switch key {
+	case "esc":
+		// Close project search
+		p.projectSearchMode = false
+		p.projectSearchState = nil
+
+	case "enter":
+		// Open selected file/match
+		if state != nil && len(state.Results) > 0 {
+			return p.openProjectSearchResult()
+		}
+
+	case "up", "ctrl+p":
+		if state != nil && state.Cursor > 0 {
+			state.Cursor--
+		}
+
+	case "down", "ctrl+n":
+		if state != nil {
+			maxIdx := state.FlatLen() - 1
+			if state.Cursor < maxIdx {
+				state.Cursor++
+			}
+		}
+
+	case "ctrl+d":
+		// Page down
+		if state != nil {
+			state.Cursor += 10
+			maxIdx := state.FlatLen() - 1
+			if state.Cursor > maxIdx {
+				state.Cursor = maxIdx
+			}
+			if state.Cursor < 0 {
+				state.Cursor = 0
+			}
+		}
+
+	case "ctrl+u":
+		// Page up
+		if state != nil {
+			state.Cursor -= 10
+			if state.Cursor < 0 {
+				state.Cursor = 0
+			}
+		}
+
+	case "tab", " ":
+		// Toggle file collapse
+		if state != nil {
+			state.ToggleFileCollapse()
+		}
+
+	case "alt+r":
+		// Toggle regex mode
+		if state != nil {
+			state.UseRegex = !state.UseRegex
+			if state.Query != "" {
+				state.IsSearching = true
+				return p, RunProjectSearch(p.ctx.WorkDir, state)
+			}
+		}
+
+	case "alt+c":
+		// Toggle case sensitivity
+		if state != nil {
+			state.CaseSensitive = !state.CaseSensitive
+			if state.Query != "" {
+				state.IsSearching = true
+				return p, RunProjectSearch(p.ctx.WorkDir, state)
+			}
+		}
+
+	case "alt+w":
+		// Toggle whole word
+		if state != nil {
+			state.WholeWord = !state.WholeWord
+			if state.Query != "" {
+				state.IsSearching = true
+				return p, RunProjectSearch(p.ctx.WorkDir, state)
+			}
+		}
+
+	case "backspace":
+		if state != nil && len(state.Query) > 0 {
+			state.Query = state.Query[:len(state.Query)-1]
+			if state.Query == "" {
+				state.Results = nil
+				state.Error = ""
+			} else {
+				state.IsSearching = true
+				return p, RunProjectSearch(p.ctx.WorkDir, state)
+			}
+		}
+
+	default:
+		// Append printable characters
+		if state != nil && len(key) == 1 && key[0] >= 32 && key[0] <= 126 {
+			state.Query += key
+			state.IsSearching = true
+			return p, RunProjectSearch(p.ctx.WorkDir, state)
+		}
+	}
+
+	return p, nil
+}
+
+// openProjectSearchResult opens the selected search result.
+func (p *Plugin) openProjectSearchResult() (plugin.Plugin, tea.Cmd) {
+	state := p.projectSearchState
+	if state == nil || len(state.Results) == 0 {
+		return p, nil
+	}
+
+	path, lineNo := state.GetSelectedFile()
+	if path == "" {
+		return p, nil
+	}
+
+	// Close project search
+	p.projectSearchMode = false
+	p.projectSearchState = nil
+
+	// Find the file in tree and expand parents
+	var targetNode *FileNode
+	p.walkTree(p.tree.Root, func(node *FileNode) {
+		if node.Path == path {
+			targetNode = node
+		}
+	})
+
+	if targetNode != nil {
+		// Expand parents to make visible
+		p.expandParents(targetNode)
+		p.tree.Flatten()
+
+		// Move tree cursor to file
+		if idx := p.tree.IndexOf(targetNode); idx >= 0 {
+			p.treeCursor = idx
+			p.ensureTreeCursorVisible()
+		}
+	}
+
+	// Load preview
+	p.previewFile = path
+	p.previewScroll = 0
+	p.previewLines = nil
+	p.previewError = nil
+	p.isBinary = false
+	p.isTruncated = false
+	p.activePane = PanePreview
+
+	// If we have a line number, scroll to it after preview loads
+	if lineNo > 0 {
+		p.previewScroll = lineNo - 1 // Convert to 0-indexed
+		if p.previewScroll < 0 {
+			p.previewScroll = 0
+		}
+	}
+
+	return p, LoadPreview(p.ctx.WorkDir, path)
+}
+
 // buildFileCache walks the filesystem to build the quick open file list.
 // Respects gitignore and has limits to prevent issues on huge repos.
 func (p *Plugin) buildFileCache() {
@@ -1360,15 +1563,17 @@ func (p *Plugin) Commands() []plugin.Command {
 	return []plugin.Command{
 		// Tree pane commands
 		{ID: "quick-open", Name: "Open", Description: "Quick open file by name", Category: plugin.CategorySearch, Context: "file-browser-tree", Priority: 1},
-		{ID: "search", Name: "Search", Description: "Search for files", Category: plugin.CategorySearch, Context: "file-browser-tree", Priority: 2},
-		{ID: "rename", Name: "Rename", Description: "Rename file or directory", Category: plugin.CategoryActions, Context: "file-browser-tree", Priority: 3},
-		{ID: "move", Name: "Move", Description: "Move file or directory", Category: plugin.CategoryActions, Context: "file-browser-tree", Priority: 3},
-		{ID: "reveal", Name: "Reveal", Description: "Reveal in file manager", Category: plugin.CategoryActions, Context: "file-browser-tree", Priority: 4},
+		{ID: "project-search", Name: "Find", Description: "Search in project", Category: plugin.CategorySearch, Context: "file-browser-tree", Priority: 2},
+		{ID: "search", Name: "Filter", Description: "Filter files by name", Category: plugin.CategorySearch, Context: "file-browser-tree", Priority: 3},
+		{ID: "rename", Name: "Rename", Description: "Rename file or directory", Category: plugin.CategoryActions, Context: "file-browser-tree", Priority: 4},
+		{ID: "move", Name: "Move", Description: "Move file or directory", Category: plugin.CategoryActions, Context: "file-browser-tree", Priority: 4},
+		{ID: "reveal", Name: "Reveal", Description: "Reveal in file manager", Category: plugin.CategoryActions, Context: "file-browser-tree", Priority: 5},
 		// Preview pane commands
 		{ID: "quick-open", Name: "Open", Description: "Quick open file by name", Category: plugin.CategorySearch, Context: "file-browser-preview", Priority: 1},
-		{ID: "search-content", Name: "Search", Description: "Search file content", Category: plugin.CategorySearch, Context: "file-browser-preview", Priority: 2},
-		{ID: "back", Name: "Back", Description: "Return to file tree", Category: plugin.CategoryNavigation, Context: "file-browser-preview", Priority: 2},
-		{ID: "reveal", Name: "Reveal", Description: "Reveal in file manager", Category: plugin.CategoryActions, Context: "file-browser-preview", Priority: 3},
+		{ID: "project-search", Name: "Find", Description: "Search in project", Category: plugin.CategorySearch, Context: "file-browser-preview", Priority: 2},
+		{ID: "search-content", Name: "Search", Description: "Search file content", Category: plugin.CategorySearch, Context: "file-browser-preview", Priority: 3},
+		{ID: "back", Name: "Back", Description: "Return to file tree", Category: plugin.CategoryNavigation, Context: "file-browser-preview", Priority: 4},
+		{ID: "reveal", Name: "Reveal", Description: "Reveal in file manager", Category: plugin.CategoryActions, Context: "file-browser-preview", Priority: 5},
 		// Tree search commands
 		{ID: "confirm", Name: "Go", Description: "Jump to match", Category: plugin.CategoryNavigation, Context: "file-browser-search", Priority: 1},
 		{ID: "cancel", Name: "Cancel", Description: "Cancel search", Category: plugin.CategoryActions, Context: "file-browser-search", Priority: 1},
@@ -1378,6 +1583,10 @@ func (p *Plugin) Commands() []plugin.Command {
 		// Quick open commands
 		{ID: "select", Name: "Open", Description: "Open selected file", Category: plugin.CategoryActions, Context: "file-browser-quick-open", Priority: 1},
 		{ID: "cancel", Name: "Cancel", Description: "Cancel quick open", Category: plugin.CategoryActions, Context: "file-browser-quick-open", Priority: 1},
+		// Project search commands
+		{ID: "select", Name: "Open", Description: "Open selected result", Category: plugin.CategoryActions, Context: "file-browser-project-search", Priority: 1},
+		{ID: "toggle", Name: "Toggle", Description: "Expand/collapse file", Category: plugin.CategoryActions, Context: "file-browser-project-search", Priority: 2},
+		{ID: "cancel", Name: "Close", Description: "Close search", Category: plugin.CategoryActions, Context: "file-browser-project-search", Priority: 3},
 		// File operation commands (move/rename)
 		{ID: "confirm", Name: "Confirm", Description: "Confirm operation", Category: plugin.CategoryActions, Context: "file-browser-file-op", Priority: 1},
 		{ID: "cancel", Name: "Cancel", Description: "Cancel operation", Category: plugin.CategoryActions, Context: "file-browser-file-op", Priority: 1},
@@ -1386,6 +1595,9 @@ func (p *Plugin) Commands() []plugin.Command {
 
 // FocusContext returns the current focus context.
 func (p *Plugin) FocusContext() string {
+	if p.projectSearchMode {
+		return "file-browser-project-search"
+	}
 	if p.quickOpenMode {
 		return "file-browser-quick-open"
 	}

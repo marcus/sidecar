@@ -32,6 +32,11 @@ func (p *Plugin) calculatePaneWidths() {
 
 // renderView creates the 2-pane layout.
 func (p *Plugin) renderView() string {
+	// Project search is a full overlay - render modal instead of normal panes
+	if p.projectSearchMode {
+		return p.renderProjectSearchModal()
+	}
+
 	// Quick open is a full overlay - render modal instead of normal panes
 	if p.quickOpenMode {
 		return p.renderQuickOpenModal()

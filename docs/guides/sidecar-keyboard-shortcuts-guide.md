@@ -258,6 +258,8 @@ Each plugin returns a context string that determines which bindings are active.
 | `file-browser-search` | Search mode | Filename search |
 | `file-browser-content-search` | Content search | File content search |
 | `file-browser-quick-open` | Quick open | Fuzzy file finder |
+| `file-browser-project-search` | Project search | Ripgrep search modal |
+| `file-browser-file-op` | File operation | Move/rename input |
 
 ### TD Monitor Plugin
 

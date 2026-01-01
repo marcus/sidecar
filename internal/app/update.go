@@ -384,6 +384,7 @@ func isTextInputContext(ctx string) bool {
 		"conversations-search", "conversations-filter",
 		"file-browser-search", "file-browser-content-search",
 		"file-browser-quick-open", "file-browser-file-op",
+		"file-browser-project-search",
 		"td-search":
 		return true
 	default:
