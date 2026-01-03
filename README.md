@@ -47,12 +47,13 @@ Split your terminal horizontally: run your coding agent (Claude Code, Cursor, et
 ```
 
 As the agent works, you can:
+
 - Watch tasks move through the workflow in TD Monitor
 - See files change in real-time in the Git plugin
 - Browse and edit code yourself in the File Browser
 - View and resume conversations across all supported agent adapters
 
-This setup gives you visibility into what the agent is doing without interrupting your workflow.
+This setup gives you visibility into what the agent is doing without interrupting your workflow. The goal is to allow working with agents without the need for an editor or IDE.
 
 ## Usage
 
@@ -83,6 +84,7 @@ View staged, modified, and untracked files with a split-pane interface. The side
 ![Git Status with Diff](docs/screenshots/sidecar-git.png)
 
 **Features:**
+
 - Stage/unstage files with `s`/`u`
 - View diffs inline or full-screen with `d`
 - Toggle side-by-side diff view with `v`
@@ -98,6 +100,7 @@ Browse Claude Code session history with message content, token usage, and search
 ![Conversations](docs/screenshots/sidecar-conversations.png)
 
 **Features:**
+
 - View all sessions grouped by date
 - Search sessions with `/`
 - Expand messages to see full content
@@ -110,6 +113,7 @@ Integration with [TD](https://github.com/marcus/td), a task management system de
 ![TD Monitor](docs/screenshots/sidecar-td.png)
 
 **Features:**
+
 - Current focused task display
 - Scrollable task list with status indicators
 - Activity log with session context
@@ -124,35 +128,36 @@ Navigate project files with a tree view and syntax-highlighted preview.
 ![File Browser](docs/screenshots/sidecar-file-browser.png)
 
 **Features:**
+
 - Collapsible directory tree
 - Code preview with syntax highlighting
 - Auto-refresh on file changes
 
 ## Keyboard Shortcuts
 
-| Key | Action |
-|-----|--------|
-| `q`, `ctrl+c` | Quit |
-| `tab` / `shift+tab` | Navigate plugins |
-| `1-9` | Focus plugin by number |
-| `j/k`, `↓/↑` | Navigate items |
-| `ctrl+d/u` | Page down/up in scrollable views |
-| `g/G` | Jump to top/bottom |
-| `enter` | Select |
-| `esc` | Back/close |
-| `r` | Refresh |
-| `?` | Toggle help |
+| Key                 | Action                           |
+| ------------------- | -------------------------------- |
+| `q`, `ctrl+c`       | Quit                             |
+| `tab` / `shift+tab` | Navigate plugins                 |
+| `1-9`               | Focus plugin by number           |
+| `j/k`, `↓/↑`        | Navigate items                   |
+| `ctrl+d/u`          | Page down/up in scrollable views |
+| `g/G`               | Jump to top/bottom               |
+| `enter`             | Select                           |
+| `esc`               | Back/close                       |
+| `r`                 | Refresh                          |
+| `?`                 | Toggle help                      |
 
 ### Git Status Shortcuts
 
-| Key | Action |
-|-----|--------|
-| `s` | Stage file |
-| `u` | Unstage file |
-| `d` | View diff (full-screen) |
-| `v` | Toggle side-by-side diff |
+| Key   | Action                    |
+| ----- | ------------------------- |
+| `s`   | Stage file                |
+| `u`   | Unstage file              |
+| `d`   | View diff (full-screen)   |
+| `v`   | Toggle side-by-side diff  |
 | `h/l` | Switch sidebar/diff focus |
-| `c` | Commit staged changes |
+| `c`   | Commit staged changes     |
 
 ## Configuration
 

@@ -129,7 +129,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case filebrowser.OpenFileMsg:
 		// Open file in editor using tea.ExecProcess
-		c := exec.Command(msg.Editor, msg.Path)
+		// Most editors support +lineNo syntax for opening at a line
+		args := []string{}
+		if msg.LineNo > 0 {
+			args = append(args, fmt.Sprintf("+%d", msg.LineNo))
+		}
+		args = append(args, msg.Path)
+		c := exec.Command(msg.Editor, args...)
 		return m, tea.ExecProcess(c, func(err error) tea.Msg {
 			if err != nil {
 				return ErrorMsg{Err: err}

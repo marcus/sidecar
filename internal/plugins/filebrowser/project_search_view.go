@@ -15,6 +15,9 @@ func (p *Plugin) renderProjectSearchModal() string {
 		state = NewProjectSearchState()
 	}
 
+	// Clear hit regions for fresh registration
+	p.mouseHandler.HitMap.Clear()
+
 	// Modal dimensions - use most of the screen
 	modalWidth := p.width - 4
 	if modalWidth > 120 {
@@ -24,14 +27,23 @@ func (p *Plugin) renderProjectSearchModal() string {
 		modalWidth = 40
 	}
 
+	// Calculate modal position for hit region registration
+	hPad := (p.width - modalWidth - 4) / 2
+	if hPad < 0 {
+		hPad = 0
+	}
+	modalX := hPad + 1 // +1 for modal border
+
 	var sb strings.Builder
 
 	// Header with search input
 	sb.WriteString(p.renderProjectSearchHeader(modalWidth))
 	sb.WriteString("\n")
 
-	// Options bar
-	sb.WriteString(p.renderProjectSearchOptions())
+	// Options bar (with hit regions)
+	// Y position: paddingTop(1) + border(1) + header(1) + newline(1) = 4
+	optionsY := 4
+	sb.WriteString(p.renderProjectSearchOptionsWithHitRegions(modalX, optionsY))
 	sb.WriteString("\n\n")
 
 	// Calculate available height for results
@@ -43,6 +55,9 @@ func (p *Plugin) renderProjectSearchModal() string {
 	if resultsHeight > 30 {
 		resultsHeight = 30
 	}
+
+	// Results Y position: options(4) + options(1) + newlines(2) = 7
+	resultsY := 7
 
 	// Results or status message
 	if state.IsSearching {
@@ -56,7 +71,7 @@ func (p *Plugin) renderProjectSearchModal() string {
 			sb.WriteString(styles.Muted.Render("Type to search project files..."))
 		}
 	} else {
-		sb.WriteString(p.renderProjectSearchResults(modalWidth-4, resultsHeight))
+		sb.WriteString(p.renderProjectSearchResultsWithHitRegions(modalX, resultsY, modalWidth-4, resultsHeight))
 	}
 
 	// Footer with match count
@@ -68,12 +83,6 @@ func (p *Plugin) renderProjectSearchModal() string {
 	modal := styles.ModalBox.
 		Width(modalWidth).
 		Render(content)
-
-	// Center horizontally, position near top
-	hPad := (p.width - modalWidth - 4) / 2
-	if hPad < 0 {
-		hPad = 0
-	}
 
 	centered := lipgloss.NewStyle().
 		PaddingLeft(hPad).
@@ -130,6 +139,116 @@ func (p *Plugin) renderProjectSearchOptions() string {
 	}
 
 	return strings.Join(opts, " ")
+}
+
+// renderProjectSearchOptionsWithHitRegions renders the toggle options bar and registers hit regions.
+func (p *Plugin) renderProjectSearchOptionsWithHitRegions(modalX, y int) string {
+	state := p.projectSearchState
+
+	var opts []string
+	x := modalX + 1 // +1 for modal padding
+
+	// Regex toggle - width 4 (includes border/padding)
+	regexWidth := 4
+	p.mouseHandler.HitMap.AddRect(regionSearchToggleRegex, x, y, regexWidth, 1, nil)
+	if state.UseRegex {
+		opts = append(opts, styles.BarChipActive.Render(".*"))
+	} else {
+		opts = append(opts, styles.BarChip.Render(".*"))
+	}
+	x += regexWidth + 1 // +1 for space
+
+	// Case sensitive toggle - width 4
+	caseWidth := 4
+	p.mouseHandler.HitMap.AddRect(regionSearchToggleCase, x, y, caseWidth, 1, nil)
+	if state.CaseSensitive {
+		opts = append(opts, styles.BarChipActive.Render("Aa"))
+	} else {
+		opts = append(opts, styles.BarChip.Render("Aa"))
+	}
+	x += caseWidth + 1
+
+	// Whole word toggle - width 4
+	wordWidth := 4
+	p.mouseHandler.HitMap.AddRect(regionSearchToggleWord, x, y, wordWidth, 1, nil)
+	if state.WholeWord {
+		opts = append(opts, styles.BarChipActive.Render(`\b`))
+	} else {
+		opts = append(opts, styles.BarChip.Render(`\b`))
+	}
+
+	return strings.Join(opts, " ")
+}
+
+// renderProjectSearchResultsWithHitRegions renders results and registers hit regions.
+func (p *Plugin) renderProjectSearchResultsWithHitRegions(modalX, startY, width, height int) string {
+	state := p.projectSearchState
+	if len(state.Results) == 0 {
+		return ""
+	}
+
+	// Calculate visible range
+	flatLen := state.FlatLen()
+	if flatLen == 0 {
+		return ""
+	}
+
+	// Ensure cursor is visible
+	if state.Cursor >= state.ScrollOffset+height {
+		state.ScrollOffset = state.Cursor - height + 1
+	}
+	if state.Cursor < state.ScrollOffset {
+		state.ScrollOffset = state.Cursor
+	}
+	if state.ScrollOffset < 0 {
+		state.ScrollOffset = 0
+	}
+
+	var lines []string
+	flatIdx := 0
+	lineY := startY
+
+	for fi, file := range state.Results {
+		// File header line
+		if flatIdx >= state.ScrollOffset && len(lines) < height {
+			isSelected := flatIdx == state.Cursor
+
+			// Register hit region for file header
+			p.mouseHandler.HitMap.AddRect(regionSearchFile, modalX, lineY, width, 1, fi)
+
+			lines = append(lines, p.renderSearchFileHeader(file, fi, isSelected, width))
+			lineY++
+		}
+		flatIdx++
+
+		// Match lines (if not collapsed)
+		if !file.Collapsed {
+			for mi, match := range file.Matches {
+				if flatIdx >= state.ScrollOffset && len(lines) < height {
+					isSelected := flatIdx == state.Cursor
+
+					// Register hit region for match line
+					p.mouseHandler.HitMap.AddRect(regionSearchMatch, modalX, lineY, width, 1, searchMatchData{
+						FileIdx:  fi,
+						MatchIdx: mi,
+					})
+
+					lines = append(lines, p.renderSearchMatchLine(match, mi, isSelected, width))
+					lineY++
+				}
+				flatIdx++
+				if len(lines) >= height {
+					break
+				}
+			}
+		}
+
+		if len(lines) >= height {
+			break
+		}
+	}
+
+	return strings.Join(lines, "\n")
 }
 
 // renderProjectSearchResults renders the collapsible file/match tree.

@@ -58,6 +58,7 @@ type (
 	OpenFileMsg     struct {
 		Editor string
 		Path   string
+		LineNo int // 1-indexed line number (0 = no line)
 	}
 	// NavigateToFileMsg requests navigation to a specific file (from other plugins).
 	NavigateToFileMsg struct {
@@ -303,6 +304,11 @@ func (p *Plugin) refresh() tea.Cmd {
 
 // openFile returns a command to open a file in the user's editor.
 func (p *Plugin) openFile(path string) tea.Cmd {
+	return p.openFileAtLine(path, 0)
+}
+
+// openFileAtLine returns a command to open a file in the user's editor at a specific line.
+func (p *Plugin) openFileAtLine(path string, lineNo int) tea.Cmd {
 	return func() tea.Msg {
 		editor := os.Getenv("EDITOR")
 		if editor == "" {
@@ -312,7 +318,7 @@ func (p *Plugin) openFile(path string) tea.Cmd {
 			editor = "vim"
 		}
 		fullPath := filepath.Join(p.ctx.WorkDir, path)
-		return OpenFileMsg{Editor: editor, Path: fullPath}
+		return OpenFileMsg{Editor: editor, Path: fullPath, LineNo: lineNo}
 	}
 }
 
@@ -1591,16 +1597,35 @@ func (p *Plugin) handleProjectSearchKey(msg tea.KeyMsg) (plugin.Plugin, tea.Cmd)
 			return p.openProjectSearchResult()
 		}
 
-	case "up", "ctrl+p":
-		if state != nil && state.Cursor > 0 {
-			state.Cursor--
-		}
-
 	case "down", "ctrl+n":
 		if state != nil {
 			maxIdx := state.FlatLen() - 1
 			if state.Cursor < maxIdx {
 				state.Cursor++
+			}
+		}
+
+	case "up", "ctrl+p":
+		if state != nil && state.Cursor > 0 {
+			state.Cursor--
+		}
+
+	case "ctrl+g":
+		// Go to top (ctrl+g to avoid conflict with typing 'g')
+		if state != nil {
+			state.Cursor = 0
+			state.ScrollOffset = 0
+		}
+
+	case "ctrl+e":
+		// Open in editor at line (ctrl+e to avoid conflict with typing 'e')
+		if state != nil && len(state.Results) > 0 {
+			path, lineNo := state.GetSelectedFile()
+			if path != "" {
+				// Close project search
+				p.projectSearchMode = false
+				p.projectSearchState = nil
+				return p, p.openFileAtLine(path, lineNo)
 			}
 		}
 
