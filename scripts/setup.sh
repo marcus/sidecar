@@ -531,14 +531,14 @@ main() {
         echo ""
         if [[ -z "$TD_VERSION" ]] || $FORCE_FLAG || [[ "$TD_VERSION" != "$LATEST_TD" ]]; then
             local td_version="${LATEST_TD:-latest}"
-            local td_cmd="go install github.com/marcus/td@${td_version}"
 
             echo "Will run:"
-            echo "  $td_cmd"
+            echo "  go install github.com/marcus/td@${td_version}"
             echo ""
 
             if confirm "Install td?"; then
-                spin "Installing td..." bash -c "$td_cmd"
+                echo "Installing td (this may take a minute)..."
+                go install "github.com/marcus/td@${td_version}"
                 TD_VERSION=$(get_td_version)
                 style_success "td installed: $TD_VERSION"
             fi
@@ -552,14 +552,14 @@ main() {
         echo ""
         if [[ -z "$SIDECAR_VERSION" ]] || $FORCE_FLAG || [[ "$SIDECAR_VERSION" != "$LATEST_SIDECAR" ]]; then
             local sc_version="${LATEST_SIDECAR:-latest}"
-            local sc_cmd="go install -ldflags \"-X main.Version=${sc_version}\" github.com/marcus/sidecar/cmd/sidecar@${sc_version}"
 
             echo "Will run:"
-            echo "  $sc_cmd"
+            echo "  go install github.com/marcus/sidecar/cmd/sidecar@${sc_version}"
             echo ""
 
             if confirm "Install sidecar?"; then
-                spin "Installing sidecar..." bash -c "$sc_cmd"
+                echo "Installing sidecar (this may take a minute)..."
+                go install -ldflags "-X main.Version=${sc_version}" "github.com/marcus/sidecar/cmd/sidecar@${sc_version}"
                 SIDECAR_VERSION=$(get_sidecar_version)
                 style_success "sidecar installed: $SIDECAR_VERSION"
             fi
