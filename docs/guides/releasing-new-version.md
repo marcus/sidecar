@@ -23,26 +23,35 @@ Check current version:
 git tag -l | sort -V | tail -1
 ```
 
-### 2. Verify go.mod
+### 2. Update td Dependency
+
+**Critical**: Sidecar embeds td as a Go module. The `td` version shown in diagnostics comes from the standalone binary, but the actual functionality uses the embedded version from go.mod. Always update to latest td before releasing:
+
+```bash
+go get github.com/marcus/td@latest
+go mod tidy
+```
+
+### 3. Verify go.mod
 
 **Critical**: Ensure no `replace` directives exist (they break `go install`):
 ```bash
 grep replace go.mod && echo "ERROR: Remove replace directives before releasing!" && exit 1
 ```
 
-### 3. Create Tag
+### 4. Create Tag
 
 ```bash
 git tag vX.Y.Z -m "Brief description of release"
 ```
 
-### 4. Push Tag
+### 5. Push Tag
 
 ```bash
 git push origin vX.Y.Z
 ```
 
-### 5. Create GitHub Release
+### 6. Create GitHub Release
 
 ```bash
 gh release create vX.Y.Z --title "vX.Y.Z" --notes "$(cat <<'EOF'
@@ -64,7 +73,7 @@ gh release create vX.Y.Z --title "vX.Y.Z" --notes ""
 # Then edit on GitHub
 ```
 
-### 6. Verify
+### 7. Verify
 
 ```bash
 # Check release exists
@@ -107,6 +116,7 @@ Dev versions (`devel`, `devel+hash`) skip the check.
 
 - [ ] Tests pass
 - [ ] Working tree clean
+- [ ] **td dependency updated to latest** (`go get github.com/marcus/td@latest`)
 - [ ] **No `replace` directives in go.mod**
 - [ ] Version number follows semver
 - [ ] Tag created and pushed

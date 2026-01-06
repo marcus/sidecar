@@ -74,8 +74,8 @@ github.com/hexops/gotextdiff v1.0.3 h1:gitA9+qJrrTCsiCl7+kh75nPqQt1cx4ZkudSTLoUq
 github.com/hexops/gotextdiff v1.0.3/go.mod h1:pSWU5MAI3yDq+fZBTazCSJysOMbxWL1BSow5/V2vxeg=
 github.com/lucasb-eyer/go-colorful v1.3.0 h1:2/yBRLdWBZKrf7gB40FoiKfAWYQ0lqNcbuQwVHXptag=
 github.com/lucasb-eyer/go-colorful v1.3.0/go.mod h1:R4dSotOR9KMtayYi1e77YzuveK+i7ruzyGqttikkLy0=
-github.com/marcus/td v0.4.18 h1:ogkUY0moRDnoxpueqypR/8+Awhj3sJWnG82PKlkl9n8=
-github.com/marcus/td v0.4.18/go.mod h1:4ZXeoFFvHngVhDD95vubvuXYvs59yCglLTx9K0eco2s=
+github.com/marcus/td v0.4.21 h1:nPf8MlkKdR1xX35IHwm4aC+j676cHEtSwUthIfnxUNM=
+github.com/marcus/td v0.4.21/go.mod h1:O2J3gPkR0PzyTky5qol+aVOdzP3lx4bxfA/PWU4YJVQ=
 github.com/mattn/go-isatty v0.0.20 h1:xfD0iDuEKnDkl03q4limB+vH+GxLEtL/jb4xVJSWWEY=
 github.com/mattn/go-isatty v0.0.20/go.mod h1:W+V8PltTTMOvKvAeJH7IuucS94S2C6jfK/D7dTCTo3Y=
 github.com/mattn/go-localereader v0.0.1 h1:ygSAOl7ZXTx4RdPYinUpg6W99U8jWvWi9Ye2JC/oIi4=
