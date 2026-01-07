@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -49,12 +50,22 @@ func main() {
 		os.Exit(0)
 	}
 
-	// Setup logging
+	// Setup logging to file (never to stderr - it leaks through TUI)
 	logLevel := slog.LevelInfo
 	if *debugFlag {
 		logLevel = slog.LevelDebug
 	}
-	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{
+	logFile, err := openLogFile()
+	if err != nil {
+		// Fall back to discarding logs if we can't open file
+		logFile = nil
+	}
+	var logWriter = io.Discard
+	if logFile != nil {
+		logWriter = logFile
+		defer logFile.Close()
+	}
+	logger := slog.New(slog.NewTextHandler(logWriter, &slog.HandlerOptions{
 		Level: logLevel,
 	}))
 
@@ -196,6 +207,12 @@ func init() {
 		fmt.Fprintf(os.Stderr, "Options:\n")
 		flag.PrintDefaults()
 	}
+}
+
+// openLogFile creates/opens the debug log file in config directory.
+func openLogFile() (*os.File, error) {
+	logPath := filepath.Join(config.ConfigPath(), "debug.log")
+	return os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 }
 
 // Ensure strings import is used
