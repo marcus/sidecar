@@ -2,6 +2,11 @@
 
 All notable changes to sidecar are documented here.
 
+## [v0.11.0] - 2026-01-07
+
+### Bug Fixes
+- Fixed WARN logs appearing in non-git directories (plugin unavailable now logs at DEBUG level)
+
 ## [v0.10.0] - 2026-01-07
 
 ### Features
