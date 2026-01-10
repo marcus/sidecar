@@ -8,15 +8,16 @@ import (
 
 // Hit region IDs
 const (
-	regionSidebar      = "sidebar"
-	regionDiffPane     = "diff-pane"
-	regionPaneDivider  = "pane-divider"
-	regionFile         = "file"
-	regionCommit       = "commit"
-	regionCommitFile   = "commit-file"   // Files in commit preview pane
-	regionDiffModal    = "diff-modal"    // Full-screen diff view
-	regionBranchItem   = "branch-item"   // Branch picker list item
-	regionPushMenuItem = "push-menu-item" // Push menu item
+	regionSidebar       = "sidebar"
+	regionDiffPane      = "diff-pane"
+	regionPaneDivider   = "pane-divider"
+	regionFile          = "file"
+	regionCommit        = "commit"
+	regionCommitFile    = "commit-file"    // Files in commit preview pane
+	regionDiffModal     = "diff-modal"     // Full-screen diff view
+	regionBranchItem    = "branch-item"    // Branch picker list item
+	regionPushMenuItem  = "push-menu-item" // Push menu item
+	regionCommitButton  = "commit-button"  // Commit modal button
 )
 
 // handleMouse processes mouse events in the status view.
@@ -340,6 +341,32 @@ func (p *Plugin) handleMouseDrag(action mouse.MouseAction) (*Plugin, tea.Cmd) {
 func (p *Plugin) handleMouseDragEnd() (*Plugin, tea.Cmd) {
 	// Save the current sidebar width to state
 	_ = state.SetGitStatusSidebarWidth(p.sidebarWidth)
+	return p, nil
+}
+
+// handleCommitMouse processes mouse events in the commit modal.
+func (p *Plugin) handleCommitMouse(msg tea.MouseMsg) (*Plugin, tea.Cmd) {
+	action := p.mouseHandler.HandleMouse(msg)
+
+	switch action.Type {
+	case mouse.ActionClick:
+		if action.Region != nil && action.Region.ID == regionCommitButton {
+			// Click on commit button
+			p.commitButtonFocus = true
+			p.commitMessage.Blur()
+			return p, p.tryCommit()
+		}
+		// Click elsewhere - clear hover
+		p.commitButtonHover = false
+
+	case mouse.ActionHover:
+		if action.Region != nil && action.Region.ID == regionCommitButton {
+			p.commitButtonHover = true
+		} else {
+			p.commitButtonHover = false
+		}
+	}
+
 	return p, nil
 }
 

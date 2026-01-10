@@ -116,6 +116,7 @@ type Plugin struct {
 	commitError       string
 	commitInProgress  bool
 	commitButtonFocus bool // true when button is focused instead of textarea
+	commitButtonHover bool // true when mouse is hovering over button
 
 	// Mouse support
 	mouseHandler *mouse.Handler
@@ -279,6 +280,8 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 			return p.handleDiffMouse(msg)
 		case ViewModeBranchPicker:
 			return p.handleBranchPickerMouse(msg)
+		case ViewModeCommit:
+			return p.handleCommitMouse(msg)
 		}
 
 	case app.RefreshMsg:
@@ -2028,6 +2031,7 @@ func (p *Plugin) initCommitTextarea() {
 	p.commitMessage.SetHeight(4)
 	p.commitError = ""
 	p.commitButtonFocus = false
+	p.commitButtonHover = false
 }
 
 // updateCommit handles key events in the commit view.

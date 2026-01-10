@@ -9,6 +9,41 @@ import (
 	"github.com/marcus/sidecar/internal/ui"
 )
 
+// boolToInt converts a bool to int: true -> 1, false -> 0
+func boolToInt(b bool) int {
+	if b {
+		return 1
+	}
+	return 0
+}
+
+// estimateCommitModalHeight estimates the height of the commit modal.
+func (p *Plugin) estimateCommitModalHeight() int {
+	stagedCount := len(p.tree.Staged)
+	maxFiles := 8
+	if p.height < 30 {
+		maxFiles = 6
+	}
+	if p.height < 24 {
+		maxFiles = 4
+	}
+	displayedFiles := stagedCount
+	if displayedFiles > maxFiles {
+		displayedFiles = maxFiles + 1 // +1 for "... +N more" line
+	}
+
+	// Lines: border(2) + padding(2) + header(2) + staged label(1) + files + blank(1) +
+	//        textarea(4) + button(1) + error?(0-1) + progress?(0-1) + separator(2) + footer(1)
+	height := 4 + 2 + 1 + displayedFiles + 1 + 4 + 1 + 2 + 1
+	if p.commitError != "" {
+		height++
+	}
+	if p.commitInProgress {
+		height++
+	}
+	return height
+}
+
 // commitModalWidth returns the width for the commit modal content.
 func (p *Plugin) commitModalWidth() int {
 	w := p.width - 8 // 4-char margin each side
@@ -95,11 +130,12 @@ func (p *Plugin) renderCommit() string {
 	sb.WriteString(p.commitMessage.View())
 	sb.WriteString("\n")
 
-	// Commit button + hints
-	buttonStyle := styles.Button
-	if p.commitButtonFocus {
-		buttonStyle = styles.ButtonFocused
-	}
+	// Commit button + hints (focus > hover > normal)
+	buttonStyle := ui.ResolveButtonStyle(
+		boolToInt(p.commitButtonFocus),
+		boolToInt(p.commitButtonHover),
+		1, // button index 1
+	)
 	sb.WriteString(buttonStyle.Render(" Commit "))
 	sb.WriteString("  ")
 	sb.WriteString(styles.Muted.Render("Tab/Enter"))
@@ -142,6 +178,54 @@ func (p *Plugin) renderCommitModal() string {
 	// Get modal content
 	modalContent := p.renderCommit()
 
+	// Register hit region for commit button
+	p.registerCommitButtonHitRegion()
+
 	// Overlay on dimmed background
 	return ui.OverlayModal(background, modalContent, p.width, p.height)
+}
+
+// registerCommitButtonHitRegion registers mouse hit region for the commit button.
+func (p *Plugin) registerCommitButtonHitRegion() {
+	modalWidth := p.commitModalWidth()
+
+	// Calculate modal position (centered)
+	modalHeight := p.estimateCommitModalHeight()
+	startX := (p.width - modalWidth) / 2
+	startY := (p.height - modalHeight) / 2
+	if startX < 0 {
+		startX = 0
+	}
+	if startY < 0 {
+		startY = 0
+	}
+
+	// Button is near the bottom of the modal content
+	// Modal adds: border(1) + padding(1) = 2 on top
+	// Content: header(2) + staged section + blank + textarea(4) + button line
+	// Estimate button Y position
+	stagedCount := len(p.tree.Staged)
+	maxFiles := 8
+	if p.height < 30 {
+		maxFiles = 6
+	}
+	if p.height < 24 {
+		maxFiles = 4
+	}
+	displayedFiles := stagedCount
+	if displayedFiles > maxFiles {
+		displayedFiles = maxFiles + 1 // +1 for "... +N more" line
+	}
+
+	// Lines: header(2) + staged label(1) + files + blank(1) + textarea(4) + button
+	buttonLineY := startY + 2 + 2 + 1 + displayedFiles + 1 + 4
+
+	// Button X: startX + border(1) + padding(2) = content start
+	buttonX := startX + 3
+
+	// Button width: " Commit " = 8 chars + padding(4) from Button style = 12
+	buttonWidth := 12
+
+	p.mouseHandler.HitMap.Clear()
+	p.mouseHandler.HitMap.AddRect(regionCommitButton, buttonX, buttonLineY, buttonWidth, 1, nil)
 }
