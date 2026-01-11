@@ -7,6 +7,7 @@ import (
 
 	"github.com/cespare/xxhash/v2"
 	"github.com/charmbracelet/glamour"
+	"github.com/marcus/sidecar/internal/styles"
 )
 
 const (
@@ -106,7 +107,7 @@ func (r *Renderer) getOrCreateRenderer(width int) (*glamour.TermRenderer, error)
 
 	// Width changed or first use - create new renderer and clear cache
 	renderer, err := glamour.NewTermRenderer(
-		glamour.WithStylePath("dark"),
+		glamour.WithStylePath(styles.GetMarkdownTheme()),
 		glamour.WithWordWrap(width),
 	)
 	if err != nil {

@@ -28,12 +28,12 @@ var (
 
 	wordDiffAddStyle = lipgloss.NewStyle().
 				Foreground(styles.Success).
-				Background(lipgloss.Color("#0D3320")).
+				Background(styles.DiffAddBg).
 				Bold(true)
 
 	wordDiffRemoveStyle = lipgloss.NewStyle().
 				Foreground(styles.Error).
-				Background(lipgloss.Color("#3D1A1A")).
+				Background(styles.DiffRemoveBg).
 				Bold(true)
 
 	hunkHeaderStyle = lipgloss.NewStyle().

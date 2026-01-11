@@ -12,6 +12,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/marcus/sidecar/internal/image"
+	"github.com/marcus/sidecar/internal/styles"
 )
 
 const (
@@ -93,8 +94,8 @@ func LoadPreview(rootDir, path string) tea.Cmd {
 		result.Content = string(data)
 		result.Lines = strings.Split(result.Content, "\n")
 
-		// Apply syntax highlighting
-		highlighted, err := Highlight(result.Content, filepath.Ext(path), "monokai")
+		// Apply syntax highlighting using theme-configured style
+		highlighted, err := Highlight(result.Content, filepath.Ext(path), styles.GetSyntaxTheme())
 		if err == nil {
 			result.HighlightedLines = strings.Split(highlighted, "\n")
 		} else {

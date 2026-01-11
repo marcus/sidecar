@@ -42,6 +42,7 @@ type ColorPalette struct {
 	TextHighlight   string `json:"textHighlight"`   // For subtitle, special text
 	ButtonHover     string `json:"buttonHover"`     // Button hover state
 	TabTextInactive string `json:"tabTextInactive"` // Inactive tab text
+	Link            string `json:"link"`            // Hyperlink color
 
 	// Third-party theme names
 	SyntaxTheme   string `json:"syntaxTheme"`   // Chroma theme name
@@ -100,6 +101,7 @@ var (
 			TextHighlight:   "#E5E7EB",
 			ButtonHover:     "#9D174D",
 			TabTextInactive: "#1a1a1a",
+			Link:            "#60A5FA", // Light blue for links
 
 			// Third-party themes
 			SyntaxTheme:   "monokai",
@@ -150,6 +152,7 @@ var (
 			TextHighlight:   "#F8F8F2",
 			ButtonHover:     "#FF79C6", // Pink
 			TabTextInactive: "#282A36",
+			Link:            "#8BE9FD", // Cyan for links (Dracula)
 
 			// Third-party themes
 			SyntaxTheme:   "dracula",
@@ -273,6 +276,8 @@ func applyOverrides(palette *ColorPalette, overrides map[string]string) {
 			palette.ButtonHover = value
 		case "tabTextInactive":
 			palette.TabTextInactive = value
+		case "link":
+			palette.Link = value
 		case "syntaxTheme":
 			palette.SyntaxTheme = value
 		case "markdownTheme":
@@ -315,6 +320,7 @@ func ApplyThemeColors(theme Theme) {
 	TextHighlight = lipgloss.Color(c.TextHighlight)
 	ButtonHoverColor = lipgloss.Color(c.ButtonHover)
 	TabTextInactiveColor = lipgloss.Color(c.TabTextInactive)
+	LinkColor = lipgloss.Color(c.Link)
 
 	// Store syntax/markdown theme names for external use
 	CurrentSyntaxTheme = c.SyntaxTheme
@@ -364,6 +370,10 @@ func rebuildStyles() {
 
 	Code = lipgloss.NewStyle().
 		Foreground(Accent)
+
+	Link = lipgloss.NewStyle().
+		Foreground(LinkColor).
+		Underline(true)
 
 	KeyHint = lipgloss.NewStyle().
 		Foreground(TextMuted).

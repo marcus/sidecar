@@ -8,6 +8,7 @@ import (
 	"github.com/alecthomas/chroma/v2/lexers"
 	"github.com/alecthomas/chroma/v2/styles"
 	"github.com/charmbracelet/lipgloss"
+	appstyles "github.com/marcus/sidecar/internal/styles"
 )
 
 // SyntaxHighlighter provides syntax highlighting for diff content using Chroma.
@@ -31,8 +32,8 @@ func NewSyntaxHighlighter(filename string) *SyntaxHighlighter {
 		return nil
 	}
 
-	// Use monokai style - good contrast on dark backgrounds
-	style := styles.Get("monokai")
+	// Use theme-configured syntax style
+	style := styles.Get(appstyles.GetSyntaxTheme())
 	if style == nil {
 		style = styles.Fallback
 	}

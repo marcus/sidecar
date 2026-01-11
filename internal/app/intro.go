@@ -8,6 +8,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/marcus/sidecar/internal/styles"
 )
 
 // IntroModel handles the intro animation state.
@@ -59,21 +60,22 @@ func NewIntroModel(repoName string) IntroModel {
 	text := "Sidecar"
 	letters := make([]*IntroLetter, len(text))
 
-	// Gradient endpoints for the final state
-	// Orange: #F59E0B (245, 158, 11)
-	// Dark Yellow: #D97706 (217, 119, 6) - slightly darker/more orange-yellow
-	startGradient := hexToRGB("#F59E0B")
-	endGradient := hexToRGB("#D97706")
+	// Get theme colors for the animation
+	theme := styles.GetCurrentTheme()
 
-	// Random distinct start colors
+	// Gradient endpoints for the final state - use theme's accent/warning colors
+	startGradient := hexToRGB(theme.Colors.Accent)
+	endGradient := hexToRGB(theme.Colors.Warning)
+
+	// Use theme colors for the varied start colors
 	startColors := []string{
-		"#EF4444", // Red
-		"#3B82F6", // Blue
-		"#10B981", // Green
-		"#8B5CF6", // Purple
-		"#EC4899", // Pink
-		"#06B6D4", // Cyan
-		"#F97316", // Orange
+		theme.Colors.Error,     // Red
+		theme.Colors.Secondary, // Blue/Cyan
+		theme.Colors.Success,   // Green
+		theme.Colors.Primary,   // Purple
+		theme.Colors.ButtonHover, // Pink
+		theme.Colors.Info,      // Cyan/Blue
+		theme.Colors.Accent,    // Orange/Amber
 	}
 
 	for i, char := range text {
@@ -235,15 +237,19 @@ func (m IntroModel) RepoNameView() string {
 		return ""
 	}
 
-	// Background color for fade-in interpolation
-	bgColor := hexToRGB("#1F2937")
+	// Get theme colors for the animation
+	theme := styles.GetCurrentTheme()
 
-	// Pink gradient: light pink -> darker pink
-	lightPink := hexToRGB("#F9A8D4")
-	darkPink := hexToRGB("#DB2777")
+	// Background color for fade-in interpolation - use theme background
+	bgColor := hexToRGB(theme.Colors.BgSecondary)
 
-	// Render " / " prefix in a neutral muted color
-	prefixTarget := hexToRGB("#9CA3AF")
+	// Gradient using theme's highlight/primary colors
+	// Light variant to dark variant
+	lightColor := hexToRGB(theme.Colors.TextHighlight)
+	darkColor := hexToRGB(theme.Colors.Primary)
+
+	// Render " / " prefix in theme's secondary text color
+	prefixTarget := hexToRGB(theme.Colors.TextSecondary)
 	prefixColor := RGB{
 		R: bgColor.R + (prefixTarget.R-bgColor.R)*m.RepoOpacity,
 		G: bgColor.G + (prefixTarget.G-bgColor.G)*m.RepoOpacity,
@@ -261,11 +267,11 @@ func (m IntroModel) RepoNameView() string {
 			t = float64(i) / float64(len(runes)-1)
 		}
 
-		// Interpolate between light and dark pink
+		// Interpolate between light and dark color
 		targetColor := RGB{
-			R: lightPink.R + t*(darkPink.R-lightPink.R),
-			G: lightPink.G + t*(darkPink.G-lightPink.G),
-			B: lightPink.B + t*(darkPink.B-lightPink.B),
+			R: lightColor.R + t*(darkColor.R-lightColor.R),
+			G: lightColor.G + t*(darkColor.G-lightColor.G),
+			B: lightColor.B + t*(darkColor.B-lightColor.B),
 		}
 
 		// Apply fade-in opacity

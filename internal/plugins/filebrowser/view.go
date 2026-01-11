@@ -15,16 +15,26 @@ import (
 // ansiResetRe matches ANSI reset sequences (both \x1b[0m and \x1b[m)
 var ansiResetRe = regexp.MustCompile(`\x1b\[0?m`)
 
-// selectionBgANSI is the ANSI 24-bit background code for selection highlight (#374151)
-const selectionBgANSI = "\x1b[48;2;55;65;81m"
+// getSelectionBgANSI returns the ANSI 24-bit background code for selection highlight
+// based on the current theme's BgTertiary color.
+func getSelectionBgANSI() string {
+	// Get BgTertiary hex color from theme and convert to ANSI escape
+	theme := styles.GetCurrentTheme()
+	hex := theme.Colors.BgTertiary
+	// Parse hex color (assumes #RRGGBB format)
+	var r, g, b int
+	fmt.Sscanf(hex, "#%02x%02x%02x", &r, &g, &b)
+	return fmt.Sprintf("\x1b[48;2;%d;%d;%dm", r, g, b)
+}
 
 // injectSelectionBackground injects selection background color into an ANSI-styled string.
 // It prepends the background at the start and re-injects after any reset sequences.
 func injectSelectionBackground(s string) string {
+	selectionBg := getSelectionBgANSI()
 	// Prepend background color
-	result := selectionBgANSI + s
+	result := selectionBg + s
 	// Re-inject background after any reset sequences
-	result = ansiResetRe.ReplaceAllString(result, "${0}"+selectionBgANSI)
+	result = ansiResetRe.ReplaceAllString(result, "${0}"+selectionBg)
 	// Append reset at end to not bleed into next line
 	return result + "\x1b[0m"
 }

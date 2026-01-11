@@ -36,6 +36,7 @@ var (
 	TextHighlight        = lipgloss.Color("#E5E7EB") // For subtitle, special text
 	ButtonHoverColor     = lipgloss.Color("#9D174D") // Button hover background
 	TabTextInactiveColor = lipgloss.Color("#1a1a1a") // Inactive tab text
+	LinkColor            = lipgloss.Color("#60A5FA") // Hyperlink color
 
 	// Third-party theme names (updated by ApplyTheme)
 	CurrentSyntaxTheme   = "monokai"
@@ -87,6 +88,10 @@ var (
 
 	Code = lipgloss.NewStyle().
 		Foreground(Accent)
+
+	Link = lipgloss.NewStyle().
+		Foreground(LinkColor).
+		Underline(true)
 
 	KeyHint = lipgloss.NewStyle().
 		Foreground(TextMuted).
@@ -370,7 +375,7 @@ func RenderGradientTab(label string, tabIndex, totalTabs int, isActive bool) str
 		if isActive {
 			style = lipgloss.NewStyle().Background(bg).Foreground(TextPrimary).Bold(true)
 		} else {
-			style = lipgloss.NewStyle().Background(bg).Foreground(lipgloss.Color("#cccccc"))
+			style = lipgloss.NewStyle().Background(bg).Foreground(TextSecondary)
 		}
 		result += style.Render(string(ch))
 	}

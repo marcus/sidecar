@@ -8,6 +8,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/marcus/sidecar/internal/styles"
 )
 
 // Stallion ASCII art - a galloping horse
@@ -32,12 +33,14 @@ const stallionArt = "" +
 	"                    <.'_.''\n" +
 	"                      <'\n"
 
-// Color palette for gradient animation
-var (
-	colorPurple = hexToRGB("#7C3AED")
-	colorBlue   = hexToRGB("#3B82F6")
-	colorAmber  = hexToRGB("#F59E0B")
-)
+// getThemeAnimationColors returns the current theme's animation colors as RGB.
+// Uses Primary (purple), Secondary (blue), and Accent (amber/orange) from the theme.
+func getThemeAnimationColors() (RGB, RGB, RGB) {
+	theme := styles.GetCurrentTheme()
+	return hexToRGB(theme.Colors.Primary),
+		hexToRGB(theme.Colors.Secondary),
+		hexToRGB(theme.Colors.Accent)
+}
 
 // RGB represents a color in RGB space for interpolation.
 type RGB struct {
@@ -130,9 +133,12 @@ func (m *NotInstalledModel) gradientColorAt(charIndex, totalChars int) RGB {
 		phase += 1.0
 	}
 
-	// Smooth three-color gradient: purple -> blue -> amber -> purple
+	// Get current theme colors for animation
+	colorPrimary, colorSecondary, colorAccent := getThemeAnimationColors()
+
+	// Smooth three-color gradient: primary -> secondary -> accent -> primary
 	// Using sine-based interpolation for smoother transitions
-	return threewayGradient(phase, colorPurple, colorBlue, colorAmber)
+	return threewayGradient(phase, colorPrimary, colorSecondary, colorAccent)
 }
 
 // threewayGradient smoothly interpolates between three colors in a cycle.
@@ -209,28 +215,25 @@ func (m *NotInstalledModel) renderStallion() string {
 
 // renderPitch returns the professional pitch copy.
 func (m *NotInstalledModel) renderPitch() string {
-	// Styles
+	// Use theme-aware styles
 	titleStyle := lipgloss.NewStyle().
 		Bold(true).
-		Foreground(lipgloss.Color("#E5E7EB"))
+		Foreground(styles.TextHighlight)
 
-	mutedStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("#6B7280"))
+	mutedStyle := styles.Muted
 
 	textStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("#9CA3AF"))
+		Foreground(styles.TextSecondary)
 
 	bulletStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("#D1D5DB"))
+		Foreground(styles.TextPrimary)
 
-	linkStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("#60A5FA")).
-		Underline(true)
+	linkStyle := styles.Link
 
 	codeBoxStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("#10B981")).
+		Foreground(styles.Success).
 		Border(lipgloss.RoundedBorder()).
-		BorderForeground(lipgloss.Color("#374151")).
+		BorderForeground(styles.BorderNormal).
 		Padding(0, 1)
 
 	// Build content
