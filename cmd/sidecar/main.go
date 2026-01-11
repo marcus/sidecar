@@ -28,6 +28,7 @@ import (
 	"github.com/marcus/sidecar/internal/plugins/gitstatus"
 	"github.com/marcus/sidecar/internal/plugins/tdmonitor"
 	"github.com/marcus/sidecar/internal/state"
+	"github.com/marcus/sidecar/internal/styles"
 )
 
 // Version is set at build time via ldflags
@@ -75,6 +76,9 @@ func main() {
 		fmt.Fprintf(os.Stderr, "Failed to load config: %v\n", err)
 		os.Exit(1)
 	}
+
+	// Apply theme from config
+	styles.ApplyThemeWithOverrides(cfg.UI.Theme.Name, cfg.UI.Theme.Overrides)
 
 	// Load persistent state (ignore errors - state is optional)
 	_ = state.Init()

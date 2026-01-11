@@ -31,6 +31,15 @@ var (
 	BorderNormal = lipgloss.Color("#374151")
 	BorderActive = lipgloss.Color("#7C3AED")
 	BorderMuted  = lipgloss.Color("#1F2937")
+
+	// Additional themeable colors
+	TextHighlight        = lipgloss.Color("#E5E7EB") // For subtitle, special text
+	ButtonHoverColor     = lipgloss.Color("#9D174D") // Button hover background
+	TabTextInactiveColor = lipgloss.Color("#1a1a1a") // Inactive tab text
+
+	// Third-party theme names (updated by ApplyTheme)
+	CurrentSyntaxTheme   = "monokai"
+	CurrentMarkdownTheme = "dark"
 )
 
 // Panel styles
@@ -65,7 +74,7 @@ var (
 		Foreground(TextPrimary)
 
 	Subtitle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#E5E7EB")) // Very light gray for repo name visibility
+			Foreground(TextHighlight)
 
 	Body = lipgloss.NewStyle().
 		Foreground(TextPrimary)
@@ -189,7 +198,7 @@ var TabTextActive = lipgloss.NewStyle().
 
 // TabTextInactive is the text color for inactive tabs
 var TabTextInactive = lipgloss.NewStyle().
-	Foreground(lipgloss.Color("#1a1a1a")) // Dark text for muted tabs
+	Foreground(TabTextInactiveColor)
 
 // Diff line styles
 var (
@@ -319,53 +328,9 @@ var (
 
 	ButtonHover = lipgloss.NewStyle().
 			Foreground(TextPrimary).
-			Background(lipgloss.Color("#9D174D")). // Dark pink
+			Background(ButtonHoverColor).
 			Padding(0, 2)
 )
-
-// Theme represents a color theme configuration
-type Theme struct {
-	Name      string
-	Colors    ColorPalette
-	Overrides map[string]string
-}
-
-// ColorPalette holds all theme colors
-type ColorPalette struct {
-	Primary   lipgloss.Color
-	Secondary lipgloss.Color
-	Accent    lipgloss.Color
-	Success   lipgloss.Color
-	Warning   lipgloss.Color
-	Error     lipgloss.Color
-}
-
-// DefaultTheme returns the default dark theme
-func DefaultTheme() Theme {
-	return Theme{
-		Name: "default",
-		Colors: ColorPalette{
-			Primary:   Primary,
-			Secondary: Secondary,
-			Accent:    Accent,
-			Success:   Success,
-			Warning:   Warning,
-			Error:     Error,
-		},
-		Overrides: make(map[string]string),
-	}
-}
-
-// LoadTheme loads a theme by name with optional overrides
-func LoadTheme(name string, overrides map[string]string) Theme {
-	theme := DefaultTheme()
-	theme.Name = name
-	if overrides != nil {
-		theme.Overrides = overrides
-	}
-	// Future: Load theme from config file by name
-	return theme
-}
 
 // RenderGradientTab renders a tab label with a gradient background.
 // tabIndex is the 0-based index of this tab, totalTabs is the total count.

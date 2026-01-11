@@ -400,51 +400,66 @@ Create a theme registry that:
 
 ---
 
-### Story 12: Create "light" theme definition
+### Story 12: Create "dracula" theme definition
 
-**Description:** Design and implement a light theme for sidecar.
+**Description:** Design and implement a Dracula-inspired dark theme with vibrant colors and slightly lighter backgrounds.
 
 **Acceptance Criteria:**
-- [ ] Create complete light theme with inverted backgrounds and adjusted colors
-- [ ] Ensure sufficient contrast for accessibility (WCAG AA minimum)
-- [ ] Select appropriate chroma theme (e.g., "github" or "vs")
-- [ ] Select appropriate glamour theme ("light")
-- [ ] Test all UI surfaces with light theme
-- [ ] Adjust diff colors for light background visibility
+- [ ] Create complete Dracula theme with characteristic purple/pink/cyan palette
+- [ ] Use Dracula's signature background colors (#282A36, #44475A)
+- [ ] Select appropriate chroma theme ("dracula")
+- [ ] Select appropriate glamour theme ("dracula" or "dark")
+- [ ] Test all UI surfaces with Dracula theme
+- [ ] Ensure diff colors match Dracula palette
 
 **Proposed Theme Definition:**
 ```json
 {
-  "name": "light",
-  "displayName": "Light",
+  "name": "dracula",
+  "displayName": "Dracula",
   "colors": {
-    "primary": "#7C3AED",
-    "secondary": "#2563EB",
-    "accent": "#D97706",
-    "success": "#059669",
-    "warning": "#D97706",
-    "error": "#DC2626",
-    "info": "#2563EB",
-    "textPrimary": "#111827",
-    "textSecondary": "#4B5563",
-    "textMuted": "#6B7280",
-    "textSubtle": "#9CA3AF",
-    "bgPrimary": "#FFFFFF",
-    "bgSecondary": "#F9FAFB",
-    "bgTertiary": "#F3F4F6",
-    "bgOverlay": "#00000040",
-    "borderNormal": "#E5E7EB",
-    "borderActive": "#7C3AED",
-    "borderMuted": "#F3F4F6",
-    "diffAddFg": "#059669",
-    "diffAddBg": "#DCFCE7",
-    "diffRemoveFg": "#DC2626",
-    "diffRemoveBg": "#FEE2E2",
-    "syntaxTheme": "github",
-    "markdownTheme": "light"
+    "primary": "#BD93F9",
+    "secondary": "#8BE9FD",
+    "accent": "#FFB86C",
+    "success": "#50FA7B",
+    "warning": "#FFB86C",
+    "error": "#FF5555",
+    "info": "#8BE9FD",
+    "textPrimary": "#F8F8F2",
+    "textSecondary": "#BFBFBF",
+    "textMuted": "#6272A4",
+    "textSubtle": "#44475A",
+    "bgPrimary": "#282A36",
+    "bgSecondary": "#343746",
+    "bgTertiary": "#44475A",
+    "bgOverlay": "#00000080",
+    "borderNormal": "#44475A",
+    "borderActive": "#BD93F9",
+    "borderMuted": "#343746",
+    "diffAddFg": "#50FA7B",
+    "diffAddBg": "#1E3A29",
+    "diffRemoveFg": "#FF5555",
+    "diffRemoveBg": "#3D2A2A",
+    "syntaxTheme": "dracula",
+    "markdownTheme": "dark"
   }
 }
 ```
+
+**Dracula Color Reference:**
+| Color | Hex | Usage |
+|-------|-----|-------|
+| Background | #282A36 | Main background |
+| Current Line | #44475A | Selection, tertiary bg |
+| Foreground | #F8F8F2 | Primary text |
+| Comment | #6272A4 | Muted text |
+| Cyan | #8BE9FD | Secondary, info |
+| Green | #50FA7B | Success, diff add |
+| Orange | #FFB86C | Accent, warning |
+| Pink | #FF79C6 | Highlights |
+| Purple | #BD93F9 | Primary |
+| Red | #FF5555 | Error, diff remove |
+| Yellow | #F1FA8C | Highlights |
 
 **Files to create/modify:**
 - `internal/styles/themes.go`
