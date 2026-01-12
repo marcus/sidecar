@@ -85,31 +85,21 @@ func (p *Plugin) renderThreePaneView() string {
 		dividerHitWidth := 3
 		p.mouseHandler.HitMap.AddRect(regionPaneDivider, dividerX, 0, dividerHitWidth, p.height, nil)
 
-		// Determine border styles based on focus
-		sidebarBorder := styles.PanelInactive
-		diffBorder := styles.PanelInactive
-		if p.activePane == PaneSidebar {
-			sidebarBorder = styles.PanelActive
-		} else {
-			diffBorder = styles.PanelActive
-		}
+		// Determine if panes are active based on focus
+		sidebarActive := p.activePane == PaneSidebar
+		diffActive := p.activePane != PaneSidebar
 
 		sidebarContent := p.renderSidebar(innerHeight)
 		diffContent := p.renderDiffPane(innerHeight)
 
-		leftPane := sidebarBorder.
-			Width(p.sidebarWidth).
-			Height(paneHeight).
-			Render(sidebarContent)
+		// Apply gradient border styles
+		leftPane := styles.RenderPanel(sidebarContent, p.sidebarWidth, paneHeight, sidebarActive)
 
 		// Render visible divider between panes
 		// MarginTop(1) in renderDivider shifts it down, so use paneHeight directly
 		divider := p.renderDivider(paneHeight)
 
-		rightPane := diffBorder.
-			Width(p.diffPaneWidth).
-			Height(paneHeight).
-			Render(diffContent)
+		rightPane := styles.RenderPanel(diffContent, p.diffPaneWidth, paneHeight, diffActive)
 
 		return lipgloss.JoinHorizontal(lipgloss.Top, leftPane, divider, rightPane)
 	}
@@ -117,13 +107,10 @@ func (p *Plugin) renderThreePaneView() string {
 	// Full-width diff pane when sidebar is hidden
 	p.mouseHandler.HitMap.AddRect(regionDiffPane, 0, 0, p.width, p.height, nil)
 
-	diffBorder := styles.PanelActive
 	diffContent := p.renderDiffPane(innerHeight)
 
-	return diffBorder.
-		Width(p.diffPaneWidth).
-		Height(paneHeight).
-		Render(diffContent)
+	// Apply gradient border style (always active when full-width)
+	return styles.RenderPanel(diffContent, p.diffPaneWidth, paneHeight, true)
 }
 
 // renderSidebar renders the left sidebar with files and commits.

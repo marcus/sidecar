@@ -115,14 +115,9 @@ func (p *Plugin) renderNormalPanes() string {
 
 	p.calculatePaneWidths()
 
-	// Determine border styles based on focus
-	treeBorder := styles.PanelInactive
-	previewBorder := styles.PanelInactive
-	if p.activePane == PaneTree && !p.searchMode && !p.contentSearchMode {
-		treeBorder = styles.PanelActive
-	} else if p.activePane == PanePreview && !p.searchMode && !p.contentSearchMode {
-		previewBorder = styles.PanelActive
-	}
+	// Determine if panes are active based on focus
+	treeActive := p.activePane == PaneTree && !p.searchMode && !p.contentSearchMode
+	previewActive := p.activePane == PanePreview && !p.searchMode && !p.contentSearchMode
 
 	// Account for input bar if active (content search or file op)
 	// Note: tree search bar is rendered inside the tree pane, not here
@@ -151,16 +146,9 @@ func (p *Plugin) renderNormalPanes() string {
 	treeContent := p.renderTreePane(innerHeight)
 	previewContent := p.renderPreviewPane(innerHeight)
 
-	// Apply styles - border adds 2 lines to visual height
-	leftPane := treeBorder.
-		Width(p.treeWidth).
-		Height(paneHeight).
-		Render(treeContent)
-
-	rightPane := previewBorder.
-		Width(p.previewWidth).
-		Height(paneHeight).
-		Render(previewContent)
+	// Apply gradient border styles
+	leftPane := styles.RenderPanel(treeContent, p.treeWidth, paneHeight, treeActive)
+	rightPane := styles.RenderPanel(previewContent, p.previewWidth, paneHeight, previewActive)
 
 	// Render visible divider between panes
 	// MarginTop(1) in renderDivider shifts it down, so use paneHeight directly
@@ -857,7 +845,7 @@ func (p *Plugin) renderQuickOpenModalContent() string {
 	if hPad < 0 {
 		hPad = 0
 	}
-	modalX := hPad + 1 // +1 for modal border
+	modalX := hPad + 1  // +1 for modal border
 	modalItemY := 2 + 3 // paddingTop(2) + border(1) + header(2)
 	if p.quickOpenError != "" {
 		modalItemY++ // Extra line for error message

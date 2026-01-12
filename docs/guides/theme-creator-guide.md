@@ -59,9 +59,20 @@ All colors use hex format (`#RRGGBB`). Here's the complete palette:
 ### Border Colors
 | Key | Description | Default | Dracula |
 |-----|-------------|---------|---------|
-| `borderNormal` | Normal panel borders | `#374151` | `#44475A` |
-| `borderActive` | Active panel borders | `#7C3AED` | `#BD93F9` |
+| `borderNormal` | Normal panel borders (fallback) | `#374151` | `#44475A` |
+| `borderActive` | Active panel borders (fallback) | `#7C3AED` | `#BD93F9` |
 | `borderMuted` | Muted borders | `#1F2937` | `#343746` |
+
+### Gradient Border Colors
+Panel borders support angled gradients (default 30°) that flow diagonally from top-left to bottom-right.
+
+| Key | Description | Default | Dracula |
+|-----|-------------|---------|---------|
+| `gradientBorderActive` | Active panel gradient colors | `["#7C3AED", "#3B82F6"]` | `["#BD93F9", "#8BE9FD"]` |
+| `gradientBorderNormal` | Normal panel gradient colors | `["#374151", "#2D3748"]` | `["#44475A", "#383A4A"]` |
+| `gradientBorderAngle` | Gradient angle in degrees | `30` | `30` |
+
+Gradients support 2 or more color stops. If gradient colors are not specified, the solid `borderActive`/`borderNormal` colors are used as fallback.
 
 ### Diff Colors
 | Key | Description | Default | Dracula |
@@ -141,6 +152,15 @@ ui:
       borderActive: "#6200EA"
       borderMuted: "#1E1E1E"
 
+      # Gradient borders (30° diagonal gradient on panels)
+      gradientBorderActive:
+        - "#6200EA"
+        - "#03DAC6"
+      gradientBorderNormal:
+        - "#424242"
+        - "#303030"
+      gradientBorderAngle: 30
+
       # Diff
       diffAddFg: "#4CAF50"
       diffAddBg: "#1B3D1B"
@@ -157,6 +177,26 @@ ui:
       # Third-party
       syntaxTheme: "monokai"
       markdownTheme: "dark"
+```
+
+### Method 3: Custom Gradient Borders
+
+Create eye-catching multi-color gradients:
+
+```yaml
+ui:
+  theme:
+    name: "default"
+    overrides:
+      # Rainbow gradient on active panels
+      gradientBorderActive:
+        - "#FF0000"  # Red
+        - "#FF7F00"  # Orange
+        - "#FFFF00"  # Yellow
+        - "#00FF00"  # Green
+        - "#0000FF"  # Blue
+        - "#8B00FF"  # Violet
+      gradientBorderAngle: 45  # Steeper diagonal
 ```
 
 ## Available Syntax Themes

@@ -544,14 +544,9 @@ func (p *Plugin) renderTwoPane() string {
 		innerHeight = 1
 	}
 
-	// Determine border styles based on focus
-	sidebarBorder := styles.PanelInactive
-	mainBorder := styles.PanelInactive
-	if p.activePane == PaneSidebar {
-		sidebarBorder = styles.PanelActive
-	} else {
-		mainBorder = styles.PanelActive
-	}
+	// Determine if panes are active based on focus
+	sidebarActive := p.activePane == PaneSidebar
+	mainActive := p.activePane != PaneSidebar
 
 	// Render sidebar (session list)
 	sidebarContent := p.renderSidebarPane(innerHeight)
@@ -559,18 +554,13 @@ func (p *Plugin) renderTwoPane() string {
 	// Render main pane (messages)
 	mainContent := p.renderMainPane(mainWidth, innerHeight)
 
-	leftPane := sidebarBorder.
-		Width(sidebarWidth).
-		Height(paneHeight).
-		Render(sidebarContent)
+	// Apply gradient border styles
+	leftPane := styles.RenderPanel(sidebarContent, sidebarWidth, paneHeight, sidebarActive)
 
 	// Render visible divider
 	divider := p.renderDivider(paneHeight)
 
-	rightPane := mainBorder.
-		Width(mainWidth).
-		Height(paneHeight).
-		Render(mainContent)
+	rightPane := styles.RenderPanel(mainContent, mainWidth, paneHeight, mainActive)
 
 	// Only rebuild hit regions when dirty (td-ea784b03)
 	mainX := sidebarWidth + dividerWidth
@@ -918,7 +908,7 @@ func (p *Plugin) renderCompactSessionRow(session adapter.Session, selected bool,
 	if session.IsSubAgent {
 		visibleLen += 2
 	}
-	visibleLen += 1 // indicator
+	visibleLen += 1                              // indicator
 	visibleLen += len(badgeText) + 1 + len(name) // badge + space + name
 	padding := maxWidth - visibleLen - len(lengthCol) - 1
 	if padding < 0 {
