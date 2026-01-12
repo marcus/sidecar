@@ -32,11 +32,17 @@ var (
 	BorderActive = lipgloss.Color("#7C3AED")
 	BorderMuted  = lipgloss.Color("#1F2937")
 
+	// Diff foreground colors (also updated by ApplyTheme)
+	DiffAddFg    = lipgloss.Color("#10B981")
+	DiffRemoveFg = lipgloss.Color("#EF4444")
+
 	// Additional themeable colors
-	TextHighlight        = lipgloss.Color("#E5E7EB") // For subtitle, special text
-	ButtonHoverColor     = lipgloss.Color("#9D174D") // Button hover background
-	TabTextInactiveColor = lipgloss.Color("#1a1a1a") // Inactive tab text
-	LinkColor            = lipgloss.Color("#60A5FA") // Hyperlink color
+	TextHighlight         = lipgloss.Color("#E5E7EB") // For subtitle, special text
+	ButtonHoverColor      = lipgloss.Color("#9D174D") // Button hover background
+	TabTextInactiveColor  = lipgloss.Color("#1a1a1a") // Inactive tab text
+	LinkColor             = lipgloss.Color("#60A5FA") // Hyperlink color
+	ToastSuccessTextColor = lipgloss.Color("#000000") // Toast success foreground
+	ToastErrorTextColor   = lipgloss.Color("#FFFFFF") // Toast error foreground
 
 	// Third-party theme names (updated by ApplyTheme)
 	CurrentSyntaxTheme   = "monokai"
@@ -116,13 +122,13 @@ var (
 	// Toast styles for status messages
 	ToastSuccess = lipgloss.NewStyle().
 			Background(Success).
-			Foreground(lipgloss.Color("#000000")).
+			Foreground(ToastSuccessTextColor).
 			Bold(true).
 			Padding(0, 1)
 
 	ToastError = lipgloss.NewStyle().
 			Background(Error).
-			Foreground(lipgloss.Color("#FFFFFF")).
+			Foreground(ToastErrorTextColor).
 			Bold(true).
 			Padding(0, 1)
 

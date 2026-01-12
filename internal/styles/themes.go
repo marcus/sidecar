@@ -1,6 +1,18 @@
 package styles
 
-import "github.com/charmbracelet/lipgloss"
+import (
+	"regexp"
+	"sort"
+	"sync"
+
+	"github.com/charmbracelet/lipgloss"
+)
+
+// themeMu protects access to themeRegistry and currentTheme for thread safety
+var themeMu sync.RWMutex
+
+// hexColorRegex validates hex color codes
+var hexColorRegex = regexp.MustCompile(`^#[0-9A-Fa-f]{6}$`)
 
 // ColorPalette holds all theme colors
 type ColorPalette struct {
@@ -43,6 +55,8 @@ type ColorPalette struct {
 	ButtonHover     string `json:"buttonHover"`     // Button hover state
 	TabTextInactive string `json:"tabTextInactive"` // Inactive tab text
 	Link            string `json:"link"`            // Hyperlink color
+	ToastSuccessText string `json:"toastSuccessText"` // Toast success foreground
+	ToastErrorText   string `json:"toastErrorText"`   // Toast error foreground
 
 	// Third-party theme names
 	SyntaxTheme   string `json:"syntaxTheme"`   // Chroma theme name
@@ -98,10 +112,12 @@ var (
 			DiffRemoveBg: "#2D1A1A",
 
 			// Additional UI colors
-			TextHighlight:   "#E5E7EB",
-			ButtonHover:     "#9D174D",
-			TabTextInactive: "#1a1a1a",
-			Link:            "#60A5FA", // Light blue for links
+			TextHighlight:    "#E5E7EB",
+			ButtonHover:      "#9D174D",
+			TabTextInactive:  "#1a1a1a",
+			Link:             "#60A5FA", // Light blue for links
+			ToastSuccessText: "#000000", // Black on green
+			ToastErrorText:   "#FFFFFF", // White on red
 
 			// Third-party themes
 			SyntaxTheme:   "monokai",
@@ -149,10 +165,12 @@ var (
 			DiffRemoveBg: "#3D2A2A",
 
 			// Additional UI colors
-			TextHighlight:   "#F8F8F2",
-			ButtonHover:     "#FF79C6", // Pink
-			TabTextInactive: "#282A36",
-			Link:            "#8BE9FD", // Cyan for links (Dracula)
+			TextHighlight:    "#F8F8F2",
+			ButtonHover:      "#FF79C6", // Pink
+			TabTextInactive:  "#282A36",
+			Link:             "#8BE9FD", // Cyan for links (Dracula)
+			ToastSuccessText: "#282A36", // Dark bg on green
+			ToastErrorText:   "#F8F8F2", // Light on red
 
 			// Third-party themes
 			SyntaxTheme:   "dracula",
@@ -170,8 +188,23 @@ var themeRegistry = map[string]Theme{
 // currentTheme tracks the active theme name
 var currentTheme = "default"
 
+// IsValidHexColor checks if a string is a valid hex color code (#RRGGBB)
+func IsValidHexColor(hex string) bool {
+	return hexColorRegex.MatchString(hex)
+}
+
+// IsValidTheme checks if a theme name exists in the registry
+func IsValidTheme(name string) bool {
+	themeMu.RLock()
+	defer themeMu.RUnlock()
+	_, ok := themeRegistry[name]
+	return ok
+}
+
 // GetTheme returns a theme by name, or the default theme if not found
 func GetTheme(name string) Theme {
+	themeMu.RLock()
+	defer themeMu.RUnlock()
 	if theme, ok := themeRegistry[name]; ok {
 		return theme
 	}
@@ -180,25 +213,35 @@ func GetTheme(name string) Theme {
 
 // GetCurrentTheme returns the currently active theme
 func GetCurrentTheme() Theme {
-	return GetTheme(currentTheme)
+	themeMu.RLock()
+	name := currentTheme
+	themeMu.RUnlock()
+	return GetTheme(name)
 }
 
 // GetCurrentThemeName returns the name of the currently active theme
 func GetCurrentThemeName() string {
+	themeMu.RLock()
+	defer themeMu.RUnlock()
 	return currentTheme
 }
 
-// ListThemes returns the names of all available themes
+// ListThemes returns the names of all available themes in sorted order
 func ListThemes() []string {
+	themeMu.RLock()
+	defer themeMu.RUnlock()
 	names := make([]string, 0, len(themeRegistry))
 	for name := range themeRegistry {
 		names = append(names, name)
 	}
+	sort.Strings(names)
 	return names
 }
 
 // RegisterTheme adds a custom theme to the registry
 func RegisterTheme(theme Theme) {
+	themeMu.Lock()
+	defer themeMu.Unlock()
 	themeRegistry[theme.Name] = theme
 }
 
@@ -206,7 +249,9 @@ func RegisterTheme(theme Theme) {
 func ApplyTheme(name string) {
 	theme := GetTheme(name)
 	ApplyThemeColors(theme)
+	themeMu.Lock()
 	currentTheme = name
+	themeMu.Unlock()
 }
 
 // ApplyThemeWithOverrides applies a theme with color overrides from config
@@ -219,7 +264,9 @@ func ApplyThemeWithOverrides(name string, overrides map[string]string) {
 	}
 
 	ApplyThemeColors(theme)
+	themeMu.Lock()
 	currentTheme = name
+	themeMu.Unlock()
 }
 
 // applyOverrides applies color overrides to a palette
@@ -278,6 +325,10 @@ func applyOverrides(palette *ColorPalette, overrides map[string]string) {
 			palette.TabTextInactive = value
 		case "link":
 			palette.Link = value
+		case "toastSuccessText":
+			palette.ToastSuccessText = value
+		case "toastErrorText":
+			palette.ToastErrorText = value
 		case "syntaxTheme":
 			palette.SyntaxTheme = value
 		case "markdownTheme":
@@ -314,13 +365,17 @@ func ApplyThemeColors(theme Theme) {
 	BorderActive = lipgloss.Color(c.BorderActive)
 	BorderMuted = lipgloss.Color(c.BorderMuted)
 
+	DiffAddFg = lipgloss.Color(c.DiffAddFg)
 	DiffAddBg = lipgloss.Color(c.DiffAddBg)
+	DiffRemoveFg = lipgloss.Color(c.DiffRemoveFg)
 	DiffRemoveBg = lipgloss.Color(c.DiffRemoveBg)
 
 	TextHighlight = lipgloss.Color(c.TextHighlight)
 	ButtonHoverColor = lipgloss.Color(c.ButtonHover)
 	TabTextInactiveColor = lipgloss.Color(c.TabTextInactive)
 	LinkColor = lipgloss.Color(c.Link)
+	ToastSuccessTextColor = lipgloss.Color(c.ToastSuccessText)
+	ToastErrorTextColor = lipgloss.Color(c.ToastErrorText)
 
 	// Store syntax/markdown theme names for external use
 	CurrentSyntaxTheme = c.SyntaxTheme
@@ -395,13 +450,13 @@ func rebuildStyles() {
 
 	ToastSuccess = lipgloss.NewStyle().
 		Background(Success).
-		Foreground(lipgloss.Color("#000000")).
+		Foreground(ToastSuccessTextColor).
 		Bold(true).
 		Padding(0, 1)
 
 	ToastError = lipgloss.NewStyle().
 		Background(Error).
-		Foreground(lipgloss.Color("#FFFFFF")).
+		Foreground(ToastErrorTextColor).
 		Bold(true).
 		Padding(0, 1)
 
