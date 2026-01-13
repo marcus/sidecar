@@ -164,8 +164,6 @@ func TestGradient_ColorAt(t *testing.T) {
 }
 
 func TestGradient_PositionAt(t *testing.T) {
-	g := NewGradient([]string{"#000000", "#FFFFFF"}, 0) // horizontal gradient
-
 	tests := []struct {
 		name                 string
 		x, y, width, height  int
