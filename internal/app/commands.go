@@ -112,6 +112,12 @@ type UpdateErrorMsg struct {
 // UpdateSpinnerTickMsg triggers spinner animation during update.
 type UpdateSpinnerTickMsg struct{}
 
+// EditorReturnedMsg signals that an external editor process has exited.
+// Used to restore terminal state (mouse support) after returning from vim/etc.
+type EditorReturnedMsg struct {
+	Err error
+}
+
 // updateSpinnerTick returns a command that ticks the spinner every 100ms.
 func updateSpinnerTick() tea.Cmd {
 	return tea.Tick(100*time.Millisecond, func(t time.Time) tea.Msg {

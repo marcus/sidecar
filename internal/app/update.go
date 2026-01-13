@@ -197,11 +197,21 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		args = append(args, msg.Path)
 		c := exec.Command(msg.Editor, args...)
 		return m, tea.ExecProcess(c, func(err error) tea.Msg {
-			if err != nil {
-				return ErrorMsg{Err: err}
-			}
-			return RefreshMsg{}
+			return EditorReturnedMsg{Err: err}
 		})
+
+	case EditorReturnedMsg:
+		// After editor exits, re-enable mouse and trigger refresh
+		// tea.ExecProcess disables mouse, need to restore it
+		cmds := []tea.Cmd{
+			func() tea.Msg { return tea.EnableMouseAllMotion() },
+		}
+		if msg.Err != nil {
+			cmds = append(cmds, func() tea.Msg { return ErrorMsg{Err: msg.Err} })
+		} else {
+			cmds = append(cmds, func() tea.Msg { return RefreshMsg{} })
+		}
+		return m, tea.Batch(cmds...)
 
 	case palette.CommandSelectedMsg:
 		// Execute the selected command from the palette
