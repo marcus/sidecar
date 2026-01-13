@@ -44,6 +44,11 @@ type ColorPalette struct {
 	BorderActive string `json:"borderActive"`
 	BorderMuted  string `json:"borderMuted"`
 
+	// Gradient border colors (for angled gradient borders on panels)
+	GradientBorderActive []string `json:"gradientBorderActive"` // Colors for active panel gradient
+	GradientBorderNormal []string `json:"gradientBorderNormal"` // Colors for inactive panel gradient
+	GradientBorderAngle  float64  `json:"gradientBorderAngle"`  // Angle in degrees (default: 30)
+
 	// Diff colors
 	DiffAddFg    string `json:"diffAddFg"`
 	DiffAddBg    string `json:"diffAddBg"`
@@ -51,10 +56,10 @@ type ColorPalette struct {
 	DiffRemoveBg string `json:"diffRemoveBg"`
 
 	// Additional UI colors
-	TextHighlight   string `json:"textHighlight"`   // For subtitle, special text
-	ButtonHover     string `json:"buttonHover"`     // Button hover state
-	TabTextInactive string `json:"tabTextInactive"` // Inactive tab text
-	Link            string `json:"link"`            // Hyperlink color
+	TextHighlight    string `json:"textHighlight"`    // For subtitle, special text
+	ButtonHover      string `json:"buttonHover"`      // Button hover state
+	TabTextInactive  string `json:"tabTextInactive"`  // Inactive tab text
+	Link             string `json:"link"`             // Hyperlink color
 	ToastSuccessText string `json:"toastSuccessText"` // Toast success foreground
 	ToastErrorText   string `json:"toastErrorText"`   // Toast error foreground
 
@@ -104,6 +109,11 @@ var (
 			BorderNormal: "#374151",
 			BorderActive: "#7C3AED",
 			BorderMuted:  "#1F2937",
+
+			// Gradient border colors (purple → blue, 30° angle)
+			GradientBorderActive: []string{"#7C3AED", "#3B82F6"},
+			GradientBorderNormal: []string{"#374151", "#2D3748"},
+			GradientBorderAngle:  30.0,
 
 			// Diff colors
 			DiffAddFg:    "#10B981",
@@ -157,6 +167,11 @@ var (
 			BorderNormal: "#44475A",
 			BorderActive: "#BD93F9",
 			BorderMuted:  "#343746",
+
+			// Gradient border colors (purple → cyan, 30° angle)
+			GradientBorderActive: []string{"#BD93F9", "#8BE9FD"},
+			GradientBorderNormal: []string{"#44475A", "#383A4A"},
+			GradientBorderAngle:  30.0,
 
 			// Diff colors
 			DiffAddFg:    "#50FA7B",
@@ -334,6 +349,131 @@ func applyOverrides(palette *ColorPalette, overrides map[string]string) {
 		case "markdownTheme":
 			palette.MarkdownTheme = value
 		}
+	}
+}
+
+// ApplyThemeWithGenericOverrides applies a theme with overrides that may include arrays.
+// This supports gradient array overrides from YAML config.
+func ApplyThemeWithGenericOverrides(name string, overrides map[string]interface{}) {
+	theme := GetTheme(name)
+
+	// Apply overrides to the color palette
+	if overrides != nil {
+		applyGenericOverrides(&theme.Colors, overrides)
+	}
+
+	ApplyThemeColors(theme)
+	themeMu.Lock()
+	currentTheme = name
+	themeMu.Unlock()
+}
+
+// applyGenericOverrides applies overrides that may include arrays (for gradients).
+func applyGenericOverrides(palette *ColorPalette, overrides map[string]interface{}) {
+	for key, value := range overrides {
+		switch v := value.(type) {
+		case string:
+			applySingleOverride(palette, key, v)
+		case []interface{}:
+			// Handle array values (for gradient colors)
+			colors := make([]string, 0, len(v))
+			for _, item := range v {
+				if s, ok := item.(string); ok {
+					colors = append(colors, s)
+				}
+			}
+			applyArrayOverride(palette, key, colors)
+		case []string:
+			applyArrayOverride(palette, key, v)
+		case float64:
+			applyFloatOverride(palette, key, v)
+		case int:
+			applyFloatOverride(palette, key, float64(v))
+		}
+	}
+}
+
+// applySingleOverride applies a single string override.
+func applySingleOverride(palette *ColorPalette, key, value string) {
+	switch key {
+	case "primary":
+		palette.Primary = value
+	case "secondary":
+		palette.Secondary = value
+	case "accent":
+		palette.Accent = value
+	case "success":
+		palette.Success = value
+	case "warning":
+		palette.Warning = value
+	case "error":
+		palette.Error = value
+	case "info":
+		palette.Info = value
+	case "textPrimary":
+		palette.TextPrimary = value
+	case "textSecondary":
+		palette.TextSecondary = value
+	case "textMuted":
+		palette.TextMuted = value
+	case "textSubtle":
+		palette.TextSubtle = value
+	case "bgPrimary":
+		palette.BgPrimary = value
+	case "bgSecondary":
+		palette.BgSecondary = value
+	case "bgTertiary":
+		palette.BgTertiary = value
+	case "bgOverlay":
+		palette.BgOverlay = value
+	case "borderNormal":
+		palette.BorderNormal = value
+	case "borderActive":
+		palette.BorderActive = value
+	case "borderMuted":
+		palette.BorderMuted = value
+	case "diffAddFg":
+		palette.DiffAddFg = value
+	case "diffAddBg":
+		palette.DiffAddBg = value
+	case "diffRemoveFg":
+		palette.DiffRemoveFg = value
+	case "diffRemoveBg":
+		palette.DiffRemoveBg = value
+	case "textHighlight":
+		palette.TextHighlight = value
+	case "buttonHover":
+		palette.ButtonHover = value
+	case "tabTextInactive":
+		palette.TabTextInactive = value
+	case "link":
+		palette.Link = value
+	case "toastSuccessText":
+		palette.ToastSuccessText = value
+	case "toastErrorText":
+		palette.ToastErrorText = value
+	case "syntaxTheme":
+		palette.SyntaxTheme = value
+	case "markdownTheme":
+		palette.MarkdownTheme = value
+	}
+}
+
+// applyArrayOverride applies an array override (for gradient colors).
+func applyArrayOverride(palette *ColorPalette, key string, colors []string) {
+	switch key {
+	case "gradientBorderActive":
+		palette.GradientBorderActive = colors
+	case "gradientBorderNormal":
+		palette.GradientBorderNormal = colors
+	}
+}
+
+// applyFloatOverride applies a float override (for gradient angle).
+func applyFloatOverride(palette *ColorPalette, key string, value float64) {
+	switch key {
+	case "gradientBorderAngle":
+		palette.GradientBorderAngle = value
 	}
 }
 

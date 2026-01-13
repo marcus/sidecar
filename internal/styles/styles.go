@@ -196,10 +196,10 @@ var (
 var TabRainbowColors = []struct {
 	R, G, B uint8
 }{
-	{220, 60, 60},   // Red
-	{60, 180, 80},   // Green
-	{60, 130, 220},  // Blue
-	{140, 80, 200},  // Purple
+	{220, 60, 60},  // Red
+	{60, 180, 80},  // Green
+	{60, 130, 220}, // Blue
+	{140, 80, 200}, // Purple
 }
 
 // TabTextActive is the text color for active tabs
