@@ -502,7 +502,7 @@ func isRootContext(ctx string) bool {
 		return true
 	case "file-browser-tree", "file-browser-preview":
 		return true
-	case "td-monitor":
+	case "td-monitor", "td-board":
 		return true
 	default:
 		return false

@@ -127,20 +127,25 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 		return p, p.model.Init()
 	}
 
-	// Intercept quit to prevent monitor from exiting the whole app
-	if km, ok := msg.(tea.KeyMsg); ok {
-		if km.String() == "q" || km.String() == "ctrl+c" {
-			// Don't quit the app, just ignore
-			return p, nil
-		}
-	}
-
 	// Delegate to monitor
 	newModel, cmd := p.model.Update(msg)
 
 	// Update our reference (monitor uses value semantics)
 	if m, ok := newModel.(monitor.Model); ok {
 		p.model = &m
+	}
+
+	// Intercept tea.Quit to prevent monitor from exiting the whole app.
+	// The sidecar app handles quit via quit confirmation modal.
+	if cmd != nil {
+		originalCmd := cmd
+		cmd = func() tea.Msg {
+			result := originalCmd()
+			if _, isQuit := result.(tea.QuitMsg); isQuit {
+				return nil // Suppress quit - let app handle via modal
+			}
+			return result
+		}
 	}
 
 	// Surface td toasts to sidecar
