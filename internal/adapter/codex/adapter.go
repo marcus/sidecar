@@ -30,8 +30,9 @@ func putScannerBuffer(buf []byte) {
 }
 
 const (
-	adapterID   = "codex"
-	adapterName = "Codex"
+	adapterID           = "codex"
+	adapterName         = "Codex"
+	metaCacheMaxEntries = 2048
 )
 
 // Adapter implements the adapter.Adapter interface for Codex CLI sessions.
@@ -335,6 +336,10 @@ func (a *Adapter) Messages(sessionID string) ([]adapter.Message, error) {
 		return nil, err
 	}
 
+	if info, err := file.Stat(); err == nil {
+		a.invalidateSessionMetaCacheIfChanged(path, info)
+	}
+
 	flushPending(lastTimestamp)
 
 	// Cache total usage for Usage() to avoid re-scanning
@@ -411,9 +416,10 @@ func (a *Adapter) sessionFiles() ([]string, error) {
 }
 
 type sessionMetaCacheEntry struct {
-	meta    *SessionMetadata
-	modTime time.Time
-	size    int64
+	meta       *SessionMetadata
+	modTime    time.Time
+	size       int64
+	lastAccess time.Time
 }
 
 func (a *Adapter) sessionMetadata(path string) (*SessionMetadata, error) {
@@ -422,11 +428,20 @@ func (a *Adapter) sessionMetadata(path string) (*SessionMetadata, error) {
 		return nil, err
 	}
 
+	now := time.Now()
+
 	a.metaMu.RLock()
 	if entry, ok := a.metaCache[path]; ok && entry.size == info.Size() && entry.modTime.Equal(info.ModTime()) {
 		// Return a copy to prevent caller mutations affecting cache
 		metaCopy := *entry.meta
 		a.metaMu.RUnlock()
+
+		a.metaMu.Lock()
+		if entry, ok := a.metaCache[path]; ok {
+			entry.lastAccess = now
+			a.metaCache[path] = entry
+		}
+		a.metaMu.Unlock()
 		return &metaCopy, nil
 	}
 	a.metaMu.RUnlock()
@@ -438,10 +453,12 @@ func (a *Adapter) sessionMetadata(path string) (*SessionMetadata, error) {
 
 	a.metaMu.Lock()
 	a.metaCache[path] = sessionMetaCacheEntry{
-		meta:    meta,
-		modTime: info.ModTime(),
-		size:    info.Size(),
+		meta:       meta,
+		modTime:    info.ModTime(),
+		size:       info.Size(),
+		lastAccess: now,
 	}
+	a.enforceSessionMetaCacheLimitLocked()
 	a.metaMu.Unlock()
 	return meta, nil
 }
@@ -450,6 +467,37 @@ func (a *Adapter) pruneSessionMetaCache(seenPaths map[string]struct{}) {
 	a.metaMu.Lock()
 	for path := range a.metaCache {
 		if _, ok := seenPaths[path]; !ok {
+			delete(a.metaCache, path)
+		}
+	}
+	a.enforceSessionMetaCacheLimitLocked()
+	a.metaMu.Unlock()
+}
+
+func (a *Adapter) enforceSessionMetaCacheLimitLocked() {
+	for len(a.metaCache) > metaCacheMaxEntries {
+		var oldestPath string
+		var oldestAccess time.Time
+		for path, entry := range a.metaCache {
+			if oldestPath == "" || entry.lastAccess.Before(oldestAccess) {
+				oldestPath = path
+				oldestAccess = entry.lastAccess
+			}
+		}
+		if oldestPath == "" {
+			return
+		}
+		delete(a.metaCache, oldestPath)
+	}
+}
+
+func (a *Adapter) invalidateSessionMetaCacheIfChanged(path string, info os.FileInfo) {
+	if info == nil {
+		return
+	}
+	a.metaMu.Lock()
+	if entry, ok := a.metaCache[path]; ok {
+		if entry.size != info.Size() || !entry.modTime.Equal(info.ModTime()) {
 			delete(a.metaCache, path)
 		}
 	}
