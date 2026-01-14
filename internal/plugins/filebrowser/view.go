@@ -999,9 +999,9 @@ func (p *Plugin) highlightFuzzyMatch(text string, ranges []MatchRange) string {
 
 // renderImagePreview renders image preview or fallback message.
 func (p *Plugin) renderImagePreview() string {
-	// Calculate available dimensions (respect height constraint)
-	contentHeight := p.height - 2 // Account for borders
-	contentWidth := p.previewWidth - 2
+	// Calculate available dimensions (subtract border + padding = 4)
+	contentHeight := p.height - 4
+	contentWidth := p.previewWidth - 4
 	if contentWidth < 10 {
 		contentWidth = 10
 	}

@@ -29,6 +29,8 @@ var (
 				Padding(0, 1)
 )
 
+const tabStopWidth = 8
+
 // View renders the plugin UI.
 func (p *Plugin) View(width, height int) string {
 	p.width = width
@@ -115,9 +117,9 @@ func (p *Plugin) renderListView(width, height int) string {
 		tabX += tabWidth + 1 // +1 for spacing between tabs
 	}
 
-	// Render content for each pane
-	sidebarContent := p.renderSidebarContent(sidebarW-2, innerHeight)
-	previewContent := p.renderPreviewContent(previewW-2, innerHeight)
+	// Render content for each pane (subtract 4 for border + padding: 2 border + 2 padding)
+	sidebarContent := p.renderSidebarContent(sidebarW-4, innerHeight)
+	previewContent := p.renderPreviewContent(previewW-4, innerHeight)
 
 	// Apply gradient border styles
 	leftPane := styles.RenderPanel(sidebarContent, sidebarW, paneHeight, sidebarActive)
@@ -336,7 +338,58 @@ func (p *Plugin) renderPreviewContent(width, height int) string {
 
 	lines = append(lines, content)
 
+	// Final safety: ensure ALL lines are truncated to width
+	// This catches any content that wasn't properly truncated
+	result := strings.Join(lines, "\n")
+	return truncateAllLines(result, width)
+}
+
+// truncateAllLines ensures every line in the content is truncated to maxWidth.
+func truncateAllLines(content string, maxWidth int) string {
+	lines := strings.Split(content, "\n")
+	for i, line := range lines {
+		line = expandTabs(line, tabStopWidth)
+		if lipgloss.Width(line) > maxWidth {
+			line = ansi.Truncate(line, maxWidth, "")
+		}
+		lines[i] = line
+	}
 	return strings.Join(lines, "\n")
+}
+
+// expandTabs replaces tabs with spaces, preserving ANSI sequences and column widths.
+func expandTabs(line string, tabWidth int) string {
+	if tabWidth <= 0 || !strings.Contains(line, "\t") {
+		return line
+	}
+
+	var sb strings.Builder
+	sb.Grow(len(line))
+
+	state := ansi.NormalState
+	column := 0
+	for len(line) > 0 {
+		seq, width, n, newState := ansi.GraphemeWidth.DecodeSequenceInString(line, state, nil)
+		if n <= 0 {
+			sb.WriteString(line)
+			break
+		}
+		if seq == "\t" && width == 0 {
+			spaces := tabWidth - (column % tabWidth)
+			if spaces == 0 {
+				spaces = tabWidth
+			}
+			sb.WriteString(strings.Repeat(" ", spaces))
+			column += spaces
+		} else {
+			sb.WriteString(seq)
+			column += width
+		}
+		state = newState
+		line = line[n:]
+	}
+
+	return sb.String()
 }
 
 // renderTabs renders the preview pane tab header.
@@ -403,7 +456,7 @@ func (p *Plugin) renderOutputContent(width, height int) string {
 	// Apply horizontal offset and truncate each line
 	var displayLines []string
 	for _, line := range lines[start:end] {
-		displayLine := line
+		displayLine := expandTabs(line, tabStopWidth)
 		// Apply horizontal offset using ANSI-aware truncation
 		if p.previewHorizOffset > 0 {
 			displayLine = ansi.TruncateLeft(displayLine, p.previewHorizOffset, "")
@@ -447,6 +500,7 @@ func (p *Plugin) renderDiffContent(width, height int) string {
 	// Pattern: style FIRST, then use ANSI-aware truncation for scrolling
 	var rendered []string
 	for _, line := range lines[start:end] {
+		line = expandTabs(line, tabStopWidth)
 		// Style the line FIRST (before any offset/truncation)
 		var styledLine string
 		switch {
@@ -480,13 +534,14 @@ func (p *Plugin) renderDiffContent(width, height int) string {
 
 // colorDiffLine applies basic diff coloring using theme styles.
 func colorDiffLine(line string, width int) string {
+	line = expandTabs(line, tabStopWidth)
 	if len(line) == 0 {
 		return line
 	}
 
 	// Truncate if needed
-	if len(line) > width {
-		line = line[:width]
+	if lipgloss.Width(line) > width {
+		line = ansi.Truncate(line, width, "")
 	}
 
 	switch {
@@ -1329,4 +1384,3 @@ func (p *Plugin) renderKanbanView(width, height int) string {
 	// Wrap in panel with gradient border (active since kanban is full-screen)
 	return styles.RenderPanel(content, width, height, true)
 }
-

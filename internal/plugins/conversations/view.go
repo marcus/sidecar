@@ -760,8 +760,8 @@ func (p *Plugin) renderSidebarPane(height int) string {
 
 	sessions := p.visibleSessions()
 
-	// Content width = sidebar width - padding (2 chars for Padding(0,1))
-	contentWidth := p.sidebarWidth - 2
+	// Content width = sidebar width - border (2) - padding (2) = 4
+	contentWidth := p.sidebarWidth - 4
 	if contentWidth < 15 {
 		contentWidth = 15
 	}
@@ -1014,8 +1014,8 @@ func (p *Plugin) renderCompactSessionRow(session adapter.Session, selected bool,
 
 // renderMainPane renders the message list for the main pane.
 func (p *Plugin) renderMainPane(paneWidth, height int) string {
-	// Content width = pane width - padding (2 chars for Padding(0,1))
-	contentWidth := paneWidth - 2
+	// Content width = pane width - border (2) - padding (2) = 4
+	contentWidth := paneWidth - 4
 	if contentWidth < 20 {
 		contentWidth = 20
 	}

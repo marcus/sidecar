@@ -57,6 +57,8 @@ A practical, code-oriented guide for building first-class Sidecar plugins. Use t
 - Cache `width/height` in the plugin state so background commands can format correctly (see git diff rendering).
 - Provide footer hints by keeping `Commands()` and `FocusContext()` aligned with your current view mode.
 - Prefer small helper render functions per view mode to keep code readable.
+- Treat tabs as layout-affecting: expand `\t` to spaces (8-col stops) before any width checks or truncation, or "blank" lines can wrap.
+- Use ANSI-aware width/truncation helpers (`ansi.Truncate`, `lipgloss.Width`) when content can contain escape codes.
 
 ## Watchers and goroutines
 - Start watchers in `Start()` via a `tea.Cmd` that spawns the goroutine and returns a typed `Msg` on events.
@@ -76,4 +78,3 @@ A practical, code-oriented guide for building first-class Sidecar plugins. Use t
 - Keep business logic in testable helpers; wire Bubble Tea plumbing around it.
 - Use small typed messages (`type RefreshMsg struct{}`) to keep `Update` readable.
 - Enable `--debug` to get verbose logs from registry and plugins.
-
