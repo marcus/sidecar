@@ -48,14 +48,15 @@ type Plugin struct {
 	managedSessions map[string]bool
 
 	// View state
-	viewMode      ViewMode
-	activePane    FocusPane
-	previewTab    PreviewTab
-	selectedIdx   int
-	scrollOffset  int // Sidebar list scroll offset
-	visibleCount  int // Number of visible list items
-	previewOffset int
-	sidebarWidth  int // Persisted sidebar width
+	viewMode       ViewMode
+	activePane     FocusPane
+	previewTab     PreviewTab
+	selectedIdx    int
+	scrollOffset   int  // Sidebar list scroll offset
+	visibleCount   int  // Number of visible list items
+	previewOffset  int
+	sidebarWidth   int  // Persisted sidebar width
+	sidebarVisible bool // Whether sidebar is visible (toggled with \)
 
 	// Agent state
 	attachedSession string // Name of worktree we're attached to (pauses polling)
@@ -109,7 +110,8 @@ func New() *Plugin {
 		activePane:      PaneSidebar,
 		previewTab:      PreviewTabOutput,
 		mouseHandler:    mouse.NewHandler(),
-		sidebarWidth:    40, // Default 40% sidebar
+		sidebarWidth:    40,   // Default 40% sidebar
+		sidebarVisible:  true, // Sidebar visible by default
 	}
 }
 
@@ -144,6 +146,9 @@ func (p *Plugin) Init(ctx *plugin.Context) error {
 		ctx.Keymap.RegisterPluginBinding("l", "focus-right", "worktree-list")
 		ctx.Keymap.RegisterPluginBinding("right", "focus-right", "worktree-list")
 		ctx.Keymap.RegisterPluginBinding("\\", "toggle-sidebar", "worktree-list")
+		ctx.Keymap.RegisterPluginBinding("tab", "switch-pane", "worktree-list")
+		ctx.Keymap.RegisterPluginBinding("[", "prev-tab", "worktree-list")
+		ctx.Keymap.RegisterPluginBinding("]", "next-tab", "worktree-list")
 
 		// Task linking
 		ctx.Keymap.RegisterPluginBinding("t", "link-task", "worktree-list")
@@ -167,9 +172,10 @@ func (p *Plugin) Init(ctx *plugin.Context) error {
 		ctx.Keymap.RegisterPluginBinding("h", "focus-left", "worktree-preview")
 		ctx.Keymap.RegisterPluginBinding("left", "focus-left", "worktree-preview")
 		ctx.Keymap.RegisterPluginBinding("esc", "focus-left", "worktree-preview")
-		ctx.Keymap.RegisterPluginBinding("tab", "next-tab", "worktree-preview")
-		ctx.Keymap.RegisterPluginBinding("shift+tab", "prev-tab", "worktree-preview")
+		ctx.Keymap.RegisterPluginBinding("tab", "switch-pane", "worktree-preview")
 		ctx.Keymap.RegisterPluginBinding("\\", "toggle-sidebar", "worktree-preview")
+		ctx.Keymap.RegisterPluginBinding("[", "prev-tab", "worktree-preview")
+		ctx.Keymap.RegisterPluginBinding("]", "next-tab", "worktree-preview")
 
 		// Create modal context
 		ctx.Keymap.RegisterPluginBinding("esc", "cancel", "worktree-create")
@@ -530,10 +536,19 @@ func (p *Plugin) handleListKeys(msg tea.KeyMsg) tea.Cmd {
 		if p.activePane == PanePreview {
 			p.activePane = PaneSidebar
 		}
+	case "\\":
+		p.toggleSidebar()
 	case "tab":
-		return p.cyclePreviewTab(1)
-	case "shift+tab":
+		// Switch focus between panes (consistent with other plugins)
+		if p.activePane == PaneSidebar && p.sidebarVisible {
+			p.activePane = PanePreview
+		} else if p.activePane == PanePreview && p.sidebarVisible {
+			p.activePane = PaneSidebar
+		}
+	case "[":
 		return p.cyclePreviewTab(-1)
+	case "]":
+		return p.cyclePreviewTab(1)
 	case "r":
 		return func() tea.Msg { return RefreshMsg{} }
 	case "v":
@@ -770,6 +785,16 @@ func (p *Plugin) handleMergeKeys(msg tea.KeyMsg) tea.Cmd {
 		}
 	}
 	return nil
+}
+
+// toggleSidebar toggles sidebar visibility.
+func (p *Plugin) toggleSidebar() {
+	p.sidebarVisible = !p.sidebarVisible
+	if !p.sidebarVisible {
+		p.activePane = PanePreview
+	} else {
+		p.activePane = PaneSidebar
+	}
 }
 
 // moveCursor moves the selection cursor.
@@ -1021,42 +1046,57 @@ func (p *Plugin) Commands() []plugin.Command {
 		if p.viewMode == ViewModeKanban {
 			viewToggleName = "List"
 		}
+
+		// Return different commands based on active pane
+		if p.activePane == PanePreview {
+			// Preview pane commands
+			cmds := []plugin.Command{
+				{ID: "switch-pane", Name: "Focus", Description: "Switch to sidebar", Context: "worktree-preview", Priority: 1},
+				{ID: "toggle-sidebar", Name: "Sidebar", Description: "Toggle sidebar visibility", Context: "worktree-preview", Priority: 2},
+				{ID: "prev-tab", Name: "Tab←", Description: "Previous preview tab", Context: "worktree-preview", Priority: 3},
+				{ID: "next-tab", Name: "Tab→", Description: "Next preview tab", Context: "worktree-preview", Priority: 4},
+			}
+			return cmds
+		}
+
+		// Sidebar list commands
 		cmds := []plugin.Command{
 			{ID: "new-worktree", Name: "New", Description: "Create new worktree", Context: "worktree-list", Priority: 1},
 			{ID: "toggle-view", Name: viewToggleName, Description: "Toggle list/kanban view", Context: "worktree-list", Priority: 2},
-			{ID: "refresh", Name: "Refresh", Description: "Refresh worktree list", Context: "worktree-list", Priority: 3},
+			{ID: "toggle-sidebar", Name: "Sidebar", Description: "Toggle sidebar visibility", Context: "worktree-list", Priority: 3},
+			{ID: "refresh", Name: "Refresh", Description: "Refresh worktree list", Context: "worktree-list", Priority: 4},
 		}
 		wt := p.selectedWorktree()
 		if wt != nil {
 			cmds = append(cmds,
-				plugin.Command{ID: "delete-worktree", Name: "Delete", Description: "Delete selected worktree", Context: "worktree-list", Priority: 4},
-				plugin.Command{ID: "push", Name: "Push", Description: "Push branch to remote", Context: "worktree-list", Priority: 5},
-				plugin.Command{ID: "merge-workflow", Name: "Merge", Description: "Start merge workflow", Context: "worktree-list", Priority: 6},
+				plugin.Command{ID: "delete-worktree", Name: "Delete", Description: "Delete selected worktree", Context: "worktree-list", Priority: 5},
+				plugin.Command{ID: "push", Name: "Push", Description: "Push branch to remote", Context: "worktree-list", Priority: 6},
+				plugin.Command{ID: "merge-workflow", Name: "Merge", Description: "Start merge workflow", Context: "worktree-list", Priority: 7},
 			)
 			// Task linking
 			if wt.TaskID != "" {
 				cmds = append(cmds,
-					plugin.Command{ID: "link-task", Name: "Unlink", Description: "Unlink task", Context: "worktree-list", Priority: 7},
+					plugin.Command{ID: "link-task", Name: "Unlink", Description: "Unlink task", Context: "worktree-list", Priority: 8},
 				)
 			} else {
 				cmds = append(cmds,
-					plugin.Command{ID: "link-task", Name: "Task", Description: "Link task", Context: "worktree-list", Priority: 7},
+					plugin.Command{ID: "link-task", Name: "Task", Description: "Link task", Context: "worktree-list", Priority: 8},
 				)
 			}
 			// Agent commands
 			if wt.Agent == nil {
 				cmds = append(cmds,
-					plugin.Command{ID: "start-agent", Name: "Start", Description: "Start agent", Context: "worktree-list", Priority: 8},
+					plugin.Command{ID: "start-agent", Name: "Start", Description: "Start agent", Context: "worktree-list", Priority: 9},
 				)
 			} else {
 				cmds = append(cmds,
-					plugin.Command{ID: "attach", Name: "Attach", Description: "Attach to session", Context: "worktree-list", Priority: 8},
-					plugin.Command{ID: "stop-agent", Name: "Stop", Description: "Stop agent", Context: "worktree-list", Priority: 9},
+					plugin.Command{ID: "attach", Name: "Attach", Description: "Attach to session", Context: "worktree-list", Priority: 9},
+					plugin.Command{ID: "stop-agent", Name: "Stop", Description: "Stop agent", Context: "worktree-list", Priority: 10},
 				)
 				if wt.Status == StatusWaiting {
 					cmds = append(cmds,
-						plugin.Command{ID: "approve", Name: "Approve", Description: "Approve prompt", Context: "worktree-list", Priority: 10},
-						plugin.Command{ID: "reject", Name: "Reject", Description: "Reject prompt", Context: "worktree-list", Priority: 11},
+						plugin.Command{ID: "approve", Name: "Approve", Description: "Approve prompt", Context: "worktree-list", Priority: 11},
+						plugin.Command{ID: "reject", Name: "Reject", Description: "Reject prompt", Context: "worktree-list", Priority: 12},
 					)
 				}
 			}

@@ -52,6 +52,32 @@ func (p *Plugin) View(width, height int) string {
 
 // renderListView renders the main split-pane list view.
 func (p *Plugin) renderListView(width, height int) string {
+	// Pane height for panels (outer dimensions including borders)
+	paneHeight := height
+	if paneHeight < 4 {
+		paneHeight = 4
+	}
+
+	// Inner content height (excluding borders and header lines)
+	innerHeight := paneHeight - 2
+	if innerHeight < 1 {
+		innerHeight = 1
+	}
+
+	// If sidebar is hidden, show only preview pane at full width
+	if !p.sidebarVisible {
+		previewW := width - 4 // Account for borders
+		if previewW < 40 {
+			previewW = 40
+		}
+
+		// Register hit region for full-width preview
+		p.mouseHandler.HitMap.AddRect(regionPreviewPane, 0, 0, width, paneHeight, nil)
+
+		previewContent := p.renderPreviewContent(previewW, innerHeight)
+		return styles.RenderPanel(previewContent, width, paneHeight, true)
+	}
+
 	// Calculate pane widths (sidebarWidth is percentage)
 	// Account for borders (4 total: 2 per pane) and divider
 	available := width - 6 - dividerWidth // 6 for borders (2 per pane × 2 + padding)
@@ -65,18 +91,6 @@ func (p *Plugin) renderListView(width, height int) string {
 	previewW := available - sidebarW
 	if previewW < 40 {
 		previewW = 40
-	}
-
-	// Pane height for panels (outer dimensions including borders)
-	paneHeight := height
-	if paneHeight < 4 {
-		paneHeight = 4
-	}
-
-	// Inner content height (excluding borders and header lines)
-	innerHeight := paneHeight - 2
-	if innerHeight < 1 {
-		innerHeight = 1
 	}
 
 	// Determine pane focus state

@@ -327,16 +327,19 @@ All plugins with two-pane layouts (Git, Conversations, Files) share consistent s
 | `n` | new-worktree | Create new worktree |
 | `v` | toggle-view | Toggle list/kanban view |
 | `r` | refresh | Refresh worktree list |
-| `d` | delete-worktree | Delete selected worktree |
+| `D` | delete-worktree | Delete selected worktree |
 | `p` | push | Push branch to remote |
-| `M` | merge-workflow | Start merge workflow |
+| `m` | merge-workflow | Start merge workflow |
 | `t` | link-task | Link/unlink task |
 | `s` | start-agent | Start agent |
-| `a` | attach | Attach to agent session |
+| `enter` | attach | Attach to agent session |
 | `S` | stop-agent | Stop agent |
-| `enter` | approve | Approve agent prompt |
-| `esc` | reject | Reject agent prompt |
+| `y` | approve | Approve agent prompt |
+| `N` | reject | Reject agent prompt |
+| `Tab` | switch-pane | Switch focus between sidebar and preview |
 | `\` | toggle-sidebar | Collapse/expand sidebar |
+| `[` | prev-tab | Previous preview tab (Output/Diff/Task) |
+| `]` | next-tab | Next preview tab (Output/Diff/Task) |
 
 ### TD Monitor Plugin
 
