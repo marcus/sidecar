@@ -57,6 +57,9 @@ type Plugin struct {
 	previewOffset int
 	sidebarWidth  int // Persisted sidebar width
 
+	// Agent state
+	attachedSession string // Name of worktree we're attached to (pauses polling)
+
 	// Mouse support
 	mouseHandler *mouse.Handler
 
@@ -112,7 +115,7 @@ func (p *Plugin) Init(ctx *plugin.Context) error {
 	if ctx.Keymap != nil {
 		// Sidebar list context
 		ctx.Keymap.RegisterPluginBinding("n", "new-worktree", "worktree-list")
-		ctx.Keymap.RegisterPluginBinding("enter", "select", "worktree-list")
+		ctx.Keymap.RegisterPluginBinding("enter", "attach", "worktree-list")
 		ctx.Keymap.RegisterPluginBinding("D", "delete-worktree", "worktree-list")
 		ctx.Keymap.RegisterPluginBinding("p", "push", "worktree-list")
 		ctx.Keymap.RegisterPluginBinding("d", "show-diff", "worktree-list")
@@ -120,6 +123,13 @@ func (p *Plugin) Init(ctx *plugin.Context) error {
 		ctx.Keymap.RegisterPluginBinding("l", "focus-right", "worktree-list")
 		ctx.Keymap.RegisterPluginBinding("right", "focus-right", "worktree-list")
 		ctx.Keymap.RegisterPluginBinding("\\", "toggle-sidebar", "worktree-list")
+
+		// Agent control bindings
+		ctx.Keymap.RegisterPluginBinding("s", "start-agent", "worktree-list")
+		ctx.Keymap.RegisterPluginBinding("S", "stop-agent", "worktree-list")
+		ctx.Keymap.RegisterPluginBinding("y", "approve", "worktree-list")
+		ctx.Keymap.RegisterPluginBinding("Y", "approve-all", "worktree-list")
+		ctx.Keymap.RegisterPluginBinding("N", "reject", "worktree-list")
 
 		// Preview pane context
 		ctx.Keymap.RegisterPluginBinding("h", "focus-left", "worktree-preview")
@@ -141,7 +151,10 @@ func (p *Plugin) Init(ctx *plugin.Context) error {
 
 // Start begins async operations.
 func (p *Plugin) Start() tea.Cmd {
-	return p.refreshWorktrees()
+	return tea.Batch(
+		p.refreshWorktrees(),
+		p.reconnectAgents(),
+	)
 }
 
 // Stop cleans up plugin resources.
@@ -206,6 +219,88 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 		if msg.Err == nil {
 			cmds = append(cmds, p.refreshWorktrees())
 		}
+
+	// Agent messages
+	case AgentStartedMsg:
+		if msg.Err == nil {
+			// Create agent record
+			agent := &Agent{
+				Type:        msg.AgentType,
+				TmuxSession: msg.SessionName,
+				StartedAt:   time.Now(),
+				OutputBuf:   NewOutputBuffer(outputBufferCap),
+			}
+
+			if wt := p.findWorktree(msg.WorktreeName); wt != nil {
+				wt.Agent = agent
+				wt.Status = StatusActive
+			}
+			p.agents[msg.WorktreeName] = agent
+			p.managedSessions[msg.SessionName] = true
+
+			// Start polling for output
+			cmds = append(cmds, p.scheduleAgentPoll(msg.WorktreeName, 500*time.Millisecond))
+		}
+
+	case pollAgentMsg:
+		// Skip polling while user is attached to session
+		if p.attachedSession == msg.WorktreeName {
+			return p, nil
+		}
+		return p, p.handlePollAgent(msg.WorktreeName)
+
+	case AgentOutputMsg:
+		// Update state (safe - we're in Update)
+		if wt := p.findWorktree(msg.WorktreeName); wt != nil && wt.Agent != nil {
+			wt.Agent.OutputBuf.Write(msg.Output)
+			wt.Agent.LastOutput = time.Now()
+			wt.Agent.WaitingFor = msg.WaitingFor
+			wt.Status = msg.Status
+		}
+		// Schedule next poll (1 second interval)
+		return p, p.scheduleAgentPoll(msg.WorktreeName, 1*time.Second)
+
+	case AgentStoppedMsg:
+		if wt := p.findWorktree(msg.WorktreeName); wt != nil {
+			wt.Agent = nil
+			wt.Status = StatusPaused
+		}
+		delete(p.agents, msg.WorktreeName)
+		return p, nil
+
+	case TmuxAttachFinishedMsg:
+		// Clear attached state
+		p.attachedSession = ""
+
+		// Resume polling and refresh to capture what happened while attached
+		if wt := p.findWorktree(msg.WorktreeName); wt != nil && wt.Agent != nil {
+			// Immediate poll to get current state
+			cmds = append(cmds, p.scheduleAgentPoll(msg.WorktreeName, 0))
+		}
+		cmds = append(cmds, p.refreshWorktrees())
+
+	case ApproveResultMsg:
+		if msg.Err == nil {
+			// Clear waiting state, force immediate poll
+			if wt := p.findWorktree(msg.WorktreeName); wt != nil && wt.Agent != nil {
+				wt.Agent.WaitingFor = ""
+				wt.Status = StatusActive
+			}
+			cmds = append(cmds, p.scheduleAgentPoll(msg.WorktreeName, 0))
+		}
+
+	case RejectResultMsg:
+		if msg.Err == nil {
+			// Clear waiting state, force immediate poll
+			if wt := p.findWorktree(msg.WorktreeName); wt != nil && wt.Agent != nil {
+				wt.Agent.WaitingFor = ""
+				wt.Status = StatusActive
+			}
+			cmds = append(cmds, p.scheduleAgentPoll(msg.WorktreeName, 0))
+		}
+
+	case reconnectedAgentsMsg:
+		return p, tea.Batch(msg.Cmds...)
 
 	case tea.KeyMsg:
 		cmd := p.handleKeyPress(msg)
@@ -296,7 +391,17 @@ func (p *Plugin) handleListKeys(msg tea.KeyMsg) tea.Cmd {
 		return p.deleteSelected()
 	case "p":
 		return p.pushSelected()
-	case "l", "right", "enter":
+	case "l", "right":
+		if p.activePane == PaneSidebar {
+			p.activePane = PanePreview
+		}
+	case "enter":
+		// Attach to tmux session if agent running, otherwise focus preview
+		wt := p.selectedWorktree()
+		if wt != nil && wt.Agent != nil {
+			p.attachedSession = wt.Name
+			return p.AttachToSession(wt)
+		}
 		if p.activePane == PaneSidebar {
 			p.activePane = PanePreview
 		}
@@ -316,6 +421,35 @@ func (p *Plugin) handleListKeys(msg tea.KeyMsg) tea.Cmd {
 			p.viewMode = ViewModeKanban
 		} else if p.viewMode == ViewModeKanban {
 			p.viewMode = ViewModeList
+		}
+
+	// Agent control keys
+	case "s":
+		// Start agent on selected worktree
+		wt := p.selectedWorktree()
+		if wt != nil && wt.Agent == nil {
+			return p.StartAgent(wt, AgentClaude)
+		}
+	case "S":
+		// Stop agent on selected worktree
+		wt := p.selectedWorktree()
+		if wt != nil && wt.Agent != nil {
+			return p.StopAgent(wt)
+		}
+	case "y":
+		// Approve pending prompt on selected worktree
+		wt := p.selectedWorktree()
+		if wt != nil && wt.Status == StatusWaiting && wt.Agent != nil {
+			return p.Approve(wt)
+		}
+	case "Y":
+		// Approve all pending prompts
+		return p.ApproveAll()
+	case "N":
+		// Reject pending prompt on selected worktree
+		wt := p.selectedWorktree()
+		if wt != nil && wt.Status == StatusWaiting && wt.Agent != nil {
+			return p.Reject(wt)
 		}
 	}
 	return nil
@@ -460,11 +594,15 @@ func (p *Plugin) handleMouseDoubleClick(action mouse.MouseAction) tea.Cmd {
 
 	switch action.Region.ID {
 	case regionWorktreeItem:
-		// Double-click on worktree - could attach to tmux session
+		// Double-click on worktree - attach to tmux session if agent running
 		if idx, ok := action.Region.Data.(int); ok && idx >= 0 && idx < len(p.worktrees) {
 			p.selectedIdx = idx
+			wt := p.worktrees[idx]
+			if wt.Agent != nil {
+				p.attachedSession = wt.Name
+				return p.AttachToSession(wt)
+			}
 			p.activePane = PanePreview
-			// TODO: implement tmux attach
 		}
 	}
 	return nil
@@ -575,11 +713,29 @@ func (p *Plugin) Commands() []plugin.Command {
 			{ID: "toggle-view", Name: viewToggleName, Description: "Toggle list/kanban view", Context: "worktree-list", Priority: 2},
 			{ID: "refresh", Name: "Refresh", Description: "Refresh worktree list", Context: "worktree-list", Priority: 3},
 		}
-		if p.selectedWorktree() != nil {
+		wt := p.selectedWorktree()
+		if wt != nil {
 			cmds = append(cmds,
 				plugin.Command{ID: "delete-worktree", Name: "Delete", Description: "Delete selected worktree", Context: "worktree-list", Priority: 4},
 				plugin.Command{ID: "push", Name: "Push", Description: "Push branch to remote", Context: "worktree-list", Priority: 5},
 			)
+			// Agent commands
+			if wt.Agent == nil {
+				cmds = append(cmds,
+					plugin.Command{ID: "start-agent", Name: "Start", Description: "Start agent", Context: "worktree-list", Priority: 6},
+				)
+			} else {
+				cmds = append(cmds,
+					plugin.Command{ID: "attach", Name: "Attach", Description: "Attach to session", Context: "worktree-list", Priority: 6},
+					plugin.Command{ID: "stop-agent", Name: "Stop", Description: "Stop agent", Context: "worktree-list", Priority: 7},
+				)
+				if wt.Status == StatusWaiting {
+					cmds = append(cmds,
+						plugin.Command{ID: "approve", Name: "Approve", Description: "Approve prompt", Context: "worktree-list", Priority: 8},
+						plugin.Command{ID: "reject", Name: "Reject", Description: "Reject prompt", Context: "worktree-list", Priority: 9},
+					)
+				}
+			}
 		}
 		return cmds
 	}
