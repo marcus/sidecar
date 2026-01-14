@@ -341,6 +341,23 @@ var (
 			Foreground(TextPrimary).
 			Background(ButtonHoverColor).
 			Padding(0, 2)
+
+	// Danger button styles (for destructive actions like delete)
+	ButtonDanger = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#FCA5A5")). // Light red text
+			Background(lipgloss.Color("#7F1D1D")). // Dark red background
+			Padding(0, 2)
+
+	ButtonDangerFocused = lipgloss.NewStyle().
+				Foreground(lipgloss.Color("#FFFFFF")). // White text
+				Background(lipgloss.Color("#DC2626")). // Red background
+				Padding(0, 2).
+				Bold(true)
+
+	ButtonDangerHover = lipgloss.NewStyle().
+				Foreground(lipgloss.Color("#FFFFFF")). // White text
+				Background(lipgloss.Color("#B91C1C")). // Darker red hover
+				Padding(0, 2)
 )
 
 // RenderGradientTab renders a tab label with a gradient background.

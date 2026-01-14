@@ -174,21 +174,6 @@ func (p *Plugin) doCreateWorktree(name, baseBranch, taskID string, agentType Age
 	return wt, nil
 }
 
-// deleteSelected returns a command to delete the selected worktree.
-func (p *Plugin) deleteSelected() tea.Cmd {
-	wt := p.selectedWorktree()
-	if wt == nil {
-		return nil
-	}
-	name := wt.Name
-	path := wt.Path
-
-	return func() tea.Msg {
-		err := doDeleteWorktree(path)
-		return DeleteDoneMsg{Name: name, Err: err}
-	}
-}
-
 // doDeleteWorktree removes a worktree.
 func doDeleteWorktree(path string) error {
 	// First try without force

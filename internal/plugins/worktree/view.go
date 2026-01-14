@@ -50,6 +50,8 @@ func (p *Plugin) View(width, height int) string {
 		return p.renderMergeModal(width, height)
 	case ViewModeAgentChoice:
 		return p.renderAgentChoiceModal(width, height)
+	case ViewModeConfirmDelete:
+		return p.renderConfirmDeleteModal(width, height)
 	default:
 		return p.renderListView(width, height)
 	}
@@ -1018,6 +1020,82 @@ func (p *Plugin) renderTaskLinkModal(width, height int) string {
 	modal := modalStyle.Width(modalW).Render(content)
 
 	// Use OverlayModal for dimmed background effect
+	return ui.OverlayModal(background, modal, width, height)
+}
+
+// renderConfirmDeleteModal renders the delete confirmation modal.
+func (p *Plugin) renderConfirmDeleteModal(width, height int) string {
+	// Render the background (list view)
+	background := p.renderListView(width, height)
+
+	if p.deleteConfirmWorktree == nil {
+		return background
+	}
+
+	// Modal dimensions
+	modalW := 55
+	if modalW > width-4 {
+		modalW = width - 4
+	}
+
+	wt := p.deleteConfirmWorktree
+
+	var sb strings.Builder
+	title := "Delete Worktree?"
+	sb.WriteString(lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("196")).Render(title))
+	sb.WriteString("\n\n")
+
+	// Worktree name
+	sb.WriteString(fmt.Sprintf("Name:   %s\n", lipgloss.NewStyle().Bold(true).Render(wt.Name)))
+	sb.WriteString(fmt.Sprintf("Branch: %s\n", wt.Branch))
+	sb.WriteString(fmt.Sprintf("Path:   %s\n", dimText(wt.Path)))
+	sb.WriteString("\n")
+
+	// Warning text
+	warningStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("214"))
+	sb.WriteString(warningStyle.Render("This will:"))
+	sb.WriteString("\n")
+	sb.WriteString(dimText("  • Remove the working directory"))
+	sb.WriteString("\n")
+	sb.WriteString(dimText("  • Uncommitted changes will be lost"))
+	sb.WriteString("\n")
+	sb.WriteString(dimText("  • The branch will remain in the repository"))
+	sb.WriteString("\n\n")
+
+	// Render buttons with focus/hover states
+	deleteStyle := styles.ButtonDanger
+	cancelStyle := styles.Button
+	if p.deleteConfirmButtonFocus == 0 {
+		deleteStyle = styles.ButtonDangerFocused
+	} else if p.deleteConfirmButtonHover == 1 {
+		deleteStyle = styles.ButtonDangerHover
+	}
+	if p.deleteConfirmButtonFocus == 1 {
+		cancelStyle = styles.ButtonFocused
+	} else if p.deleteConfirmButtonHover == 2 {
+		cancelStyle = styles.ButtonHover
+	}
+	sb.WriteString(deleteStyle.Render(" Delete "))
+	sb.WriteString("  ")
+	sb.WriteString(cancelStyle.Render(" Cancel "))
+
+	content := sb.String()
+	modal := modalStyle.Width(modalW).Render(content)
+
+	// Register hit regions for the modal buttons
+	// Calculate modal position (centered)
+	modalHeight := lipgloss.Height(modal)
+	modalStartX := (width - modalW) / 2
+	modalStartY := (height - modalHeight) / 2
+
+	// Hit regions for buttons
+	// border(1) + padding(1) + title(1) + empty(1) + name/branch/path(3) + empty(1) + warning header(1) + bullets(3) + empty(1) = 12 lines
+	buttonY := modalStartY + 2 + 12 // border+padding + content lines
+	deleteX := modalStartX + 3      // border + padding
+	p.mouseHandler.HitMap.AddRect(regionDeleteConfirmDelete, deleteX, buttonY, 10, 1, nil)
+	cancelX := deleteX + 10 + 2 // delete width + spacing
+	p.mouseHandler.HitMap.AddRect(regionDeleteConfirmCancel, cancelX, buttonY, 10, 1, nil)
+
 	return ui.OverlayModal(background, modal, width, height)
 }
 

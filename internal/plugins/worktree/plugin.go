@@ -25,14 +25,16 @@ const (
 	dividerHitWidth = 3 // Wider hit target for drag
 
 	// Hit region IDs
-	regionSidebar            = "sidebar"
-	regionPreviewPane        = "preview-pane"
-	regionPaneDivider        = "pane-divider"
-	regionWorktreeItem       = "worktree-item"
-	regionPreviewTab         = "preview-tab"
-	regionAgentChoiceOption   = "agent-choice-option"
-	regionAgentChoiceConfirm  = "agent-choice-confirm"
-	regionAgentChoiceCancel   = "agent-choice-cancel"
+	regionSidebar              = "sidebar"
+	regionPreviewPane          = "preview-pane"
+	regionPaneDivider          = "pane-divider"
+	regionWorktreeItem         = "worktree-item"
+	regionPreviewTab           = "preview-tab"
+	regionAgentChoiceOption    = "agent-choice-option"
+	regionAgentChoiceConfirm   = "agent-choice-confirm"
+	regionAgentChoiceCancel    = "agent-choice-cancel"
+	regionDeleteConfirmDelete  = "delete-confirm-delete"
+	regionDeleteConfirmCancel  = "delete-confirm-cancel"
 )
 
 // Plugin implements the worktree manager plugin.
@@ -118,6 +120,11 @@ type Plugin struct {
 	agentChoiceIdx         int // 0=attach, 1=restart
 	agentChoiceButtonFocus int // 0=options, 1=confirm, 2=cancel
 	agentChoiceButtonHover int // 0=none, 1=confirm, 2=cancel
+
+	// Delete confirmation modal state
+	deleteConfirmWorktree    *Worktree // Worktree pending deletion
+	deleteConfirmButtonFocus int       // 0=delete, 1=cancel
+	deleteConfirmButtonHover int       // 0=none, 1=delete, 2=cancel
 
 	// Initial reconnection tracking
 	initialReconnectDone bool
@@ -577,6 +584,8 @@ func (p *Plugin) handleKeyPress(msg tea.KeyMsg) tea.Cmd {
 		return p.handleMergeKeys(msg)
 	case ViewModeAgentChoice:
 		return p.handleAgentChoiceKeys(msg)
+	case ViewModeConfirmDelete:
+		return p.handleConfirmDeleteKeys(msg)
 	}
 	return nil
 }
@@ -636,6 +645,77 @@ func (p *Plugin) executeAgentChoice() tea.Cmd {
 			return restartAgentMsg{worktree: wt}
 		},
 	)
+}
+
+// handleConfirmDeleteKeys handles keys in delete confirmation modal.
+func (p *Plugin) handleConfirmDeleteKeys(msg tea.KeyMsg) tea.Cmd {
+	switch msg.String() {
+	case "tab":
+		// Cycle focus: delete(0) -> cancel(1) -> delete(0)
+		p.deleteConfirmButtonFocus = (p.deleteConfirmButtonFocus + 1) % 2
+	case "shift+tab":
+		// Reverse cycle
+		p.deleteConfirmButtonFocus = (p.deleteConfirmButtonFocus + 1) % 2
+	case "enter":
+		if p.deleteConfirmButtonFocus == 1 {
+			// Cancel button focused
+			return p.cancelDelete()
+		}
+		// Delete button focused - execute delete
+		return p.executeDelete()
+	case "D":
+		// Power user shortcut - immediate confirm
+		return p.executeDelete()
+	case "esc", "q":
+		return p.cancelDelete()
+	case "h", "left":
+		if p.deleteConfirmButtonFocus > 0 {
+			p.deleteConfirmButtonFocus--
+		}
+	case "l", "right":
+		if p.deleteConfirmButtonFocus < 1 {
+			p.deleteConfirmButtonFocus++
+		}
+	}
+	return nil
+}
+
+// executeDelete performs the actual worktree deletion and cleans up state.
+func (p *Plugin) executeDelete() tea.Cmd {
+	wt := p.deleteConfirmWorktree
+	if wt == nil {
+		p.viewMode = ViewModeList
+		return nil
+	}
+
+	name := wt.Name
+	path := wt.Path
+
+	// Clear modal state
+	p.viewMode = ViewModeList
+	p.deleteConfirmWorktree = nil
+	p.deleteConfirmButtonFocus = 0
+	p.deleteConfirmButtonHover = 0
+
+	// Clear preview pane content
+	p.diffContent = ""
+	p.diffRaw = ""
+	p.cachedTaskID = ""
+	p.cachedTask = nil
+
+	return func() tea.Msg {
+		err := doDeleteWorktree(path)
+		return DeleteDoneMsg{Name: name, Err: err}
+	}
+}
+
+// cancelDelete closes the delete confirmation modal without deleting.
+func (p *Plugin) cancelDelete() tea.Cmd {
+	p.viewMode = ViewModeList
+	p.deleteConfirmWorktree = nil
+	p.deleteConfirmButtonFocus = 0
+	p.deleteConfirmButtonHover = 0
+	return nil
 }
 
 // handleListKeys handles keys in list view (and kanban view).
@@ -701,7 +781,15 @@ func (p *Plugin) handleListKeys(msg tea.KeyMsg) tea.Cmd {
 		p.branchIdx = 0
 		return tea.Batch(p.loadOpenTasks(), p.loadBranches())
 	case "D":
-		return p.deleteSelected()
+		wt := p.selectedWorktree()
+		if wt == nil {
+			return nil
+		}
+		p.viewMode = ViewModeConfirmDelete
+		p.deleteConfirmWorktree = wt
+		p.deleteConfirmButtonFocus = 0 // Focus delete button
+		p.deleteConfirmButtonHover = 0
+		return nil
 	case "p":
 		return p.pushSelected()
 	case "l", "right":
@@ -1201,24 +1289,37 @@ func (p *Plugin) handleMouse(msg tea.MouseMsg) tea.Cmd {
 
 // handleMouseHover handles hover events for visual feedback.
 func (p *Plugin) handleMouseHover(action mouse.MouseAction) tea.Cmd {
-	// Only handle hover in agent choice modal
-	if p.viewMode != ViewModeAgentChoice {
-		p.agentChoiceButtonHover = 0
-		return nil
-	}
-
-	if action.Region == nil {
-		p.agentChoiceButtonHover = 0
-		return nil
-	}
-
-	switch action.Region.ID {
-	case regionAgentChoiceConfirm:
-		p.agentChoiceButtonHover = 1
-	case regionAgentChoiceCancel:
-		p.agentChoiceButtonHover = 2
+	// Handle hover in modals that have button hover states
+	switch p.viewMode {
+	case ViewModeAgentChoice:
+		if action.Region == nil {
+			p.agentChoiceButtonHover = 0
+			return nil
+		}
+		switch action.Region.ID {
+		case regionAgentChoiceConfirm:
+			p.agentChoiceButtonHover = 1
+		case regionAgentChoiceCancel:
+			p.agentChoiceButtonHover = 2
+		default:
+			p.agentChoiceButtonHover = 0
+		}
+	case ViewModeConfirmDelete:
+		if action.Region == nil {
+			p.deleteConfirmButtonHover = 0
+			return nil
+		}
+		switch action.Region.ID {
+		case regionDeleteConfirmDelete:
+			p.deleteConfirmButtonHover = 1
+		case regionDeleteConfirmCancel:
+			p.deleteConfirmButtonHover = 2
+		default:
+			p.deleteConfirmButtonHover = 0
+		}
 	default:
 		p.agentChoiceButtonHover = 0
+		p.deleteConfirmButtonHover = 0
 	}
 	return nil
 }
@@ -1270,6 +1371,12 @@ func (p *Plugin) handleMouseClick(action mouse.MouseAction) tea.Cmd {
 		p.viewMode = ViewModeList
 		p.agentChoiceWorktree = nil
 		p.agentChoiceButtonFocus = 0
+	case regionDeleteConfirmDelete:
+		// Click delete button
+		return p.executeDelete()
+	case regionDeleteConfirmCancel:
+		// Click cancel button
+		return p.cancelDelete()
 	}
 	return nil
 }
@@ -1436,6 +1543,11 @@ func (p *Plugin) Commands() []plugin.Command {
 			{ID: "cancel", Name: "Cancel", Description: "Cancel agent choice", Context: "worktree-agent-choice", Priority: 1},
 			{ID: "select", Name: "Select", Description: "Choose selected option", Context: "worktree-agent-choice", Priority: 2},
 		}
+	case ViewModeConfirmDelete:
+		return []plugin.Command{
+			{ID: "cancel", Name: "Cancel", Description: "Cancel deletion", Context: "worktree-confirm-delete", Priority: 1},
+			{ID: "delete", Name: "Delete", Description: "Confirm deletion", Context: "worktree-confirm-delete", Priority: 2},
+		}
 	default:
 		// View toggle label changes based on current mode
 		viewToggleName := "Kanban"
@@ -1539,6 +1651,8 @@ func (p *Plugin) FocusContext() string {
 		return "worktree-merge"
 	case ViewModeAgentChoice:
 		return "worktree-agent-choice"
+	case ViewModeConfirmDelete:
+		return "worktree-confirm-delete"
 	default:
 		if p.activePane == PanePreview {
 			return "worktree-preview"
