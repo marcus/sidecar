@@ -688,11 +688,19 @@ func (p *Plugin) handleCreateKeys(msg tea.KeyMsg) tea.Cmd {
 		// Blur current, move focus, focus new
 		p.blurCreateInputs()
 		p.createFocus = (p.createFocus + 1) % 7
+		// Skip state 4 (skipPerms) if checkbox is hidden
+		if p.createFocus == 4 && !p.shouldShowSkipPermissions() {
+			p.createFocus = (p.createFocus + 1) % 7
+		}
 		p.focusCreateInput()
 		return nil
 	case "shift+tab":
 		p.blurCreateInputs()
 		p.createFocus = (p.createFocus + 6) % 7
+		// Skip state 4 (skipPerms) if checkbox is hidden
+		if p.createFocus == 4 && !p.shouldShowSkipPermissions() {
+			p.createFocus = (p.createFocus + 6) % 7
+		}
 		p.focusCreateInput()
 		return nil
 	case "backspace":
@@ -810,6 +818,15 @@ func (p *Plugin) handleCreateKeys(msg tea.KeyMsg) tea.Cmd {
 		p.taskSearchIdx = 0
 	}
 	return cmd
+}
+
+// shouldShowSkipPermissions returns true if the current agent type supports skip permissions.
+func (p *Plugin) shouldShowSkipPermissions() bool {
+	if p.createAgentType == AgentNone {
+		return false
+	}
+	flag := SkipPermissionsFlags[p.createAgentType]
+	return flag != ""
 }
 
 // cycleAgentType cycles through agent types in the selection.

@@ -37,6 +37,8 @@ func TestGetAgentCommand(t *testing.T) {
 		{AgentCodex, "codex"},
 		{AgentAider, "aider"},
 		{AgentGemini, "gemini"},
+		{AgentCursor, "cursor-agent"},
+		{AgentOpenCode, "opencode"},
 		{AgentCustom, "claude"}, // Falls back to claude
 	}
 
@@ -180,5 +182,30 @@ func TestTmuxSessionPrefix(t *testing.T) {
 	// Verify the session prefix constant
 	if !strings.HasPrefix(tmuxSessionPrefix, "sidecar-") {
 		t.Errorf("tmux session prefix should start with 'sidecar-', got %q", tmuxSessionPrefix)
+	}
+}
+
+func TestShouldShowSkipPermissions(t *testing.T) {
+	tests := []struct {
+		agentType AgentType
+		expected  bool
+	}{
+		{AgentNone, false},     // No agent, no checkbox
+		{AgentClaude, true},    // Has --dangerously-skip-permissions
+		{AgentCodex, true},     // Has --dangerously-bypass-approvals-and-sandbox
+		{AgentGemini, true},    // Has --yolo
+		{AgentCursor, false},   // No known flag
+		{AgentOpenCode, false}, // No known flag
+	}
+
+	p := &Plugin{}
+	for _, tt := range tests {
+		t.Run(string(tt.agentType), func(t *testing.T) {
+			p.createAgentType = tt.agentType
+			result := p.shouldShowSkipPermissions()
+			if result != tt.expected {
+				t.Errorf("shouldShowSkipPermissions(%q) = %v, want %v", tt.agentType, result, tt.expected)
+			}
+		})
 	}
 }
