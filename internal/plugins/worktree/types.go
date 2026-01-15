@@ -148,6 +148,18 @@ var AgentTypeOrder = []AgentType{
 	AgentNone,
 }
 
+// kanbanCardData stores column and row for Kanban card hit regions.
+type kanbanCardData struct {
+	col int
+	row int
+}
+
+// dropdownItemData stores field ID and item index for dropdown hit regions.
+type dropdownItemData struct {
+	field int // 1=branch, 3=task
+	idx   int // index in filtered list
+}
+
 // Worktree represents a git worktree with optional agent.
 type Worktree struct {
 	Name            string         // e.g., "auth-oauth-flow"

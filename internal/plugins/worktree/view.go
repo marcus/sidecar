@@ -1056,9 +1056,13 @@ func (p *Plugin) renderCreateModal(width, height int) string {
 	cancelBtnStyle := styles.Button
 	if p.createFocus == 6 {
 		createBtnStyle = styles.ButtonFocused
+	} else if p.createButtonHover == 1 {
+		createBtnStyle = styles.ButtonHover
 	}
 	if p.createFocus == 7 {
 		cancelBtnStyle = styles.ButtonFocused
+	} else if p.createButtonHover == 2 {
+		cancelBtnStyle = styles.ButtonHover
 	}
 	sb.WriteString(createBtnStyle.Render(" Create "))
 	sb.WriteString("  ")
@@ -1066,6 +1070,134 @@ func (p *Plugin) renderCreateModal(width, height int) string {
 
 	content := sb.String()
 	modal := modalStyle.Width(modalW).Render(content)
+
+	// Calculate modal position for hit regions
+	modalH := lipgloss.Height(modal)
+	modalX := (width - modalW) / 2
+	modalY := (height - modalH) / 2
+
+	// Register hit regions for interactive elements
+	// modalStyle has border(1) + padding(1) = 2 rows offset from modalY
+	// Track Y position through modal content structure
+	hitX := modalX + 3 // border + padding for left edge
+	hitW := modalW - 6 // width minus border+padding on both sides
+	currentY := modalY + 2
+
+	// Title "Create New Worktree" + blank
+	currentY += 2
+
+	// Name field (focus=0): label + input + blank
+	currentY++ // "Name:" label
+	p.mouseHandler.HitMap.AddRect(regionCreateInput, hitX, currentY, hitW, 1, 0)
+	currentY++ // input line
+	currentY++ // blank
+
+	// Base Branch field (focus=1): label + input
+	currentY++ // "Base Branch..." label
+	p.mouseHandler.HitMap.AddRect(regionCreateInput, hitX, currentY, hitW, 1, 1)
+	currentY++ // input line
+
+	// Branch dropdown (if visible)
+	if p.createFocus == 1 && len(p.branchFiltered) > 0 {
+		maxDropdown := 5
+		dropdownCount := min(maxDropdown, len(p.branchFiltered))
+		for i := 0; i < dropdownCount; i++ {
+			p.mouseHandler.HitMap.AddRect(regionCreateDropdown, hitX, currentY, hitW, 1, dropdownItemData{field: 1, idx: i})
+			currentY++
+		}
+		if len(p.branchFiltered) > maxDropdown {
+			currentY++ // "... and N more"
+		}
+	} else if p.createFocus == 1 && len(p.branchAll) == 0 {
+		currentY++ // "Loading branches..."
+	}
+	currentY++ // blank
+
+	// Prompt field (focus=2): label + display + preview hint + blank
+	currentY++ // "Prompt:" label
+	p.mouseHandler.HitMap.AddRect(regionCreateInput, hitX, currentY, hitW, 1, 2)
+	currentY++ // prompt display
+	currentY++ // preview/hint line
+	currentY++ // blank
+
+	// Task field (focus=3) - only shown when ticketMode allows
+	// Note: selectedPrompt already declared at line 852
+	if selectedPrompt == nil || selectedPrompt.TicketMode != TicketNone {
+		currentY++ // "Link Task..." label
+		p.mouseHandler.HitMap.AddRect(regionCreateInput, hitX, currentY, hitW, 1, 3)
+		currentY++ // input line
+
+		// Task hints (backspace hint, fallback hint, or required hint)
+		if p.createFocus == 3 && p.createTaskID != "" {
+			currentY++ // "Backspace to clear"
+		}
+		if selectedPrompt != nil && selectedPrompt.TicketMode == TicketOptional && p.createTaskID == "" {
+			fallback := ExtractFallback(selectedPrompt.Body)
+			if fallback != "" {
+				currentY++ // Default hint
+			}
+		}
+		if selectedPrompt != nil && selectedPrompt.TicketMode == TicketRequired {
+			currentY++ // Tip line
+		}
+
+		// Task dropdown (if visible)
+		if p.createFocus == 3 && p.createTaskID == "" {
+			if p.taskSearchLoading {
+				currentY++ // "Loading tasks..."
+			} else if len(p.taskSearchFiltered) > 0 {
+				maxDropdown := 5
+				dropdownCount := min(maxDropdown, len(p.taskSearchFiltered))
+				for i := 0; i < dropdownCount; i++ {
+					p.mouseHandler.HitMap.AddRect(regionCreateDropdown, hitX, currentY, hitW, 1, dropdownItemData{field: 3, idx: i})
+					currentY++
+				}
+				if len(p.taskSearchFiltered) > maxDropdown {
+					currentY++ // "... and N more"
+				}
+			} else if p.taskSearchInput.Value() != "" {
+				currentY++ // "No matching tasks"
+			} else if len(p.taskSearchAll) == 0 {
+				currentY++ // "No open tasks found"
+			} else {
+				currentY++ // "Type to search..." hint
+			}
+		}
+	} else {
+		currentY++ // "Ticket: (not allowed...)"
+	}
+	currentY += 2 // blank lines
+
+	// Agent options (focus=4): "Agent:" + agent options
+	currentY++ // "Agent:" label
+	for i := range AgentTypeOrder {
+		p.mouseHandler.HitMap.AddRect(regionCreateAgentOption, hitX, currentY, hitW, 1, i)
+		currentY++
+	}
+
+	// Skip permissions checkbox (focus=5) - only when agent supports it
+	if p.createAgentType != AgentNone {
+		flag := SkipPermissionsFlags[p.createAgentType]
+		if flag != "" {
+			currentY++ // blank before checkbox
+			p.mouseHandler.HitMap.AddRect(regionCreateCheckbox, hitX, currentY, hitW, 1, 5)
+			currentY++ // checkbox line
+			currentY++ // "(Adds --dangerously...)" hint
+		} else {
+			currentY++ // blank
+			currentY++ // "Skip permissions not available..."
+		}
+	}
+	currentY++ // blank
+
+	// Error display (if present)
+	if p.createError != "" {
+		currentY += 2 // error line + blank
+	}
+
+	// Buttons (focus=6 create, focus=7 cancel)
+	p.mouseHandler.HitMap.AddRect(regionCreateButton, hitX, currentY, 12, 1, 6)
+	p.mouseHandler.HitMap.AddRect(regionCreateButton, hitX+14, currentY, 12, 1, 7)
 
 	// Use OverlayModal for dimmed background effect
 	return ui.OverlayModal(background, modal, width, height)
@@ -1189,6 +1321,29 @@ func (p *Plugin) renderTaskLinkModal(width, height int) string {
 	content := sb.String()
 	modal := modalStyle.Width(modalW).Render(content)
 
+	// Calculate modal position for hit regions
+	modalH := lipgloss.Height(modal)
+	modalX := (width - modalW) / 2
+	modalY := (height - modalH) / 2
+
+	// Register hit regions for task dropdown items
+	// Modal layout: border(1) + padding(1) + title(1) + blank(1) + label(1) + input(1) = 6 lines before dropdown
+	dropdownStartY := modalY + 2 + 4 + 1 // border+padding + title+blank+label+input
+
+	// Determine which list to use for hit regions
+	tasks := p.taskSearchFiltered
+	if len(tasks) == 0 && p.taskSearchInput.Value() == "" && len(p.taskSearchAll) > 0 {
+		tasks = p.taskSearchAll
+	}
+
+	if len(tasks) > 0 {
+		maxDropdown := 8
+		dropdownCount := min(maxDropdown, len(tasks))
+		for i := 0; i < dropdownCount; i++ {
+			p.mouseHandler.HitMap.AddRect(regionTaskLinkDropdown, modalX+2, dropdownStartY+i, modalW-6, 1, i)
+		}
+	}
+
 	// Use OverlayModal for dimmed background effect
 	return ui.OverlayModal(background, modal, width, height)
 }
@@ -1289,6 +1444,30 @@ func (p *Plugin) renderPromptPickerModal(width, height int) string {
 
 	content := p.promptPicker.View()
 	modal := modalStyle.Width(modalW).Render(content)
+
+	// Calculate modal position for hit regions
+	modalH := lipgloss.Height(modal)
+	modalX := (width - modalW) / 2
+	modalY := (height - modalH) / 2
+
+	// Register hit regions for prompt items
+	// Layout: border(1) + padding(1) + header(2) + filter(3) + column headers(2) = 9 lines before items
+	// "None" option is first, then filtered prompts
+	itemStartY := modalY + 2 + 7 // border+padding + header + filter + col headers
+	itemHeight := 1              // Each prompt item is 1 line
+
+	// "None" option at index -1
+	p.mouseHandler.HitMap.AddRect(regionPromptItem, modalX+2, itemStartY, modalW-6, itemHeight, -1)
+
+	// Prompt items
+	maxVisible := 10
+	if len(p.promptPicker.filtered) > 0 {
+		visibleCount := min(maxVisible, len(p.promptPicker.filtered))
+		for i := 0; i < visibleCount; i++ {
+			y := itemStartY + 1 + i // +1 for "none" row
+			p.mouseHandler.HitMap.AddRect(regionPromptItem, modalX+2, y, modalW-6, itemHeight, i)
+		}
+	}
 
 	return ui.OverlayModal(background, modal, width, height)
 }
@@ -1549,6 +1728,26 @@ func (p *Plugin) renderMergeModal(width, height int) string {
 	content := sb.String()
 	modal := modalStyle.Width(modalW).Render(content)
 
+	// Register hit regions for radio buttons during MergeStepWaitingMerge
+	if p.mergeState.Step == MergeStepWaitingMerge {
+		modalH := lipgloss.Height(modal)
+		modalX := (width - modalW) / 2
+		modalY := (height - modalH) / 2
+
+		// Radio buttons are at: border(1) + padding(1) + title(1) + blank(1) +
+		// progress steps(5) + blank(1) + separator(1) + blank(2) + content...
+		// In MergeStepWaitingMerge: header(2) + blank(1) + PR URL(2) + blank(1) +
+		// separator(1) + blank(2) + "After merge:"(1) + blank(2) + radio1 + radio2
+		// This is complex; use content line count approach
+		contentLines := strings.Count(content, "\n")
+		// Radio buttons are approximately at contentLines - 7 (from bottom)
+		// "Delete worktree" and "Keep worktree" options
+		radio1Y := modalY + 2 + contentLines - 7
+		radio2Y := radio1Y + 1
+		p.mouseHandler.HitMap.AddRect(regionMergeRadio, modalX+2, radio1Y, modalW-6, 1, 0) // Delete
+		p.mouseHandler.HitMap.AddRect(regionMergeRadio, modalX+2, radio2Y, modalW-6, 1, 1) // Keep
+	}
+
 	// Use OverlayModal for dimmed background effect
 	return ui.OverlayModal(background, modal, width, height)
 }
@@ -1695,6 +1894,13 @@ func (p *Plugin) renderKanbanView(width, height int) string {
 	lines = append(lines, headerLine)
 	lines = append(lines, strings.Repeat(horizSep, innerWidth))
 
+	// Register view toggle hit regions (inside panel border at Y=1)
+	// Position: right-aligned in header line
+	toggleTotalWidth := len(listTab) + 1 + len(kanbanTab) // "List|[Kanban]"
+	toggleX := width - 2 - toggleTotalWidth               // -2 for panel border
+	p.mouseHandler.HitMap.AddRect(regionViewToggle, toggleX, 1, len(listTab), 1, 0)
+	p.mouseHandler.HitMap.AddRect(regionViewToggle, toggleX+len(listTab)+1, 1, len(kanbanTab), 1, 1)
+
 	// Group worktrees by status
 	columns := p.getKanbanColumns()
 
@@ -1719,8 +1925,9 @@ func (p *Plugin) renderKanbanView(width, height int) string {
 		colWidth = 18
 	}
 
-	// Render column headers with colors
+	// Render column headers with colors and register hit regions
 	var colHeaders []string
+	colX := 2 // Start after panel border
 	for colIdx, status := range kanbanColumnOrder {
 		items := columns[status]
 		title := fmt.Sprintf("%s (%d)", columnTitles[status], len(items))
@@ -1730,6 +1937,10 @@ func (p *Plugin) renderKanbanView(width, height int) string {
 			headerStyle = headerStyle.Underline(true)
 		}
 		colHeaders = append(colHeaders, headerStyle.Render(title))
+
+		// Register column header hit region (Y=3, after header line, separator line)
+		p.mouseHandler.HitMap.AddRect(regionKanbanColumn, colX, 3, colWidth, 1, colIdx)
+		colX += colWidth + 1 // +1 for separator
 	}
 	lines = append(lines, strings.Join(colHeaders, vertSep))
 	lines = append(lines, strings.Repeat(horizSep, innerWidth))
@@ -1754,8 +1965,21 @@ func (p *Plugin) renderKanbanView(width, height int) string {
 		maxInColumn = maxCards
 	}
 
-	// Render cards row by row
+	// Render cards row by row and register card hit regions
+	// Cards start at Y=5 (panel border(1) + header(1) + sep(1) + col headers(1) + sep(1))
+	cardStartY := 5
 	for cardIdx := 0; cardIdx < maxInColumn; cardIdx++ {
+		// Register hit regions for this row of cards (once per card, not per line)
+		cardColX := 2 // Start after panel border
+		for colIdx, status := range kanbanColumnOrder {
+			items := columns[status]
+			if cardIdx < len(items) {
+				cardY := cardStartY + (cardIdx * cardHeight)
+				p.mouseHandler.HitMap.AddRect(regionKanbanCard, cardColX, cardY, colWidth-1, cardHeight, kanbanCardData{col: colIdx, row: cardIdx})
+			}
+			cardColX += colWidth + 1 // +1 for separator
+		}
+
 		// Each card has 4 lines
 		for lineIdx := 0; lineIdx < cardHeight; lineIdx++ {
 			var rowCells []string

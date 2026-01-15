@@ -38,6 +38,27 @@ const (
 	regionAgentChoiceCancel    = "agent-choice-cancel"
 	regionDeleteConfirmDelete  = "delete-confirm-delete"
 	regionDeleteConfirmCancel  = "delete-confirm-cancel"
+
+	// Kanban view regions
+	regionKanbanCard   = "kanban-card"
+	regionKanbanColumn = "kanban-column"
+	regionViewToggle   = "view-toggle"
+
+	// Create modal regions
+	regionCreateInput       = "create-input"
+	regionCreateDropdown    = "create-dropdown"
+	regionCreateButton      = "create-button"
+	regionCreateCheckbox    = "create-checkbox"
+	regionCreateAgentOption = "create-agent-option"
+
+	// Task Link modal regions
+	regionTaskLinkDropdown = "task-link-dropdown"
+
+	// Merge modal regions
+	regionMergeRadio = "merge-radio"
+
+	// Prompt Picker modal regions
+	regionPromptItem = "prompt-item"
 )
 
 // Plugin implements the worktree manager plugin.
@@ -98,6 +119,7 @@ type Plugin struct {
 	createAgentType       AgentType // Selected agent type (default: AgentClaude)
 	createSkipPermissions bool      // Skip permissions checkbox
 	createFocus           int       // 0=name, 1=base, 2=prompt, 3=task, 4=agent, 5=skipPerms, 6=create, 7=cancel
+	createButtonHover     int       // 0=none, 1=create, 2=cancel
 	createError           string    // Error message to display in create modal
 
 	// Prompt state for create modal
@@ -1573,6 +1595,8 @@ func (p *Plugin) handleMouse(msg tea.MouseMsg) tea.Cmd {
 		return p.handleMouseDoubleClick(action)
 	case mouse.ActionScrollUp, mouse.ActionScrollDown:
 		return p.handleMouseScroll(action)
+	case mouse.ActionScrollLeft, mouse.ActionScrollRight:
+		return p.handleMouseHorizontalScroll(action)
 	case mouse.ActionDrag:
 		return p.handleMouseDrag(action)
 	case mouse.ActionDragEnd:
@@ -1587,6 +1611,23 @@ func (p *Plugin) handleMouse(msg tea.MouseMsg) tea.Cmd {
 func (p *Plugin) handleMouseHover(action mouse.MouseAction) tea.Cmd {
 	// Handle hover in modals that have button hover states
 	switch p.viewMode {
+	case ViewModeCreate:
+		if action.Region == nil {
+			p.createButtonHover = 0
+			return nil
+		}
+		switch action.Region.ID {
+		case regionCreateButton:
+			if idx, ok := action.Region.Data.(int); ok {
+				if idx == 6 {
+					p.createButtonHover = 1 // Create
+				} else if idx == 7 {
+					p.createButtonHover = 2 // Cancel
+				}
+			}
+		default:
+			p.createButtonHover = 0
+		}
 	case ViewModeAgentChoice:
 		if action.Region == nil {
 			p.agentChoiceButtonHover = 0
@@ -1614,6 +1655,7 @@ func (p *Plugin) handleMouseHover(action mouse.MouseAction) tea.Cmd {
 			p.deleteConfirmButtonHover = 0
 		}
 	default:
+		p.createButtonHover = 0
 		p.agentChoiceButtonHover = 0
 		p.deleteConfirmButtonHover = 0
 	}
@@ -1683,6 +1725,108 @@ func (p *Plugin) handleMouseClick(action mouse.MouseAction) tea.Cmd {
 	case regionDeleteConfirmCancel:
 		// Click cancel button
 		return p.cancelDelete()
+	case regionKanbanCard:
+		// Click on kanban card - select it
+		if data, ok := action.Region.Data.(kanbanCardData); ok {
+			p.kanbanCol = data.col
+			p.kanbanRow = data.row
+			p.syncKanbanToList()
+			return p.loadSelectedContent()
+		}
+	case regionKanbanColumn:
+		// Click on column header - focus that column
+		if colIdx, ok := action.Region.Data.(int); ok {
+			p.kanbanCol = colIdx
+			p.kanbanRow = 0
+			p.syncKanbanToList()
+		}
+	case regionViewToggle:
+		// Click on view toggle - switch views
+		if idx, ok := action.Region.Data.(int); ok {
+			if idx == 0 {
+				p.viewMode = ViewModeList
+			} else {
+				p.viewMode = ViewModeKanban
+				p.syncListToKanban()
+			}
+		}
+	case regionCreateInput:
+		// Click on input field in create modal
+		if focusIdx, ok := action.Region.Data.(int); ok {
+			p.blurCreateInputs()
+			p.createFocus = focusIdx
+			p.focusCreateInput()
+		}
+	case regionCreateDropdown:
+		// Click on dropdown item
+		if data, ok := action.Region.Data.(dropdownItemData); ok {
+			if data.field == 1 {
+				// Branch selection
+				if data.idx >= 0 && data.idx < len(p.branchFiltered) {
+					p.createBaseBranchInput.SetValue(p.branchFiltered[data.idx])
+					p.branchFiltered = nil
+				}
+			} else if data.field == 3 {
+				// Task selection
+				if data.idx >= 0 && data.idx < len(p.taskSearchFiltered) {
+					task := p.taskSearchFiltered[data.idx]
+					p.createTaskID = task.ID
+					p.createTaskTitle = task.Title
+					p.taskSearchFiltered = nil
+				}
+			}
+		}
+	case regionCreateAgentOption:
+		// Click on agent option
+		if idx, ok := action.Region.Data.(int); ok {
+			if idx >= 0 && idx < len(AgentTypeOrder) {
+				p.createAgentType = AgentTypeOrder[idx]
+			}
+		}
+	case regionCreateCheckbox:
+		// Toggle checkbox
+		p.createSkipPermissions = !p.createSkipPermissions
+	case regionCreateButton:
+		// Click on button
+		if idx, ok := action.Region.Data.(int); ok {
+			if idx == 6 {
+				return p.createWorktree()
+			} else if idx == 7 {
+				p.viewMode = ViewModeList
+				p.clearCreateModal()
+			}
+		}
+	case regionTaskLinkDropdown:
+		// Click on task link dropdown item
+		if idx, ok := action.Region.Data.(int); ok {
+			if idx >= 0 && idx < len(p.taskSearchFiltered) && p.linkingWorktree != nil {
+				task := p.taskSearchFiltered[idx]
+				wt := p.linkingWorktree
+				p.viewMode = ViewModeList
+				p.linkingWorktree = nil
+				return p.linkTask(wt, task.ID)
+			}
+		}
+	case regionMergeRadio:
+		// Click on merge radio option (0=delete, 1=keep)
+		if idx, ok := action.Region.Data.(int); ok && p.mergeState != nil {
+			p.mergeState.DeleteAfterMerge = (idx == 0)
+		}
+	case regionPromptItem:
+		// Click on prompt item in picker - select it
+		if idx, ok := action.Region.Data.(int); ok && p.promptPicker != nil {
+			// idx -1 means "none" option, >= 0 means filtered prompts
+			p.promptPicker.selectedIdx = idx
+			// Trigger selection
+			if idx < 0 {
+				// "None" selected
+				return func() tea.Msg { return PromptSelectedMsg{Prompt: nil} }
+			}
+			if idx < len(p.promptPicker.filtered) {
+				prompt := p.promptPicker.filtered[idx]
+				return func() tea.Msg { return PromptSelectedMsg{Prompt: &prompt} }
+			}
+		}
 	}
 	return nil
 }
@@ -1704,6 +1848,18 @@ func (p *Plugin) handleMouseDoubleClick(action mouse.MouseAction) tea.Cmd {
 				return p.AttachToSession(wt)
 			}
 			p.activePane = PanePreview
+		}
+	case regionKanbanCard:
+		// Double-click on kanban card - attach to tmux session if agent running
+		if data, ok := action.Region.Data.(kanbanCardData); ok {
+			p.kanbanCol = data.col
+			p.kanbanRow = data.row
+			p.syncKanbanToList()
+			wt := p.getKanbanWorktree(data.col, data.row)
+			if wt != nil && wt.Agent != nil {
+				p.attachedSession = wt.Name
+				return p.AttachToSession(wt)
+			}
 		}
 	}
 	return nil
@@ -1729,14 +1885,49 @@ func (p *Plugin) handleMouseScroll(action mouse.MouseAction) tea.Cmd {
 		return p.scrollSidebar(delta)
 	case regionPreviewPane:
 		return p.scrollPreview(delta)
+	case regionKanbanCard, regionKanbanColumn:
+		// Scroll within Kanban view - navigate rows in current column
+		return p.scrollKanban(delta)
 	default:
-		// Fallback based on X position
+		// Fallback based on X position and view mode
+		if p.viewMode == ViewModeKanban {
+			return p.scrollKanban(delta)
+		}
 		sidebarW := (p.width * p.sidebarWidth) / 100
 		if action.X < sidebarW {
 			return p.scrollSidebar(delta)
 		}
 		return p.scrollPreview(delta)
 	}
+}
+
+// handleMouseHorizontalScroll handles horizontal scroll events in the preview pane.
+func (p *Plugin) handleMouseHorizontalScroll(action mouse.MouseAction) tea.Cmd {
+	// Only horizontal scroll in preview pane
+	if action.Region == nil {
+		// No hit region - use X position to determine if in preview pane
+		sidebarW := (p.width * p.sidebarWidth) / 100
+		if action.X >= sidebarW+dividerWidth {
+			return p.scrollPreviewHorizontal(action.Delta)
+		}
+		return nil
+	}
+
+	switch action.Region.ID {
+	case regionPreviewPane:
+		return p.scrollPreviewHorizontal(action.Delta)
+	}
+
+	return nil
+}
+
+// scrollPreviewHorizontal scrolls the preview pane horizontally.
+func (p *Plugin) scrollPreviewHorizontal(delta int) tea.Cmd {
+	p.previewHorizOffset += delta
+	if p.previewHorizOffset < 0 {
+		p.previewHorizOffset = 0
+	}
+	return nil
 }
 
 // scrollSidebar scrolls the sidebar worktree list.
@@ -1786,6 +1977,36 @@ func (p *Plugin) scrollPreview(delta int) tea.Cmd {
 		if p.previewOffset < 0 {
 			p.previewOffset = 0
 		}
+	}
+	return nil
+}
+
+// scrollKanban scrolls within the current Kanban column.
+func (p *Plugin) scrollKanban(delta int) tea.Cmd {
+	columns := p.getKanbanColumns()
+	if p.kanbanCol < 0 || p.kanbanCol >= len(kanbanColumnOrder) {
+		return nil
+	}
+	status := kanbanColumnOrder[p.kanbanCol]
+	items := columns[status]
+
+	if len(items) == 0 {
+		return nil
+	}
+
+	newRow := p.kanbanRow + delta
+	if newRow < 0 {
+		newRow = 0
+	}
+	maxRow := len(items) - 1
+	if newRow > maxRow {
+		newRow = maxRow
+	}
+
+	if newRow != p.kanbanRow {
+		p.kanbanRow = newRow
+		p.syncKanbanToList()
+		return p.loadSelectedContent()
 	}
 	return nil
 }
@@ -2084,6 +2305,20 @@ func (p *Plugin) moveKanbanRow(delta int) {
 		p.kanbanRow = newRow
 		p.syncKanbanToList()
 	}
+}
+
+// getKanbanWorktree returns the worktree at the given Kanban coordinates.
+func (p *Plugin) getKanbanWorktree(col, row int) *Worktree {
+	columns := p.getKanbanColumns()
+	if col < 0 || col >= len(kanbanColumnOrder) {
+		return nil
+	}
+	status := kanbanColumnOrder[col]
+	items := columns[status]
+	if row >= 0 && row < len(items) {
+		return items[row]
+	}
+	return nil
 }
 
 // syncListToKanban syncs the list selectedIdx to kanban position.
