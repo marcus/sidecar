@@ -44,3 +44,8 @@ config.local.json
 /tmp/
 *.tmp
 .todos/
+
+# Worktree state files
+.sidecar-agent
+.sidecar-task
+.td-root
