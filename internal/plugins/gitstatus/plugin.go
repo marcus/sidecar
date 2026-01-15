@@ -226,6 +226,9 @@ func (p *Plugin) Init(ctx *plugin.Context) error {
 		p.sidebarWidth = saved
 	}
 
+	// Load saved commit graph preference
+	p.showCommitGraph = state.GetGitGraphEnabled()
+
 	return nil
 }
 
@@ -955,6 +958,7 @@ func (p *Plugin) updateStatus(msg tea.KeyMsg) (plugin.Plugin, tea.Cmd) {
 		// Toggle commit graph display (only when on commits)
 		if p.cursorOnCommit() {
 			p.showCommitGraph = !p.showCommitGraph
+			_ = state.SetGitGraphEnabled(p.showCommitGraph)
 			if p.showCommitGraph {
 				commits := p.activeCommits()
 				p.commitGraphLines = ComputeGraphForCommits(commits)
