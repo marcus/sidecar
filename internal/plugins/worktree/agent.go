@@ -3,7 +3,9 @@ package worktree
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -143,8 +145,16 @@ func getAgentCommand(agentType AgentType) string {
 }
 
 // buildAgentCommand builds the agent command with optional skip permissions and task context.
+// If there's task context, it writes a launcher script to avoid shell escaping issues.
 func (p *Plugin) buildAgentCommand(agentType AgentType, wt *Worktree, skipPerms bool) string {
 	baseCmd := getAgentCommand(agentType)
+
+	// Apply skip permissions flag if requested
+	if skipPerms {
+		if flag := SkipPermissionsFlags[agentType]; flag != "" {
+			baseCmd = baseCmd + " " + flag
+		}
+	}
 
 	// Get task context if available
 	var ctx string
@@ -152,98 +162,61 @@ func (p *Plugin) buildAgentCommand(agentType AgentType, wt *Worktree, skipPerms 
 		ctx = p.getTaskContext(wt.TaskID)
 	}
 
-	// Escape context for shell safety
-	// 1. Single quotes: replace ' with '"'"' (end quote, literal quote, start quote)
-	// 2. Newlines/carriage returns: escape so tmux send-keys works (LLMs understand \n)
-	var escapedCtx string
-	if ctx != "" {
-		escapedCtx = strings.ReplaceAll(ctx, "'", "'\"'\"'")
-		escapedCtx = strings.ReplaceAll(escapedCtx, "\r", "\\r")
-		escapedCtx = strings.ReplaceAll(escapedCtx, "\n", "\\n")
+	// No context - return simple command
+	if ctx == "" {
+		return baseCmd
 	}
 
-	// Build command with appropriate syntax for each agent type
-	// Each agent has different CLI syntax for flags and prompts
+	// Write launcher script to avoid shell escaping issues with complex markdown
+	launcherCmd, err := p.writeAgentLauncher(wt.Path, agentType, baseCmd, ctx)
+	if err != nil {
+		// Fall back to simple command without context on error
+		return baseCmd
+	}
+	return launcherCmd
+}
+
+// writeAgentLauncher writes a launcher script that safely passes the prompt to the agent.
+// Returns the command to execute the launcher. This avoids shell escaping issues
+// with complex markdown content (backticks, newlines, quotes, etc).
+func (p *Plugin) writeAgentLauncher(worktreePath string, agentType AgentType, baseCmd, prompt string) (string, error) {
+	promptFile := filepath.Join(worktreePath, ".sidecar-prompt")
+	launcherFile := filepath.Join(worktreePath, ".sidecar-start.sh")
+
+	// Write prompt to file (raw bytes, no escaping needed)
+	if err := os.WriteFile(promptFile, []byte(prompt), 0600); err != nil {
+		return "", err
+	}
+
+	// Build the agent invocation with prompt read from file
+	// Different agents have different syntax for passing prompts
+	var agentInvocation string
 	switch agentType {
-	case AgentClaude:
-		// claude [--dangerously-skip-permissions] "prompt"
-		if skipPerms {
-			if flag := SkipPermissionsFlags[agentType]; flag != "" {
-				baseCmd = baseCmd + " " + flag
-			}
-		}
-		if escapedCtx != "" {
-			return fmt.Sprintf("%s '%s'", baseCmd, escapedCtx)
-		}
-		return baseCmd
-
-	case AgentCodex:
-		// codex [--dangerously-bypass-approvals-and-sandbox] "prompt"
-		if skipPerms {
-			if flag := SkipPermissionsFlags[agentType]; flag != "" {
-				baseCmd = baseCmd + " " + flag
-			}
-		}
-		if escapedCtx != "" {
-			return fmt.Sprintf("%s '%s'", baseCmd, escapedCtx)
-		}
-		return baseCmd
-
 	case AgentAider:
-		// aider [--yes] --message "prompt"
-		if skipPerms {
-			if flag := SkipPermissionsFlags[agentType]; flag != "" {
-				baseCmd = baseCmd + " " + flag
-			}
-		}
-		if escapedCtx != "" {
-			return fmt.Sprintf("%s --message '%s'", baseCmd, escapedCtx)
-		}
-		return baseCmd
-
-	case AgentGemini:
-		// gemini [--yolo] "prompt"
-		if skipPerms {
-			if flag := SkipPermissionsFlags[agentType]; flag != "" {
-				baseCmd = baseCmd + " " + flag
-			}
-		}
-		if escapedCtx != "" {
-			return fmt.Sprintf("%s '%s'", baseCmd, escapedCtx)
-		}
-		return baseCmd
-
-	case AgentCursor:
-		// cursor-agent [-f] "prompt"
-		if skipPerms {
-			if flag := SkipPermissionsFlags[agentType]; flag != "" {
-				baseCmd = baseCmd + " " + flag
-			}
-		}
-		if escapedCtx != "" {
-			return fmt.Sprintf("%s '%s'", baseCmd, escapedCtx)
-		}
-		return baseCmd
-
+		// aider uses --message flag
+		agentInvocation = fmt.Sprintf(`%s --message "$PROMPT"`, baseCmd)
 	case AgentOpenCode:
-		// opencode run "message" for non-interactive mode (no skip-perms flag)
-		if escapedCtx != "" {
-			return fmt.Sprintf("%s run '%s'", baseCmd, escapedCtx)
-		}
-		return baseCmd
-
+		// opencode uses 'run' subcommand
+		agentInvocation = fmt.Sprintf(`%s run "$PROMPT"`, baseCmd)
 	default:
-		// Generic fallback: cmd [flag] "prompt"
-		if skipPerms {
-			if flag := SkipPermissionsFlags[agentType]; flag != "" {
-				baseCmd = baseCmd + " " + flag
-			}
-		}
-		if escapedCtx != "" {
-			return fmt.Sprintf("%s '%s'", baseCmd, escapedCtx)
-		}
-		return baseCmd
+		// Most agents take prompt as positional argument
+		agentInvocation = fmt.Sprintf(`%s "$PROMPT"`, baseCmd)
 	}
+
+	// Write launcher script
+	script := fmt.Sprintf(`#!/bin/bash
+PROMPT=$(cat %q)
+rm -f %q
+%s
+rm -f %q
+`, promptFile, promptFile, agentInvocation, launcherFile)
+
+	if err := os.WriteFile(launcherFile, []byte(script), 0700); err != nil {
+		os.Remove(promptFile) // cleanup on error
+		return "", err
+	}
+
+	return "bash " + launcherFile, nil
 }
 
 // getAgentCommandWithContext returns the agent command with optional task context (legacy, no skip perms).

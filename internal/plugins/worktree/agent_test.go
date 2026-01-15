@@ -1,6 +1,7 @@
 package worktree
 
 import (
+	"os"
 	"strings"
 	"testing"
 )
@@ -392,55 +393,74 @@ func TestBuildAgentCommandSyntax(t *testing.T) {
 	}
 }
 
-func TestEscapeContextForShell(t *testing.T) {
-	// Test the escaping logic used in buildAgentCommand
+func TestWriteAgentLauncher(t *testing.T) {
+	// Test that launcher scripts are created correctly for complex prompts
+	tmpDir := t.TempDir()
+
+	p := &Plugin{}
+
 	tests := []struct {
-		name     string
-		input    string
-		expected string
+		name      string
+		agentType AgentType
+		baseCmd   string
+		prompt    string
+		wantCmd   string
 	}{
 		{
-			name:     "simple text",
-			input:    "Task: fix bug",
-			expected: "Task: fix bug",
+			name:      "claude with simple prompt",
+			agentType: AgentClaude,
+			baseCmd:   "claude",
+			prompt:    "Task: fix bug",
+			wantCmd:   "bash " + tmpDir + "/.sidecar-start.sh",
 		},
 		{
-			name:     "single quotes",
-			input:    "Task: fix the user's bug",
-			expected: "Task: fix the user'\"'\"'s bug",
+			name:      "claude with complex markdown",
+			agentType: AgentClaude,
+			baseCmd:   "claude",
+			prompt:    "Task: implement feature\n\n```go\nfunc main() {\n\tfmt.Println(\"hello\")\n}\n```\n\nDon't break the user's code!",
+			wantCmd:   "bash " + tmpDir + "/.sidecar-start.sh",
 		},
 		{
-			name:     "newlines",
-			input:    "Task: title\n\nDescription here",
-			expected: "Task: title\\n\\nDescription here",
-		},
-		{
-			name:     "multi-line description",
-			input:    "Task: implement feature\n\nLine 1\nLine 2\nLine 3",
-			expected: "Task: implement feature\\n\\nLine 1\\nLine 2\\nLine 3",
-		},
-		{
-			name:     "single quotes and newlines",
-			input:    "Task: fix user's bug\n\nDon't break it",
-			expected: "Task: fix user'\"'\"'s bug\\n\\nDon'\"'\"'t break it",
-		},
-		{
-			name:     "carriage return and newline",
-			input:    "Task: title\r\nDescription",
-			expected: "Task: title\\r\\nDescription",
+			name:      "aider uses --message flag",
+			agentType: AgentAider,
+			baseCmd:   "aider --yes",
+			prompt:    "Task: fix bug",
+			wantCmd:   "bash " + tmpDir + "/.sidecar-start.sh",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Apply the same escaping logic as buildAgentCommand (same order)
-			escaped := strings.ReplaceAll(tt.input, "'", "'\"'\"'")
-			escaped = strings.ReplaceAll(escaped, "\r", "\\r")
-			escaped = strings.ReplaceAll(escaped, "\n", "\\n")
-
-			if escaped != tt.expected {
-				t.Errorf("escaping %q:\ngot:  %q\nwant: %q", tt.input, escaped, tt.expected)
+			cmd, err := p.writeAgentLauncher(tmpDir, tt.agentType, tt.baseCmd, tt.prompt)
+			if err != nil {
+				t.Fatalf("writeAgentLauncher failed: %v", err)
 			}
+
+			if cmd != tt.wantCmd {
+				t.Errorf("command = %q, want %q", cmd, tt.wantCmd)
+			}
+
+			// Verify prompt file was created with correct content
+			promptContent, err := os.ReadFile(tmpDir + "/.sidecar-prompt")
+			if err != nil {
+				t.Fatalf("failed to read prompt file: %v", err)
+			}
+			if string(promptContent) != tt.prompt {
+				t.Errorf("prompt content = %q, want %q", string(promptContent), tt.prompt)
+			}
+
+			// Verify launcher script exists and is executable
+			launcherInfo, err := os.Stat(tmpDir + "/.sidecar-start.sh")
+			if err != nil {
+				t.Fatalf("launcher script not created: %v", err)
+			}
+			if launcherInfo.Mode()&0100 == 0 {
+				t.Error("launcher script is not executable")
+			}
+
+			// Cleanup for next test
+			os.Remove(tmpDir + "/.sidecar-prompt")
+			os.Remove(tmpDir + "/.sidecar-start.sh")
 		})
 	}
 }
