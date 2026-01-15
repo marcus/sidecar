@@ -272,6 +272,53 @@ func TestSetGitDiffMode_InitializesNilState(t *testing.T) {
 	current = originalCurrent
 }
 
+func TestGetGitGraphEnabled_Default(t *testing.T) {
+	current = nil
+	enabled := GetGitGraphEnabled()
+	if enabled {
+		t.Errorf("GetGitGraphEnabled() with nil current = %v, want false", enabled)
+	}
+}
+
+func TestGetGitGraphEnabled_Set(t *testing.T) {
+	current = &State{GitGraphEnabled: true}
+	enabled := GetGitGraphEnabled()
+	if !enabled {
+		t.Errorf("GetGitGraphEnabled() = %v, want true", enabled)
+	}
+}
+
+func TestSetGitGraphEnabled(t *testing.T) {
+	tmpDir := t.TempDir()
+	originalPath := path
+	originalCurrent := current
+
+	stateFile := filepath.Join(tmpDir, "state.json")
+	path = stateFile
+	current = &State{GitGraphEnabled: false}
+
+	err := SetGitGraphEnabled(true)
+	if err != nil {
+		t.Fatalf("SetGitGraphEnabled() failed: %v", err)
+	}
+
+	if !current.GitGraphEnabled {
+		t.Errorf("current.GitGraphEnabled = %v, want true", current.GitGraphEnabled)
+	}
+
+	// Verify saved to disk
+	data, _ := os.ReadFile(stateFile)
+	var loaded State
+	_ = json.Unmarshal(data, &loaded)
+	if !loaded.GitGraphEnabled {
+		t.Errorf("saved GitGraphEnabled = %v, want true", loaded.GitGraphEnabled)
+	}
+
+	// Cleanup
+	path = originalPath
+	current = originalCurrent
+}
+
 func TestConcurrentAccess(t *testing.T) {
 	tmpDir := t.TempDir()
 	originalPath := path

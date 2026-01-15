@@ -93,14 +93,25 @@ func (g *GraphState) ComputeGraphLine(commit *Commit) GraphLine {
 		}
 	}
 
+	// Determine number of columns to render (include merge target if needed)
+	numCols := len(g.columns)
+	if mergeFromCol >= numCols {
+		numCols = mergeFromCol + 1
+	}
+
 	// Build the line characters
-	for i := range g.columns {
+	for i := 0; i < numCols; i++ {
+		// Check if this column is active (exists and active)
+		colActive := i < len(g.columns) && g.columns[i].Active
+
 		if i == commitCol {
 			line.Chars = append(line.Chars, '*') // This commit
 		} else if commit.IsMerge && mergeFromCol != -1 && i > commitCol && i <= mergeFromCol {
 			// Merge line coming from right
 			if i == mergeFromCol {
 				line.Chars = append(line.Chars, '\\')
+			} else if colActive {
+				line.Chars = append(line.Chars, '|') // Passing branch with merge over
 			} else {
 				line.Chars = append(line.Chars, '_')
 			}
@@ -108,10 +119,12 @@ func (g *GraphState) ComputeGraphLine(commit *Commit) GraphLine {
 			// Merge line coming from left
 			if i == mergeFromCol {
 				line.Chars = append(line.Chars, '/')
+			} else if colActive {
+				line.Chars = append(line.Chars, '|') // Passing branch with merge over
 			} else {
 				line.Chars = append(line.Chars, '_')
 			}
-		} else if g.columns[i].Active {
+		} else if colActive {
 			line.Chars = append(line.Chars, '|') // Passing branch
 		} else {
 			line.Chars = append(line.Chars, ' ') // Empty column

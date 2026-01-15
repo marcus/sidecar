@@ -176,7 +176,99 @@ func containsRune(chars []rune, target rune) bool {
 	return false
 }
 
-// containsChar checks if line string contains a substring.
-func containsChar(s, substr string) bool {
-	return strings.Contains(s, substr)
+func TestComputeGraph_MergeShowsBranch(t *testing.T) {
+	// This tests the real-world scenario where a merge commit
+	// introduces a new branch column that must be rendered
+	// even though it doesn't exist yet in the columns array.
+	//
+	// Linear commits -> merge -> two branches
+	commits := []*Commit{
+		{Hash: "c1", ParentHashes: []string{"c2"}},                      // linear
+		{Hash: "c2", ParentHashes: []string{"merge"}},                   // linear
+		{Hash: "merge", ParentHashes: []string{"p1", "p2"}, IsMerge: true}, // merge with 2 parents
+		{Hash: "p1", ParentHashes: []string{"base"}},                    // first parent branch
+		{Hash: "p2", ParentHashes: []string{"base"}},                    // second parent branch
+		{Hash: "base", ParentHashes: []string{}},                        // root
+	}
+
+	lines := ComputeGraphForCommits(commits)
+
+	if len(lines) != 6 {
+		t.Fatalf("Expected 6 lines, got %d", len(lines))
+	}
+
+	// The merge line (index 2) should show the branch connection
+	mergeLine := lines[2].String()
+	if !strings.Contains(mergeLine, "*") {
+		t.Errorf("Merge line should contain *, got %q", mergeLine)
+	}
+	// Should have merge connector (\ for right branch)
+	if !strings.Contains(mergeLine, "\\") {
+		t.Errorf("Merge line should contain \\ for branch connection, got %q", mergeLine)
+	}
+
+	// After merge, both branches should be visible
+	p1Line := lines[3].String()
+	p2Line := lines[4].String()
+
+	// Both should have commit markers
+	if !strings.Contains(p1Line, "*") {
+		t.Errorf("P1 line should contain *, got %q", p1Line)
+	}
+	if !strings.Contains(p2Line, "*") {
+		t.Errorf("P2 line should contain *, got %q", p2Line)
+	}
+}
+
+func TestComputeGraph_MultipleBranches(t *testing.T) {
+	// Test that multiple simultaneous branches render correctly
+	commits := []*Commit{
+		{Hash: "merge1", ParentHashes: []string{"a1", "b1"}, IsMerge: true},
+		{Hash: "a1", ParentHashes: []string{"a2"}},
+		{Hash: "b1", ParentHashes: []string{"b2"}},
+		{Hash: "a2", ParentHashes: []string{"base"}},
+		{Hash: "b2", ParentHashes: []string{"base"}},
+		{Hash: "base", ParentHashes: []string{}},
+	}
+
+	lines := ComputeGraphForCommits(commits)
+
+	// Verify we have multiple columns
+	maxWidth := 0
+	for _, line := range lines {
+		if line.Width > maxWidth {
+			maxWidth = line.Width
+		}
+	}
+
+	// With 2 branches, we should have at least 4 chars (2 cols * 2 chars each)
+	if maxWidth < 4 {
+		t.Errorf("Expected at least 4 width for 2 branches, got %d", maxWidth)
+	}
+}
+
+func TestComputeGraph_BranchMergeBack(t *testing.T) {
+	// Test the scenario where a branch merges back after diverging
+	// This is the common feature branch workflow:
+	// main: c1 - c2 - merge
+	//           \    /
+	// feature:   f1
+	commits := []*Commit{
+		{Hash: "merge", ParentHashes: []string{"c2", "f1"}, IsMerge: true},
+		{Hash: "f1", ParentHashes: []string{"c1"}},
+		{Hash: "c2", ParentHashes: []string{"c1"}},
+		{Hash: "c1", ParentHashes: []string{}},
+	}
+
+	lines := ComputeGraphForCommits(commits)
+
+	if len(lines) != 4 {
+		t.Fatalf("Expected 4 lines, got %d", len(lines))
+	}
+
+	// First line is merge - should show branch
+	mergeLine := lines[0].String()
+	if !strings.Contains(mergeLine, "*") {
+		t.Errorf("Merge line should have commit marker, got %q", mergeLine)
+	}
 }
