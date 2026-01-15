@@ -1890,16 +1890,21 @@ func (p *Plugin) FocusContext() string {
 var kanbanColumnOrder = []WorktreeStatus{StatusActive, StatusWaiting, StatusDone, StatusPaused}
 
 // getKanbanColumns returns worktrees grouped by status for kanban view.
+// StatusError worktrees are grouped with StatusPaused since they require user intervention.
 func (p *Plugin) getKanbanColumns() map[WorktreeStatus][]*Worktree {
 	columns := map[WorktreeStatus][]*Worktree{
 		StatusActive:  {},
 		StatusWaiting: {},
 		StatusDone:    {},
 		StatusPaused:  {},
-		StatusError:   {},
 	}
 	for _, wt := range p.worktrees {
-		columns[wt.Status] = append(columns[wt.Status], wt)
+		status := wt.Status
+		// Group error worktrees with paused since they require user intervention
+		if status == StatusError {
+			status = StatusPaused
+		}
+		columns[status] = append(columns[status], wt)
 	}
 	return columns
 }

@@ -1597,7 +1597,7 @@ func (p *Plugin) renderKanbanView(width, height int) string {
 				if cardIdx < len(items) {
 					wt := items[cardIdx]
 					isSelected := colIdx == p.kanbanCol && cardIdx == p.kanbanRow
-					cellContent = p.renderKanbanCardLine(wt, lineIdx, colWidth-1, isSelected, columnColors[status])
+					cellContent = p.renderKanbanCardLine(wt, lineIdx, colWidth-1, isSelected)
 				} else {
 					cellContent = strings.Repeat(" ", colWidth-1)
 				}
@@ -1627,7 +1627,7 @@ func (p *Plugin) renderKanbanView(width, height int) string {
 
 // renderKanbanCardLine renders a single line of a kanban card.
 // lineIdx: 0=name, 1=agent, 2=task, 3=stats
-func (p *Plugin) renderKanbanCardLine(wt *Worktree, lineIdx, width int, isSelected bool, _ lipgloss.Color) string {
+func (p *Plugin) renderKanbanCardLine(wt *Worktree, lineIdx, width int, isSelected bool) string {
 	var content string
 
 	switch lineIdx {
