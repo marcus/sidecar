@@ -874,15 +874,16 @@ func truncateStyledLine(s string, maxWidth int) string {
 	return ansi.Truncate(s, maxWidth, "")
 }
 
-// truncateDiffPath shortens a path to fit width.
+// truncateDiffPath shortens a path to fit width (rune-based for Unicode safety).
 func truncateDiffPath(path string, maxWidth int) string {
-	if len(path) <= maxWidth {
+	runes := []rune(path)
+	if len(runes) <= maxWidth {
 		return path
 	}
 	if maxWidth < 10 {
-		return path[:maxWidth]
+		return string(runes[:maxWidth])
 	}
-	return "…" + path[len(path)-maxWidth+1:]
+	return "…" + string(runes[len(runes)-maxWidth+1:])
 }
 
 // renderDivider renders the vertical divider between panes.

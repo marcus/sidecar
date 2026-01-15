@@ -34,10 +34,10 @@ func (p *Plugin) renderConfirmStashPop() string {
 	// Stash info
 	sb.WriteString(fmt.Sprintf("  %s\n", styles.Subtitle.Render(stash.Ref)))
 	if stash.Message != "" {
-		// Truncate long messages
+		// Truncate long messages (rune-based for Unicode safety)
 		msg := stash.Message
-		if len(msg) > 50 {
-			msg = msg[:47] + "..."
+		if runes := []rune(msg); len(runes) > 50 {
+			msg = string(runes[:47]) + "..."
 		}
 		sb.WriteString(fmt.Sprintf("  %s\n\n", styles.Muted.Render(msg)))
 	} else {

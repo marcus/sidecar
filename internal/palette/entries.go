@@ -140,8 +140,9 @@ func formatCommandID(id string) string {
 	}
 	words := strings.Split(id, "-")
 	// Capitalize first word (avoid deprecated strings.Title)
-	if len(words[0]) > 0 {
-		words[0] = strings.ToUpper(words[0][:1]) + words[0][1:]
+	// Use rune-based slicing for Unicode safety
+	if runes := []rune(words[0]); len(runes) > 0 {
+		words[0] = strings.ToUpper(string(runes[:1])) + string(runes[1:])
 	}
 	return strings.Join(words, " ")
 }

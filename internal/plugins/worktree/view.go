@@ -871,8 +871,8 @@ func (p *Plugin) renderCreateModal(width, height int) string {
 		sb.WriteString("\n")
 		// Show preview of prompt body (first ~60 chars, single line)
 		preview := strings.ReplaceAll(selectedPrompt.Body, "\n", " ")
-		if len(preview) > 60 {
-			preview = preview[:57] + "..."
+		if runes := []rune(preview); len(runes) > 60 {
+			preview = string(runes[:57]) + "..."
 		}
 		sb.WriteString(dimText(fmt.Sprintf("  Preview: %s", preview)))
 	}

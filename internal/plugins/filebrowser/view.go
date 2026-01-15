@@ -812,16 +812,17 @@ func (p *Plugin) highlightLineMatches(lineNo int) string {
 	return result.String()
 }
 
-// truncatePath shortens a path to fit width.
+// truncatePath shortens a path to fit width (rune-based for Unicode safety).
 func truncatePath(path string, maxWidth int) string {
-	if len(path) <= maxWidth {
+	runes := []rune(path)
+	if len(runes) <= maxWidth {
 		return path
 	}
 	if maxWidth < 10 {
-		return path[:maxWidth]
+		return string(runes[:maxWidth])
 	}
 	// Show ...end of path
-	return "..." + path[len(path)-maxWidth+3:]
+	return "..." + string(runes[len(runes)-maxWidth+3:])
 }
 
 // formatSize formats a file size in human-readable form.
