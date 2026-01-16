@@ -2,6 +2,19 @@
 
 All notable changes to sidecar are documented here.
 
+## [v0.18.0] - 2026-01-15
+
+### Features
+- **Worktree diff improvements**: Show commits in diff pane even when no uncommitted changes
+- **Worktree conversation preservation**: Conversations now preserved after worktree deletion
+- **Worktree-aware conversations**: Conversations plugin now understands worktree context
+- **Mouse support**: Comprehensive mouse support added to worktree plugin
+- **Git worktree guide**: Added git worktree explanation to welcome guide
+
+### Bug Fixes
+- Fixed SanitizeBranchName `.lock` suffix handling
+- Improved worktree conversation detection
+
 ## [v0.17.0] - 2026-01-15
 
 ### Features
