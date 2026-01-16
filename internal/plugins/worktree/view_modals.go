@@ -358,6 +358,8 @@ func (p *Plugin) renderCreateModal(width, height int) string {
 	// Register hit regions for interactive elements
 	// modalStyle has border(1) + padding(1) = 2 rows offset from modalY
 	// Track Y position through modal content structure
+	// IMPORTANT: inputStyle/inputFocusedStyle add a border, making inputs 3 lines tall
+	// (top border + content + bottom border)
 	hitX := modalX + 3 // border + padding for left edge
 	hitW := modalW - 6 // width minus border+padding on both sides
 	currentY := modalY + 2
@@ -365,16 +367,25 @@ func (p *Plugin) renderCreateModal(width, height int) string {
 	// Title "Create New Worktree" + blank
 	currentY += 2
 
-	// Name field (focus=0): label + input + blank
+	// Name field (focus=0): label + bordered input (3 lines)
 	currentY++ // "Name:" label
-	p.mouseHandler.HitMap.AddRect(regionCreateInput, hitX, currentY, hitW, 1, 0)
-	currentY++ // input line
-	currentY++ // blank
+	p.mouseHandler.HitMap.AddRect(regionCreateInput, hitX, currentY, hitW, 3, 0)
+	currentY += 3 // bordered input (top border + content + bottom border)
 
-	// Base Branch field (focus=1): label + input
+	// Validation errors (conditional) + blank line
+	// Note: nameValue already declared earlier in the render function
+	if nameValue != "" && !p.branchNameValid {
+		currentY++ // error line
+		if p.branchNameSanitized != "" && p.branchNameSanitized != nameValue {
+			currentY++ // suggestion line
+		}
+	}
+	currentY++ // blank line (\n\n after name section)
+
+	// Base Branch field (focus=1): label + bordered input (3 lines)
 	currentY++ // "Base Branch..." label
-	p.mouseHandler.HitMap.AddRect(regionCreateInput, hitX, currentY, hitW, 1, 1)
-	currentY++ // input line
+	p.mouseHandler.HitMap.AddRect(regionCreateInput, hitX, currentY, hitW, 3, 1)
+	currentY += 3 // bordered input
 
 	// Branch dropdown (if visible)
 	if p.createFocus == 1 && len(p.branchFiltered) > 0 {
@@ -392,19 +403,19 @@ func (p *Plugin) renderCreateModal(width, height int) string {
 	}
 	currentY++ // blank
 
-	// Prompt field (focus=2): label + display + preview hint + blank
+	// Prompt field (focus=2): label + bordered display (3 lines) + preview hint + blank
 	currentY++ // "Prompt:" label
-	p.mouseHandler.HitMap.AddRect(regionCreateInput, hitX, currentY, hitW, 1, 2)
-	currentY++ // prompt display
+	p.mouseHandler.HitMap.AddRect(regionCreateInput, hitX, currentY, hitW, 3, 2)
+	currentY += 3 // bordered prompt display
 	currentY++ // preview/hint line
 	currentY++ // blank
 
 	// Task field (focus=3) - only shown when ticketMode allows
-	// Note: selectedPrompt already declared at line 852
+	// Note: selectedPrompt already declared at rendering section
 	if selectedPrompt == nil || selectedPrompt.TicketMode != TicketNone {
 		currentY++ // "Link Task..." label
-		p.mouseHandler.HitMap.AddRect(regionCreateInput, hitX, currentY, hitW, 1, 3)
-		currentY++ // input line
+		p.mouseHandler.HitMap.AddRect(regionCreateInput, hitX, currentY, hitW, 3, 3)
+		currentY += 3 // bordered input (3 lines)
 
 		// Task hints (backspace hint, fallback hint, or required hint)
 		if p.createFocus == 3 && p.createTaskID != "" {
@@ -730,14 +741,20 @@ func (p *Plugin) renderPromptPickerModal(width, height int) string {
 	modalY := (height - modalH) / 2
 
 	// Register hit region for filter input
-	// Layout: border(1) + padding(1) + header(1) + blank(1) + "Filter:" label(1) = 5 lines before filter input
+	// Layout from content start (modalY + 2 after border+padding):
+	// - header "Select Prompt..." (1 line)
+	// - blank from \n\n (1 line)
+	// - "Filter:" label (1 line)
+	// - bordered filter input (3 lines: border + content + border)
+	// Filter input starts at: 1 + 1 + 1 = 3 lines from content start
 	filterY := modalY + 2 + 3 // border+padding + header + blank + label
-	p.mouseHandler.HitMap.AddRect(regionPromptFilter, modalX+2, filterY, 32, 1, nil)
+	p.mouseHandler.HitMap.AddRect(regionPromptFilter, modalX+2, filterY, 32, 3, nil) // height 3 for bordered input
 
 	// Register hit regions for prompt items
-	// Layout: border(1) + padding(1) + header(2) + filter(3) + column headers(2) = 9 lines before items
+	// After filter input (3 lines) + blank (1 line) + column headers (1 line) + separator (1 line) = 6 more lines
+	// Total from content start: 3 (before filter) + 3 (filter) + 1 (blank) + 1 (headers) + 1 (separator) = 9
 	// "None" option is first, then filtered prompts
-	itemStartY := modalY + 2 + 7 // border+padding + header + filter + col headers
+	itemStartY := modalY + 2 + 9 // border+padding + header + blank + label + bordered-filter + blank + col-headers + separator
 	itemHeight := 1              // Each prompt item is 1 line
 
 	// "None" option at index -1
@@ -747,7 +764,7 @@ func (p *Plugin) renderPromptPickerModal(width, height int) string {
 	maxVisible := 10
 	if len(p.promptPicker.filtered) > 0 {
 		visibleCount := min(maxVisible, len(p.promptPicker.filtered))
-		for i := 0; i < visibleCount; i++ {
+		for i := range visibleCount {
 			y := itemStartY + 1 + i // +1 for "none" row
 			p.mouseHandler.HitMap.AddRect(regionPromptItem, modalX+2, y, modalW-6, itemHeight, i)
 		}
