@@ -455,15 +455,6 @@ func TestWriteAgentLauncher(t *testing.T) {
 				t.Errorf("command = %q, want %q", cmd, tt.wantCmd)
 			}
 
-			// Verify prompt file was created with correct content
-			promptContent, err := os.ReadFile(tmpDir + "/.sidecar-prompt")
-			if err != nil {
-				t.Fatalf("failed to read prompt file: %v", err)
-			}
-			if string(promptContent) != tt.prompt {
-				t.Errorf("prompt content = %q, want %q", string(promptContent), tt.prompt)
-			}
-
 			// Verify launcher script exists and is executable
 			launcherInfo, err := os.Stat(tmpDir + "/.sidecar-start.sh")
 			if err != nil {
@@ -473,8 +464,29 @@ func TestWriteAgentLauncher(t *testing.T) {
 				t.Error("launcher script is not executable")
 			}
 
+			// Verify the script contains the prompt embedded in a heredoc
+			scriptContent, err := os.ReadFile(tmpDir + "/.sidecar-start.sh")
+			if err != nil {
+				t.Fatalf("failed to read launcher script: %v", err)
+			}
+			scriptStr := string(scriptContent)
+
+			// Check that the heredoc delimiter is present
+			if !strings.Contains(scriptStr, "SIDECAR_PROMPT_EOF") {
+				t.Error("launcher script should contain heredoc delimiter SIDECAR_PROMPT_EOF")
+			}
+
+			// Check that the prompt content is embedded in the script
+			if !strings.Contains(scriptStr, tt.prompt) {
+				t.Errorf("launcher script should contain prompt %q", tt.prompt)
+			}
+
+			// Check that the script starts with shebang
+			if !strings.HasPrefix(scriptStr, "#!/bin/bash") {
+				t.Error("launcher script should start with #!/bin/bash")
+			}
+
 			// Cleanup for next test
-			os.Remove(tmpDir + "/.sidecar-prompt")
 			os.Remove(tmpDir + "/.sidecar-start.sh")
 		})
 	}

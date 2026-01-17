@@ -167,6 +167,7 @@ type Worktree struct {
 	Branch          string         // Git branch name
 	BaseBranch      string         // Branch worktree was created from
 	TaskID          string         // Linked td task (e.g., "td-a1b2")
+	TaskTitle       string         // Task title (used as fallback if td show fails)
 	PRURL           string         // URL of open PR (if any)
 	ChosenAgentType AgentType      // Agent selected at creation (persists even when agent not running)
 	Agent           *Agent         // nil if no agent running

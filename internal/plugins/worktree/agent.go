@@ -243,8 +243,12 @@ func (p *Plugin) buildAgentCommand(agentType AgentType, wt *Worktree, skipPerms 
 		// Use prompt template with ticket expansion
 		ctx = ExpandPromptTemplate(prompt.Body, wt.TaskID)
 	} else if wt.TaskID != "" {
-		// No prompt selected but task selected: use current behavior (task title + description)
+		// No prompt selected but task selected: try to fetch full context
 		ctx = p.getTaskContext(wt.TaskID)
+		if ctx == "" && wt.TaskTitle != "" {
+			// Fallback: use task title from modal if td show failed
+			ctx = fmt.Sprintf("Task: %s", wt.TaskTitle)
+		}
 	}
 
 	// No context - return simple command
@@ -265,39 +269,59 @@ func (p *Plugin) buildAgentCommand(agentType AgentType, wt *Worktree, skipPerms 
 // Returns the command to execute the launcher. This avoids shell escaping issues
 // with complex markdown content (backticks, newlines, quotes, etc).
 func (p *Plugin) writeAgentLauncher(worktreePath string, agentType AgentType, baseCmd, prompt string) (string, error) {
-	promptFile := filepath.Join(worktreePath, ".sidecar-prompt")
 	launcherFile := filepath.Join(worktreePath, ".sidecar-start.sh")
 
-	// Write prompt to file (raw bytes, no escaping needed)
-	if err := os.WriteFile(promptFile, []byte(prompt), 0600); err != nil {
-		return "", err
-	}
+	// Build shell profile sourcing command.
+	// This ensures tools like claude (installed via nvm) are in PATH.
+	// We handle nvm explicitly since it's often lazy-loaded in shell profiles.
+	shellSetup := `# Setup PATH for tools installed via nvm, homebrew, etc.
+export NVM_DIR="${NVM_DIR:-$HOME/.nvm}"
+[ -s "$NVM_DIR/nvm.sh" ] && source "$NVM_DIR/nvm.sh" 2>/dev/null
+# Fallback: source shell profile if nvm not found
+if ! command -v node &>/dev/null; then
+  [ -f "$HOME/.zshrc" ] && source "$HOME/.zshrc" 2>/dev/null
+  [ -f "$HOME/.bashrc" ] && source "$HOME/.bashrc" 2>/dev/null
+fi
+`
 
-	// Build the agent invocation with prompt read from file
-	// Different agents have different syntax for passing prompts
-	var agentInvocation string
+	// Use a heredoc with quoted delimiter to prevent ALL shell expansion.
+	// This safely handles backticks, $variables, quotes, newlines, etc.
+	// The prompt is embedded directly in the script, not read from a file.
+	var script string
 	switch agentType {
 	case AgentAider:
 		// aider uses --message flag
-		agentInvocation = fmt.Sprintf(`%s --message "$PROMPT"`, baseCmd)
+		script = fmt.Sprintf(`#!/bin/bash
+%s
+%s --message "$(cat <<'SIDECAR_PROMPT_EOF'
+%s
+SIDECAR_PROMPT_EOF
+)"
+rm -f %q
+`, shellSetup, baseCmd, prompt, launcherFile)
 	case AgentOpenCode:
 		// opencode uses 'run' subcommand
-		agentInvocation = fmt.Sprintf(`%s run "$PROMPT"`, baseCmd)
+		script = fmt.Sprintf(`#!/bin/bash
+%s
+%s run "$(cat <<'SIDECAR_PROMPT_EOF'
+%s
+SIDECAR_PROMPT_EOF
+)"
+rm -f %q
+`, shellSetup, baseCmd, prompt, launcherFile)
 	default:
-		// Most agents take prompt as positional argument
-		agentInvocation = fmt.Sprintf(`%s "$PROMPT"`, baseCmd)
+		// Most agents (claude, codex, gemini, cursor) take prompt as positional argument
+		script = fmt.Sprintf(`#!/bin/bash
+%s
+%s "$(cat <<'SIDECAR_PROMPT_EOF'
+%s
+SIDECAR_PROMPT_EOF
+)"
+rm -f %q
+`, shellSetup, baseCmd, prompt, launcherFile)
 	}
 
-	// Write launcher script
-	script := fmt.Sprintf(`#!/bin/bash
-PROMPT=$(cat %q)
-rm -f %q
-%s
-rm -f %q
-`, promptFile, promptFile, agentInvocation, launcherFile)
-
 	if err := os.WriteFile(launcherFile, []byte(script), 0700); err != nil {
-		os.Remove(promptFile) // cleanup on error
 		return "", err
 	}
 
@@ -419,8 +443,14 @@ func (p *Plugin) AttachToWorktreeDir(wt *Worktree) tea.Cmd {
 
 // getTaskContext fetches task title and description for agent context.
 func (p *Plugin) getTaskContext(taskID string) string {
+	// Guard against nil context in tests
+	var workDir string
+	if p.ctx != nil {
+		workDir = p.ctx.WorkDir
+	}
+
 	cmd := exec.Command("td", "show", taskID, "--json")
-	cmd.Dir = p.ctx.WorkDir
+	cmd.Dir = workDir
 	output, err := cmd.Output()
 	if err != nil {
 		return ""

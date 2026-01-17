@@ -86,9 +86,15 @@ func (p *Plugin) createWorktree() tea.Cmd {
 	name := p.createNameInput.Value()
 	baseBranch := p.createBaseBranchInput.Value()
 	taskID := p.createTaskID
+	taskTitle := p.createTaskTitle
 	agentType := p.createAgentType
 	skipPerms := p.createSkipPermissions
 	prompt := p.getSelectedPrompt()
+
+	// Debug log to trace taskID flow
+	if p.ctx != nil && p.ctx.Logger != nil {
+		p.ctx.Logger.Debug("createWorktree: captured modal state", "name", name, "taskID", taskID, "taskTitle", taskTitle, "agentType", agentType, "skipPerms", skipPerms, "hasPrompt", prompt != nil)
+	}
 
 	if name == "" {
 		return func() tea.Msg {
@@ -97,13 +103,13 @@ func (p *Plugin) createWorktree() tea.Cmd {
 	}
 
 	return func() tea.Msg {
-		wt, err := p.doCreateWorktree(name, baseBranch, taskID, agentType)
+		wt, err := p.doCreateWorktree(name, baseBranch, taskID, taskTitle, agentType)
 		return CreateDoneMsg{Worktree: wt, AgentType: agentType, SkipPerms: skipPerms, Prompt: prompt, Err: err}
 	}
 }
 
 // doCreateWorktree performs the actual worktree creation.
-func (p *Plugin) doCreateWorktree(name, baseBranch, taskID string, agentType AgentType) (*Worktree, error) {
+func (p *Plugin) doCreateWorktree(name, baseBranch, taskID, taskTitle string, agentType AgentType) (*Worktree, error) {
 	// Default base branch to current branch if not specified
 	if baseBranch == "" {
 		baseBranch = "HEAD"
@@ -168,6 +174,7 @@ func (p *Plugin) doCreateWorktree(name, baseBranch, taskID string, agentType Age
 		Branch:          name,
 		BaseBranch:      actualBase,
 		TaskID:          taskID,
+		TaskTitle:       taskTitle,
 		ChosenAgentType: agentType,
 		Status:          StatusPaused,
 		CreatedAt:       time.Now(),
