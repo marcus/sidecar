@@ -169,8 +169,10 @@ type Plugin struct {
 	taskMarkdownWidth    int      // Width used for cached render
 
 	// Merge workflow state
-	mergeState       *MergeWorkflowState
-	mergeMethodHover int // 0=none, 1=Create PR option, 2=Direct Merge option (for mouse hover)
+	mergeState               *MergeWorkflowState
+	mergeMethodHover         int // 0=none, 1=Create PR option, 2=Direct Merge option (for mouse hover)
+	mergeConfirmCheckboxHover int // 0=none, 1-4 for cleanup checkboxes (mouse hover)
+	mergeConfirmButtonHover   int // 0=none, 1=Clean Up, 2=Skip All (mouse hover)
 
 	// Commit-before-merge state
 	mergeCommitState        *MergeCommitState

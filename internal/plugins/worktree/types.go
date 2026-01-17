@@ -84,7 +84,7 @@ func (s WorktreeStatus) Icon() string {
 	case StatusActive:
 		return "●"
 	case StatusWaiting:
-		return "💬"
+		return "⧗"
 	case StatusDone:
 		return "✓"
 	case StatusError:

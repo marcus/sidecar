@@ -47,7 +47,7 @@ func (p *Plugin) renderKanbanView(width, height int) string {
 	// Column headers and colors
 	columnTitles := map[WorktreeStatus]string{
 		StatusActive:  "● Active",
-		StatusWaiting: "💬 Waiting",
+		StatusWaiting: "⧗ Waiting",
 		StatusDone:    "✓ Ready",
 		StatusPaused:  "⏸ Paused",
 	}

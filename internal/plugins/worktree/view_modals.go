@@ -1241,6 +1241,9 @@ func (p *Plugin) renderMergeModal(width, height int) string {
 
 			if p.mergeState.ConfirmationFocus == i {
 				sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("62")).Bold(true).Render("> " + line[2:]))
+			} else if p.mergeConfirmCheckboxHover == i+1 {
+				// Hover state (subtle highlight)
+				sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("75")).Render(line))
 			} else {
 				sb.WriteString(line)
 			}
@@ -1266,6 +1269,9 @@ func (p *Plugin) renderMergeModal(width, height int) string {
 		pullLine := fmt.Sprintf("  %s %s", pullCheckbox, pullLabel)
 		if p.mergeState.ConfirmationFocus == 3 {
 			sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("62")).Bold(true).Render("> " + pullLine[2:]))
+		} else if p.mergeConfirmCheckboxHover == 4 {
+			// Hover state (subtle highlight)
+			sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("75")).Render(pullLine))
 		} else {
 			sb.WriteString(pullLine)
 		}
@@ -1286,9 +1292,15 @@ func (p *Plugin) renderMergeModal(width, height int) string {
 
 		if p.mergeState.ConfirmationFocus == 4 {
 			confirmStyle = confirmStyle.Bold(true).Background(lipgloss.Color("42"))
+		} else if p.mergeConfirmButtonHover == 1 {
+			// Hover state for Clean Up button
+			confirmStyle = confirmStyle.Background(lipgloss.Color("75"))
 		}
 		if p.mergeState.ConfirmationFocus == 5 {
 			skipStyle = skipStyle.Bold(true).Background(lipgloss.Color("214"))
+		} else if p.mergeConfirmButtonHover == 2 {
+			// Hover state for Skip All button
+			skipStyle = skipStyle.Background(lipgloss.Color("245"))
 		}
 
 		sb.WriteString("  ")

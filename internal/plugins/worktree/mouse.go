@@ -97,6 +97,8 @@ func (p *Plugin) handleMouseHover(action mouse.MouseAction) tea.Cmd {
 	case ViewModeMerge:
 		if action.Region == nil {
 			p.mergeMethodHover = 0
+			p.mergeConfirmCheckboxHover = 0
+			p.mergeConfirmButtonHover = 0
 			return nil
 		}
 		switch action.Region.ID {
@@ -104,14 +106,34 @@ func (p *Plugin) handleMouseHover(action mouse.MouseAction) tea.Cmd {
 			if idx, ok := action.Region.Data.(int); ok {
 				p.mergeMethodHover = idx + 1 // 1=Create PR, 2=Direct Merge
 			}
+			p.mergeConfirmCheckboxHover = 0
+			p.mergeConfirmButtonHover = 0
+		case regionMergeConfirmCheckbox:
+			if idx, ok := action.Region.Data.(int); ok {
+				p.mergeConfirmCheckboxHover = idx + 1 // 1-4 for checkboxes
+			}
+			p.mergeMethodHover = 0
+			p.mergeConfirmButtonHover = 0
+		case regionMergeConfirmButton:
+			p.mergeConfirmButtonHover = 1 // Clean Up
+			p.mergeMethodHover = 0
+			p.mergeConfirmCheckboxHover = 0
+		case regionMergeSkipButton:
+			p.mergeConfirmButtonHover = 2 // Skip All
+			p.mergeMethodHover = 0
+			p.mergeConfirmCheckboxHover = 0
 		default:
 			p.mergeMethodHover = 0
+			p.mergeConfirmCheckboxHover = 0
+			p.mergeConfirmButtonHover = 0
 		}
 	default:
 		p.createButtonHover = 0
 		p.agentChoiceButtonHover = 0
 		p.deleteConfirmButtonHover = 0
 		p.mergeMethodHover = 0
+		p.mergeConfirmCheckboxHover = 0
+		p.mergeConfirmButtonHover = 0
 	}
 	return nil
 }
@@ -351,6 +373,13 @@ func (p *Plugin) handleMouseDoubleClick(action mouse.MouseAction) tea.Cmd {
 	}
 
 	switch action.Region.ID {
+	case regionPreviewPane:
+		// Double-click in preview pane attaches to tmux session if agent running
+		wt := p.selectedWorktree()
+		if wt != nil && wt.Agent != nil && wt.Agent.TmuxSession != "" {
+			p.attachedSession = wt.Name
+			return p.AttachToSession(wt)
+		}
 	case regionWorktreeItem:
 		// Double-click on worktree - attach to tmux session if agent running
 		if idx, ok := action.Region.Data.(int); ok && idx >= 0 && idx < len(p.worktrees) {

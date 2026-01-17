@@ -122,7 +122,7 @@ func TestWorktreeStatusIcon(t *testing.T) {
 	}{
 		{StatusPaused, "⏸"},
 		{StatusActive, "●"},
-		{StatusWaiting, "💬"},
+		{StatusWaiting, "⧗"},
 		{StatusDone, "✓"},
 		{StatusError, "✗"},
 	}
