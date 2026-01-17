@@ -345,3 +345,33 @@ linePos++
 **Prevention:** When using styled components, check if they have margin/padding that adds vertical space. Test by clicking on the first few items after a styled header - if clicks select the wrong row, count the actual rendered lines vs what the hit test expects.
 
 **See also:** TD Monitor's `hitTestCurrentWorkRow()` in `pkg/monitor/input.go` for an example of accounting for `sectionHeader`'s `MarginTop(1)`.
+
+### Modal hit regions are off by many rows (e.g., 5+ rows)
+**Cause:** Multiple errors compounding:
+1. Wrong border/padding offset (using +1 instead of +2)
+2. Text wrapping in rendered content not accounted for
+
+For modals with `Border(lipgloss.RoundedBorder())` and `Padding(1, 2)`:
+- Border adds 1 row at top
+- `Padding(1, 2)` adds 1 row vertical padding (first arg is vertical)
+- Content starts at `modalY + 2`, NOT `modalY + 1`
+
+**Fix:** Calculate Y positions dynamically, accounting for text wrapping:
+```go
+// Content starts after border(1) + padding(1) = 2
+currentY := modalStartY + 2
+
+// Track through content, handling wrapping
+currentY += 2 // title + blank
+
+// Long paths/text may wrap - calculate actual line count
+contentWidth := modalW - 6 // border(2) + padding(4)
+pathWidth := ansi.StringWidth(pathLine)
+pathLineCount := (pathWidth + contentWidth - 1) / contentWidth
+currentY += pathLineCount
+
+// Continue tracking through remaining content...
+checkboxY := currentY
+```
+
+**See also:** `modal-creator-guide.md` section "Hit Region Calculation for Modal Buttons" for detailed patterns.

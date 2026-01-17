@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/marcus/sidecar/internal/styles"
 	"github.com/marcus/sidecar/internal/ui"
 )
@@ -758,22 +759,73 @@ func (p *Plugin) renderConfirmDeleteModal(width, height int) string {
 	modalStartX := (width - modalW) / 2
 	modalStartY := (height - modalHeight) / 2
 
-	// Calculate Y positions for hit regions
-	// Content lines: title(1) + empty(1) + name/branch/path(3) + empty(1) + warning(1) + bullets(2) + empty(1) + header(1) = 11
-	// Border offset is 1 (adjusted for OverlayModal centering)
-	checkboxStartY := modalStartY + 1 + 11
+	// Calculate Y positions for hit regions dynamically
+	// modalStyle has border(1) + padding(1) = 2 rows at top before content starts
+	// We must also account for text wrapping (e.g., long paths may wrap to multiple lines)
+	//
+	// Content structure:
+	// - Title line
+	// - Blank line (\n\n)
+	// - Name line
+	// - Branch line
+	// - Path line(s) - may wrap!
+	// - Blank line
+	// - "This will:" line
+	// - Bullet 1
+	// - Bullet 2
+	// - Blank line (\n\n)
+	// - "Branch Cleanup (Optional)" header
+	// - Checkbox lines start here
+
+	// Calculate content width for wrapping (modal width minus border and padding)
+	contentWidth := modalW - 6 // border(2) + padding(4) = 6
+
+	// Build up line count dynamically to handle wrapped text
+	currentY := modalStartY + 2 // Start after border(1) + padding(1)
+
+	// Title + blank
+	currentY += 2
+
+	// Name line (typically doesn't wrap)
+	currentY++
+
+	// Branch line (typically doesn't wrap)
+	currentY++
+
+	// Path line - may wrap if path is long
+	// Use visual width (ansi.StringWidth) for accurate wrapping calculation
+	pathLine := fmt.Sprintf("Path:   %s", wt.Path)
+	pathVisualWidth := ansi.StringWidth(pathLine)
+	pathLineCount := (pathVisualWidth + contentWidth - 1) / contentWidth // Ceiling division
+	if pathLineCount < 1 {
+		pathLineCount = 1
+	}
+	currentY += pathLineCount
+
+	// Blank line
+	currentY++
+
+	// "This will:" + 2 bullets + blank
+	currentY += 4
+
+	// "Branch Cleanup (Optional)" header
+	currentY++
+
+	// Checkboxes start here
+	checkboxStartY := currentY
 
 	// Hit regions for checkboxes
-	p.mouseHandler.HitMap.AddRect(regionDeleteLocalBranchCheck, modalStartX+3, checkboxStartY, modalW-6, 1, 0)
+	hitX := modalStartX + 3 // border(1) + padding(2) = 3
+	hitW := modalW - 6      // width minus border+padding on both sides
+	p.mouseHandler.HitMap.AddRect(regionDeleteLocalBranchCheck, hitX, checkboxStartY, hitW, 1, 0)
 	if p.deleteHasRemote {
-		p.mouseHandler.HitMap.AddRect(regionDeleteRemoteBranchCheck, modalStartX+3, checkboxStartY+2, modalW-6, 1, 1)
+		p.mouseHandler.HitMap.AddRect(regionDeleteRemoteBranchCheck, hitX, checkboxStartY+2, hitW, 1, 1)
 	}
 
-	// Hit regions for buttons (after checkboxes)
+	// Hit regions for buttons (after checkboxes + blank line)
 	buttonY := checkboxStartY + checkboxLines + 1
-	deleteX := modalStartX + 3
-	p.mouseHandler.HitMap.AddRect(regionDeleteConfirmDelete, deleteX, buttonY, 12, 1, nil)
-	cancelX := deleteX + 12 + 2
+	p.mouseHandler.HitMap.AddRect(regionDeleteConfirmDelete, hitX, buttonY, 12, 1, nil)
+	cancelX := hitX + 12 + 2
 	p.mouseHandler.HitMap.AddRect(regionDeleteConfirmCancel, cancelX, buttonY, 12, 1, nil)
 
 	return ui.OverlayModal(background, modal, width, height)

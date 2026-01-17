@@ -296,34 +296,54 @@ var DimStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("242"))
    ```
    Without this, mouse Y calculations will be off by 1 row compared to lipgloss-styled modals.
 
-6. **`ui.OverlayModal()` changes the expected offset** - When calculating hit regions, use `modalY + 1` as the border offset, not `modalY + 2`. OverlayModal's centering algorithm makes content start 1 row earlier than you'd expect from counting border + padding. This is a common source of off-by-one click errors.
+6. **Border + padding offset is +2, not +1** - When using `modalStyle` with `Border(lipgloss.RoundedBorder())` and `Padding(1, 2)`, content starts at `modalY + 2`:
+   - Border adds 1 row at top
+   - `Padding(1, 2)` adds 1 row vertical padding at top (the `1` is vertical, `2` is horizontal)
+   - Total: modalY + 2
+
+7. **Text wrapping adds hidden lines** - Long content (like file paths) may wrap to multiple lines in the rendered output, but hardcoded line counts won't reflect this. Calculate dynamically:
+   ```go
+   // Use visual width for accurate line count
+   pathLine := fmt.Sprintf("Path:   %s", path)
+   pathWidth := ansi.StringWidth(pathLine)
+   contentWidth := modalW - 6 // border(2) + padding(4)
+   pathLineCount := (pathWidth + contentWidth - 1) / contentWidth
+   ```
 
 ## Hit Region Calculation for Modal Buttons
 
 Calculating mouse hit regions for modal buttons is error-prone. Common issues:
 
-### Off-by-One Errors
+### Off-by-One (or More) Errors
 
-Hit regions are calculated separately from rendering, so they can drift. Sources of off-by-one:
+Hit regions are calculated separately from rendering, so they can drift. Sources of errors:
 
 1. **Newlines after components**: `sb.WriteString("\n")` after a multi-line component (like textarea) may add an extra blank line if the component's `View()` already includes a trailing newline.
 
-2. **Border vs padding confusion**: Modal border adds 1 row, padding adds more. However, when using `ui.OverlayModal()`, the centering algorithm shifts content by 1 less than expected:
+2. **Border + padding offset**: With `Border(lipgloss.RoundedBorder())` and `Padding(1, 2)`:
    ```go
-   // Modal with Border() + Padding(1, 2) using ui.OverlayModal():
-   // - OverlayModal centers based on line count, which effectively
-   //   makes content start at modalY + 1, NOT modalY + 2
-   offset := 1 // Adjusted for OverlayModal centering
-
-   // Without OverlayModal (direct lipgloss.Place()):
-   // offset := 2 // border(1) + padding(1)
+   // Content starts at modalY + 2:
+   // - Border: 1 row at top
+   // - Padding(1, 2): 1 row vertical padding (first arg is vertical)
+   currentY := modalStartY + 2
    ```
 
-3. **Content line counting**: Count actual rendered lines, not logical sections:
+3. **Text wrapping**: Long strings (paths, descriptions) may wrap to multiple lines:
+   ```go
+   // Calculate actual line count for wrappable content
+   contentWidth := modalW - 6 // border(2) + padding(4)
+   pathWidth := ansi.StringWidth(pathLine)
+   pathLineCount := (pathWidth + contentWidth - 1) / contentWidth
+   currentY += pathLineCount
+   ```
+
+4. **Content line counting**: Count actual rendered lines, not logical sections:
    ```go
    // Wrong: "header section" = 1
    // Right: title line + separator line = 2
    ```
+
+5. **Cumulative errors**: Small errors compound. A 1-line border error + 1-line path wrap = 2-line total error, which can cause buttons to appear 5+ rows from their hit regions if other content wraps too.
 
 ### Debugging Strategy
 
@@ -337,15 +357,26 @@ Test with increments of 1 until aligned. Document the empirical offset with a co
 
 ```go
 func (p *Plugin) registerButtonHitRegion() {
-    modalHeight := p.estimateModalHeight()
+    modalHeight := lipgloss.Height(modal)
     startX := (p.width - modalWidth) / 2
     startY := (p.height - modalHeight) / 2
 
-    // Content lines from modal top (using ui.OverlayModal):
-    // Border offset is 1 (adjusted for OverlayModal centering, not 2)
-    // Then: header(2) + label(1) + items + blank(1) + input(4) + button
-    buttonY := startY + 1 + 2 + 1 + itemCount + 1 + 4 + 1
+    // Content starts after border(1) + padding(1) = 2
+    currentY := startY + 2
 
+    // Track Y position through content structure
+    currentY += 2 // title + blank line
+
+    // Handle potentially wrapping content dynamically
+    contentWidth := modalWidth - 6 // border(2) + padding(4)
+    pathWidth := ansi.StringWidth(pathLine)
+    pathLineCount := (pathWidth + contentWidth - 1) / contentWidth
+    currentY += pathLineCount
+
+    currentY += 4 // remaining fixed content lines
+
+    // Buttons are here
+    buttonY := currentY
     p.mouseHandler.HitMap.AddRect(regionButton, buttonX, buttonY, width, 1, nil)
 }
 ```
