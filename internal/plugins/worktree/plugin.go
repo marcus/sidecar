@@ -1,6 +1,8 @@
 package worktree
 
 import (
+	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/charmbracelet/bubbles/textinput"
@@ -65,6 +67,9 @@ const (
 	// Prompt Picker modal regions
 	regionPromptItem   = "prompt-item"
 	regionPromptFilter = "prompt-filter"
+
+	// Sidebar header regions
+	regionCreateWorktreeButton = "create-worktree-button"
 )
 
 // Plugin implements the worktree manager plugin.
@@ -193,6 +198,9 @@ type Plugin struct {
 
 	// Initial reconnection tracking
 	initialReconnectDone bool
+
+	// Sidebar header hover state
+	hoverNewButton bool
 }
 
 // New creates a new worktree manager plugin.
@@ -409,6 +417,36 @@ func (p *Plugin) clearCreateModal() {
 	p.createPrompts = nil
 	p.createPromptIdx = -1
 	p.promptPicker = nil
+}
+
+// openCreateModal opens the create worktree modal and initializes all inputs.
+func (p *Plugin) openCreateModal() tea.Cmd {
+	p.viewMode = ViewModeCreate
+	// Initialize textinputs for create modal
+	p.createNameInput = textinput.New()
+	p.createNameInput.Placeholder = "feature-name"
+	p.createNameInput.Focus()
+	p.createNameInput.CharLimit = 100
+	p.createBaseBranchInput = textinput.New()
+	p.createBaseBranchInput.Placeholder = "main"
+	p.createBaseBranchInput.CharLimit = 100
+	p.taskSearchInput = textinput.New()
+	p.taskSearchInput.Placeholder = "Search tasks..."
+	p.taskSearchInput.CharLimit = 100
+	p.createAgentType = AgentClaude // Default to Claude
+	p.createSkipPermissions = false
+	p.createFocus = 0
+	p.taskSearchLoading = true
+	// Load prompts from global and project config
+	home, _ := os.UserHomeDir()
+	configDir := filepath.Join(home, ".config", "sidecar")
+	p.createPrompts = LoadPrompts(configDir, p.ctx.WorkDir)
+	p.createPromptIdx = -1 // No prompt selected by default
+	p.promptPicker = nil
+	p.branchAll = nil
+	p.branchFiltered = nil
+	p.branchIdx = 0
+	return tea.Batch(p.loadOpenTasks(), p.loadBranches())
 }
 
 // getSelectedPrompt returns the currently selected prompt, or nil if none.

@@ -2,8 +2,6 @@ package worktree
 
 import (
 	"fmt"
-	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/textinput"
@@ -292,32 +290,7 @@ func (p *Plugin) handleListKeys(msg tea.KeyMsg) tea.Cmd {
 		p.previewOffset = 0
 		p.autoScrollOutput = true
 	case "n":
-		p.viewMode = ViewModeCreate
-		// Initialize textinputs for create modal
-		p.createNameInput = textinput.New()
-		p.createNameInput.Placeholder = "feature-name"
-		p.createNameInput.Focus()
-		p.createNameInput.CharLimit = 100
-		p.createBaseBranchInput = textinput.New()
-		p.createBaseBranchInput.Placeholder = "main"
-		p.createBaseBranchInput.CharLimit = 100
-		p.taskSearchInput = textinput.New()
-		p.taskSearchInput.Placeholder = "Search tasks..."
-		p.taskSearchInput.CharLimit = 100
-		p.createAgentType = AgentClaude // Default to Claude
-		p.createSkipPermissions = false
-		p.createFocus = 0
-		p.taskSearchLoading = true
-		// Load prompts from global and project config
-		home, _ := os.UserHomeDir()
-		configDir := filepath.Join(home, ".config", "sidecar")
-		p.createPrompts = LoadPrompts(configDir, p.ctx.WorkDir)
-		p.createPromptIdx = -1 // No prompt selected by default
-		p.promptPicker = nil
-		p.branchAll = nil
-		p.branchFiltered = nil
-		p.branchIdx = 0
-		return tea.Batch(p.loadOpenTasks(), p.loadBranches())
+		return p.openCreateModal()
 	case "D":
 		wt := p.selectedWorktree()
 		if wt == nil {
@@ -905,6 +878,12 @@ func (p *Plugin) handleMergeKeys(msg tea.KeyMsg) tea.Cmd {
 			p.mergeState.StepStatus[MergeStepReviewDiff] = "done"
 			p.mergeState.Step = MergeStepPush
 			return p.advanceMergeStep()
+		}
+
+	case "o":
+		// Open PR in browser (only during WaitingMerge step with a PR URL)
+		if p.mergeState.Step == MergeStepWaitingMerge && p.mergeState.PRURL != "" {
+			return openInBrowser(p.mergeState.PRURL)
 		}
 	}
 	return nil

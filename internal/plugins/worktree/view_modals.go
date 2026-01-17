@@ -1191,7 +1191,7 @@ func (p *Plugin) renderMergeModal(width, height int) string {
 
 		sb.WriteString(dimText(" (This takes effect only once the PR is merged)"))
 		sb.WriteString("\n\n")
-		sb.WriteString(dimText("Enter: check now   Esc: exit   ↑/↓: change option"))
+		sb.WriteString(dimText("Enter: check now   o: open PR   Esc: exit   ↑/↓: change option"))
 
 	case MergeStepPostMergeConfirmation:
 		// Success header

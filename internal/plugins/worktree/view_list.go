@@ -149,9 +149,30 @@ func (p *Plugin) renderListView(width, height int) string {
 func (p *Plugin) renderSidebarContent(width, height int) string {
 	var lines []string
 
-	// Header
-	header := styles.Title.Render("Worktrees")
+	// Header with [New] button
+	titleText := "Worktrees"
+	buttonText := "[New]"
+	buttonStyle := styles.Button
+	if p.hoverNewButton {
+		buttonStyle = styles.ButtonHover
+	}
+	styledButton := buttonStyle.Render(buttonText)
+	buttonWidth := lipgloss.Width(styledButton)
+
+	// Calculate spacing between title and button
+	titleWidth := lipgloss.Width(titleText)
+	spacing := width - titleWidth - buttonWidth
+	if spacing < 1 {
+		spacing = 1
+	}
+
+	header := styles.Title.Render(titleText) + strings.Repeat(" ", spacing) + styledButton
 	lines = append(lines, header)
+
+	// Register hit region for the button (X position = 2 for panel padding + spacing + titleWidth)
+	// The button is at the right edge of the sidebar content
+	buttonX := 2 + titleWidth + spacing // 2 for left border+padding
+	p.mouseHandler.HitMap.AddRect(regionCreateWorktreeButton, buttonX, 1, buttonWidth, 1, nil)
 
 	// Show warnings from delete operation if any
 	if len(p.deleteWarnings) > 0 {

@@ -112,6 +112,12 @@ func (p *Plugin) handleMouseHover(action mouse.MouseAction) tea.Cmd {
 		p.agentChoiceButtonHover = 0
 		p.deleteConfirmButtonHover = 0
 		p.mergeMethodHover = 0
+		// Handle sidebar header button hover
+		if action.Region != nil && action.Region.ID == regionCreateWorktreeButton {
+			p.hoverNewButton = true
+		} else {
+			p.hoverNewButton = false
+		}
 	}
 	return nil
 }
@@ -123,6 +129,9 @@ func (p *Plugin) handleMouseClick(action mouse.MouseAction) tea.Cmd {
 	}
 
 	switch action.Region.ID {
+	case regionCreateWorktreeButton:
+		// Click on [New] button - open create worktree modal
+		return p.openCreateModal()
 	case regionSidebar:
 		p.activePane = PaneSidebar
 	case regionPreviewPane:
