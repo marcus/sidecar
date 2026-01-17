@@ -81,6 +81,31 @@ html[data-theme="dark"] .navbar__brand {
   letter-spacing: 0.2px;
 }
 
+/* Terminal green logo with pulsing prompt */
+html[data-theme="dark"] .navbar__title {
+  color: #00b33c;
+  text-shadow: 0 0 8px rgba(0, 179, 60, 0.5), 0 0 16px rgba(0, 179, 60, 0.3);
+  font-family: var(--ifm-font-family-monospace);
+}
+
+html[data-theme="dark"] .navbar__title::after {
+  content: " >";
+  color: #00b33c;
+  text-shadow: 0 0 8px rgba(0, 179, 60, 0.5), 0 0 16px rgba(0, 179, 60, 0.3);
+  animation: promptPulse 2s ease-in-out infinite;
+}
+
+@keyframes promptPulse {
+  0%, 100% {
+    opacity: 1;
+    text-shadow: 0 0 8px rgba(0, 179, 60, 0.5), 0 0 16px rgba(0, 179, 60, 0.3);
+  }
+  50% {
+    opacity: 0.5;
+    text-shadow: 0 0 4px rgba(0, 179, 60, 0.3), 0 0 8px rgba(0, 179, 60, 0.15);
+  }
+}
+
 html[data-theme="dark"] .footer {
   border-top: 1px solid var(--sc-border);
   background: #0f1114;
@@ -93,11 +118,14 @@ html[data-theme="dark"]::before {
   inset: 0;
   z-index: -1;
   background:
-    radial-gradient(ellipse 1200px 600px at 15% 5%, rgba(249, 38, 114, 0.12), transparent 50%),
-    radial-gradient(ellipse 1200px 600px at 85% 8%, rgba(102, 217, 239, 0.10), transparent 50%),
-    radial-gradient(ellipse 1400px 800px at 50% 40%, rgba(166, 226, 46, 0.06), transparent 50%),
-    radial-gradient(ellipse 1200px 600px at 20% 70%, rgba(174, 129, 255, 0.08), transparent 50%),
-    radial-gradient(ellipse 1200px 600px at 80% 90%, rgba(230, 219, 116, 0.06), transparent 50%);
+    radial-gradient(ellipse 80vw 50vh at 15% 5%, rgba(249, 38, 114, 0.12), transparent 50%),
+    radial-gradient(ellipse 80vw 50vh at 85% 8%, rgba(102, 217, 239, 0.10), transparent 50%),
+    radial-gradient(ellipse 90vw 60vh at 50% 40%, rgba(166, 226, 46, 0.06), transparent 50%),
+    radial-gradient(ellipse 80vw 50vh at 20% 70%, rgba(174, 129, 255, 0.08), transparent 50%),
+    radial-gradient(ellipse 80vw 50vh at 80% 90%, rgba(230, 219, 116, 0.06), transparent 50%);
+  background-size: 100vw 100vh;
+  background-repeat: no-repeat;
+  background-attachment: fixed;
   pointer-events: none;
 }
 
@@ -171,7 +199,15 @@ a:hover {
 }
 
 .sc-titleBrand {
-  color: var(--ifm-color-primary);
+  color: #00b33c;
+  text-shadow: 0 0 10px rgba(0, 179, 60, 0.5), 0 0 20px rgba(0, 179, 60, 0.3), 0 0 30px rgba(0, 179, 60, 0.2);
+}
+
+.sc-titleBrand::after {
+  content: " >";
+  color: #00b33c;
+  text-shadow: 0 0 10px rgba(0, 179, 60, 0.5), 0 0 20px rgba(0, 179, 60, 0.3);
+  animation: promptPulse 2s ease-in-out infinite;
 }
 
 .sc-titleTagline {

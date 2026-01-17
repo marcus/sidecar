@@ -17,7 +17,9 @@ The dev server hot-reloads on file changes.
 ```
 website/
 ├── docs/                    # Markdown documentation pages
-│   └── intro.md            # Main docs entry point
+│   ├── intro.md            # Getting Started (sidebar_position: 1)
+│   ├── td.md               # TD task manager docs (sidebar_position: 2)
+│   └── git-plugin.md       # Git plugin docs (sidebar_position: 3)
 ├── blog/                    # Blog posts (date-prefixed markdown)
 │   ├── authors.yml         # Blog author definitions
 │   └── tags.yml            # Blog tag definitions
@@ -65,7 +67,47 @@ export default function Home() {
 
 ## Writing Documentation
 
+> **For AI agents**: Use the `dev-docs` skill (`~/.claude/skills/dev-docs/SKILL.md`) when writing documentation. It provides patterns for user-first, scannable docs with proper code examples.
+
 Docs live in `website/docs/` as Markdown files with YAML frontmatter.
+
+### Documentation Principles
+
+Follow these patterns from the dev-docs skill:
+
+- **User-first**: Answer "what can I do?" before "how does it work?"
+- **Scannable**: Use headers, code blocks, tables for keyboard shortcuts
+- **Progressive disclosure**: Quick overview → detailed usage → full reference
+- **Working examples**: Every feature needs runnable code, not `...` placeholders
+
+### Plugin Documentation Pattern
+
+For Sidecar plugins, use this structure:
+
+```markdown
+# Plugin Name
+
+One-line description of what it does.
+
+![Screenshot](/img/screenshots/plugin-name.png)
+
+## Overview
+Brief explanation of the UI layout and core purpose.
+
+## Feature Section
+Description with keyboard shortcut table:
+
+| Key | Action |
+|-----|--------|
+| `s` | Stage file |
+| `d` | View diff |
+
+## Navigation
+How to move around within the plugin.
+
+## Command Reference
+Complete list of all shortcuts by context.
+```
 
 ### Creating a New Doc
 
