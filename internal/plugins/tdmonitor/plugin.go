@@ -67,6 +67,7 @@ func (p *Plugin) Init(ctx *plugin.Context) error {
 		Version:       "",
 		PanelRenderer: styles.CreateTDPanelRenderer(),
 		ModalRenderer: styles.CreateTDModalRenderer(),
+		MarkdownTheme: buildMarkdownTheme(),
 	}
 	model, err := monitor.NewEmbeddedWithOptions(opts)
 	if err != nil {
@@ -321,4 +322,28 @@ func formatCount(n int, singular, plural string) string {
 		return "1 " + singular
 	}
 	return fmt.Sprintf("%d %s", n, plural)
+}
+
+// buildMarkdownTheme creates a MarkdownThemeConfig from the current sidecar theme.
+// This shares sidecar's color palette with td's markdown renderer.
+func buildMarkdownTheme() *monitor.MarkdownThemeConfig {
+	theme := styles.GetCurrentTheme()
+	c := theme.Colors
+
+	return &monitor.MarkdownThemeConfig{
+		// Use the theme's Chroma syntax theme (e.g., "monokai", "dracula")
+		SyntaxTheme:   c.SyntaxTheme,
+		MarkdownTheme: c.MarkdownTheme,
+		// Also provide explicit colors for full theme consistency
+		Colors: &monitor.MarkdownColorPalette{
+			Primary:   c.Primary,
+			Secondary: c.Secondary,
+			Success:   c.Success,
+			Warning:   c.Warning,
+			Error:     c.Error,
+			Muted:     c.TextMuted,
+			Text:      c.TextPrimary,
+			BgCode:    c.BgTertiary,
+		},
+	}
 }
