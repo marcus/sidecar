@@ -2,6 +2,15 @@
 
 All notable changes to sidecar are documented here.
 
+## [v0.25.0] - 2026-01-17
+
+### Features
+- **Memory Profiling**: Added pprof instrumentation for diagnosing memory leaks (enable with `SIDECAR_PPROF=1`)
+- **TD Theme Integration**: Embedded td now respects sidecar's theme colors for markdown rendering
+
+### Dependencies
+- Updated embedded td to v0.14.0 (includes theme support for markdown rendering)
+
 ## [v0.24.0] - 2026-01-17
 
 ### Dependencies
