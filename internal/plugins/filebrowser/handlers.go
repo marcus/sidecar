@@ -1068,9 +1068,9 @@ func (p *Plugin) handleBlameKey(msg tea.KeyMsg) (plugin.Plugin, tea.Cmd) {
 		return p, nil
 	}
 
-	visibleHeight := p.height - 10
-	if visibleHeight < 5 {
-		visibleHeight = 5
+	visibleHeight := p.height - blameModalHeaderFooterLines
+	if visibleHeight < blameMinVisibleLines {
+		visibleHeight = blameMinVisibleLines
 	}
 
 	switch key {

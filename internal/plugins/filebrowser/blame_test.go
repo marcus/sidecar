@@ -99,17 +99,16 @@ func TestParseBlameOutputEmpty(t *testing.T) {
 
 func TestGetBlameAgeColor(t *testing.T) {
 	tests := []struct {
-		name     string
-		age      time.Duration
-		expected string // Just checking color is not empty
+		name string
+		age  time.Duration
 	}{
-		{"recent (1 hour)", time.Hour, "#10B981"},
-		{"yesterday", 24 * time.Hour, "#34D399"},
-		{"last week", 5 * 24 * time.Hour, "#34D399"},
-		{"two weeks ago", 14 * 24 * time.Hour, "#84CC16"},
-		{"two months ago", 60 * 24 * time.Hour, "#FBBF24"},
-		{"six months ago", 180 * 24 * time.Hour, "#9CA3AF"},
-		{"two years ago", 730 * 24 * time.Hour, "#6B7280"},
+		{"recent (1 hour)", time.Hour},
+		{"yesterday", 24 * time.Hour},
+		{"last week", 5 * 24 * time.Hour},
+		{"two weeks ago", 14 * 24 * time.Hour},
+		{"two months ago", 60 * 24 * time.Hour},
+		{"six months ago", 180 * 24 * time.Hour},
+		{"two years ago", 730 * 24 * time.Hour},
 	}
 
 	for _, tt := range tests {
@@ -207,6 +206,31 @@ func TestPadOrTruncate(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {
+			result := padOrTruncate(tt.input, tt.width)
+			if result != tt.expected {
+				t.Errorf("padOrTruncate(%q, %d) = %q, want %q", tt.input, tt.width, result, tt.expected)
+			}
+		})
+	}
+}
+
+func TestPadOrTruncateUnicode(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		width    int
+		expected string
+	}{
+		{"cjk no truncate", "日本語", 5, "日本語  "},
+		{"cjk truncate", "日本語テスト", 4, "日本語…"},
+		{"emoji no truncate", "🔥🔥", 5, "🔥🔥   "},
+		{"emoji truncate", "🔥🔥🔥🔥", 3, "🔥🔥…"},
+		{"mixed ascii and cjk", "Hi日本", 4, "Hi日本"},
+		{"mixed truncate", "Hello世界", 6, "Hello…"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
 			result := padOrTruncate(tt.input, tt.width)
 			if result != tt.expected {
 				t.Errorf("padOrTruncate(%q, %d) = %q, want %q", tt.input, tt.width, result, tt.expected)

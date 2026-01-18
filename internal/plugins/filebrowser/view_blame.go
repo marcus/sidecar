@@ -9,6 +9,16 @@ import (
 	"github.com/marcus/sidecar/internal/styles"
 )
 
+const (
+	// blameModalHeaderFooterLines is the vertical space used by header, footer,
+	// and padding in the blame modal (title + spacing + footer hints + margins).
+	blameModalHeaderFooterLines = 10
+	// blameMinVisibleLines is the minimum number of blame lines to display.
+	blameMinVisibleLines = 5
+	// blameMaxVisibleLines is the maximum number of blame lines to display.
+	blameMaxVisibleLines = 40
+)
+
 // renderBlameModalContent renders the blame view modal.
 func (p *Plugin) renderBlameModalContent() string {
 	state := p.blameState
@@ -26,12 +36,12 @@ func (p *Plugin) renderBlameModalContent() string {
 	}
 
 	// Calculate available height for results
-	resultsHeight := p.height - 10
-	if resultsHeight < 5 {
-		resultsHeight = 5
+	resultsHeight := p.height - blameModalHeaderFooterLines
+	if resultsHeight < blameMinVisibleLines {
+		resultsHeight = blameMinVisibleLines
 	}
-	if resultsHeight > 40 {
-		resultsHeight = 40
+	if resultsHeight > blameMaxVisibleLines {
+		resultsHeight = blameMaxVisibleLines
 	}
 
 	var sb strings.Builder
@@ -124,10 +134,11 @@ func (p *Plugin) renderBlameLine(line BlameLine, hashW, authorW, dateW, lineNoW,
 	date := padOrTruncate(RelativeTime(line.AuthorTime), dateW)
 	lineNo := fmt.Sprintf("%*d", lineNoW, line.LineNo)
 
-	// Truncate content if needed
+	// Truncate content if needed (use runes for unicode safety)
 	content := line.Content
-	if len(content) > contentW {
-		content = content[:contentW-1] + "…"
+	contentRunes := []rune(content)
+	if len(contentRunes) > contentW {
+		content = string(contentRunes[:contentW-1]) + "…"
 	}
 
 	// Style metadata with age color
@@ -191,10 +202,11 @@ func getBlameAgeColor(commitTime time.Time) lipgloss.Color {
 	}
 }
 
-// padOrTruncate ensures a string is exactly the specified width.
+// padOrTruncate ensures a string is exactly the specified width (in runes).
 func padOrTruncate(s string, width int) string {
-	if len(s) > width {
-		return s[:width-1] + "…"
+	runes := []rune(s)
+	if len(runes) > width {
+		return string(runes[:width-1]) + "…"
 	}
-	return s + strings.Repeat(" ", width-len(s))
+	return s + strings.Repeat(" ", width-len(runes))
 }
