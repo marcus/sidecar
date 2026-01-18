@@ -2,6 +2,17 @@
 
 All notable changes to sidecar are documented here.
 
+## [v0.23.0] - 2026-01-17
+
+### Features
+- **File Browser Improvements**: Support for vim-like line jumps (`:<number>`) in file browser
+
+### Performance
+- **Memory Optimizations**: Improved memory usage for long-running sessions
+
+### Dependencies
+- Updated embedded td to latest version
+
 ## [v0.22.0] - 2026-01-17
 
 ### Features
