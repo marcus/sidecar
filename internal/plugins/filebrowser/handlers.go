@@ -5,10 +5,10 @@ import (
 	"os"
 	"time"
 
+	"github.com/atotto/clipboard"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/atotto/clipboard"
-	"github.com/marcus/sidecar/internal/msg"
+	appmsg "github.com/marcus/sidecar/internal/msg"
 	"github.com/marcus/sidecar/internal/plugin"
 )
 
@@ -38,6 +38,11 @@ func (p *Plugin) handleKey(msg tea.KeyMsg) (plugin.Plugin, tea.Cmd) {
 	// Handle info modal
 	if p.infoMode {
 		return p.handleInfoKey(msg)
+	}
+
+	// Handle blame mode
+	if p.blameMode {
+		return p.handleBlameKey(msg)
 	}
 
 	// Handle file operation mode (move/rename/create/delete)
@@ -193,6 +198,13 @@ func (p *Plugin) handleTreeKey(key string) (plugin.Plugin, tea.Cmd) {
 			return p, p.fetchGitInfo(node.Path)
 		}
 
+	case "B":
+		// Show git blame for file
+		node := p.tree.GetNode(p.treeCursor)
+		if node != nil && !node.IsDir {
+			return p.openBlameView(node.Path)
+		}
+
 	case "r":
 		// Rename file/directory
 		node := p.tree.GetNode(p.treeCursor)
@@ -265,7 +277,7 @@ func (p *Plugin) handleTreeKey(key string) (plugin.Plugin, tea.Cmd) {
 		if node != nil && node != p.tree.Root {
 			p.clipboardPath = node.Path
 			p.clipboardIsDir = node.IsDir
-			return p, msg.ShowToast("Marked for copy: "+node.Path, 2*time.Second)
+			return p, appmsg.ShowToast("Marked for copy: "+node.Path, 2*time.Second)
 		}
 
 	case "Y":
@@ -273,9 +285,9 @@ func (p *Plugin) handleTreeKey(key string) (plugin.Plugin, tea.Cmd) {
 		node := p.tree.GetNode(p.treeCursor)
 		if node != nil && node != p.tree.Root {
 			if err := clipboard.WriteAll(node.Path); err != nil {
-				return p, msg.ShowToast("Failed to copy path", 2*time.Second)
+				return p, appmsg.ShowToast("Failed to copy path", 2*time.Second)
 			}
-			return p, msg.ShowToast("Copied: "+node.Path, 2*time.Second)
+			return p, appmsg.ShowToast("Copied: "+node.Path, 2*time.Second)
 		}
 
 	case "p":
@@ -430,15 +442,21 @@ func (p *Plugin) handlePreviewKey(key string) (plugin.Plugin, tea.Cmd) {
 		// Copy file path to clipboard
 		if p.previewFile != "" {
 			if err := clipboard.WriteAll(p.previewFile); err != nil {
-				return p, msg.ShowToast("Failed to copy path", 2*time.Second)
+				return p, appmsg.ShowToast("Failed to copy path", 2*time.Second)
 			}
-			return p, msg.ShowToast("Copied: "+p.previewFile, 2*time.Second)
+			return p, appmsg.ShowToast("Copied: "+p.previewFile, 2*time.Second)
 		}
 
 	case "m":
 		// Toggle markdown rendering for .md files
 		if p.isMarkdownFile() {
 			p.toggleMarkdownRender()
+		}
+
+	case "B":
+		// Show git blame for current preview file
+		if p.previewFile != "" {
+			return p.openBlameView(p.previewFile)
 		}
 
 	case "tab", "shift+tab":
@@ -1029,4 +1047,96 @@ func (p *Plugin) loadPreviewForCursor() tea.Cmd {
 	p.isBinary = false
 	p.isTruncated = false
 	return LoadPreview(p.ctx.WorkDir, node.Path)
+}
+
+// openBlameView opens the blame view for the specified file.
+func (p *Plugin) openBlameView(path string) (plugin.Plugin, tea.Cmd) {
+	p.blameMode = true
+	p.blameState = &BlameState{
+		FilePath:  path,
+		IsLoading: true,
+	}
+	return p, RunGitBlame(p.ctx.WorkDir, path)
+}
+
+// handleBlameKey handles key input during blame view mode.
+func (p *Plugin) handleBlameKey(msg tea.KeyMsg) (plugin.Plugin, tea.Cmd) {
+	key := msg.String()
+
+	if p.blameState == nil {
+		p.blameMode = false
+		return p, nil
+	}
+
+	visibleHeight := p.height - 10
+	if visibleHeight < 5 {
+		visibleHeight = 5
+	}
+
+	switch key {
+	case "esc", "q":
+		// Close blame view
+		p.blameMode = false
+		p.blameState = nil
+
+	case "j", "down":
+		// Move cursor down
+		if p.blameState.Cursor < len(p.blameState.Lines)-1 {
+			p.blameState.Cursor++
+		}
+
+	case "k", "up":
+		// Move cursor up
+		if p.blameState.Cursor > 0 {
+			p.blameState.Cursor--
+		}
+
+	case "g":
+		// Go to top
+		p.blameState.Cursor = 0
+		p.blameState.ScrollOffset = 0
+
+	case "G":
+		// Go to bottom
+		if len(p.blameState.Lines) > 0 {
+			p.blameState.Cursor = len(p.blameState.Lines) - 1
+		}
+
+	case "ctrl+d":
+		// Page down
+		p.blameState.Cursor += visibleHeight / 2
+		if p.blameState.Cursor >= len(p.blameState.Lines) {
+			p.blameState.Cursor = len(p.blameState.Lines) - 1
+		}
+		if p.blameState.Cursor < 0 {
+			p.blameState.Cursor = 0
+		}
+
+	case "ctrl+u":
+		// Page up
+		p.blameState.Cursor -= visibleHeight / 2
+		if p.blameState.Cursor < 0 {
+			p.blameState.Cursor = 0
+		}
+
+	case "y":
+		// Copy commit hash to clipboard
+		if len(p.blameState.Lines) > 0 && p.blameState.Cursor < len(p.blameState.Lines) {
+			line := p.blameState.Lines[p.blameState.Cursor]
+			if err := clipboard.WriteAll(line.CommitHash); err != nil {
+				return p, appmsg.ShowToast("Failed to copy hash", 2*time.Second)
+			}
+			return p, appmsg.ShowToast("Copied: "+line.CommitHash, 2*time.Second)
+		}
+
+	case "enter":
+		// Show commit details (toast for now)
+		if len(p.blameState.Lines) > 0 && p.blameState.Cursor < len(p.blameState.Lines) {
+			line := p.blameState.Lines[p.blameState.Cursor]
+			info := fmt.Sprintf("%s by %s (%s)", line.CommitHash, line.Author, RelativeTime(line.AuthorTime))
+			return p, appmsg.ShowToast(info, 3*time.Second)
+		}
+	}
+
+	return p, nil
 }

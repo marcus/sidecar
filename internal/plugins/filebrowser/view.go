@@ -109,6 +109,13 @@ func (p *Plugin) renderView() string {
 		return ui.OverlayModal(background, modal, p.width, p.height)
 	}
 
+	// Blame view is a full overlay - render modal over dimmed background
+	if p.blameMode {
+		background := p.renderNormalPanes()
+		modal := p.renderBlameModalContent()
+		return ui.OverlayModal(background, modal, p.width, p.height)
+	}
+
 	return p.renderNormalPanes()
 }
 

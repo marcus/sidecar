@@ -178,6 +178,10 @@ type Plugin struct {
 	gitStatus     string
 	gitLastCommit string
 
+	// Blame view state
+	blameMode  bool
+	blameState *BlameState
+
 	// File operation state (move/rename/create/delete)
 	fileOpMode          FileOpMode
 	fileOpTarget        *FileNode       // The file being operated on
@@ -514,6 +518,17 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 		p.gitLastCommit = msg.LastCommit
 		return p, nil
 
+	case BlameLoadedMsg:
+		if p.blameState != nil {
+			p.blameState.IsLoading = false
+			if msg.Error != nil {
+				p.blameState.Error = msg.Error
+			} else {
+				p.blameState.Lines = msg.Lines
+			}
+		}
+		return p, nil
+
 	case ProjectSearchResultsMsg:
 		if p.projectSearchState != nil {
 			p.projectSearchState.IsSearching = false
@@ -558,6 +573,7 @@ func (p *Plugin) Commands() []plugin.Command {
 		{ID: "quick-open", Name: "Open", Description: "Quick open file by name", Category: plugin.CategorySearch, Context: "file-browser-tree", Priority: 1},
 		{ID: "project-search", Name: "Find", Description: "Search in project", Category: plugin.CategorySearch, Context: "file-browser-tree", Priority: 2},
 		{ID: "info", Name: "Info", Description: "Show file info", Category: plugin.CategoryActions, Context: "file-browser-tree", Priority: 2},
+		{ID: "blame", Name: "Blame", Description: "Show git blame", Category: plugin.CategoryView, Context: "file-browser-tree", Priority: 3},
 		{ID: "search", Name: "Filter", Description: "Filter files by name", Category: plugin.CategorySearch, Context: "file-browser-tree", Priority: 3},
 		{ID: "create-file", Name: "New", Description: "Create new file", Category: plugin.CategoryActions, Context: "file-browser-tree", Priority: 4},
 		{ID: "create-dir", Name: "Mkdir", Description: "Create new directory", Category: plugin.CategoryActions, Context: "file-browser-tree", Priority: 4},
@@ -574,6 +590,7 @@ func (p *Plugin) Commands() []plugin.Command {
 		{ID: "quick-open", Name: "Open", Description: "Quick open file by name", Category: plugin.CategorySearch, Context: "file-browser-preview", Priority: 1},
 		{ID: "project-search", Name: "Find", Description: "Search in project", Category: plugin.CategorySearch, Context: "file-browser-preview", Priority: 2},
 		{ID: "info", Name: "Info", Description: "Show file info", Category: plugin.CategoryActions, Context: "file-browser-preview", Priority: 2},
+		{ID: "blame", Name: "Blame", Description: "Show git blame", Category: plugin.CategoryView, Context: "file-browser-preview", Priority: 3},
 		{ID: "search-content", Name: "Search", Description: "Search file content", Category: plugin.CategorySearch, Context: "file-browser-preview", Priority: 3},
 		{ID: "toggle-markdown", Name: "Render", Description: "Toggle markdown rendering", Category: plugin.CategoryActions, Context: "file-browser-preview", Priority: 4},
 		{ID: "back", Name: "Back", Description: "Return to file tree", Category: plugin.CategoryNavigation, Context: "file-browser-preview", Priority: 5},
@@ -599,6 +616,10 @@ func (p *Plugin) Commands() []plugin.Command {
 		{ID: "cancel", Name: "Cancel", Description: "Cancel operation", Category: plugin.CategoryActions, Context: "file-browser-file-op", Priority: 1},
 		// Info modal commands
 		{ID: "close", Name: "Close", Description: "Close info modal", Category: plugin.CategoryActions, Context: "file-browser-info", Priority: 1},
+		// Blame view commands
+		{ID: "close", Name: "Close", Description: "Close blame view", Category: plugin.CategoryActions, Context: "file-browser-blame", Priority: 1},
+		{ID: "view-commit", Name: "Details", Description: "View commit details", Category: plugin.CategoryActions, Context: "file-browser-blame", Priority: 2},
+		{ID: "yank-hash", Name: "Yank", Description: "Copy commit hash", Category: plugin.CategoryActions, Context: "file-browser-blame", Priority: 3},
 	}
 }
 
@@ -612,6 +633,9 @@ func (p *Plugin) FocusContext() string {
 	}
 	if p.infoMode {
 		return "file-browser-info"
+	}
+	if p.blameMode {
+		return "file-browser-blame"
 	}
 	if p.fileOpMode != FileOpNone {
 		return "file-browser-file-op"

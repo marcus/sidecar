@@ -202,6 +202,7 @@ func DefaultBindings() []Binding {
 		{Key: "m", Command: "move", Context: "file-browser-tree"},
 		{Key: "R", Command: "reveal", Context: "file-browser-tree"},
 		{Key: "i", Command: "info", Context: "file-browser-tree"},
+		{Key: "B", Command: "blame", Context: "file-browser-tree"},
 		{Key: "\\", Command: "toggle-sidebar", Context: "file-browser-tree"},
 
 		// File browser preview context
@@ -212,6 +213,7 @@ func DefaultBindings() []Binding {
 		{Key: "ctrl+s", Command: "project-search", Context: "file-browser-preview"},
 		{Key: "R", Command: "reveal", Context: "file-browser-preview"},
 		{Key: "i", Command: "info", Context: "file-browser-preview"},
+		{Key: "B", Command: "blame", Context: "file-browser-preview"},
 		{Key: "m", Command: "toggle-markdown", Context: "file-browser-preview"},
 		{Key: "esc", Command: "back", Context: "file-browser-preview"},
 		{Key: "h", Command: "back", Context: "file-browser-preview"},
@@ -252,6 +254,20 @@ func DefaultBindings() []Binding {
 		// File browser file operation context (move/rename/create/delete)
 		{Key: "esc", Command: "cancel", Context: "file-browser-file-op"},
 		{Key: "enter", Command: "confirm", Context: "file-browser-file-op"},
+
+		// File browser blame context
+		{Key: "esc", Command: "close", Context: "file-browser-blame"},
+		{Key: "q", Command: "close", Context: "file-browser-blame"},
+		{Key: "j", Command: "scroll-down", Context: "file-browser-blame"},
+		{Key: "k", Command: "scroll-up", Context: "file-browser-blame"},
+		{Key: "down", Command: "scroll-down", Context: "file-browser-blame"},
+		{Key: "up", Command: "scroll-up", Context: "file-browser-blame"},
+		{Key: "g", Command: "scroll-top", Context: "file-browser-blame"},
+		{Key: "G", Command: "scroll-bottom", Context: "file-browser-blame"},
+		{Key: "ctrl+d", Command: "page-down", Context: "file-browser-blame"},
+		{Key: "ctrl+u", Command: "page-up", Context: "file-browser-blame"},
+		{Key: "enter", Command: "view-commit", Context: "file-browser-blame"},
+		{Key: "y", Command: "yank-hash", Context: "file-browser-blame"},
 
 		// Git Commit context (commit message editor)
 		{Key: "esc", Command: "cancel", Context: "git-commit"},
