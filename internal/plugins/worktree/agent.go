@@ -691,14 +691,14 @@ done
 		if idx == -1 {
 			continue
 		}
-		sessionName := part[:idx]
+		sessionName := strings.Clone(part[:idx])
 		content := ""
 		if idx+3 < len(part) {
 			content = part[idx+3:]
 			// Trim leading newline from content
 			content = strings.TrimPrefix(content, "\n")
 		}
-		results[sessionName] = content
+		results[sessionName] = strings.Clone(content)
 	}
 
 	return results, nil

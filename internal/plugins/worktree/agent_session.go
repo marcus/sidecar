@@ -6,11 +6,14 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"io"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
 )
+
+const sessionStatusTailBytes = 2 * 1024 * 1024
 
 // detectAgentSessionStatus checks agent session files to determine if an agent
 // is waiting for user input or actively processing.
@@ -222,44 +225,72 @@ func findMostRecentJSON(dir string, prefix string) (string, error) {
 	return mostRecent, nil
 }
 
-// getLastMessageStatusJSONL reads JSONL file and returns status based on last message.
-func getLastMessageStatusJSONL(path, typeField, userVal, assistantVal string) (WorktreeStatus, bool) {
+// readTailLines reads up to maxBytes from the end of a file and returns lines.
+// If the read starts mid-line, the first partial line is dropped.
+func readTailLines(path string, maxBytes int) ([]string, error) {
 	file, err := os.Open(path)
 	if err != nil {
-		return 0, false
+		return nil, err
 	}
 	defer file.Close()
 
-	var lastMsgType string
+	info, err := file.Stat()
+	if err != nil {
+		return nil, err
+	}
+	size := info.Size()
+	if size == 0 {
+		return nil, nil
+	}
 
-	scanner := bufio.NewScanner(file)
-	buf := make([]byte, 64*1024)
-	scanner.Buffer(buf, 1024*1024)
+	start := int64(0)
+	if size > int64(maxBytes) {
+		start = size - int64(maxBytes)
+	}
+	if start > 0 {
+		if _, err := file.Seek(start, io.SeekStart); err != nil {
+			return nil, err
+		}
+	}
 
-	for scanner.Scan() {
+	data, err := io.ReadAll(file)
+	if err != nil {
+		return nil, err
+	}
+
+	lines := strings.Split(string(data), "\n")
+	if start > 0 && len(lines) > 0 {
+		lines = lines[1:]
+	}
+	return lines, nil
+}
+
+// getLastMessageStatusJSONL reads JSONL file and returns status based on last message.
+func getLastMessageStatusJSONL(path, typeField, userVal, assistantVal string) (WorktreeStatus, bool) {
+	lines, err := readTailLines(path, sessionStatusTailBytes)
+	if err != nil {
+		return 0, false
+	}
+
+	for i := len(lines) - 1; i >= 0; i-- {
+		line := strings.TrimSpace(lines[i])
+		if line == "" {
+			continue
+		}
 		var msg map[string]interface{}
-		if err := json.Unmarshal(scanner.Bytes(), &msg); err != nil {
+		if err := json.Unmarshal([]byte(line), &msg); err != nil {
 			continue
 		}
 		if msgType, ok := msg[typeField].(string); ok {
-			if msgType == userVal || msgType == assistantVal {
-				lastMsgType = msgType
+			switch msgType {
+			case assistantVal:
+				return StatusWaiting, true
+			case userVal:
+				return StatusActive, true
 			}
 		}
 	}
-
-	if scanner.Err() != nil {
-		return 0, false
-	}
-
-	switch lastMsgType {
-	case assistantVal:
-		return StatusWaiting, true
-	case userVal:
-		return StatusActive, true
-	default:
-		return 0, false
-	}
+	return 0, false
 }
 
 // findCodexSessionForPath finds the most recent Codex session matching CWD.
@@ -345,19 +376,16 @@ func cwdMatches(cwd, worktreePath string) bool {
 
 // getCodexLastMessageStatus reads Codex JSONL and finds last message role.
 func getCodexLastMessageStatus(path string) (WorktreeStatus, bool) {
-	file, err := os.Open(path)
+	lines, err := readTailLines(path, sessionStatusTailBytes)
 	if err != nil {
 		return 0, false
 	}
-	defer file.Close()
 
-	var lastRole string
-
-	scanner := bufio.NewScanner(file)
-	buf := make([]byte, 64*1024)
-	scanner.Buffer(buf, 1024*1024)
-
-	for scanner.Scan() {
+	for i := len(lines) - 1; i >= 0; i-- {
+		line := strings.TrimSpace(lines[i])
+		if line == "" {
+			continue
+		}
 		var record struct {
 			Type    string `json:"type"`
 			Payload struct {
@@ -365,29 +393,20 @@ func getCodexLastMessageStatus(path string) (WorktreeStatus, bool) {
 				Role string `json:"role"`
 			} `json:"payload"`
 		}
-		if err := json.Unmarshal(scanner.Bytes(), &record); err != nil {
+		if err := json.Unmarshal([]byte(line), &record); err != nil {
 			continue
 		}
 		// Codex uses type="response_item" with payload.type="message"
 		if record.Type == "response_item" && record.Payload.Type == "message" {
-			if record.Payload.Role == "user" || record.Payload.Role == "assistant" {
-				lastRole = record.Payload.Role
+			switch record.Payload.Role {
+			case "assistant":
+				return StatusWaiting, true
+			case "user":
+				return StatusActive, true
 			}
 		}
 	}
-
-	if scanner.Err() != nil {
-		return 0, false
-	}
-
-	switch lastRole {
-	case "assistant":
-		return StatusWaiting, true
-	case "user":
-		return StatusActive, true
-	default:
-		return 0, false
-	}
+	return 0, false
 }
 
 // getGeminiLastMessageStatus reads Gemini JSON session file.
