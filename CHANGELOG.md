@@ -2,6 +2,11 @@
 
 All notable changes to sidecar are documented here.
 
+## [v0.27.1] - 2026-01-19
+
+### Bug Fixes
+- **Conversations**: Use adapter-specific agent names instead of hardcoded "claude"
+
 ## [v0.27.0] - 2026-01-19
 
 ### Bug Fixes
