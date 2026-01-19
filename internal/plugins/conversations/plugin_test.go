@@ -1913,6 +1913,9 @@ func TestRenderConversationFlowScrollWindow(t *testing.T) {
 func TestRenderConversationFlowSkipsToolResultOnly(t *testing.T) {
 	p := New()
 	p.adapters = map[string]adapter.Adapter{"mock": &mockAdapter{}}
+	// Set up session so agent name is resolved correctly
+	p.sessions = []adapter.Session{{ID: "test-session", AdapterID: "claude-code"}}
+	p.selectedSession = "test-session"
 	now := time.Now()
 	p.messages = []adapter.Message{
 		{ID: "msg-1", Role: "user", Content: "Hello", Timestamp: now},
@@ -1940,7 +1943,7 @@ func TestRenderConversationFlowSkipsToolResultOnly(t *testing.T) {
 	}
 
 	// The content should contain user and assistant messages but not the tool result
-	// Note: "user" renders as "you" and "assistant" renders as "claude"
+	// Note: "user" renders as "you" and "assistant" renders as adapter short name (e.g., "claude")
 	content := strings.Join(lines, "\n")
 	if !containsSubstring(content, "you") {
 		t.Error("expected 'you' role label in output")
@@ -2025,6 +2028,9 @@ func TestRenderMessageBubbleUserRole(t *testing.T) {
 func TestRenderMessageBubbleAssistantRole(t *testing.T) {
 	p := New()
 	p.adapters = map[string]adapter.Adapter{"mock": &mockAdapter{}}
+	// Set up session so agent name is resolved correctly
+	p.sessions = []adapter.Session{{ID: "test-session", AdapterID: "claude-code"}}
+	p.selectedSession = "test-session"
 	p.expandedMessages = make(map[string]bool)
 	p.expandedThinking = make(map[string]bool)
 	p.expandedToolResults = make(map[string]bool)
@@ -2045,7 +2051,7 @@ func TestRenderMessageBubbleAssistantRole(t *testing.T) {
 	}
 
 	header := lines[0]
-	// Role label should be "claude" not "assistant"
+	// Role label should be adapter short name (e.g., "claude" for claude-code) not "assistant"
 	if !containsSubstring(header, "claude") {
 		t.Errorf("expected header to contain 'claude', got %q", header)
 	}

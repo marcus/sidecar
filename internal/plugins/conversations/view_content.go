@@ -214,22 +214,29 @@ func adapterAbbrev(session adapter.Session) string {
 
 func adapterShortName(session *adapter.Session) string {
 	if session == nil {
-		return ""
+		return "assistant"
 	}
 	switch session.AdapterID {
 	case "claude-code":
 		return "claude"
+	case "cursor-cli":
+		return "cursor"
 	case "codex":
 		return "codex"
 	case "opencode":
 		return "opencode"
 	case "gemini-cli":
 		return "gemini"
+	case "warp":
+		return "warp"
 	default:
 		if session.AdapterName != "" {
 			return strings.ToLower(session.AdapterName)
 		}
-		return session.AdapterID
+		if session.AdapterID != "" {
+			return session.AdapterID
+		}
+		return "assistant"
 	}
 }
 
@@ -654,6 +661,10 @@ func (p *Plugin) renderMessageBubble(msg adapter.Message, msgIndex int, maxWidth
 	// Header: timestamp + role + model badge + token flow
 	ts := msg.Timestamp.Local().Format("15:04")
 
+	// Get agent name from session's adapter
+	session := p.findSelectedSession()
+	agentName := adapterShortName(session)
+
 	// Cursor indicator for selected message
 	cursorPrefix := "  "
 	if selected {
@@ -666,7 +677,7 @@ func (p *Plugin) renderMessageBubble(msg adapter.Message, msgIndex int, maxWidth
 		if msg.Role == "user" {
 			headerLine = fmt.Sprintf("%s[%s] you", cursorPrefix, ts)
 		} else {
-			headerLine = fmt.Sprintf("%s[%s] claude", cursorPrefix, ts)
+			headerLine = fmt.Sprintf("%s[%s] %s", cursorPrefix, ts, agentName)
 			// Add plain model name
 			if msg.Model != "" {
 				short := modelShortName(msg.Model)
@@ -684,7 +695,7 @@ func (p *Plugin) renderMessageBubble(msg adapter.Message, msgIndex int, maxWidth
 		if msg.Role == "user" {
 			headerLine = fmt.Sprintf("%s[%s] %s", cursorPrefix, ts, styles.StatusInProgress.Render("you"))
 		} else {
-			headerLine = fmt.Sprintf("%s[%s] %s", cursorPrefix, ts, styles.StatusStaged.Render("claude"))
+			headerLine = fmt.Sprintf("%s[%s] %s", cursorPrefix, ts, styles.StatusStaged.Render(agentName))
 
 			// Add colorful model badge
 			if msg.Model != "" {
