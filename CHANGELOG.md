@@ -2,6 +2,11 @@
 
 All notable changes to sidecar are documented here.
 
+## [v0.27.0] - 2026-01-19
+
+### Bug Fixes
+- **Cursor Adapter**: Use blob hash as message ID to prevent cache collisions
+
 ## [v0.26.0] - 2026-01-19
 
 ### Features
