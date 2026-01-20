@@ -149,11 +149,35 @@ Manage git worktrees for parallel development with integrated agent support. Cre
 - Auto-adds sidecar state files to .gitignore
 - Preview diffs and task details in split-pane view
 
+## Project Switcher
+
+Press `@` to switch between configured projects without restarting sidecar.
+
+1. Add projects to `~/.config/sidecar/config.json`:
+
+```json
+{
+  "projects": {
+    "list": [
+      {"name": "sidecar", "path": "~/code/sidecar"},
+      {"name": "td", "path": "~/code/td"},
+      {"name": "my-app", "path": "~/projects/my-app"}
+    ]
+  }
+}
+```
+
+2. Press `@` to open the project switcher modal
+3. Select with `j/k` or click, press `Enter` to switch
+
+All plugins reinitialize with the new project context. State (active plugin, cursor positions) is remembered per project.
+
 ## Keyboard Shortcuts
 
 | Key                 | Action                           |
 | ------------------- | -------------------------------- |
 | `q`, `ctrl+c`       | Quit                             |
+| `@`                 | Open project switcher            |
 | `tab` / `shift+tab` | Navigate plugins                 |
 | `1-9`               | Focus plugin by number           |
 | `j/k`, `↓/↑`        | Navigate items                   |
