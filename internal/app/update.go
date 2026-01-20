@@ -387,8 +387,15 @@ func (m Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if m.showProjectSwitcher {
 		allProjects := m.cfg.Projects.List
 		if len(allProjects) == 0 {
-			// No projects configured, just close on any key
-			if msg.String() == "q" || msg.String() == "@" || msg.Type == tea.KeyEsc {
+			// No projects configured - handle y for LLM prompt, close on esc/q/@
+			switch msg.String() {
+			case "y":
+				return m, m.copyProjectSetupPrompt()
+			case "q", "@":
+				m.resetProjectSwitcher()
+				m.updateContext()
+			}
+			if msg.Type == tea.KeyEsc {
 				m.resetProjectSwitcher()
 				m.updateContext()
 			}
@@ -467,6 +474,10 @@ func (m Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.resetProjectSwitcher()
 			m.updateContext()
 			return m, nil
+
+		case "y":
+			// Copy LLM setup prompt (less prominent when projects exist)
+			return m, m.copyProjectSetupPrompt()
 		}
 
 		// Forward other keys to text input for filtering

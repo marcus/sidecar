@@ -119,20 +119,31 @@ func (m Model) renderProjectSwitcherOverlay(content string) string {
 
 	// Empty state (no projects configured at all)
 	if len(allProjects) == 0 {
-		b.WriteString(styles.Muted.Render("No projects configured.\n\n"))
-		b.WriteString(styles.Muted.Render("Add projects to "))
+		b.WriteString(styles.Muted.Render("No projects configured."))
+		b.WriteString("\n\n")
+
+		// LLM setup prompt - prominent
+		b.WriteString(lipgloss.NewStyle().Foreground(styles.Secondary).Bold(true).Render("Quick Setup"))
+		b.WriteString("\n")
+		b.WriteString(styles.KeyHint.Render("y"))
+		b.WriteString(styles.Muted.Render(" copy setup prompt for LLM"))
+		b.WriteString("\n\n")
+
+		// Manual config
+		b.WriteString(styles.Muted.Render("Or manually edit:\n"))
 		b.WriteString(styles.KeyHint.Render("~/.config/sidecar/config.json"))
-		b.WriteString(styles.Muted.Render(":\n\n"))
-		b.WriteString(styles.Muted.Render(`{
+		b.WriteString("\n\n")
+		configExample := `{
   "projects": {
     "list": [
       {"name": "myapp", "path": "~/code/myapp"}
     ]
   }
-}`))
+}`
+		b.WriteString(styles.Subtle.Render(configExample))
 		b.WriteString("\n\n")
 		b.WriteString(styles.KeyHint.Render("esc"))
-		b.WriteString(styles.Muted.Render(" to close"))
+		b.WriteString(styles.Muted.Render(" close"))
 
 		modal := styles.ModalBox.Render(b.String())
 		return ui.OverlayModal(content, modal, m.width, m.height)
@@ -251,7 +262,9 @@ func (m Model) renderProjectSwitcherOverlay(content string) string {
 	b.WriteString(styles.KeyHint.Render("↑/↓"))
 	b.WriteString(styles.Muted.Render(" navigate  "))
 	b.WriteString(styles.KeyHint.Render("esc"))
-	b.WriteString(styles.Muted.Render(" cancel"))
+	b.WriteString(styles.Muted.Render(" cancel  "))
+	b.WriteString(styles.Subtle.Render("y"))
+	b.WriteString(styles.Subtle.Render(" llm setup"))
 
 	modal := styles.ModalBox.Render(b.String())
 	return ui.OverlayModal(content, modal, m.width, m.height)

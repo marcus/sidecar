@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/atotto/clipboard"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/marcus/sidecar/internal/config"
@@ -442,4 +443,36 @@ func (m *Model) switchProject(projectPath string) tea.Cmd {
 			}
 		},
 	)
+}
+
+// copyProjectSetupPrompt copies an LLM-friendly prompt for configuring projects.
+func (m *Model) copyProjectSetupPrompt() tea.Cmd {
+	prompt := `Configure sidecar projects for me.
+
+Add my code projects to ~/.config/sidecar/config.json using this format:
+
+{
+  "projects": {
+    "list": [
+      {"name": "short-name", "path": "~/code/project-path"}
+    ]
+  }
+}
+
+Rules:
+- Use short, memorable names (1-2 words, lowercase, hyphens ok)
+- Expand ~ to full home path if needed
+- Only add directories that exist and contain code
+- Merge with existing config if present
+
+My code is located at: [TELL ME WHERE YOUR CODE DIRECTORIES ARE]`
+
+	if err := clipboard.WriteAll(prompt); err != nil {
+		return func() tea.Msg {
+			return ToastMsg{Message: "Copy failed: " + err.Error(), Duration: 2 * time.Second}
+		}
+	}
+	return func() tea.Msg {
+		return ToastMsg{Message: "Copied LLM setup prompt", Duration: 2 * time.Second}
+	}
 }
