@@ -256,6 +256,14 @@ func (p *Plugin) Init(ctx *plugin.Context) error {
 		p.tmuxCaptureMaxBytes = ctx.Config.Plugins.Worktree.TmuxCaptureMaxBytes
 	}
 
+	// Reset agent-related state for clean reinit (important for project switching)
+	// Without this, reconnectAgents() won't run again after switching projects
+	p.initialReconnectDone = false
+	p.agents = make(map[string]*Agent)
+	p.managedSessions = make(map[string]bool)
+	p.worktrees = make([]*Worktree, 0)
+	p.attachedSession = ""
+
 	// Register dynamic keybindings
 	if ctx.Keymap != nil {
 		// Sidebar list context

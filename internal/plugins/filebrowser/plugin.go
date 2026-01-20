@@ -242,6 +242,9 @@ func (p *Plugin) Init(ctx *plugin.Context) error {
 	p.ctx = ctx
 	p.tree = NewFileTree(ctx.WorkDir)
 
+	// Reset state flags for reinit support (project switching)
+	p.stateRestored = false
+
 	// Initialize markdown renderer
 	renderer, err := markdown.NewRenderer()
 	if err != nil {

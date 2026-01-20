@@ -118,3 +118,75 @@ func TestValidate(t *testing.T) {
 		t.Errorf("got %v, want 1s after validation", cfg.Plugins.GitStatus.RefreshInterval)
 	}
 }
+
+func TestLoadFrom_ProjectsList(t *testing.T) {
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "config.json")
+
+	// Create a test project directory
+	testProjectDir := filepath.Join(dir, "myproject")
+	if err := os.MkdirAll(testProjectDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	content := []byte(`{
+		"projects": {
+			"list": [
+				{"name": "My Project", "path": "` + testProjectDir + `"},
+				{"name": "Tilde Project", "path": "~/code/test"}
+			]
+		}
+	}`)
+
+	if err := os.WriteFile(configPath, content, 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := LoadFrom(configPath)
+	if err != nil {
+		t.Fatalf("LoadFrom failed: %v", err)
+	}
+
+	if len(cfg.Projects.List) != 2 {
+		t.Errorf("got %d projects, want 2", len(cfg.Projects.List))
+	}
+
+	// Check first project
+	if cfg.Projects.List[0].Name != "My Project" {
+		t.Errorf("got name %q, want 'My Project'", cfg.Projects.List[0].Name)
+	}
+	if cfg.Projects.List[0].Path != testProjectDir {
+		t.Errorf("got path %q, want %q", cfg.Projects.List[0].Path, testProjectDir)
+	}
+
+	// Check tilde expansion
+	home, _ := os.UserHomeDir()
+	expectedPath := filepath.Join(home, "code/test")
+	if cfg.Projects.List[1].Path != expectedPath {
+		t.Errorf("got path %q, want %q (tilde expanded)", cfg.Projects.List[1].Path, expectedPath)
+	}
+}
+
+func TestLoadFrom_EmptyProjectsList(t *testing.T) {
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "config.json")
+
+	content := []byte(`{
+		"projects": {
+			"mode": "single"
+		}
+	}`)
+
+	if err := os.WriteFile(configPath, content, 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := LoadFrom(configPath)
+	if err != nil {
+		t.Fatalf("LoadFrom failed: %v", err)
+	}
+
+	if len(cfg.Projects.List) != 0 {
+		t.Errorf("got %d projects, want 0", len(cfg.Projects.List))
+	}
+}

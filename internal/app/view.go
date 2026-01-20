@@ -73,6 +73,9 @@ func (m Model) View() string {
 	if m.showQuitConfirm {
 		return m.renderQuitConfirmOverlay(b.String())
 	}
+	if m.showProjectSwitcher {
+		return m.renderProjectSwitcherOverlay(b.String())
+	}
 
 	return b.String()
 }
@@ -97,6 +100,125 @@ func (m Model) renderQuitConfirmOverlay(content string) string {
 	b.WriteString(" or ")
 	b.WriteString(styles.KeyHint.Render("esc"))
 	b.WriteString(" to cancel")
+
+	modal := styles.ModalBox.Render(b.String())
+	return ui.OverlayModal(content, modal, m.width, m.height)
+}
+
+// renderProjectSwitcherOverlay renders the project switcher modal.
+func (m Model) renderProjectSwitcherOverlay(content string) string {
+	var b strings.Builder
+
+	// Title
+	b.WriteString(styles.ModalTitle.Render("Switch Project"))
+	b.WriteString("  ")
+	b.WriteString(styles.Muted.Render("@"))
+	b.WriteString("\n\n")
+
+	projects := m.cfg.Projects.List
+
+	// Empty state
+	if len(projects) == 0 {
+		b.WriteString(styles.Muted.Render("No projects configured.\n\n"))
+		b.WriteString(styles.Muted.Render("Add projects to "))
+		b.WriteString(styles.KeyHint.Render("~/.config/sidecar/config.json"))
+		b.WriteString(styles.Muted.Render(":\n\n"))
+		b.WriteString(styles.Muted.Render(`{
+  "projects": {
+    "list": [
+      {"name": "myapp", "path": "~/code/myapp"}
+    ]
+  }
+}`))
+		b.WriteString("\n\n")
+		b.WriteString(styles.KeyHint.Render("esc"))
+		b.WriteString(styles.Muted.Render(" to close"))
+
+		modal := styles.ModalBox.Render(b.String())
+		return ui.OverlayModal(content, modal, m.width, m.height)
+	}
+
+	// Calculate visible window for scrolling
+	maxVisible := 8
+	visibleCount := len(projects)
+	if visibleCount > maxVisible {
+		visibleCount = maxVisible
+	}
+
+	// Ensure cursor is visible within scroll window
+	scrollOffset := m.projectSwitcherScroll
+	if m.projectSwitcherCursor < scrollOffset {
+		scrollOffset = m.projectSwitcherCursor
+	}
+	if m.projectSwitcherCursor >= scrollOffset+visibleCount {
+		scrollOffset = m.projectSwitcherCursor - visibleCount + 1
+	}
+
+	// Render scroll indicator if needed (top)
+	if scrollOffset > 0 {
+		b.WriteString(styles.Muted.Render(fmt.Sprintf("  ↑ %d more above\n", scrollOffset)))
+	}
+
+	// Styles for project items
+	cursorStyle := lipgloss.NewStyle().Foreground(styles.Primary)
+	nameSelectedStyle := lipgloss.NewStyle().Foreground(styles.Primary).Bold(true)
+	nameCurrentStyle := lipgloss.NewStyle().Foreground(styles.Success).Bold(true)
+	pathSelectedStyle := styles.Muted.Bold(true)
+
+	// Render project list
+	for i := scrollOffset; i < scrollOffset+visibleCount && i < len(projects); i++ {
+		proj := projects[i]
+		isCursor := i == m.projectSwitcherCursor
+		isHover := i == m.projectSwitcherHover
+		isCurrent := proj.Path == m.ui.WorkDir
+
+		// Cursor indicator
+		if isCursor {
+			b.WriteString(cursorStyle.Render("→ "))
+		} else {
+			b.WriteString("  ")
+		}
+
+		// Project name
+		nameStyle := styles.BarText
+		if isCurrent {
+			nameStyle = nameCurrentStyle
+		} else if isCursor || isHover {
+			nameStyle = nameSelectedStyle
+		}
+		b.WriteString(nameStyle.Render(proj.Name))
+
+		// Current indicator
+		if isCurrent {
+			b.WriteString(styles.Muted.Render(" (current)"))
+		}
+		b.WriteString("\n")
+
+		// Project path (muted, indented)
+		pathStyle := styles.Muted
+		if isCursor || isHover {
+			pathStyle = pathSelectedStyle
+		}
+		b.WriteString("  ")
+		b.WriteString(pathStyle.Render(proj.Path))
+		b.WriteString("\n")
+	}
+
+	// Render scroll indicator if needed (bottom)
+	remaining := len(projects) - (scrollOffset + visibleCount)
+	if remaining > 0 {
+		b.WriteString(styles.Muted.Render(fmt.Sprintf("  ↓ %d more below\n", remaining)))
+	}
+
+	b.WriteString("\n")
+
+	// Help text
+	b.WriteString(styles.KeyHint.Render("enter"))
+	b.WriteString(styles.Muted.Render(" select  "))
+	b.WriteString(styles.KeyHint.Render("j/k"))
+	b.WriteString(styles.Muted.Render(" navigate  "))
+	b.WriteString(styles.KeyHint.Render("esc"))
+	b.WriteString(styles.Muted.Render(" cancel"))
 
 	modal := styles.ModalBox.Render(b.String())
 	return ui.OverlayModal(content, modal, m.width, m.height)
