@@ -114,9 +114,10 @@ func (p *Plugin) Commands() []plugin.Command {
 
 		// Shell-specific commands when shell is selected
 		if p.shellSelected {
-			if p.shellSession == nil {
+			shell := p.getSelectedShell()
+			if shell == nil || shell.Agent == nil {
 				cmds = append(cmds,
-					plugin.Command{ID: "create-shell", Name: "Create", Description: "Create shell session", Context: "worktree-list", Priority: 10},
+					plugin.Command{ID: "attach-shell", Name: "Attach", Description: "Create and attach to shell", Context: "worktree-list", Priority: 10},
 				)
 			} else {
 				cmds = append(cmds,

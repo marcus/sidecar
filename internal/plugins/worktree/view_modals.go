@@ -1526,3 +1526,58 @@ func (p *Plugin) renderCommitForMergeModal(width, height int) string {
 	// Use OverlayModal for dimmed background effect
 	return ui.OverlayModal(background, modal, width, height)
 }
+
+// renderTypeSelectorModal renders the type selector modal (Shell vs Worktree).
+func (p *Plugin) renderTypeSelectorModal(width, height int) string {
+	// Render the background (list view)
+	background := p.renderListView(width, height)
+
+	// Modal dimensions - minimal width for quick selection
+	modalW := 32
+	if modalW > width-4 {
+		modalW = width - 4
+	}
+
+	var sb strings.Builder
+	sb.WriteString(lipgloss.NewStyle().Bold(true).Render("Create New"))
+	sb.WriteString("\n\n")
+
+	// Options
+	options := []string{"Shell", "Worktree"}
+	for i, opt := range options {
+		prefix := "  "
+		style := lipgloss.NewStyle().Foreground(lipgloss.Color("245")) // dim
+
+		if i == p.typeSelectorIdx {
+			prefix = "> "
+			style = lipgloss.NewStyle().Foreground(lipgloss.Color("62")).Bold(true) // highlight
+		} else if i+1 == p.typeSelectorHover {
+			style = lipgloss.NewStyle().Foreground(lipgloss.Color("252")) // hover
+		}
+
+		sb.WriteString(style.Render(prefix + opt))
+		sb.WriteString("\n")
+	}
+
+	sb.WriteString("\n")
+	sb.WriteString(dimText("↑/↓ select  Enter confirm  Esc cancel"))
+
+	content := sb.String()
+	modal := modalStyle.Width(modalW).Render(content)
+
+	// Calculate modal position for hit regions
+	modalHeight := lipgloss.Height(modal)
+	modalX := (width - modalW) / 2
+	modalY := (height - modalHeight) / 2
+
+	// Register hit regions for options (inside modal content)
+	// Content starts at modalY + 2 (border + padding) + 2 (title + blank line)
+	optionStartY := modalY + 4
+	optionW := modalW - 6 // Subtract border + padding
+
+	for i := range options {
+		p.mouseHandler.HitMap.AddRect(regionTypeSelectorOption, modalX+3, optionStartY+i, optionW, 1, i)
+	}
+
+	return ui.OverlayModal(background, modal, width, height)
+}

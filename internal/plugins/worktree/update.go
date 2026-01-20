@@ -18,8 +18,8 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 	case app.PluginFocusedMsg:
 		if p.focused {
 			// Poll shell or selected agent when plugin gains focus
-			if p.shellSelected && p.shellSession != nil {
-				return p, p.pollShellSession()
+			if p.shellSelected && p.selectedShellIdx >= 0 && p.selectedShellIdx < len(p.shells) {
+				return p, p.pollShellSessionByIndex(p.selectedShellIdx)
 			}
 			return p, p.pollSelectedAgentNowIfVisible()
 		}
@@ -285,59 +285,97 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 			// Creation failed, don't update state
 			return p, nil
 		}
-		// Create shell session agent struct
-		p.shellSession = &Agent{
-			Type:        AgentShell,
-			TmuxSession: msg.SessionName,
-			OutputBuf:   NewOutputBuffer(outputBufferCap),
-			StartedAt:   time.Now(),
-			Status:      AgentStatusRunning,
+		// Create new shell session entry
+		shell := &ShellSession{
+			Name:     msg.DisplayName,
+			TmuxName: msg.SessionName,
+			Agent: &Agent{
+				Type:        AgentShell,
+				TmuxSession: msg.SessionName,
+				OutputBuf:   NewOutputBuffer(outputBufferCap),
+				StartedAt:   time.Now(),
+				Status:      AgentStatusRunning,
+			},
+			CreatedAt: time.Now(),
 		}
+		p.shells = append(p.shells, shell)
 		p.managedSessions[msg.SessionName] = true
+
+		// Auto-select and focus the new shell
+		p.shellSelected = true
+		p.selectedShellIdx = len(p.shells) - 1
+		p.activePane = PaneSidebar
+		p.autoScrollOutput = true
+
 		// Start polling for output
-		cmds = append(cmds, p.scheduleShellPoll(500*time.Millisecond))
+		cmds = append(cmds, p.scheduleShellPollByIndex(len(p.shells)-1, 500*time.Millisecond))
 
 	case ShellDetachedMsg:
 		// User detached from shell session - re-enable mouse and resume polling
 		cmds = append(cmds, func() tea.Msg { return tea.EnableMouseAllMotion() })
-		if p.shellSession != nil {
-			cmds = append(cmds, p.scheduleShellPoll(0)) // Immediate poll
+		if p.shellSelected && p.selectedShellIdx >= 0 && p.selectedShellIdx < len(p.shells) {
+			cmds = append(cmds, p.scheduleShellPollByIndex(p.selectedShellIdx, 0)) // Immediate poll
 		}
 
 	case shellAttachAfterCreateMsg:
 		// Attach to shell after it was created
-		return p, p.attachToShell()
+		return p, p.attachToShellByIndex(msg.Index)
 
 	case ShellKilledMsg:
-		// Shell session killed, clear state
-		if p.shellSession != nil {
-			delete(p.managedSessions, p.shellSession.TmuxSession)
+		// Shell session killed, remove from list
+		for i, shell := range p.shells {
+			if shell.TmuxName == msg.SessionName {
+				p.shells = append(p.shells[:i], p.shells[i+1:]...)
+				delete(p.managedSessions, msg.SessionName)
+				break
+			}
 		}
-		p.shellSession = nil
+		// Adjust selection if needed
+		if p.shellSelected {
+			if p.selectedShellIdx >= len(p.shells) {
+				if len(p.shells) > 0 {
+					p.selectedShellIdx = len(p.shells) - 1
+				} else if len(p.worktrees) > 0 {
+					p.shellSelected = false
+					p.selectedIdx = 0
+				}
+			}
+		}
 
 	case ShellOutputMsg:
 		// Update last output time if content changed
-		if msg.Changed && p.shellSession != nil {
-			p.shellSession.LastOutput = time.Now()
+		if msg.Index >= 0 && msg.Index < len(p.shells) {
+			shell := p.shells[msg.Index]
+			if msg.Changed && shell.Agent != nil {
+				shell.Agent.LastOutput = time.Now()
+			}
 		}
 		// Schedule next poll with adaptive interval
 		interval := pollIntervalActive
 		if !msg.Changed {
 			interval = pollIntervalIdle
 		}
-		// Use longer interval if shell output isn't visible
-		if !p.shellSelected || !p.focused || p.previewTab != PreviewTabOutput {
+		// Use longer interval if this shell's output isn't visible
+		isVisible := p.shellSelected && p.selectedShellIdx == msg.Index && p.focused && p.previewTab == PreviewTabOutput
+		if !isVisible {
 			background := p.backgroundPollInterval()
 			if background > interval {
 				interval = background
 			}
 		}
-		return p, p.scheduleShellPoll(interval)
+		return p, p.scheduleShellPollByIndex(msg.Index, interval)
+
+	case pollShellByIdxMsg:
+		// Poll specific shell session for output
+		if msg.Index >= 0 && msg.Index < len(p.shells) {
+			return p, p.pollShellSessionByIndex(msg.Index)
+		}
+		return p, nil
 
 	case pollShellMsg:
-		// Poll shell session for output
-		if p.shellSession != nil {
-			return p, p.pollShellSession()
+		// Legacy: poll selected shell session for output
+		if p.shellSelected && p.selectedShellIdx >= 0 && p.selectedShellIdx < len(p.shells) {
+			return p, p.pollShellSessionByIndex(p.selectedShellIdx)
 		}
 		return p, nil
 

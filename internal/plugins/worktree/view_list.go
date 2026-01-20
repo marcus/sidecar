@@ -2,7 +2,6 @@ package worktree
 
 import (
 	"fmt"
-	"path/filepath"
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
@@ -60,6 +59,8 @@ func (p *Plugin) View(width, height int) string {
 		return p.renderCommitForMergeModal(width, height)
 	case ViewModePromptPicker:
 		return p.renderPromptPickerModal(width, height)
+	case ViewModeTypeSelector:
+		return p.renderTypeSelectorModal(width, height)
 	default:
 		return p.renderListView(width, height)
 	}
@@ -208,24 +209,40 @@ func (p *Plugin) renderSidebarContent(width, height int) string {
 	contentHeight := height - 2 // header + empty line
 	itemHeight := 2             // Each worktree item takes 2 lines
 
-	// === Render shell entry (always first) ===
-	shellLine := p.renderShellEntry(p.shellSelected, width)
-	lines = append(lines, shellLine)
-	// Register hit region for shell entry (special index -1)
-	p.mouseHandler.HitMap.AddRect(regionWorktreeItem, 0, currentY, width, itemHeight, -1)
-	currentY += itemHeight
+	// === Render shells section ===
+	if len(p.shells) > 0 {
+		// Shells subheader
+		lines = append(lines, styles.Muted.Render("Shells"))
+		currentY++
 
-	// Add separator line after shell
-	lines = append(lines, styles.Muted.Render(strings.Repeat("─", width)))
-	currentY++
+		// Render each shell entry
+		for i, shell := range p.shells {
+			selected := p.shellSelected && i == p.selectedShellIdx
+			shellLine := p.renderShellEntryForSession(shell, selected, width)
+			lines = append(lines, shellLine)
+			// Register hit region with negative index: -1 -> shells[0], -2 -> shells[1], etc.
+			p.mouseHandler.HitMap.AddRect(regionWorktreeItem, 0, currentY, width, itemHeight, -(i + 1))
+			currentY += itemHeight
+		}
 
-	// Adjust visible count for shell entry + separator (3 lines taken)
-	p.visibleCount = (contentHeight - 3) / itemHeight
+		// Add separator line after shells
+		lines = append(lines, styles.Muted.Render(strings.Repeat("─", width)))
+		currentY++
+	}
+
+	// Calculate shell section height (subheader + shells*2 + separator)
+	shellSectionHeight := 0
+	if len(p.shells) > 0 {
+		shellSectionHeight = 1 + len(p.shells)*itemHeight + 1
+	}
+
+	// Adjust visible count for shell section
+	p.visibleCount = (contentHeight - shellSectionHeight) / itemHeight
 
 	// Render worktree items
 	if len(p.worktrees) == 0 {
-		// No worktrees exist - show empty state message (unless shell is selected)
-		if !p.shellSelected {
+		// No worktrees exist - show empty state message (unless shell is selected or shells exist)
+		if !p.shellSelected && len(p.shells) == 0 {
 			// Calculate vertical centering for empty state
 			emptyStateHeight := 2 // "No worktrees" + "Press 'n'..."
 			emptyStartY := (contentHeight - emptyStateHeight) / 2
@@ -253,8 +270,14 @@ func (p *Plugin) renderSidebarContent(width, height int) string {
 			lines = append(lines, styles.Muted.Render(strings.Repeat(" ", pad1)+msg1))
 			lines = append(lines, styles.Muted.Render(strings.Repeat(" ", pad2)+msg2))
 		}
-		// When shell is selected and no worktrees, just show the shell entry (already rendered above)
+		// When shell is selected and no worktrees, just show the shell entries (already rendered above)
 	} else {
+		// Worktrees subheader (only if we have shells above)
+		if len(p.shells) > 0 {
+			lines = append(lines, styles.Muted.Render("Worktrees"))
+			currentY++
+		}
+
 		// Guard against negative scrollOffset
 		if p.scrollOffset < 0 {
 			p.scrollOffset = 0
@@ -449,14 +472,14 @@ func (p *Plugin) renderWorktreeItem(wt *Worktree, selected bool, width int) stri
 	return styles.ListItemNormal.Width(width).Render(content)
 }
 
-// renderShellEntry renders the project shell entry (always first in list).
-func (p *Plugin) renderShellEntry(selected bool, width int) string {
+// renderShellEntryForSession renders a shell entry for a specific shell session.
+func (p *Plugin) renderShellEntryForSession(shell *ShellSession, selected bool, width int) string {
 	isActiveFocus := selected && p.activePane == PaneSidebar
 
 	// Determine icon based on session state
 	var statusIcon string
 	var statusStyle lipgloss.Style
-	if p.shellSession != nil {
+	if shell.Agent != nil {
 		statusIcon = "●" // Session running
 		statusStyle = styles.StatusCompleted // Green
 	} else {
@@ -464,35 +487,31 @@ func (p *Plugin) renderShellEntry(selected bool, width int) string {
 		statusStyle = styles.Muted
 	}
 
-	// Project name from working directory
-	projectName := "Project Shell"
-	if p.ctx != nil {
-		projectName = filepath.Base(p.ctx.WorkDir)
-	}
+	// Use shell display name
+	displayName := shell.Name
 
 	// Build second line
 	var statusText string
-	if p.shellSession != nil {
+	if shell.Agent != nil {
 		statusText = "shell · running"
 	} else {
 		statusText = "shell · no session"
 	}
 
 	// Calculate layout
-	timeStr := "" // No time for shell
 	maxNameWidth := width - 4 - 2 // icon + padding
-	nameRunes := []rune(projectName)
+	nameRunes := []rune(displayName)
 	if len(nameRunes) > maxNameWidth {
-		projectName = string(nameRunes[:maxNameWidth-1]) + "…"
+		displayName = string(nameRunes[:maxNameWidth-1]) + "…"
 	}
 
 	// Build lines
 	if selected {
 		// Selected style
-		line1 := fmt.Sprintf(" %s %s", statusIcon, projectName)
+		line1 := fmt.Sprintf(" %s %s", statusIcon, displayName)
 		line1Width := lipgloss.Width(line1)
 		if line1Width < width {
-			line1 = line1 + strings.Repeat(" ", width-line1Width-len(timeStr))
+			line1 = line1 + strings.Repeat(" ", width-line1Width)
 		}
 		line2 := "   " + statusText
 		line2Width := lipgloss.Width(line2)
@@ -514,7 +533,7 @@ func (p *Plugin) renderShellEntry(selected bool, width int) string {
 
 	// Not selected - use styled icon
 	icon := statusStyle.Render(statusIcon)
-	line1 := fmt.Sprintf(" %s %s", icon, projectName)
+	line1 := fmt.Sprintf(" %s %s", icon, displayName)
 	line2 := "   " + dimText(statusText)
 	content := line1 + "\n" + line2
 	return styles.ListItemNormal.Width(width).Render(content)

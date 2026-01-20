@@ -232,9 +232,11 @@ func (p *Plugin) renderOutputContent(width, height int) string {
 	return hint + "\n" + strings.Join(displayLines, "\n")
 }
 
-// renderShellOutput renders project shell output.
+// renderShellOutput renders the selected shell's output.
 func (p *Plugin) renderShellOutput(width, height int) string {
-	if p.shellSession == nil {
+	// Get the selected shell
+	shell := p.getSelectedShell()
+	if shell == nil || shell.Agent == nil {
 		return p.renderShellPrimer(width, height)
 	}
 
@@ -242,11 +244,11 @@ func (p *Plugin) renderShellOutput(width, height int) string {
 	hint := dimText("enter to attach • Ctrl-b d to detach")
 	height-- // Reserve line for hint
 
-	if p.shellSession.OutputBuf == nil {
+	if shell.Agent.OutputBuf == nil {
 		return hint + "\n" + dimText("No output yet")
 	}
 
-	lineCount := p.shellSession.OutputBuf.LineCount()
+	lineCount := shell.Agent.OutputBuf.LineCount()
 	if lineCount == 0 {
 		return hint + "\n" + dimText("No output yet")
 	}
@@ -272,7 +274,7 @@ func (p *Plugin) renderShellOutput(width, height int) string {
 	}
 
 	// Get only the lines we need
-	lines := p.shellSession.OutputBuf.LinesRange(start, end)
+	lines := shell.Agent.OutputBuf.LinesRange(start, end)
 	if len(lines) == 0 {
 		return hint + "\n" + dimText("No output yet")
 	}

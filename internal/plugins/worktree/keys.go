@@ -28,6 +28,34 @@ func (p *Plugin) handleKeyPress(msg tea.KeyMsg) tea.Cmd {
 		return p.handleCommitForMergeKeys(msg)
 	case ViewModePromptPicker:
 		return p.handlePromptPickerKeys(msg)
+	case ViewModeTypeSelector:
+		return p.handleTypeSelectorKeys(msg)
+	}
+	return nil
+}
+
+// handleTypeSelectorKeys handles keys in the type selector modal.
+func (p *Plugin) handleTypeSelectorKeys(msg tea.KeyMsg) tea.Cmd {
+	switch msg.String() {
+	case "j", "down":
+		if p.typeSelectorIdx < 1 {
+			p.typeSelectorIdx++
+		}
+	case "k", "up":
+		if p.typeSelectorIdx > 0 {
+			p.typeSelectorIdx--
+		}
+	case "enter":
+		p.viewMode = ViewModeList
+		if p.typeSelectorIdx == 0 {
+			// Create new shell
+			return p.createNewShell()
+		}
+		// Open worktree create modal
+		return p.openCreateModal()
+	case "esc", "q":
+		p.viewMode = ViewModeList
+		p.typeSelectorIdx = 1 // Reset to default (Worktree)
 	}
 	return nil
 }
@@ -298,7 +326,11 @@ func (p *Plugin) handleListKeys(msg tea.KeyMsg) tea.Cmd {
 		p.previewOffset = 0
 		p.autoScrollOutput = true
 	case "n":
-		return p.openCreateModal()
+		// Open type selector modal to choose between Shell and Worktree
+		p.viewMode = ViewModeTypeSelector
+		p.typeSelectorIdx = 1 // Default to Worktree (more common)
+		p.typeSelectorHover = 0
+		return nil
 	case "D":
 		wt := p.selectedWorktree()
 		if wt == nil {
@@ -328,10 +360,12 @@ func (p *Plugin) handleListKeys(msg tea.KeyMsg) tea.Cmd {
 			p.previewHorizOffset += 10
 		}
 	case "enter":
-		// Shell entry: create or attach to shell session
+		// Shell entry: attach to selected shell session
 		if p.shellSelected {
-			// Always try to attach if session exists, creating tracking state if needed
-			return p.ensureShellAndAttach()
+			if p.selectedShellIdx >= 0 && p.selectedShellIdx < len(p.shells) {
+				return p.ensureShellAndAttachByIndex(p.selectedShellIdx)
+			}
+			return nil
 		}
 		// Attach to tmux session if agent running, otherwise focus preview
 		wt := p.selectedWorktree()
@@ -467,9 +501,12 @@ func (p *Plugin) handleListKeys(msg tea.KeyMsg) tea.Cmd {
 			return p.StopAgent(wt)
 		}
 	case "K":
-		// Kill shell session (only when shell is selected)
-		if p.shellSelected && p.shellSession != nil {
-			return p.killShellSession()
+		// Kill selected shell session
+		if p.shellSelected && p.selectedShellIdx >= 0 && p.selectedShellIdx < len(p.shells) {
+			shell := p.shells[p.selectedShellIdx]
+			if shell.Agent != nil {
+				return p.killShellSessionByName(shell.TmuxName)
+			}
 		}
 	case "y":
 		// Approve pending prompt on selected worktree

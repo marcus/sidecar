@@ -72,6 +72,9 @@ const (
 
 	// Sidebar header regions
 	regionCreateWorktreeButton = "create-worktree-button"
+
+	// Type selector modal regions
+	regionTypeSelectorOption = "type-selector-option"
 )
 
 // Plugin implements the worktree manager plugin.
@@ -210,10 +213,14 @@ type Plugin struct {
 	// Sidebar header hover state
 	hoverNewButton bool
 
-	// Project shell session (not a git worktree, but a tmux session in project root)
-	shellSession     *Agent // Reuse Agent struct for tmux session
-	shellSessionName string // "sidecar-sh-{project}"
-	shellSelected    bool   // True when shell entry is selected (vs a worktree)
+	// Multiple shell sessions (not tied to git worktrees)
+	shells           []*ShellSession // All shell sessions for this project
+	selectedShellIdx int             // Currently selected shell index
+	shellSelected    bool            // True when any shell is selected (vs a worktree)
+
+	// Type selector modal state (shell vs worktree)
+	typeSelectorIdx   int // 0=Shell, 1=Worktree
+	typeSelectorHover int // Mouse hover: 0=none, 1=Shell, 2=Worktree
 }
 
 // New creates a new worktree manager plugin.
@@ -225,6 +232,7 @@ func New() *Plugin {
 		worktrees:           make([]*Worktree, 0),
 		agents:              make(map[string]*Agent),
 		managedSessions:     make(map[string]bool),
+		shells:              make([]*ShellSession, 0),
 		viewMode:            ViewModeList,
 		activePane:          PaneSidebar,
 		previewTab:          PreviewTabOutput,
@@ -235,8 +243,9 @@ func New() *Plugin {
 		tmuxCaptureMaxBytes: defaultTmuxCaptureMaxBytes,
 		truncateCache:       ui.NewTruncateCache(1000), // Cache up to 1000 truncations
 		markdownRenderer:    mdRenderer,
-		taskMarkdownMode:    true, // Default to rendered mode
+		taskMarkdownMode:    true,  // Default to rendered mode
 		shellSelected:       false, // Start with first worktree selected, not shell
+		typeSelectorIdx:     1,     // Default to Worktree option
 	}
 }
 
@@ -271,12 +280,12 @@ func (p *Plugin) Init(ctx *plugin.Context) error {
 	p.attachedSession = ""
 
 	// Reset shell state before initializing for new project (critical for project switching)
-	// Without this, shell session from previous project persists incorrectly
-	p.shellSession = nil
-	p.shellSessionName = ""
+	p.shells = make([]*ShellSession, 0)
+	p.selectedShellIdx = 0
+	p.shellSelected = false
 
-	// Initialize shell session for this project
-	p.initShellSession()
+	// Discover existing shell sessions for this project
+	p.initShellSessions()
 
 	// Register dynamic keybindings
 	if ctx.Keymap != nil {
@@ -373,9 +382,11 @@ func (p *Plugin) Start() tea.Cmd {
 	// Refresh worktrees - reconnectAgents will be called after worktrees are loaded
 	cmds = append(cmds, p.refreshWorktrees())
 
-	// Start shell polling immediately if session exists (so preview shows content right away)
-	if p.shellSession != nil {
-		cmds = append(cmds, p.pollShellSession())
+	// Start shell polling for all existing shells (so preview shows content right away)
+	for i, shell := range p.shells {
+		if shell.Agent != nil {
+			cmds = append(cmds, p.pollShellSessionByIndex(i))
+		}
 	}
 
 	return tea.Batch(cmds...)
@@ -661,8 +672,11 @@ func (p *Plugin) loadSelectedContent() tea.Cmd {
 	var cmds []tea.Cmd
 
 	// If shell is selected, poll shell output immediately
-	if p.shellSelected && p.shellSession != nil && p.previewTab == PreviewTabOutput {
-		cmds = append(cmds, p.pollShellSession())
+	if p.shellSelected && p.selectedShellIdx >= 0 && p.selectedShellIdx < len(p.shells) {
+		shell := p.shells[p.selectedShellIdx]
+		if shell.Agent != nil && p.previewTab == PreviewTabOutput {
+			cmds = append(cmds, p.pollShellSessionByIndex(p.selectedShellIdx))
+		}
 	}
 
 	switch p.previewTab {

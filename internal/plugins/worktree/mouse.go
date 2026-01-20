@@ -127,6 +127,19 @@ func (p *Plugin) handleMouseHover(action mouse.MouseAction) tea.Cmd {
 			p.mergeConfirmCheckboxHover = 0
 			p.mergeConfirmButtonHover = 0
 		}
+	case ViewModeTypeSelector:
+		if action.Region == nil {
+			p.typeSelectorHover = 0
+			return nil
+		}
+		switch action.Region.ID {
+		case regionTypeSelectorOption:
+			if idx, ok := action.Region.Data.(int); ok {
+				p.typeSelectorHover = idx + 1 // 1=Shell, 2=Worktree
+			}
+		default:
+			p.typeSelectorHover = 0
+		}
 	default:
 		p.createButtonHover = 0
 		p.agentChoiceButtonHover = 0
@@ -385,6 +398,17 @@ func (p *Plugin) handleMouseClick(action mouse.MouseAction) tea.Cmd {
 				return func() tea.Msg { return PromptSelectedMsg{Prompt: &prompt} }
 			}
 		}
+	case regionTypeSelectorOption:
+		// Click on type selector option - select and execute
+		if idx, ok := action.Region.Data.(int); ok {
+			p.viewMode = ViewModeList
+			if idx == 0 {
+				// Create new shell
+				return p.createNewShell()
+			}
+			// Open worktree create modal
+			return p.openCreateModal()
+		}
 	}
 	return nil
 }
@@ -410,14 +434,14 @@ func (p *Plugin) handleMouseDoubleClick(action mouse.MouseAction) tea.Cmd {
 	case regionWorktreeItem:
 		// Double-click on worktree or shell - attach to tmux session if exists
 		if idx, ok := action.Region.Data.(int); ok {
-			if idx == -1 {
-				// Double-click on shell entry - attach if session exists
-				p.shellSelected = true
-				if p.shellSession != nil {
-					return p.attachToShell()
+			if idx < 0 {
+				// Double-click on shell entry (negative index: -1 -> shells[0], -2 -> shells[1], etc.)
+				shellIdx := -(idx + 1)
+				if shellIdx >= 0 && shellIdx < len(p.shells) {
+					p.shellSelected = true
+					p.selectedShellIdx = shellIdx
+					return p.ensureShellAndAttachByIndex(shellIdx)
 				}
-				// No session, create one
-				return p.createShellSession()
 			} else if idx >= 0 && idx < len(p.worktrees) {
 				p.shellSelected = false
 				p.selectedIdx = idx
