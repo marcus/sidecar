@@ -118,6 +118,7 @@ func (p *Plugin) handleMouse(msg tea.MouseMsg) (*Plugin, tea.Cmd) {
 
 - Disable all table borders when embedding (`BorderTop/Bottom/Left/Right(false)`).
 - Do not use `Height` + `Offset` for scrolling; slice rows to the visible window.
+- Fix column widths via `StyleFunc` to prevent per-page column resizing.
 - Use a shared layout helper for render + hit testing + visible height.
 - Clamp scroll offset to `len(rows)-dataRowsVisible`.
 - Ignore the scroll-indicator line in hit tests.
@@ -389,8 +390,9 @@ linePos++
 **Fix:**
 1. Disable all table borders (`BorderTop/Bottom/Left/Right(false)`) so header/data row counts are stable.
 2. Avoid `Height(...)` + `Offset(...)` for scrolling. Slice your data to the visible window and pass only those rows to the table.
-3. Centralize layout math (header rows, data rows visible, scroll indicator rows) and reuse it for render + hit testing.
-4. Clamp scroll offset to `len(data) - dataRowsVisible` and ignore the scroll-indicator line below the table in hit tests.
+3. Fix column widths via `StyleFunc` so columns don’t resize when the visible window changes.
+4. Centralize layout math (header rows, data rows visible, scroll indicator rows) and reuse it for render + hit testing.
+5. Clamp scroll offset to `len(data) - dataRowsVisible` and ignore the scroll-indicator line below the table in hit tests.
 
 If keyboard navigation keeps the cursor visible but mouse clicks drift, it usually means your render math and input math disagree.
 
