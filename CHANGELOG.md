@@ -2,6 +2,17 @@
 
 All notable changes to sidecar are documented here.
 
+## [v0.28.0] - 2026-01-19
+
+### Features
+- **File Browser**: Vim-style `:<number>` line jump in file preview
+
+### Bug Fixes
+- **Worktree**: Reload commit status when cached list is empty
+
+### Dependencies
+- Updated embedded td to v0.16.0
+
 ## [v0.27.1] - 2026-01-19
 
 ### Bug Fixes
