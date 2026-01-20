@@ -12,8 +12,15 @@ type Config struct {
 
 // ProjectsConfig configures project detection and layout.
 type ProjectsConfig struct {
-	Mode string `json:"mode"` // "single" for now
-	Root string `json:"root"` // "." default
+	Mode string          `json:"mode"` // "single" for now
+	Root string          `json:"root"` // "." default
+	List []ProjectConfig `json:"list"` // list of configured projects for switcher
+}
+
+// ProjectConfig represents a single project in the project switcher.
+type ProjectConfig struct {
+	Name string `json:"name"` // display name for the project
+	Path string `json:"path"` // absolute path to project root (supports ~ expansion)
 }
 
 // PluginsConfig holds per-plugin configuration.

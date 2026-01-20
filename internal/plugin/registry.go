@@ -135,3 +135,43 @@ func (r *Registry) Unavailable() map[string]string {
 	}
 	return result
 }
+
+// Reinit stops all plugins, updates the context with a new WorkDir, and reinitializes all plugins.
+// Returns the start commands for all plugins.
+func (r *Registry) Reinit(newWorkDir string) []tea.Cmd {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	// Stop all plugins in reverse order
+	for i := len(r.plugins) - 1; i >= 0; i-- {
+		r.safeStop(r.plugins[i])
+	}
+
+	// Update context with new working directory
+	r.ctx.WorkDir = newWorkDir
+
+	// Reinitialize all plugins with the new context
+	for _, p := range r.plugins {
+		if err := r.safeInit(p); err != nil {
+			if r.ctx != nil && r.ctx.Logger != nil {
+				r.ctx.Logger.Error("plugin reinit failed", "id", p.ID(), "error", err)
+			}
+		}
+	}
+
+	// Collect start commands
+	cmds := make([]tea.Cmd, 0, len(r.plugins))
+	for _, p := range r.plugins {
+		if cmd := r.safeStart(p); cmd != nil {
+			cmds = append(cmds, cmd)
+		}
+	}
+	return cmds
+}
+
+// Context returns the current context.
+func (r *Registry) Context() *Context {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.ctx
+}

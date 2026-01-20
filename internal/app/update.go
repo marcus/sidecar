@@ -75,6 +75,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 
+		// Handle project switcher modal mouse events
+		if m.showProjectSwitcher {
+			return m.handleProjectSwitcherMouse(msg)
+		}
+
 		// Ignore mouse events for other modals
 		if m.showHelp || m.showQuitConfirm {
 			return m, nil
@@ -277,6 +282,10 @@ func (m Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.showQuitConfirm = false
 			return m, nil
 		}
+		if m.showProjectSwitcher {
+			m.resetProjectSwitcher()
+			return m, nil
+		}
 	}
 
 	if m.showQuitConfirm {
@@ -373,6 +382,54 @@ func (m Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
+	// Handle project switcher modal keys
+	if m.showProjectSwitcher {
+		projects := m.cfg.Projects.List
+		if len(projects) == 0 {
+			// No projects configured, just close on any key
+			if msg.String() == "q" || msg.String() == "@" {
+				m.resetProjectSwitcher()
+			}
+			return m, nil
+		}
+
+		switch msg.String() {
+		case "j", "down":
+			m.projectSwitcherCursor++
+			if m.projectSwitcherCursor >= len(projects) {
+				m.projectSwitcherCursor = len(projects) - 1
+			}
+			return m, nil
+		case "k", "up":
+			m.projectSwitcherCursor--
+			if m.projectSwitcherCursor < 0 {
+				m.projectSwitcherCursor = 0
+			}
+			return m, nil
+		case "g":
+			// Handle g g sequence (jump to top)
+			m.projectSwitcherCursor = 0
+			return m, nil
+		case "G":
+			// Jump to bottom
+			m.projectSwitcherCursor = len(projects) - 1
+			return m, nil
+		case "enter":
+			// Select project and switch to it
+			if m.projectSwitcherCursor >= 0 && m.projectSwitcherCursor < len(projects) {
+				selectedProject := projects[m.projectSwitcherCursor]
+				m.resetProjectSwitcher()
+				return m, m.switchProject(selectedProject.Path)
+			}
+			return m, nil
+		case "q", "@":
+			// Close modal
+			m.resetProjectSwitcher()
+			return m, nil
+		}
+		return m, nil
+	}
+
 	// If modal is open, don't process other keys
 	if m.showHelp || m.showQuitConfirm {
 		return m, nil
@@ -432,6 +489,24 @@ func (m Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		m.updateButtonFocus = false
 		m.updateContext()
+		return m, nil
+	case "@":
+		// Toggle project switcher modal
+		m.showProjectSwitcher = !m.showProjectSwitcher
+		if m.showProjectSwitcher {
+			m.activeContext = "project-switcher"
+			// Reset cursor to current project if possible
+			m.projectSwitcherCursor = 0
+			for i, proj := range m.cfg.Projects.List {
+				if proj.Path == m.ui.WorkDir {
+					m.projectSwitcherCursor = i
+					break
+				}
+			}
+		} else {
+			m.resetProjectSwitcher()
+			m.updateContext()
+		}
 		return m, nil
 	case "ctrl+h":
 		m.showFooter = !m.showFooter
@@ -566,4 +641,117 @@ func isGlobalRefreshContext(ctx string) bool {
 	default:
 		return false
 	}
+}
+
+// handleProjectSwitcherMouse handles mouse events for the project switcher modal.
+func (m Model) handleProjectSwitcherMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
+	projects := m.cfg.Projects.List
+	if len(projects) == 0 {
+		// No projects, close on click
+		if msg.Action == tea.MouseActionPress {
+			m.resetProjectSwitcher()
+		}
+		return m, nil
+	}
+
+	// Calculate modal dimensions and position
+	// This should roughly match the modal rendered in view.go
+	maxVisible := 8
+	visibleCount := len(projects)
+	if visibleCount > maxVisible {
+		visibleCount = maxVisible
+	}
+
+	// Estimate modal dimensions (title + projects + help text)
+	// Each project takes 2 lines (name + path)
+	modalContentLines := 2 + visibleCount*2 + 2 // title+space + projects + space+help
+	if m.projectSwitcherScroll > 0 {
+		modalContentLines++ // scroll indicator above
+	}
+	if len(projects) > m.projectSwitcherScroll+visibleCount {
+		modalContentLines++ // scroll indicator below
+	}
+
+	// ModalBox adds padding and border (~2 on each side)
+	modalHeight := modalContentLines + 4
+	modalWidth := 50 // Rough estimate
+
+	modalX := (m.width - modalWidth) / 2
+	modalY := (m.height - modalHeight) / 2
+
+	// Check if click is inside modal
+	if msg.X >= modalX && msg.X < modalX+modalWidth &&
+		msg.Y >= modalY && msg.Y < modalY+modalHeight {
+
+		// Calculate which project was clicked
+		// Content starts at modalY + 2 (border + padding)
+		// Title takes 2 lines, then scroll indicator (if any), then projects
+		contentStartY := modalY + 2 + 2 // border/padding + title
+		if m.projectSwitcherScroll > 0 {
+			contentStartY++ // scroll indicator
+		}
+
+		// Each project takes 2 lines
+		relY := msg.Y - contentStartY
+		if relY >= 0 && relY < visibleCount*2 {
+			projectIdx := m.projectSwitcherScroll + relY/2
+
+			if projectIdx >= 0 && projectIdx < len(projects) {
+				switch msg.Action {
+				case tea.MouseActionPress:
+					if msg.Button == tea.MouseButtonLeft {
+						// Click to select and switch
+						selectedProject := projects[projectIdx]
+						m.resetProjectSwitcher()
+						return m, m.switchProject(selectedProject.Path)
+					}
+				case tea.MouseActionMotion:
+					// Hover effect
+					m.projectSwitcherHover = projectIdx
+				}
+			}
+		} else {
+			// Not hovering over a project
+			if msg.Action == tea.MouseActionMotion {
+				m.projectSwitcherHover = -1
+			}
+		}
+
+		// Handle scroll wheel
+		switch msg.Button {
+		case tea.MouseButtonWheelUp:
+			m.projectSwitcherCursor--
+			if m.projectSwitcherCursor < 0 {
+				m.projectSwitcherCursor = 0
+			}
+			// Update scroll if cursor goes above visible area
+			if m.projectSwitcherCursor < m.projectSwitcherScroll {
+				m.projectSwitcherScroll = m.projectSwitcherCursor
+			}
+		case tea.MouseButtonWheelDown:
+			m.projectSwitcherCursor++
+			if m.projectSwitcherCursor >= len(projects) {
+				m.projectSwitcherCursor = len(projects) - 1
+			}
+			// Update scroll if cursor goes below visible area
+			if m.projectSwitcherCursor >= m.projectSwitcherScroll+visibleCount {
+				m.projectSwitcherScroll = m.projectSwitcherCursor - visibleCount + 1
+			}
+		}
+
+		return m, nil
+	}
+
+	// Click outside modal - close it
+	if msg.Action == tea.MouseActionPress && msg.Button == tea.MouseButtonLeft {
+		m.resetProjectSwitcher()
+		return m, nil
+	}
+
+	// Clear hover when outside modal
+	if msg.Action == tea.MouseActionMotion {
+		m.projectSwitcherHover = -1
+	}
+
+	return m, nil
 }

@@ -15,6 +15,7 @@ func DefaultBindings() []Binding {
 		{Key: "5", Command: "focus-plugin-5", Context: "global"},
 		{Key: "?", Command: "toggle-palette", Context: "global"},
 		{Key: "!", Command: "toggle-diagnostics", Context: "global"},
+		{Key: "@", Command: "switch-project", Context: "global"},
 		{Key: "ctrl+h", Command: "toggle-footer", Context: "global"},
 		{Key: "r", Command: "refresh", Context: "global"},
 		{Key: "j", Command: "cursor-down", Context: "global"},

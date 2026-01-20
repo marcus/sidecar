@@ -146,3 +146,79 @@ func TestRegistry_Get(t *testing.T) {
 		t.Error("Get should return nil for missing plugin")
 	}
 }
+
+// mockPluginWithInit tracks Init calls for testing Reinit.
+type mockPluginWithInit struct {
+	mockPlugin
+	initCalls int
+	lastCtx   *Context
+}
+
+func (m *mockPluginWithInit) Init(ctx *Context) error {
+	m.initCalls++
+	m.lastCtx = ctx
+	return m.mockPlugin.Init(ctx)
+}
+
+func (m *mockPluginWithInit) Start() tea.Cmd {
+	m.started = true
+	// Return a non-nil command for testing
+	return func() tea.Msg { return nil }
+}
+
+func TestRegistry_Reinit(t *testing.T) {
+	ctx := &Context{WorkDir: "/original/path"}
+	r := NewRegistry(ctx)
+
+	p1 := &mockPluginWithInit{mockPlugin: mockPlugin{id: "p1"}}
+	p2 := &mockPluginWithInit{mockPlugin: mockPlugin{id: "p2"}}
+	r.Register(p1)
+	r.Register(p2)
+
+	// Both plugins should be initialized once
+	if p1.initCalls != 1 {
+		t.Errorf("p1 init calls = %d, want 1", p1.initCalls)
+	}
+	if p2.initCalls != 1 {
+		t.Errorf("p2 init calls = %d, want 1", p2.initCalls)
+	}
+
+	// Start the plugins
+	r.Start()
+	if !p1.started || !p2.started {
+		t.Error("plugins should be started")
+	}
+
+	// Now reinitialize with a new path
+	newPath := "/new/project/path"
+	cmds := r.Reinit(newPath)
+
+	// Check that context was updated
+	if r.ctx.WorkDir != newPath {
+		t.Errorf("context WorkDir = %q, want %q", r.ctx.WorkDir, newPath)
+	}
+
+	// Check that plugins were stopped and reinitialized
+	if !p1.stopped || !p2.stopped {
+		t.Error("plugins should be stopped during Reinit")
+	}
+	if p1.initCalls != 2 {
+		t.Errorf("p1 init calls after Reinit = %d, want 2", p1.initCalls)
+	}
+	if p2.initCalls != 2 {
+		t.Errorf("p2 init calls after Reinit = %d, want 2", p2.initCalls)
+	}
+
+	// Check that plugins receive the new context
+	if p1.lastCtx == nil || p1.lastCtx.WorkDir != newPath {
+		t.Error("p1 should receive context with new WorkDir")
+	}
+	if p2.lastCtx == nil || p2.lastCtx.WorkDir != newPath {
+		t.Error("p2 should receive context with new WorkDir")
+	}
+
+	// Should return start commands
+	if len(cmds) == 0 {
+		t.Error("Reinit should return start commands")
+	}
+}

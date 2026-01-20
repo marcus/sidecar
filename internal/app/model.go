@@ -6,10 +6,12 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/marcus/sidecar/internal/config"
 	"github.com/marcus/sidecar/internal/keymap"
 	"github.com/marcus/sidecar/internal/mouse"
 	"github.com/marcus/sidecar/internal/palette"
 	"github.com/marcus/sidecar/internal/plugin"
+	"github.com/marcus/sidecar/internal/state"
 	"github.com/marcus/sidecar/internal/version"
 )
 
@@ -20,6 +22,9 @@ type TabBounds struct {
 
 // Model is the root Bubble Tea model for the sidecar application.
 type Model struct {
+	// Configuration
+	cfg *config.Config
+
 	// Plugin management
 	registry     *plugin.Registry
 	activePlugin int
@@ -36,6 +41,12 @@ type Model struct {
 	showPalette     bool
 	showQuitConfirm bool
 	palette         palette.Model
+
+	// Project switcher modal
+	showProjectSwitcher    bool
+	projectSwitcherCursor  int
+	projectSwitcherScroll  int
+	projectSwitcherHover   int // -1 = no hover, 0+ = hovered project index
 
 	// Header/footer
 	ui *UIState
@@ -70,7 +81,7 @@ type Model struct {
 
 // New creates a new application model.
 // initialPluginID optionally specifies which plugin to focus on startup (empty = first plugin).
-func New(reg *plugin.Registry, km *keymap.Registry, currentVersion, workDir, initialPluginID string) Model {
+func New(reg *plugin.Registry, km *keymap.Registry, cfg *config.Config, currentVersion, workDir, initialPluginID string) Model {
 	repoName := GetRepoName(workDir)
 	ui := NewUIState()
 	ui.WorkDir = workDir
@@ -87,16 +98,18 @@ func New(reg *plugin.Registry, km *keymap.Registry, currentVersion, workDir, ini
 	}
 
 	return Model{
-		registry:       reg,
-		keymap:         km,
-		activePlugin:   activeIdx,
-		activeContext:  "global",
-		showFooter:     true,
-		palette:        palette.New(),
-		ui:             ui,
-		ready:          false,
-		intro:          NewIntroModel(repoName),
-		currentVersion: currentVersion,
+		cfg:                   cfg,
+		registry:              reg,
+		keymap:                km,
+		activePlugin:          activeIdx,
+		activeContext:         "global",
+		showFooter:            true,
+		palette:               palette.New(),
+		ui:                    ui,
+		ready:                 false,
+		intro:                 NewIntroModel(repoName),
+		currentVersion:        currentVersion,
+		projectSwitcherHover:  -1, // No hover initially
 	}
 }
 
@@ -325,4 +338,53 @@ func (m *Model) updateDiagnosticsButtonBounds() {
 	buttonWidth := 8 // " Update "
 
 	m.updateButtonBounds = mouse.Rect{X: buttonX, Y: buttonY, W: buttonWidth, H: 1}
+}
+
+// resetProjectSwitcher resets the project switcher modal state.
+func (m *Model) resetProjectSwitcher() {
+	m.showProjectSwitcher = false
+	m.projectSwitcherCursor = 0
+	m.projectSwitcherScroll = 0
+	m.projectSwitcherHover = -1
+}
+
+// switchProject switches all plugins to a new project directory.
+func (m *Model) switchProject(projectPath string) tea.Cmd {
+	// Skip if already on this project
+	if projectPath == m.ui.WorkDir {
+		return func() tea.Msg {
+			return ToastMsg{Message: "Already on this project", Duration: 2 * time.Second}
+		}
+	}
+
+	// Save the active plugin state for the old workdir
+	oldWorkDir := m.ui.WorkDir
+	if activePlugin := m.ActivePlugin(); activePlugin != nil {
+		state.SetActivePlugin(oldWorkDir, activePlugin.ID())
+	}
+
+	// Update the UI state
+	m.ui.WorkDir = projectPath
+	m.intro.RepoName = GetRepoName(projectPath)
+
+	// Reinitialize all plugins with the new working directory
+	// This stops all plugins, updates the context, and starts them again
+	startCmds := m.registry.Reinit(projectPath)
+
+	// Restore active plugin for the new workdir if saved, otherwise keep current
+	newActivePluginID := state.GetActivePlugin(projectPath)
+	if newActivePluginID != "" {
+		m.FocusPluginByID(newActivePluginID)
+	}
+
+	// Return batch of start commands plus a toast notification
+	return tea.Batch(
+		tea.Batch(startCmds...),
+		func() tea.Msg {
+			return ToastMsg{
+				Message:  fmt.Sprintf("Switched to %s", GetRepoName(projectPath)),
+				Duration: 3 * time.Second,
+			}
+		},
+	)
 }

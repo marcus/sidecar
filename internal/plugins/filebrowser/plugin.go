@@ -242,6 +242,9 @@ func (p *Plugin) Init(ctx *plugin.Context) error {
 	p.ctx = ctx
 	p.tree = NewFileTree(ctx.WorkDir)
 
+	// Reset state flags for reinit support (project switching)
+	p.stateRestored = false
+
 	// Initialize markdown renderer
 	renderer, err := markdown.NewRenderer()
 	if err != nil {
@@ -613,6 +616,7 @@ func (p *Plugin) Commands() []plugin.Command {
 		{ID: "yank-contents", Name: "Yank", Description: "Copy file contents", Category: plugin.CategoryActions, Context: "file-browser-preview", Priority: 7},
 		{ID: "yank-path", Name: "Path", Description: "Copy file path", Category: plugin.CategoryActions, Context: "file-browser-preview", Priority: 8},
 		{ID: "toggle-sidebar", Name: "Panel", Description: "Toggle tree pane visibility", Category: plugin.CategoryView, Context: "file-browser-preview", Priority: 9},
+		{ID: "toggle-ignored", Name: "Ignored", Description: "Toggle git-ignored file visibility", Category: plugin.CategoryView, Context: "file-browser-preview", Priority: 9},
 		// Tree search commands
 		{ID: "confirm", Name: "Go", Description: "Jump to match", Category: plugin.CategoryNavigation, Context: "file-browser-search", Priority: 1},
 		{ID: "cancel", Name: "Cancel", Description: "Cancel search", Category: plugin.CategoryActions, Context: "file-browser-search", Priority: 1},

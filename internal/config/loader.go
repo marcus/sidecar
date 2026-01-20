@@ -2,6 +2,7 @@ package config
 
 import (
 	"encoding/json"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -22,8 +23,14 @@ type rawConfig struct {
 }
 
 type rawProjectsConfig struct {
-	Mode string `json:"mode"`
-	Root string `json:"root"`
+	Mode string             `json:"mode"`
+	Root string             `json:"root"`
+	List []rawProjectConfig `json:"list"`
+}
+
+type rawProjectConfig struct {
+	Name string `json:"name"`
+	Path string `json:"path"`
 }
 
 type rawPluginsConfig struct {
@@ -91,6 +98,14 @@ func LoadFrom(path string) (*Config, error) {
 	// Expand paths
 	cfg.Plugins.Conversations.ClaudeDataDir = expandPath(cfg.Plugins.Conversations.ClaudeDataDir)
 
+	// Expand paths in project list and warn if path doesn't exist
+	for i := range cfg.Projects.List {
+		cfg.Projects.List[i].Path = expandPath(cfg.Projects.List[i].Path)
+		if _, err := os.Stat(cfg.Projects.List[i].Path); os.IsNotExist(err) {
+			slog.Warn("project path not found", "name", cfg.Projects.List[i].Name, "path", cfg.Projects.List[i].Path)
+		}
+	}
+
 	// Validate
 	if err := cfg.Validate(); err != nil {
 		return nil, err
@@ -107,6 +122,15 @@ func mergeConfig(cfg *Config, raw *rawConfig) {
 	}
 	if raw.Projects.Root != "" {
 		cfg.Projects.Root = raw.Projects.Root
+	}
+	if len(raw.Projects.List) > 0 {
+		cfg.Projects.List = make([]ProjectConfig, len(raw.Projects.List))
+		for i, rp := range raw.Projects.List {
+			cfg.Projects.List[i] = ProjectConfig{
+				Name: rp.Name,
+				Path: rp.Path,
+			}
+		}
 	}
 
 	// Git Status

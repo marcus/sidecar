@@ -43,6 +43,7 @@ Some commands have registered handlers that intercept keys before they reach plu
 - `next-plugin` / `prev-plugin` (` / ~) - Plugin cycling
 - `toggle-palette` (?) - Command palette
 - `toggle-diagnostics` (!) - Diagnostics overlay
+- `switch-project` (@) - Project switcher modal
 - `refresh` (r) - Global refresh
 
 ### Key Routing Flow
@@ -226,6 +227,24 @@ Each plugin returns a context string that determines which bindings are active.
 | `global` | Default when no plugin-specific context |
 | `""` | Empty string treated as global |
 
+### Project Switcher Modal
+| Context | Description |
+|---------|-------------|
+| `project-switcher` | Project selection modal open |
+
+#### Project Switcher Shortcuts
+| Key | Command | Description |
+|-----|---------|-------------|
+| `@` | toggle | Open/close project switcher |
+| `j` / `↓` | cursor-down | Move to next project |
+| `k` / `↑` | cursor-up | Move to previous project |
+| `g` | cursor-top | Jump to first project |
+| `G` | cursor-bottom | Jump to last project |
+| `Enter` | select | Switch to selected project |
+| `Esc` / `q` | close | Close modal without switching |
+
+See `docs/guides/project-switching-guide.md` for configuration and usage details.
+
 ### Unified Sidebar Controls
 
 All plugins with two-pane layouts (Git, Conversations, Files) share consistent sidebar shortcuts:
@@ -374,7 +393,8 @@ In root contexts, pressing 'q' shows the quit confirmation. In non-root contexts
 - `worktree-list`
 - `td-monitor`
 
-**Non-root contexts** (q = back):
+**Non-root contexts** (q = back/close):
+- `project-switcher` (project selection modal)
 - `conversation-detail`, `message-detail`, `analytics`
 - `git-diff`, `git-commit`, `git-history`, etc.
 - `file-browser-preview`, etc.
