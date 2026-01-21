@@ -8,6 +8,10 @@ import (
 	"github.com/marcus/sidecar/internal/styles"
 )
 
+// keyColumnWidth is the fixed width for the key column to ensure alignment.
+// Fits "shift+tab" (9 chars) + KeyHint padding (2) + 1 buffer.
+const keyColumnWidth = 12
+
 // Palette-specific styles
 var (
 	paletteBox = lipgloss.NewStyle().
@@ -255,13 +259,18 @@ func (m Model) renderEntry(entry PaletteEntry, selected bool, maxWidth int) stri
 	keyStr := styles.KeyHint.Render(entry.Key)
 	keyWidth := lipgloss.Width(keyStr)
 
+	// Pad key to fixed column width for alignment
+	if keyWidth < keyColumnWidth {
+		keyStr = keyStr + strings.Repeat(" ", keyColumnWidth-keyWidth)
+	}
+
 	// Name with match highlighting
 	nameStr := m.highlightMatches(entry.Name, entry.MatchRanges)
 	nameStr = entryName.Render(nameStr)
 
 	// Description (truncate if needed)
-	// Account for: 2 leading spaces + keyWidth + 1 space + 20 name + 1 space
-	descWidth := maxWidth - keyWidth - 20 - 4
+	// Account for: 2 leading spaces + keyColumnWidth + 1 space + 20 name + 1 space
+	descWidth := maxWidth - keyColumnWidth - 20 - 4
 	desc := entry.Description
 
 	// Show context count if command appears in multiple contexts
