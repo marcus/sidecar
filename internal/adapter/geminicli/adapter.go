@@ -331,25 +331,21 @@ func (a *Adapter) sessionFilePath(sessionID string) string {
 }
 
 // sessionMetadata returns cached metadata if valid, otherwise parses the session file.
+// Uses write lock for cache hits to safely update lastAccess (fixes race condition).
 func (a *Adapter) sessionMetadata(path string, info os.FileInfo) (*SessionMetadata, error) {
 	now := time.Now()
 
-	a.metaMu.RLock()
+	// Use write lock since we update lastAccess on cache hit
+	a.metaMu.Lock()
 	if entry, ok := a.metaCache[path]; ok && entry.size == info.Size() && entry.modTime.Equal(info.ModTime()) {
-		// Return a copy to prevent caller mutations affecting cache
+		// Update lastAccess and return copy to prevent caller mutations
+		entry.lastAccess = now
+		a.metaCache[path] = entry
 		metaCopy := *entry.meta
-		a.metaMu.RUnlock()
-
-		// Update last access time
-		a.metaMu.Lock()
-		if entry, ok := a.metaCache[path]; ok {
-			entry.lastAccess = now
-			a.metaCache[path] = entry
-		}
 		a.metaMu.Unlock()
 		return &metaCopy, nil
 	}
-	a.metaMu.RUnlock()
+	a.metaMu.Unlock()
 
 	meta, err := a.parseSessionMetadata(path)
 	if err != nil {

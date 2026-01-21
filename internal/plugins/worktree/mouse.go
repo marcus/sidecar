@@ -229,6 +229,7 @@ func (p *Plugin) handleMouseClick(action mouse.MouseAction) tea.Cmd {
 						p.previewOffset = 0
 						p.previewHorizOffset = 0
 						p.autoScrollOutput = true
+						p.taskLoading = false // Reset task loading on selection change (td-3668584f)
 						p.saveSelectionState()
 					}
 					p.activePane = PaneSidebar
@@ -242,6 +243,7 @@ func (p *Plugin) handleMouseClick(action mouse.MouseAction) tea.Cmd {
 					p.previewOffset = 0
 					p.previewHorizOffset = 0
 					p.autoScrollOutput = true
+					p.taskLoading = false // Reset task loading on selection change (td-3668584f)
 					p.saveSelectionState()
 				}
 				p.ensureVisible()
@@ -317,6 +319,7 @@ func (p *Plugin) handleMouseClick(action mouse.MouseAction) tea.Cmd {
 		if data, ok := action.Region.Data.(kanbanCardData); ok {
 			p.kanbanCol = data.col
 			p.kanbanRow = data.row
+			p.taskLoading = false // Reset task loading on selection change (td-3668584f)
 			p.syncKanbanToList()
 			return p.loadSelectedContent()
 		}
@@ -680,6 +683,7 @@ func (p *Plugin) scrollKanban(delta int) tea.Cmd {
 
 	if newRow != p.kanbanRow {
 		p.kanbanRow = newRow
+		p.taskLoading = false // Reset task loading on selection change (td-3668584f)
 		p.syncKanbanToList()
 		return p.loadSelectedContent()
 	}

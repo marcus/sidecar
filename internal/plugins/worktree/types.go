@@ -23,6 +23,7 @@ const (
 	ViewModePromptPicker                   // Prompt template picker modal
 	ViewModeTypeSelector                   // Type selector modal (shell vs worktree)
 	ViewModeRenameShell                    // Rename shell modal
+	ViewModeFilePicker                     // Diff file picker modal
 )
 
 // FocusPane represents which pane is active in the split view.

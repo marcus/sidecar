@@ -475,24 +475,21 @@ type sessionMetaCacheEntry struct {
 
 // sessionMetadata returns cached metadata if valid, otherwise parses the file.
 // Accepts FileInfo to avoid duplicate stat calls (td-5a1e8104).
+// Uses write lock for cache hits to safely update lastAccess (td-02e326f7).
 func (a *Adapter) sessionMetadata(path string, info os.FileInfo) (*SessionMetadata, error) {
 	now := time.Now()
 
-	a.metaMu.RLock()
+	// Use write lock since we update lastAccess on cache hit (td-02e326f7)
+	a.metaMu.Lock()
 	if entry, ok := a.metaCache[path]; ok && entry.size == info.Size() && entry.modTime.Equal(info.ModTime()) {
-		// Return a copy to prevent caller mutations affecting cache
+		// Update lastAccess and return copy to prevent caller mutations
+		entry.lastAccess = now
+		a.metaCache[path] = entry
 		metaCopy := *entry.meta
-		a.metaMu.RUnlock()
-
-		a.metaMu.Lock()
-		if entry, ok := a.metaCache[path]; ok {
-			entry.lastAccess = now
-			a.metaCache[path] = entry
-		}
 		a.metaMu.Unlock()
 		return &metaCopy, nil
 	}
-	a.metaMu.RUnlock()
+	a.metaMu.Unlock()
 
 	meta, err := a.parseSessionMetadata(path)
 	if err != nil {

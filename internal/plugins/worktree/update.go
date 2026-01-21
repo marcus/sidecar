@@ -8,6 +8,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	app "github.com/marcus/sidecar/internal/app"
 	"github.com/marcus/sidecar/internal/plugin"
+	"github.com/marcus/sidecar/internal/plugins/gitstatus"
 )
 
 // Update handles messages.
@@ -113,6 +114,8 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 		if p.selectedWorktree() != nil && p.selectedWorktree().Name == msg.WorktreeName {
 			p.diffContent = msg.Content
 			p.diffRaw = msg.Raw
+			// Parse multi-file diff for file headers and navigation
+			p.multiFileDiff = gitstatus.ParseMultiFileDiff(msg.Raw)
 			// Also load commit status for this worktree
 			// Reload if worktree changed OR if cached list is empty (stale/failed previous load)
 			if p.commitStatusWorktree != msg.WorktreeName || len(p.commitStatusList) == 0 {

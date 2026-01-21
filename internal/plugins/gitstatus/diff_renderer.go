@@ -43,6 +43,14 @@ var (
 
 	sideBySideBorder = lipgloss.NewStyle().
 				Foreground(styles.BorderNormal)
+
+	fileHeaderStyle = lipgloss.NewStyle().
+			Foreground(styles.TextPrimary).
+			Background(styles.BgTertiary).
+			Bold(true)
+
+	fileHeaderStatsStyle = lipgloss.NewStyle().
+				Foreground(styles.TextMuted)
 )
 
 // RenderLineDiff renders a parsed diff in unified line-by-line format with line numbers.
@@ -573,4 +581,143 @@ func GetSideBySideClipInfo(diff *ParsedDiff, contentWidth, horizontalOffset int)
 		HasMoreRight:    maxWidth > contentWidth+horizontalOffset,
 		MaxContentWidth: maxWidth,
 	}
+}
+
+// RenderFileHeader renders a file header bar for the diff.
+func RenderFileHeader(filename, stats string, width int) string {
+	// Format: "── filename (+N/-M) ────────"
+	prefix := "── "
+	suffix := " "
+	if stats != "" {
+		suffix = " (" + stats + ") "
+	}
+
+	// Calculate remaining width for fill
+	usedWidth := lipgloss.Width(prefix) + lipgloss.Width(filename) + lipgloss.Width(suffix)
+	fillWidth := width - usedWidth
+	if fillWidth < 0 {
+		fillWidth = 0
+	}
+
+	fill := strings.Repeat("─", fillWidth)
+
+	header := prefix + filename + suffix + fill
+	return fileHeaderStyle.Width(width).Render(header)
+}
+
+// RenderMultiFileDiff renders a multi-file diff with file headers.
+// Returns the rendered content and updates file position info.
+func RenderMultiFileDiff(mfd *MultiFileDiff, mode DiffViewMode, width, startLine, maxLines, horizontalOffset int) string {
+	if mfd == nil || len(mfd.Files) == 0 {
+		return styles.Muted.Render(" No diff content")
+	}
+
+	var sb strings.Builder
+	currentLine := 0
+	rendered := 0
+
+	for i := range mfd.Files {
+		file := &mfd.Files[i]
+		file.StartLine = currentLine
+
+		// Render file header
+		if currentLine >= startLine && rendered < maxLines {
+			header := RenderFileHeader(file.FileName(), file.ChangeStats(), width)
+			sb.WriteString(header)
+			sb.WriteString("\n")
+			rendered++
+		}
+		currentLine++
+
+		// Create syntax highlighter for this file
+		var highlighter *SyntaxHighlighter
+		if file.Diff.NewFile != "" {
+			highlighter = NewSyntaxHighlighter(file.Diff.NewFile)
+		}
+
+		// Render file's diff content
+		fileContent := renderSingleFileDiff(file.Diff, mode, width, startLine-currentLine, maxLines-rendered, horizontalOffset, highlighter)
+		fileLines := strings.Split(fileContent, "\n")
+
+		for _, line := range fileLines {
+			if currentLine >= startLine && rendered < maxLines {
+				sb.WriteString(line)
+				sb.WriteString("\n")
+				rendered++
+			}
+			currentLine++
+			if rendered >= maxLines {
+				break
+			}
+		}
+
+		file.EndLine = currentLine
+
+		// Add blank line between files
+		if i < len(mfd.Files)-1 && rendered < maxLines {
+			if currentLine >= startLine {
+				sb.WriteString("\n")
+				rendered++
+			}
+			currentLine++
+		}
+
+		if rendered >= maxLines {
+			break
+		}
+	}
+
+	return strings.TrimSuffix(sb.String(), "\n")
+}
+
+// renderSingleFileDiff renders a single file's diff without the file header.
+func renderSingleFileDiff(diff *ParsedDiff, mode DiffViewMode, width, startLine, maxLines, horizontalOffset int, highlighter *SyntaxHighlighter) string {
+	if startLine < 0 {
+		startLine = 0
+	}
+	if maxLines <= 0 {
+		return ""
+	}
+
+	if mode == DiffViewSideBySide {
+		return RenderSideBySide(diff, width, startLine, maxLines, horizontalOffset, highlighter)
+	}
+	return RenderLineDiff(diff, width, startLine, maxLines, horizontalOffset, highlighter)
+}
+
+// TotalLines returns the total number of rendered lines for a multi-file diff.
+func (mfd *MultiFileDiff) TotalLines() int {
+	if mfd == nil {
+		return 0
+	}
+	total := 0
+	for i, file := range mfd.Files {
+		total++ // File header
+		total += file.Diff.TotalLines()
+		if i < len(mfd.Files)-1 {
+			total++ // Blank line between files
+		}
+	}
+	return total
+}
+
+// FileAtLine returns the file index at the given line position, or -1 if none.
+func (mfd *MultiFileDiff) FileAtLine(line int) int {
+	if mfd == nil {
+		return -1
+	}
+	for i, file := range mfd.Files {
+		if line >= file.StartLine && line < file.EndLine {
+			return i
+		}
+	}
+	return -1
+}
+
+// FileCount returns the number of files in the diff.
+func (mfd *MultiFileDiff) FileCount() int {
+	if mfd == nil {
+		return 0
+	}
+	return len(mfd.Files)
 }

@@ -48,6 +48,115 @@ type ParsedDiff struct {
 	Hunks   []Hunk
 }
 
+// FileDiffInfo holds a parsed diff with rendering position info.
+type FileDiffInfo struct {
+	Diff       *ParsedDiff
+	StartLine  int // Line position where this file starts in rendered output
+	EndLine    int // Line position where this file ends
+	Additions  int // Number of added lines
+	Deletions  int // Number of deleted lines
+}
+
+// MultiFileDiff holds multiple file diffs with navigation info.
+type MultiFileDiff struct {
+	Files []FileDiffInfo
+}
+
+// ParseMultiFileDiff parses a git diff output containing multiple files.
+func ParseMultiFileDiff(diff string) *MultiFileDiff {
+	result := &MultiFileDiff{}
+
+	// Split diff into individual file diffs
+	fileDiffs := splitIntoFileDiffs(diff)
+
+	for _, fileDiff := range fileDiffs {
+		parsed, err := ParseUnifiedDiff(fileDiff)
+		if err != nil || parsed == nil {
+			continue
+		}
+
+		// Count additions and deletions
+		additions, deletions := 0, 0
+		for _, hunk := range parsed.Hunks {
+			for _, line := range hunk.Lines {
+				switch line.Type {
+				case LineAdd:
+					additions++
+				case LineRemove:
+					deletions++
+				}
+			}
+		}
+
+		result.Files = append(result.Files, FileDiffInfo{
+			Diff:      parsed,
+			Additions: additions,
+			Deletions: deletions,
+		})
+	}
+
+	return result
+}
+
+// splitIntoFileDiffs splits a multi-file diff into individual file diffs.
+func splitIntoFileDiffs(diff string) []string {
+	var fileDiffs []string
+	var current strings.Builder
+
+	lines := strings.Split(diff, "\n")
+	for i := 0; i < len(lines); i++ {
+		line := lines[i]
+
+		// Check for start of new file diff
+		if strings.HasPrefix(line, "diff --git ") {
+			// Save previous file diff if exists
+			if current.Len() > 0 {
+				fileDiffs = append(fileDiffs, current.String())
+				current.Reset()
+			}
+		}
+
+		current.WriteString(line)
+		current.WriteString("\n")
+	}
+
+	// Don't forget the last file
+	if current.Len() > 0 {
+		fileDiffs = append(fileDiffs, current.String())
+	}
+
+	return fileDiffs
+}
+
+// FileName returns the display filename (prefers NewFile, falls back to OldFile).
+func (f *FileDiffInfo) FileName() string {
+	if f.Diff.NewFile != "" && f.Diff.NewFile != "/dev/null" {
+		return f.Diff.NewFile
+	}
+	if f.Diff.OldFile != "" && f.Diff.OldFile != "/dev/null" {
+		return f.Diff.OldFile
+	}
+	return "unknown"
+}
+
+// ChangeStats returns a formatted string like "+10/-5".
+func (f *FileDiffInfo) ChangeStats() string {
+	return "+" + itoa(f.Additions) + "/-" + itoa(f.Deletions)
+}
+
+// itoa is a simple int to string conversion to avoid fmt import.
+func itoa(n int) string {
+	if n == 0 {
+		return "0"
+	}
+	var digits []byte
+	for n > 0 {
+		digits = append([]byte{byte('0' + n%10)}, digits...)
+		n /= 10
+	}
+	return string(digits)
+}
+
 var (
 	hunkHeaderRegex = regexp.MustCompile(`^@@\s*-(\d+)(?:,(\d+))?\s*\+(\d+)(?:,(\d+))?\s*@@(.*)$`)
 )

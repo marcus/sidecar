@@ -395,25 +395,21 @@ func (a *Adapter) DiscoverRelatedProjectDirs(mainWorktreePath string) ([]string,
 }
 
 // sessionMetadata returns cached metadata if valid, otherwise parses the session file.
+// Uses write lock for cache hits to safely update lastAccess (td-fdc81225).
 func (a *Adapter) sessionMetadata(path string, info os.FileInfo, projectID string) (*SessionMetadata, error) {
 	now := time.Now()
 
-	a.metaMu.RLock()
+	// Use write lock since we update lastAccess on cache hit (td-fdc81225)
+	a.metaMu.Lock()
 	if entry, ok := a.metaCache[path]; ok && entry.size == info.Size() && entry.modTime.Equal(info.ModTime()) {
-		// Return a copy to prevent caller mutations affecting cache
+		// Update lastAccess and return copy to prevent caller mutations
+		entry.lastAccess = now
+		a.metaCache[path] = entry
 		metaCopy := *entry.meta
-		a.metaMu.RUnlock()
-
-		// Update last access time
-		a.metaMu.Lock()
-		if entry, ok := a.metaCache[path]; ok {
-			entry.lastAccess = now
-			a.metaCache[path] = entry
-		}
 		a.metaMu.Unlock()
 		return &metaCopy, nil
 	}
-	a.metaMu.RUnlock()
+	a.metaMu.Unlock()
 
 	meta, err := a.parseSessionFile(path, projectID)
 	if err != nil {

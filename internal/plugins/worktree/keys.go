@@ -36,6 +36,8 @@ func (p *Plugin) handleKeyPress(msg tea.KeyMsg) tea.Cmd {
 		return p.handleTypeSelectorKeys(msg)
 	case ViewModeRenameShell:
 		return p.handleRenameShellKeys(msg)
+	case ViewModeFilePicker:
+		return p.handleFilePickerKeys(msg)
 	}
 	return nil
 }
@@ -494,6 +496,21 @@ func (p *Plugin) handleListKeys(msg tea.KeyMsg) tea.Cmd {
 		return p.cyclePreviewTab(-1)
 	case "]":
 		return p.cyclePreviewTab(1)
+	case "{":
+		// Jump to previous file in diff (when in preview pane on diff tab)
+		if p.activePane == PanePreview && p.previewTab == PreviewTabDiff {
+			return p.jumpToPrevFile()
+		}
+	case "}":
+		// Jump to next file in diff (when in preview pane on diff tab)
+		if p.activePane == PanePreview && p.previewTab == PreviewTabDiff {
+			return p.jumpToNextFile()
+		}
+	case "f":
+		// Open file picker (when in preview pane on diff tab with multiple files)
+		if p.activePane == PanePreview && p.previewTab == PreviewTabDiff {
+			return p.openFilePicker()
+		}
 	case "r":
 		return func() tea.Msg { return RefreshMsg{} }
 	case "v":
@@ -1179,4 +1196,62 @@ func (p *Plugin) clearRenameShellModal() {
 	p.renameShellFocus = 0
 	p.renameShellButtonHover = 0
 	p.renameShellError = ""
+}
+
+// handleFilePickerKeys handles keys in the file picker modal.
+func (p *Plugin) handleFilePickerKeys(msg tea.KeyMsg) tea.Cmd {
+	if p.multiFileDiff == nil || len(p.multiFileDiff.Files) == 0 {
+		p.viewMode = ViewModeList
+		return nil
+	}
+
+	fileCount := len(p.multiFileDiff.Files)
+
+	switch msg.String() {
+	case "esc", "q":
+		p.viewMode = ViewModeList
+		return nil
+	case "j", "down":
+		p.filePickerIdx++
+		if p.filePickerIdx >= fileCount {
+			p.filePickerIdx = fileCount - 1
+		}
+		return nil
+	case "k", "up":
+		p.filePickerIdx--
+		if p.filePickerIdx < 0 {
+			p.filePickerIdx = 0
+		}
+		return nil
+	case "g":
+		p.filePickerIdx = 0
+		return nil
+	case "G":
+		p.filePickerIdx = fileCount - 1
+		return nil
+	case "enter":
+		// Jump to selected file
+		if p.filePickerIdx >= 0 && p.filePickerIdx < fileCount {
+			p.previewOffset = p.multiFileDiff.Files[p.filePickerIdx].StartLine
+		}
+		p.viewMode = ViewModeList
+		return nil
+	}
+	return nil
+}
+
+// openFilePicker opens the file picker modal.
+func (p *Plugin) openFilePicker() tea.Cmd {
+	if p.multiFileDiff == nil || len(p.multiFileDiff.Files) <= 1 {
+		return nil
+	}
+
+	// Set initial selection to current file
+	currentIdx := p.multiFileDiff.FileAtLine(p.previewOffset)
+	if currentIdx < 0 {
+		currentIdx = 0
+	}
+	p.filePickerIdx = currentIdx
+	p.viewMode = ViewModeFilePicker
+	return nil
 }

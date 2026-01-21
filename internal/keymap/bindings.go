@@ -271,6 +271,20 @@ func DefaultBindings() []Binding {
 		{Key: "enter", Command: "view-commit", Context: "file-browser-blame"},
 		{Key: "y", Command: "yank-hash", Context: "file-browser-blame"},
 
+		// Worktree preview context (diff view)
+		{Key: "}", Command: "next-file", Context: "worktree-preview"},
+		{Key: "{", Command: "prev-file", Context: "worktree-preview"},
+		{Key: "f", Command: "file-picker", Context: "worktree-preview"},
+
+		// Worktree file picker context
+		{Key: "esc", Command: "cancel", Context: "worktree-file-picker"},
+		{Key: "q", Command: "cancel", Context: "worktree-file-picker"},
+		{Key: "enter", Command: "select", Context: "worktree-file-picker"},
+		{Key: "j", Command: "cursor-down", Context: "worktree-file-picker"},
+		{Key: "k", Command: "cursor-up", Context: "worktree-file-picker"},
+		{Key: "down", Command: "cursor-down", Context: "worktree-file-picker"},
+		{Key: "up", Command: "cursor-up", Context: "worktree-file-picker"},
+
 		// Git Commit context (commit message editor)
 		{Key: "esc", Command: "cancel", Context: "git-commit"},
 		{Key: "alt+enter", Command: "execute-commit", Context: "git-commit"},
