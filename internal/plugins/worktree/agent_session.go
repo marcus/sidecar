@@ -11,9 +11,41 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
+	"time"
 )
 
-const sessionStatusTailBytes = 2 * 1024 * 1024
+const (
+	sessionStatusTailBytes  = 2 * 1024 * 1024
+	codexSessionCacheTTL    = 5 * time.Second
+	codexCwdCacheMaxEntries = 2048
+)
+
+type codexSessionCacheEntry struct {
+	sessionPath string
+	expiresAt   time.Time
+}
+
+type codexSessionCwdCacheEntry struct {
+	cwd        string
+	modTime    time.Time
+	size       int64
+	lastAccess time.Time
+}
+
+var codexSessionCache = struct {
+	mu      sync.Mutex
+	entries map[string]codexSessionCacheEntry
+}{
+	entries: make(map[string]codexSessionCacheEntry),
+}
+
+var codexSessionCwdCache = struct {
+	mu      sync.Mutex
+	entries map[string]codexSessionCwdCacheEntry
+}{
+	entries: make(map[string]codexSessionCwdCacheEntry),
+}
 
 // detectAgentSessionStatus checks agent session files to determine if an agent
 // is waiting for user input or actively processing.
@@ -157,6 +189,98 @@ func detectCursorSessionStatus(worktreePath string) (WorktreeStatus, bool) {
 	return 0, false
 }
 
+func codexSessionCacheKey(sessionsDir, worktreePath string) string {
+	return sessionsDir + "\n" + worktreePath
+}
+
+func cachedCodexSessionPath(sessionsDir, worktreePath string) (string, bool) {
+	key := codexSessionCacheKey(sessionsDir, worktreePath)
+	now := time.Now()
+
+	codexSessionCache.mu.Lock()
+	entry, ok := codexSessionCache.entries[key]
+	codexSessionCache.mu.Unlock()
+
+	if !ok {
+		return "", false
+	}
+	if now.After(entry.expiresAt) {
+		codexSessionCache.mu.Lock()
+		delete(codexSessionCache.entries, key)
+		codexSessionCache.mu.Unlock()
+		return "", false
+	}
+	if entry.sessionPath == "" {
+		return "", true
+	}
+	if _, err := os.Stat(entry.sessionPath); err == nil {
+		return entry.sessionPath, true
+	}
+	codexSessionCache.mu.Lock()
+	delete(codexSessionCache.entries, key)
+	codexSessionCache.mu.Unlock()
+	return "", false
+}
+
+func setCachedCodexSessionPath(sessionsDir, worktreePath, sessionPath string) {
+	key := codexSessionCacheKey(sessionsDir, worktreePath)
+	codexSessionCache.mu.Lock()
+	codexSessionCache.entries[key] = codexSessionCacheEntry{
+		sessionPath: sessionPath,
+		expiresAt:   time.Now().Add(codexSessionCacheTTL),
+	}
+	codexSessionCache.mu.Unlock()
+}
+
+func cachedCodexSessionCWD(path string, info os.FileInfo) (string, bool) {
+	codexSessionCwdCache.mu.Lock()
+	entry, ok := codexSessionCwdCache.entries[path]
+	if ok && entry.size == info.Size() && entry.modTime.Equal(info.ModTime()) {
+		entry.lastAccess = time.Now()
+		codexSessionCwdCache.entries[path] = entry
+		codexSessionCwdCache.mu.Unlock()
+		return entry.cwd, true
+	}
+	if ok {
+		delete(codexSessionCwdCache.entries, path)
+	}
+	codexSessionCwdCache.mu.Unlock()
+	return "", false
+}
+
+func setCodexSessionCWDCache(path string, info os.FileInfo, cwd string) {
+	codexSessionCwdCache.mu.Lock()
+	codexSessionCwdCache.entries[path] = codexSessionCwdCacheEntry{
+		cwd:        cwd,
+		modTime:    info.ModTime(),
+		size:       info.Size(),
+		lastAccess: time.Now(),
+	}
+	pruneCodexSessionCWDCacheLocked()
+	codexSessionCwdCache.mu.Unlock()
+}
+
+func pruneCodexSessionCWDCacheLocked() {
+	if len(codexSessionCwdCache.entries) <= codexCwdCacheMaxEntries {
+		return
+	}
+	type cacheEntry struct {
+		path       string
+		lastAccess time.Time
+	}
+	entries := make([]cacheEntry, 0, len(codexSessionCwdCache.entries))
+	for path, entry := range codexSessionCwdCache.entries {
+		entries = append(entries, cacheEntry{path: path, lastAccess: entry.lastAccess})
+	}
+	sort.Slice(entries, func(i, j int) bool {
+		return entries[i].lastAccess.Before(entries[j].lastAccess)
+	})
+	excess := len(entries) - codexCwdCacheMaxEntries
+	for i := 0; i < excess; i++ {
+		delete(codexSessionCwdCache.entries, entries[i].path)
+	}
+}
+
 // findMostRecentJSONL finds most recent .jsonl file in dir.
 // excludePrefix: if non-empty, files starting with this prefix are skipped.
 func findMostRecentJSONL(dir string, excludePrefix string) (string, error) {
@@ -295,16 +419,16 @@ func getLastMessageStatusJSONL(path, typeField, userVal, assistantVal string) (W
 
 // findCodexSessionForPath finds the most recent Codex session matching CWD.
 func findCodexSessionForPath(sessionsDir, worktreePath string) (string, error) {
+	if cached, ok := cachedCodexSessionPath(sessionsDir, worktreePath); ok {
+		return cached, nil
+	}
+
 	entries, err := os.ReadDir(sessionsDir)
 	if err != nil {
 		return "", err
 	}
-
-	type sessionMatch struct {
-		path    string
-		modTime int64
-	}
-	var matches []sessionMatch
+	var bestPath string
+	var bestModTime int64
 
 	for _, e := range entries {
 		if e.IsDir() || !strings.HasSuffix(e.Name(), ".jsonl") {
@@ -312,34 +436,39 @@ func findCodexSessionForPath(sessionsDir, worktreePath string) (string, error) {
 		}
 
 		path := filepath.Join(sessionsDir, e.Name())
-
-		// Check if CWD matches
-		cwd, err := getCodexSessionCWD(path)
-		if err != nil || !cwdMatches(cwd, worktreePath) {
-			continue
-		}
-
 		info, err := e.Info()
 		if err != nil {
 			continue
 		}
 
-		matches = append(matches, sessionMatch{path: path, modTime: info.ModTime().UnixNano()})
+		// Check if CWD matches
+		cwd, err := getCodexSessionCWD(path, info)
+		if err != nil || !cwdMatches(cwd, worktreePath) {
+			continue
+		}
+
+		modTime := info.ModTime().UnixNano()
+		if modTime > bestModTime {
+			bestModTime = modTime
+			bestPath = path
+		}
 	}
 
-	if len(matches) == 0 {
+	if bestPath == "" {
+		setCachedCodexSessionPath(sessionsDir, worktreePath, "")
 		return "", nil
 	}
 
-	// Return most recent
-	sort.Slice(matches, func(i, j int) bool {
-		return matches[i].modTime > matches[j].modTime
-	})
-	return matches[0].path, nil
+	setCachedCodexSessionPath(sessionsDir, worktreePath, bestPath)
+	return bestPath, nil
 }
 
 // getCodexSessionCWD extracts CWD from first session_meta record.
-func getCodexSessionCWD(path string) (string, error) {
+func getCodexSessionCWD(path string, info os.FileInfo) (string, error) {
+	if cached, ok := cachedCodexSessionCWD(path, info); ok {
+		return cached, nil
+	}
+
 	file, err := os.Open(path)
 	if err != nil {
 		return "", err
@@ -361,6 +490,7 @@ func getCodexSessionCWD(path string) (string, error) {
 			continue
 		}
 		if record.Type == "session_meta" && record.Payload.CWD != "" {
+			setCodexSessionCWDCache(path, info, record.Payload.CWD)
 			return record.Payload.CWD, nil
 		}
 	}
