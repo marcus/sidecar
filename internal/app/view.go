@@ -371,6 +371,21 @@ func (m Model) getTabBounds() []TabBounds {
 	return bounds
 }
 
+// getRepoNameBounds returns the X bounds for the repo name in the header.
+func (m Model) getRepoNameBounds() (start, end int, ok bool) {
+	if m.intro.RepoName == "" {
+		return 0, 0, false
+	}
+
+	titlePrefix := styles.BarTitle.Render(" Sidecar")
+	repoPrefix := styles.Subtitle.Render(" / ")
+	repoName := styles.Subtitle.Render(m.intro.RepoName)
+
+	start = lipgloss.Width(titlePrefix) + lipgloss.Width(repoPrefix)
+	end = start + lipgloss.Width(repoName)
+	return start, end, true
+}
+
 // renderContent renders the main content area.
 func (m Model) renderContent(width, height int) string {
 	p := m.ActivePlugin()

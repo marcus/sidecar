@@ -87,6 +87,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		// Handle header tab clicks (Y < 2 means header area)
 		if msg.Y < headerHeight && msg.Action == tea.MouseActionPress && msg.Button == tea.MouseButtonLeft {
+			if start, end, ok := m.getRepoNameBounds(); ok && msg.X >= start && msg.X < end {
+				m.showProjectSwitcher = true
+				m.activeContext = "project-switcher"
+				m.initProjectSwitcher()
+				return m, nil
+			}
+
 			// Check if click is on a tab
 			tabBounds := m.getTabBounds()
 			for i, bounds := range tabBounds {
