@@ -326,17 +326,12 @@ func (m Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
-	// Interactive mode: forward ALL keys to plugin except ctrl+c
+	// Interactive mode: forward ALL keys to plugin including ctrl+c
 	// This ensures characters like `, ~, ?, !, @, 1-5 reach tmux instead of triggering app shortcuts
+	// Ctrl+C is forwarded to tmux (to interrupt running processes) instead of showing quit dialog
+	// User can exit interactive mode with Ctrl+\ first, then quit normally
 	if m.activeContext == "worktree-interactive" {
-		// ctrl+c shows quit confirmation
-		if msg.String() == "ctrl+c" {
-			if !m.showHelp && !m.showDiagnostics && !m.showPalette {
-				m.showQuitConfirm = true
-			}
-			return m, nil
-		}
-		// Forward everything else to plugin (exit keys handled by plugin)
+		// Forward ALL keys to plugin (exit keys and ctrl+c handled by plugin)
 		if p := m.ActivePlugin(); p != nil {
 			newPlugin, cmd := p.Update(msg)
 			plugins := m.registry.Plugins()
