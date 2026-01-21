@@ -385,6 +385,7 @@ func newTestAdapter(t *testing.T) *Adapter {
 		storageDir:   testdataDir,
 		projectIndex: make(map[string]*Project),
 		sessionIndex: make(map[string]string),
+		metaCache:    make(map[string]sessionMetaCacheEntry),
 	}
 }
 
@@ -510,6 +511,7 @@ func TestDiscoverRelatedProjectDirs(t *testing.T) {
 		storageDir:   tmpDir,
 		projectIndex: make(map[string]*Project),
 		sessionIndex: make(map[string]string),
+		metaCache:    make(map[string]sessionMetaCacheEntry),
 	}
 
 	// Test discovering related paths
@@ -537,6 +539,7 @@ func TestDiscoverRelatedProjectDirs_EmptyStorage(t *testing.T) {
 		storageDir:   tmpDir,
 		projectIndex: make(map[string]*Project),
 		sessionIndex: make(map[string]string),
+		metaCache:    make(map[string]sessionMetaCacheEntry),
 	}
 
 	related, err := a.DiscoverRelatedProjectDirs("/Users/test/myrepo")

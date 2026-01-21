@@ -16,8 +16,9 @@ import (
 )
 
 const (
-	adapterID   = "gemini-cli"
-	adapterName = "Gemini CLI"
+	adapterID           = "gemini-cli"
+	adapterName         = "Gemini CLI"
+	metaCacheMaxEntries = 2048
 )
 
 // Adapter implements the adapter.Adapter interface for Gemini CLI sessions.
@@ -25,6 +26,16 @@ type Adapter struct {
 	tmpDir       string
 	sessionIndex map[string]string // sessionID -> file path cache
 	indexMu      sync.RWMutex      // protects sessionIndex
+	metaCache    map[string]sessionMetaCacheEntry
+	metaMu       sync.RWMutex // guards metaCache
+}
+
+// sessionMetaCacheEntry caches parsed session metadata with validation info.
+type sessionMetaCacheEntry struct {
+	meta       *SessionMetadata
+	modTime    time.Time
+	size       int64
+	lastAccess time.Time
 }
 
 // New creates a new Gemini CLI adapter.
@@ -33,6 +44,7 @@ func New() *Adapter {
 	return &Adapter{
 		tmpDir:       filepath.Join(home, ".gemini", "tmp"),
 		sessionIndex: make(map[string]string),
+		metaCache:    make(map[string]sessionMetaCacheEntry),
 	}
 }
 
@@ -86,6 +98,7 @@ func (a *Adapter) Sessions(projectRoot string) ([]adapter.Session, error) {
 	}
 
 	sessions := make([]adapter.Session, 0, len(entries))
+	seenPaths := make(map[string]struct{}, len(entries))
 	// Reset cache on full session enumeration
 	a.indexMu.Lock()
 	a.sessionIndex = make(map[string]string)
@@ -96,7 +109,14 @@ func (a *Adapter) Sessions(projectRoot string) ([]adapter.Session, error) {
 		}
 
 		path := filepath.Join(chatsDir, e.Name())
-		meta, err := a.parseSessionMetadata(path)
+		seenPaths[path] = struct{}{}
+
+		info, err := e.Info()
+		if err != nil {
+			continue
+		}
+
+		meta, err := a.sessionMetadata(path, info)
 		if err != nil {
 			continue
 		}
@@ -137,6 +157,8 @@ func (a *Adapter) Sessions(projectRoot string) ([]adapter.Session, error) {
 	sort.Slice(sessions, func(i, j int) bool {
 		return sessions[i].UpdatedAt.After(sessions[j].UpdatedAt)
 	})
+
+	a.pruneSessionMetaCache(seenPaths)
 
 	return sessions, nil
 }
@@ -306,6 +328,86 @@ func (a *Adapter) sessionFilePath(sessionID string) string {
 		}
 	}
 	return ""
+}
+
+// sessionMetadata returns cached metadata if valid, otherwise parses the session file.
+func (a *Adapter) sessionMetadata(path string, info os.FileInfo) (*SessionMetadata, error) {
+	now := time.Now()
+
+	a.metaMu.RLock()
+	if entry, ok := a.metaCache[path]; ok && entry.size == info.Size() && entry.modTime.Equal(info.ModTime()) {
+		// Return a copy to prevent caller mutations affecting cache
+		metaCopy := *entry.meta
+		a.metaMu.RUnlock()
+
+		// Update last access time
+		a.metaMu.Lock()
+		if entry, ok := a.metaCache[path]; ok {
+			entry.lastAccess = now
+			a.metaCache[path] = entry
+		}
+		a.metaMu.Unlock()
+		return &metaCopy, nil
+	}
+	a.metaMu.RUnlock()
+
+	meta, err := a.parseSessionMetadata(path)
+	if err != nil {
+		return nil, err
+	}
+
+	a.metaMu.Lock()
+	a.metaCache[path] = sessionMetaCacheEntry{
+		meta:       meta,
+		modTime:    info.ModTime(),
+		size:       info.Size(),
+		lastAccess: now,
+	}
+	a.enforceSessionMetaCacheLimitLocked()
+	a.metaMu.Unlock()
+
+	return meta, nil
+}
+
+// pruneSessionMetaCache removes cache entries for paths no longer in use.
+func (a *Adapter) pruneSessionMetaCache(seenPaths map[string]struct{}) {
+	a.metaMu.Lock()
+	for path := range a.metaCache {
+		if _, ok := seenPaths[path]; !ok {
+			delete(a.metaCache, path)
+		}
+	}
+	a.enforceSessionMetaCacheLimitLocked()
+	a.metaMu.Unlock()
+}
+
+// enforceSessionMetaCacheLimitLocked evicts oldest entries when cache exceeds max size.
+// Caller must hold metaMu write lock.
+func (a *Adapter) enforceSessionMetaCacheLimitLocked() {
+	excess := len(a.metaCache) - metaCacheMaxEntries
+	if excess <= 0 {
+		return
+	}
+
+	// Collect entries for sorting
+	type pathAccess struct {
+		path       string
+		lastAccess time.Time
+	}
+	entries := make([]pathAccess, 0, len(a.metaCache))
+	for path, entry := range a.metaCache {
+		entries = append(entries, pathAccess{path, entry.lastAccess})
+	}
+
+	// Sort by lastAccess (oldest first)
+	sort.Slice(entries, func(i, j int) bool {
+		return entries[i].lastAccess.Before(entries[j].lastAccess)
+	})
+
+	// Delete oldest entries
+	for i := 0; i < excess; i++ {
+		delete(a.metaCache, entries[i].path)
+	}
 }
 
 // parseSessionFile reads and parses a session JSON file.

@@ -144,7 +144,7 @@ func TestParseSessionMetadata(t *testing.T) {
 func TestMessages(t *testing.T) {
 	// Create temp directory structure
 	tmpDir := t.TempDir()
-	a := &Adapter{tmpDir: tmpDir, sessionIndex: make(map[string]string)}
+	a := &Adapter{tmpDir: tmpDir, sessionIndex: make(map[string]string), metaCache: make(map[string]sessionMetaCacheEntry)}
 
 	// Create project hash dir with chats subdir
 	projectHash := "abc123def456"
@@ -200,7 +200,7 @@ func TestMessages(t *testing.T) {
 func TestSessions(t *testing.T) {
 	// Create temp directory structure
 	tmpDir := t.TempDir()
-	a := &Adapter{tmpDir: tmpDir, sessionIndex: make(map[string]string)}
+	a := &Adapter{tmpDir: tmpDir, sessionIndex: make(map[string]string), metaCache: make(map[string]sessionMetaCacheEntry)}
 
 	// Create a project hash matching our test path
 	testPath := "/test/project"
@@ -244,7 +244,7 @@ func TestSessions(t *testing.T) {
 func TestDetect(t *testing.T) {
 	// Create temp directory structure
 	tmpDir := t.TempDir()
-	a := &Adapter{tmpDir: tmpDir, sessionIndex: make(map[string]string)}
+	a := &Adapter{tmpDir: tmpDir, sessionIndex: make(map[string]string), metaCache: make(map[string]sessionMetaCacheEntry)}
 
 	testPath := "/test/project"
 	hash := projectHash(testPath)
@@ -275,7 +275,7 @@ func TestDetect(t *testing.T) {
 func TestUsage(t *testing.T) {
 	// Create temp directory structure
 	tmpDir := t.TempDir()
-	a := &Adapter{tmpDir: tmpDir, sessionIndex: make(map[string]string)}
+	a := &Adapter{tmpDir: tmpDir, sessionIndex: make(map[string]string), metaCache: make(map[string]sessionMetaCacheEntry)}
 
 	projectHash := "abc123def456"
 	chatsDir := filepath.Join(tmpDir, projectHash, "chats")

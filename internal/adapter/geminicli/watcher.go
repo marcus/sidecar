@@ -1,9 +1,9 @@
 package geminicli
 
 import (
-	"encoding/json"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -11,6 +11,9 @@ import (
 	"github.com/fsnotify/fsnotify"
 	"github.com/marcus/sidecar/internal/adapter"
 )
+
+// sessionIDPattern extracts sessionId field from partial JSON
+var sessionIDPattern = regexp.MustCompile(`"sessionId"\s*:\s*"([^"]+)"`)
 
 // NewWatcher creates a watcher for Gemini CLI session changes.
 func NewWatcher(chatsDir string) (<-chan adapter.Event, error) {
@@ -115,19 +118,26 @@ func NewWatcher(chatsDir string) (<-chan adapter.Event, error) {
 	return events, nil
 }
 
-// extractSessionID reads the session file and extracts the sessionId field.
+// extractSessionID reads only the first 512 bytes of the session file
+// and extracts the sessionId field using regex. This avoids reading
+// the entire file during watch events.
 func extractSessionID(path string) string {
-	data, err := os.ReadFile(path)
+	file, err := os.Open(path)
 	if err != nil {
 		return ""
 	}
+	defer file.Close()
 
-	var session struct {
-		SessionID string `json:"sessionId"`
-	}
-	if err := json.Unmarshal(data, &session); err != nil {
+	// Read only the first 512 bytes - sessionId is always near the start
+	buf := make([]byte, 512)
+	n, err := file.Read(buf)
+	if err != nil || n == 0 {
 		return ""
 	}
 
-	return session.SessionID
+	// Extract sessionId using regex
+	if match := sessionIDPattern.FindSubmatch(buf[:n]); match != nil {
+		return string(match[1])
+	}
+	return ""
 }

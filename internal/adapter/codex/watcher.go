@@ -12,15 +12,23 @@ import (
 )
 
 // NewWatcher creates a watcher for Codex session changes.
+// Only watches recent month directories to reduce resource usage (td-ae05cd6a).
 func NewWatcher(root string) (<-chan adapter.Event, error) {
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
 		return nil, err
 	}
 
-	if err := addWatchTree(watcher, root); err != nil {
+	// Watch root for new year/month directories
+	if err := watcher.Add(root); err != nil {
 		watcher.Close()
 		return nil, err
+	}
+
+	// Watch only recent month directories (td-ae05cd6a)
+	for _, dir := range recentSessionDirs(root) {
+		// Ignore errors - directories may not exist yet
+		_ = addWatchTree(watcher, dir)
 	}
 
 	events := make(chan adapter.Event, 32)
@@ -30,7 +38,7 @@ func NewWatcher(root string) (<-chan adapter.Event, error) {
 
 		var debounceTimer *time.Timer
 		var lastEvent fsnotify.Event
-		debounceDelay := 100 * time.Millisecond
+		debounceDelay := 200 * time.Millisecond // Increased from 100ms (td-11c31ccd)
 
 		// Protect against sending to closed channel from timer callback
 		var closed bool
@@ -106,6 +114,22 @@ func NewWatcher(root string) (<-chan adapter.Event, error) {
 	}()
 
 	return events, nil
+}
+
+// recentSessionDirs returns directories for current and previous months (td-ae05cd6a).
+// Codex organizes sessions by date: sessions/YYYY/MM/DD/session.jsonl
+func recentSessionDirs(root string) []string {
+	now := time.Now()
+	dirs := make([]string, 0, 2)
+
+	// Current month
+	dirs = append(dirs, filepath.Join(root, now.Format("2006"), now.Format("01")))
+
+	// Previous month (for sessions started last month)
+	prev := now.AddDate(0, -1, 0)
+	dirs = append(dirs, filepath.Join(root, prev.Format("2006"), prev.Format("01")))
+
+	return dirs
 }
 
 func addWatchTree(watcher *fsnotify.Watcher, root string) error {

@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -33,7 +34,18 @@ const (
 	adapterID           = "codex"
 	adapterName         = "Codex"
 	metaCacheMaxEntries = 2048
+	dirCacheTTL         = 500 * time.Millisecond // TTL for directory listing cache (td-c9ff3aac)
+	// Two-pass parsing thresholds (td-a2c1dd41)
+	metaParseSmallFileThreshold = 16 * 1024 // Files smaller than 16KB use full scan
+	metaParseHeadLines          = 100       // Read first N lines for session_meta
+	metaParseTailSize           = 8 * 1024  // Read last N bytes for recent tokens
 )
+
+// dirCacheEntry caches the directory listing with expiration (td-c9ff3aac).
+type dirCacheEntry struct {
+	files     []sessionFileEntry
+	expiresAt time.Time
+}
 
 // Adapter implements the adapter.Adapter interface for Codex CLI sessions.
 type Adapter struct {
@@ -43,6 +55,8 @@ type Adapter struct {
 	mu              sync.RWMutex           // guards sessionIndex and totalUsageCache
 	metaCache       map[string]sessionMetaCacheEntry
 	metaMu          sync.RWMutex // guards metaCache
+	dirCache        *dirCacheEntry
+	dirCacheMu      sync.RWMutex // guards dirCache
 }
 
 // New creates a new Codex adapter.
@@ -71,8 +85,8 @@ func (a *Adapter) Detect(projectRoot string) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	for _, path := range files {
-		meta, err := a.sessionMetadata(path)
+	for _, f := range files {
+		meta, err := a.sessionMetadata(f.path, f.info)
 		if err != nil {
 			continue
 		}
@@ -100,17 +114,20 @@ func (a *Adapter) Sessions(projectRoot string) ([]adapter.Session, error) {
 		return nil, err
 	}
 
+	// Pre-resolve projectRoot once (td-6543fee4)
+	resolvedProject := newResolvedProjectPath(projectRoot)
+
 	sessions := make([]adapter.Session, 0, len(files))
 	seenPaths := make(map[string]struct{}, len(files))
 	// Build new index, then swap atomically to avoid race with sessionFilePath()
 	newIndex := make(map[string]string, len(files))
-	for _, path := range files {
-		seenPaths[path] = struct{}{}
-		meta, err := a.sessionMetadata(path)
+	for _, f := range files {
+		seenPaths[f.path] = struct{}{}
+		meta, err := a.sessionMetadata(f.path, f.info)
 		if err != nil {
 			continue
 		}
-		if !cwdMatchesProject(projectRoot, meta.CWD) {
+		if !resolvedProject.matchesCWD(meta.CWD) {
 			continue
 		}
 
@@ -137,7 +154,7 @@ func (a *Adapter) Sessions(projectRoot string) ([]adapter.Session, error) {
 		})
 
 		// Add to new index (will be swapped atomically after loop)
-		newIndex[meta.SessionID] = path
+		newIndex[meta.SessionID] = f.path
 	}
 
 	// Atomically swap in the new index
@@ -393,7 +410,22 @@ func (a *Adapter) WatchScope() adapter.WatchScope {
 	return adapter.WatchScopeGlobal
 }
 
-func (a *Adapter) sessionFiles() ([]string, error) {
+// sessionFileEntry holds a session file path with its FileInfo (td-5a1e8104).
+type sessionFileEntry struct {
+	path string
+	info os.FileInfo
+}
+
+func (a *Adapter) sessionFiles() ([]sessionFileEntry, error) {
+	// Check cache first (td-c9ff3aac)
+	a.dirCacheMu.RLock()
+	if a.dirCache != nil && time.Now().Before(a.dirCache.expiresAt) {
+		files := a.dirCache.files
+		a.dirCacheMu.RUnlock()
+		return files, nil
+	}
+	a.dirCacheMu.RUnlock()
+
 	if _, err := os.Stat(a.sessionsDir); err != nil {
 		if os.IsNotExist(err) {
 			return nil, nil
@@ -401,7 +433,7 @@ func (a *Adapter) sessionFiles() ([]string, error) {
 		return nil, err
 	}
 
-	var files []string
+	var files []sessionFileEntry
 	err := filepath.WalkDir(a.sessionsDir, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
 			return nil
@@ -410,13 +442,27 @@ func (a *Adapter) sessionFiles() ([]string, error) {
 			return nil
 		}
 		if strings.HasSuffix(d.Name(), ".jsonl") {
-			files = append(files, path)
+			// Get FileInfo from DirEntry to avoid duplicate stat (td-5a1e8104)
+			info, err := d.Info()
+			if err != nil {
+				return nil
+			}
+			files = append(files, sessionFileEntry{path: path, info: info})
 		}
 		return nil
 	})
 	if err != nil {
 		return nil, err
 	}
+
+	// Cache the result (td-c9ff3aac)
+	a.dirCacheMu.Lock()
+	a.dirCache = &dirCacheEntry{
+		files:     files,
+		expiresAt: time.Now().Add(dirCacheTTL),
+	}
+	a.dirCacheMu.Unlock()
+
 	return files, nil
 }
 
@@ -427,12 +473,9 @@ type sessionMetaCacheEntry struct {
 	lastAccess time.Time
 }
 
-func (a *Adapter) sessionMetadata(path string) (*SessionMetadata, error) {
-	info, err := os.Stat(path)
-	if err != nil {
-		return nil, err
-	}
-
+// sessionMetadata returns cached metadata if valid, otherwise parses the file.
+// Accepts FileInfo to avoid duplicate stat calls (td-5a1e8104).
+func (a *Adapter) sessionMetadata(path string, info os.FileInfo) (*SessionMetadata, error) {
 	now := time.Now()
 
 	a.metaMu.RLock()
@@ -519,6 +562,7 @@ func (a *Adapter) invalidateSessionMetaCacheIfChanged(path string, info os.FileI
 	a.metaMu.Unlock()
 }
 
+// parseSessionMetadata extracts metadata using two-pass parsing for large files (td-a2c1dd41).
 func (a *Adapter) parseSessionMetadata(path string) (*SessionMetadata, error) {
 	file, err := os.Open(path)
 	if err != nil {
@@ -526,6 +570,22 @@ func (a *Adapter) parseSessionMetadata(path string) (*SessionMetadata, error) {
 	}
 	defer file.Close()
 
+	stat, err := file.Stat()
+	if err != nil {
+		return nil, err
+	}
+
+	// For small files, use full scan
+	if stat.Size() < metaParseSmallFileThreshold {
+		return a.parseSessionMetadataFull(file, path)
+	}
+
+	// Two-pass approach for large files
+	return a.parseSessionMetadataTwoPass(file, path, stat.Size())
+}
+
+// parseSessionMetadataFull scans the entire file (for small files).
+func (a *Adapter) parseSessionMetadataFull(file *os.File, path string) (*SessionMetadata, error) {
 	meta := &SessionMetadata{Path: path}
 	var sessionTimestamp time.Time
 	var lastRecord time.Time
@@ -537,83 +597,148 @@ func (a *Adapter) parseSessionMetadata(path string) (*SessionMetadata, error) {
 	scanner.Buffer(buf, 10*1024*1024)
 
 	for scanner.Scan() {
-		var record RawRecord
-		if err := json.Unmarshal(scanner.Bytes(), &record); err != nil {
-			continue
-		}
-
-		if !record.Timestamp.IsZero() {
-			lastRecord = record.Timestamp
-		}
-
-		switch record.Type {
-		case "session_meta":
-			var payload SessionMetaPayload
-			if err := json.Unmarshal(record.Payload, &payload); err != nil {
-				continue
-			}
-			if meta.SessionID == "" {
-				meta.SessionID = payload.ID
-			}
-			if meta.CWD == "" {
-				meta.CWD = payload.CWD
-			}
-			if sessionTimestamp.IsZero() && !payload.Timestamp.IsZero() {
-				sessionTimestamp = payload.Timestamp
-			}
-
-		case "response_item":
-			var base ResponseItemBase
-			if err := json.Unmarshal(record.Payload, &base); err != nil {
-				continue
-			}
-			if base.Type != "message" {
-				continue
-			}
-			var msg ResponseMessagePayload
-			if err := json.Unmarshal(record.Payload, &msg); err != nil {
-				continue
-			}
-			if msg.Role != "user" && msg.Role != "assistant" {
-				continue
-			}
-			if meta.FirstMsg.IsZero() {
-				meta.FirstMsg = record.Timestamp
-			}
-			// Extract first user message content for title
-			if meta.FirstUserMessage == "" && msg.Role == "user" {
-				if content := contentFromBlocks(msg.Content); content != "" {
-					meta.FirstUserMessage = content
-				}
-			}
-			meta.LastMsg = record.Timestamp
-			meta.MsgCount++
-
-		case "event_msg":
-			var event EventMsgPayload
-			if err := json.Unmarshal(record.Payload, &event); err != nil {
-				continue
-			}
-			if event.Type != "token_count" || event.Info == nil {
-				continue
-			}
-			usage := event.Info.TotalTokenUsage
-			if usage == nil {
-				usage = event.Info.LastTokenUsage
-			}
-			if usage != nil {
-				totalTokens = usage.TotalTokens
-				if totalTokens == 0 {
-					totalTokens = usage.InputTokens + usage.OutputTokens + usage.ReasoningOutputTokens
-				}
-			}
-		}
+		a.processMetadataRecord(scanner.Bytes(), meta, &sessionTimestamp, &lastRecord, &totalTokens)
 	}
 
 	if err := scanner.Err(); err != nil {
 		return nil, err
 	}
 
+	a.finalizeMetadata(meta, path, sessionTimestamp, lastRecord, totalTokens)
+	return meta, nil
+}
+
+// parseSessionMetadataTwoPass reads head and tail of large files (td-a2c1dd41).
+func (a *Adapter) parseSessionMetadataTwoPass(file *os.File, path string, fileSize int64) (*SessionMetadata, error) {
+	meta := &SessionMetadata{Path: path}
+	var sessionTimestamp time.Time
+	var lastRecord time.Time
+	var totalTokens int
+
+	buf := getScannerBuffer()
+	defer putScannerBuffer(buf)
+
+	// Pass 1: Read first N lines for session_meta, FirstMsg, FirstUserMessage
+	scanner := bufio.NewScanner(file)
+	scanner.Buffer(buf, 10*1024*1024)
+
+	headComplete := false
+	for i := 0; i < metaParseHeadLines && scanner.Scan(); i++ {
+		a.processMetadataRecord(scanner.Bytes(), meta, &sessionTimestamp, &lastRecord, &totalTokens)
+		// Stop early if we have all head data
+		if meta.SessionID != "" && meta.CWD != "" && !meta.FirstMsg.IsZero() && meta.FirstUserMessage != "" {
+			headComplete = true
+			break
+		}
+	}
+
+	// Pass 2: Seek to tail and read last portion for LastMsg, TotalTokens
+	tailOffset := fileSize - metaParseTailSize
+	if tailOffset > 0 {
+		if _, err := file.Seek(tailOffset, io.SeekStart); err != nil {
+			// If seek fails, use what we have
+			a.finalizeMetadata(meta, path, sessionTimestamp, lastRecord, totalTokens)
+			return meta, nil
+		}
+
+		scanner = bufio.NewScanner(file)
+		scanner.Buffer(buf, 10*1024*1024)
+
+		// Skip first partial line after seek
+		scanner.Scan()
+
+		// Read remaining lines in tail
+		for scanner.Scan() {
+			a.processMetadataRecord(scanner.Bytes(), meta, &sessionTimestamp, &lastRecord, &totalTokens)
+		}
+	} else if !headComplete {
+		// File smaller than tail size but we stopped head scan early - continue
+		for scanner.Scan() {
+			a.processMetadataRecord(scanner.Bytes(), meta, &sessionTimestamp, &lastRecord, &totalTokens)
+		}
+	}
+
+	a.finalizeMetadata(meta, path, sessionTimestamp, lastRecord, totalTokens)
+	return meta, nil
+}
+
+// processMetadataRecord parses a single JSONL record and updates metadata.
+func (a *Adapter) processMetadataRecord(line []byte, meta *SessionMetadata, sessionTimestamp, lastRecord *time.Time, totalTokens *int) {
+	var record RawRecord
+	if err := json.Unmarshal(line, &record); err != nil {
+		return
+	}
+
+	if !record.Timestamp.IsZero() {
+		*lastRecord = record.Timestamp
+	}
+
+	switch record.Type {
+	case "session_meta":
+		var payload SessionMetaPayload
+		if err := json.Unmarshal(record.Payload, &payload); err != nil {
+			return
+		}
+		if meta.SessionID == "" {
+			meta.SessionID = payload.ID
+		}
+		if meta.CWD == "" {
+			meta.CWD = payload.CWD
+		}
+		if sessionTimestamp.IsZero() && !payload.Timestamp.IsZero() {
+			*sessionTimestamp = payload.Timestamp
+		}
+
+	case "response_item":
+		var base ResponseItemBase
+		if err := json.Unmarshal(record.Payload, &base); err != nil {
+			return
+		}
+		if base.Type != "message" {
+			return
+		}
+		var msg ResponseMessagePayload
+		if err := json.Unmarshal(record.Payload, &msg); err != nil {
+			return
+		}
+		if msg.Role != "user" && msg.Role != "assistant" {
+			return
+		}
+		if meta.FirstMsg.IsZero() {
+			meta.FirstMsg = record.Timestamp
+		}
+		// Extract first user message content for title
+		if meta.FirstUserMessage == "" && msg.Role == "user" {
+			if content := contentFromBlocks(msg.Content); content != "" {
+				meta.FirstUserMessage = content
+			}
+		}
+		meta.LastMsg = record.Timestamp
+		meta.MsgCount++
+
+	case "event_msg":
+		var event EventMsgPayload
+		if err := json.Unmarshal(record.Payload, &event); err != nil {
+			return
+		}
+		if event.Type != "token_count" || event.Info == nil {
+			return
+		}
+		usage := event.Info.TotalTokenUsage
+		if usage == nil {
+			usage = event.Info.LastTokenUsage
+		}
+		if usage != nil {
+			*totalTokens = usage.TotalTokens
+			if *totalTokens == 0 {
+				*totalTokens = usage.InputTokens + usage.OutputTokens + usage.ReasoningOutputTokens
+			}
+		}
+	}
+}
+
+// finalizeMetadata sets default values for missing metadata fields.
+func (a *Adapter) finalizeMetadata(meta *SessionMetadata, path string, sessionTimestamp, lastRecord time.Time, totalTokens int) {
 	if meta.SessionID == "" {
 		meta.SessionID = strings.TrimSuffix(filepath.Base(path), ".jsonl")
 	}
@@ -642,8 +767,6 @@ func (a *Adapter) parseSessionMetadata(path string) (*SessionMetadata, error) {
 	}
 
 	meta.TotalTokens = totalTokens
-
-	return meta, nil
 }
 
 func (a *Adapter) sessionFilePath(sessionID string) string {
@@ -658,19 +781,19 @@ func (a *Adapter) sessionFilePath(sessionID string) string {
 	if err != nil {
 		return ""
 	}
-	for _, path := range files {
-		if strings.Contains(filepath.Base(path), sessionID) {
-			return path
+	for _, f := range files {
+		if strings.Contains(filepath.Base(f.path), sessionID) {
+			return f.path
 		}
 	}
 
-	for _, path := range files {
-		meta, err := a.sessionMetadata(path)
+	for _, f := range files {
+		meta, err := a.sessionMetadata(f.path, f.info)
 		if err != nil {
 			continue
 		}
 		if meta.SessionID == sessionID {
-			return path
+			return f.path
 		}
 	}
 
@@ -725,6 +848,51 @@ func convertUsage(usage *TokenUsage) *adapter.TokenUsage {
 		OutputTokens: usage.OutputTokens + usage.ReasoningOutputTokens,
 		CacheRead:    usage.CachedInputTokens,
 	}
+}
+
+// resolvedProjectPath holds a pre-resolved project path for efficient matching.
+type resolvedProjectPath struct {
+	abs string
+}
+
+// newResolvedProjectPath creates a resolved path from projectRoot, performing
+// expensive filepath.Abs and filepath.EvalSymlinks calls once.
+func newResolvedProjectPath(projectRoot string) *resolvedProjectPath {
+	if projectRoot == "" {
+		return nil
+	}
+	projectAbs, err := filepath.Abs(projectRoot)
+	if err != nil {
+		return nil
+	}
+	if resolved, err := filepath.EvalSymlinks(projectAbs); err == nil {
+		projectAbs = resolved
+	}
+	return &resolvedProjectPath{abs: filepath.Clean(projectAbs)}
+}
+
+// matchesCWD checks if a session CWD matches this project path.
+func (r *resolvedProjectPath) matchesCWD(cwd string) bool {
+	if r == nil || cwd == "" {
+		return false
+	}
+	cwdAbs, err := filepath.Abs(cwd)
+	if err != nil {
+		return false
+	}
+	if resolved, err := filepath.EvalSymlinks(cwdAbs); err == nil {
+		cwdAbs = resolved
+	}
+	cwdAbs = filepath.Clean(cwdAbs)
+
+	rel, err := filepath.Rel(r.abs, cwdAbs)
+	if err != nil {
+		return false
+	}
+	if rel == "." {
+		return true
+	}
+	return !strings.HasPrefix(rel, "..")
 }
 
 func cwdMatchesProject(projectRoot, cwd string) bool {

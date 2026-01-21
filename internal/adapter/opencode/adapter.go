@@ -7,14 +7,16 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/marcus/sidecar/internal/adapter"
 )
 
 const (
-	adapterID   = "opencode"
-	adapterName = "OpenCode"
+	adapterID           = "opencode"
+	adapterName         = "OpenCode"
+	metaCacheMaxEntries = 2048
 )
 
 // Adapter implements the adapter.Adapter interface for OpenCode sessions.
@@ -23,6 +25,16 @@ type Adapter struct {
 	projectIndex   map[string]*Project // worktree path -> Project
 	sessionIndex   map[string]string   // sessionID -> project ID
 	projectsLoaded bool                // true after loadProjects populates projectIndex
+	metaCache      map[string]sessionMetaCacheEntry
+	metaMu         sync.RWMutex // guards metaCache
+}
+
+// sessionMetaCacheEntry caches parsed session metadata with validation info.
+type sessionMetaCacheEntry struct {
+	meta       *SessionMetadata
+	modTime    time.Time
+	size       int64
+	lastAccess time.Time
 }
 
 // New creates a new OpenCode adapter.
@@ -32,6 +44,7 @@ func New() *Adapter {
 		storageDir:   filepath.Join(home, ".local", "share", "opencode", "storage"),
 		projectIndex: make(map[string]*Project),
 		sessionIndex: make(map[string]string),
+		metaCache:    make(map[string]sessionMetaCacheEntry),
 	}
 }
 
@@ -102,6 +115,7 @@ func (a *Adapter) Sessions(projectRoot string) ([]adapter.Session, error) {
 	}
 
 	sessions := make([]adapter.Session, 0, len(entries))
+	seenPaths := make(map[string]struct{}, len(entries))
 	a.sessionIndex = make(map[string]string)
 
 	for _, e := range entries {
@@ -110,7 +124,14 @@ func (a *Adapter) Sessions(projectRoot string) ([]adapter.Session, error) {
 		}
 
 		path := filepath.Join(sessionDir, e.Name())
-		meta, err := a.parseSessionFile(path, projectID)
+		seenPaths[path] = struct{}{}
+
+		info, err := e.Info()
+		if err != nil {
+			continue
+		}
+
+		meta, err := a.sessionMetadata(path, info, projectID)
 		if err != nil {
 			continue
 		}
@@ -148,6 +169,8 @@ func (a *Adapter) Sessions(projectRoot string) ([]adapter.Session, error) {
 	sort.Slice(sessions, func(i, j int) bool {
 		return sessions[i].UpdatedAt.After(sessions[j].UpdatedAt)
 	})
+
+	a.pruneSessionMetaCache(seenPaths)
 
 	return sessions, nil
 }
@@ -371,7 +394,90 @@ func (a *Adapter) DiscoverRelatedProjectDirs(mainWorktreePath string) ([]string,
 	return related, nil
 }
 
+// sessionMetadata returns cached metadata if valid, otherwise parses the session file.
+func (a *Adapter) sessionMetadata(path string, info os.FileInfo, projectID string) (*SessionMetadata, error) {
+	now := time.Now()
+
+	a.metaMu.RLock()
+	if entry, ok := a.metaCache[path]; ok && entry.size == info.Size() && entry.modTime.Equal(info.ModTime()) {
+		// Return a copy to prevent caller mutations affecting cache
+		metaCopy := *entry.meta
+		a.metaMu.RUnlock()
+
+		// Update last access time
+		a.metaMu.Lock()
+		if entry, ok := a.metaCache[path]; ok {
+			entry.lastAccess = now
+			a.metaCache[path] = entry
+		}
+		a.metaMu.Unlock()
+		return &metaCopy, nil
+	}
+	a.metaMu.RUnlock()
+
+	meta, err := a.parseSessionFile(path, projectID)
+	if err != nil {
+		return nil, err
+	}
+
+	a.metaMu.Lock()
+	a.metaCache[path] = sessionMetaCacheEntry{
+		meta:       meta,
+		modTime:    info.ModTime(),
+		size:       info.Size(),
+		lastAccess: now,
+	}
+	a.enforceSessionMetaCacheLimitLocked()
+	a.metaMu.Unlock()
+
+	return meta, nil
+}
+
+// pruneSessionMetaCache removes cache entries for paths no longer in use.
+func (a *Adapter) pruneSessionMetaCache(seenPaths map[string]struct{}) {
+	a.metaMu.Lock()
+	for path := range a.metaCache {
+		if _, ok := seenPaths[path]; !ok {
+			delete(a.metaCache, path)
+		}
+	}
+	a.enforceSessionMetaCacheLimitLocked()
+	a.metaMu.Unlock()
+}
+
+// enforceSessionMetaCacheLimitLocked evicts oldest entries when cache exceeds max size.
+// Caller must hold metaMu write lock.
+func (a *Adapter) enforceSessionMetaCacheLimitLocked() {
+	excess := len(a.metaCache) - metaCacheMaxEntries
+	if excess <= 0 {
+		return
+	}
+
+	// Collect entries for sorting
+	type pathAccess struct {
+		path       string
+		lastAccess time.Time
+	}
+	entries := make([]pathAccess, 0, len(a.metaCache))
+	for path, entry := range a.metaCache {
+		entries = append(entries, pathAccess{path, entry.lastAccess})
+	}
+
+	// Sort by lastAccess (oldest first)
+	sort.Slice(entries, func(i, j int) bool {
+		return entries[i].lastAccess.Before(entries[j].lastAccess)
+	})
+
+	// Delete oldest entries
+	for i := 0; i < excess; i++ {
+		delete(a.metaCache, entries[i].path)
+	}
+}
+
 // parseSessionFile parses a session JSON file and returns metadata.
+// For performance, this only reads the session file and counts message files
+// without reading their contents. Token counts and costs are populated
+// when Messages() is called.
 func (a *Adapter) parseSessionFile(path, projectID string) (*SessionMetadata, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -398,96 +504,22 @@ func (a *Adapter) parseSessionFile(path, projectID string) (*SessionMetadata, er
 		meta.Additions = sess.Summary.Additions
 		meta.Deletions = sess.Summary.Deletions
 		meta.FileCount = sess.Summary.Files
-	} else {
-		// Fallback: load stats from session_diff only if Summary not available
-		diffPath := filepath.Join(a.storageDir, "session_diff", sess.ID+".json")
-		if diffData, err := os.ReadFile(diffPath); err == nil {
-			var diffs []SessionDiffEntry
-			if json.Unmarshal(diffData, &diffs) == nil {
-				for _, d := range diffs {
-					if d.Additions != nil {
-						meta.Additions += *d.Additions
-					}
-					if d.Deletions != nil {
-						meta.Deletions += *d.Deletions
-					}
-				}
-				meta.FileCount = len(diffs)
-			}
-		}
 	}
+	// Skip session_diff fallback for performance - diff stats are less critical
 
-	// Count messages and calculate tokens
+	// Count messages by counting files without reading them (O(1) per file)
 	messageDir := filepath.Join(a.storageDir, "message", sess.ID)
 	if entries, err := os.ReadDir(messageDir); err == nil {
-		modelCounts := make(map[string]int)
-		modelTokens := make(map[string]struct{ in, out, cache int })
-		var firstUserMsgTime time.Time
-
 		for _, e := range entries {
-			if !strings.HasSuffix(e.Name(), ".json") {
-				continue
+			if strings.HasSuffix(e.Name(), ".json") {
+				meta.MsgCount++
 			}
-
-			msgPath := filepath.Join(messageDir, e.Name())
-			msg, err := a.parseMessageFile(msgPath)
-			if err != nil {
-				continue
-			}
-
-			if msg.Role != "user" && msg.Role != "assistant" {
-				continue
-			}
-
-			meta.MsgCount++
-
-			// Extract first user message content for title
-			if msg.Role == "user" {
-				msgTime := msg.Time.CreatedTime()
-				if firstUserMsgTime.IsZero() || msgTime.Before(firstUserMsgTime) {
-					firstUserMsgTime = msgTime
-					// Load parts to get text content
-					content, _, _, _, _ := a.loadParts(msg.ID)
-					if content != "" {
-						meta.FirstUserMessage = content
-					}
-				}
-			}
-
-			if msg.Tokens != nil {
-				meta.TotalTokens += msg.Tokens.Input + msg.Tokens.Output
-
-				model := msg.ModelID
-				if model == "" && msg.Model != nil {
-					model = msg.Model.ModelID
-				}
-				if model != "" {
-					modelCounts[model]++
-					mt := modelTokens[model]
-					mt.in += msg.Tokens.Input
-					mt.out += msg.Tokens.Output
-					if msg.Tokens.Cache != nil {
-						mt.cache += msg.Tokens.Cache.Read
-					}
-					modelTokens[model] = mt
-				}
-			}
-		}
-
-		// Find primary model
-		var maxCount int
-		for model, count := range modelCounts {
-			if count > maxCount {
-				maxCount = count
-				meta.PrimaryModel = model
-			}
-		}
-
-		// Calculate cost
-		for model, mt := range modelTokens {
-			meta.EstCost += calculateCost(model, mt.in, mt.out, mt.cache)
 		}
 	}
+
+	// Note: FirstUserMessage, TotalTokens, EstCost, PrimaryModel are left empty
+	// for Sessions() list view. They will be populated when Messages() is called
+	// and the user views a specific session.
 
 	return meta, nil
 }
