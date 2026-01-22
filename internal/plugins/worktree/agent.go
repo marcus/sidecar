@@ -206,16 +206,19 @@ const (
 	tmuxCaptureTimeout      = 2 * time.Second
 	tmuxBatchCaptureTimeout = 3 * time.Second
 
-	// Polling intervals - adaptive based on agent status
-	// Conservative values to reduce CPU with multiple worktrees while maintaining responsiveness
-	pollIntervalInitial    = 500 * time.Millisecond // First poll after agent starts
-	pollIntervalActive     = 500 * time.Millisecond // Agent actively processing (keep fast for UX)
-	pollIntervalIdle       = 5 * time.Second        // No change detected (was 3s)
-	pollIntervalWaiting    = 5 * time.Second        // Agent waiting for user input
-	pollIntervalDone       = 20 * time.Second       // Agent completed/exited (was 10s)
-	pollIntervalBackground = 10 * time.Second       // Output not visible, plugin focused (was 5s)
-	pollIntervalUnfocused  = 20 * time.Second       // Plugin not focused (was 15s)
-	pollIntervalThrottled  = 20 * time.Second       // Runaway session throttled (td-018f25)
+	// Polling intervals - adaptive based on agent status and visibility
+	// Fast (visible+focused): 200ms active, 2s idle
+	// Medium (visible+unfocused): 500ms
+	// Slow (not visible): 10-20s
+	pollIntervalInitial          = 200 * time.Millisecond // First poll after agent starts
+	pollIntervalActive           = 200 * time.Millisecond // Agent actively processing (keep fast for UX)
+	pollIntervalIdle             = 2 * time.Second        // No change detected
+	pollIntervalWaiting          = 2 * time.Second        // Agent waiting for user input
+	pollIntervalDone             = 20 * time.Second       // Agent completed/exited
+	pollIntervalBackground       = 10 * time.Second       // Output not visible, plugin focused
+	pollIntervalVisibleUnfocused = 500 * time.Millisecond // Output visible but plugin not focused
+	pollIntervalUnfocused        = 20 * time.Second       // Plugin not focused, output not visible
+	pollIntervalThrottled        = 20 * time.Second       // Runaway session throttled (td-018f25)
 
 	// Poll staggering to prevent simultaneous subprocess spawns
 	pollStaggerMax = 400 * time.Millisecond // Max stagger offset based on worktree name hash

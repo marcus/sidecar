@@ -309,10 +309,20 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 				interval = pollIntervalThrottled
 			}
 		}
-		if !p.outputVisibleFor(msg.WorktreeName) {
+		// Three visibility states (same as shells):
+		// 1. Visible + focused → fast polling
+		// 2. Visible + unfocused → medium polling (2s)
+		// 3. Not visible → slow polling (10-20s)
+		isVisibleOnScreen := p.outputVisibleForUnfocused(msg.WorktreeName)
+		if !isVisibleOnScreen {
 			background := p.backgroundPollInterval()
 			if background > interval {
 				interval = background
+			}
+		} else if !p.focused {
+			// Visible but plugin not focused - use medium interval
+			if interval < pollIntervalVisibleUnfocused {
+				interval = pollIntervalVisibleUnfocused
 			}
 		}
 		// Use interactive polling in interactive mode for fast response
@@ -342,10 +352,17 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 		if wt := p.findWorktree(msg.WorktreeName); wt != nil && wt.Agent != nil && wt.Agent.PollsThrottled {
 			interval = pollIntervalThrottled
 		}
-		if !p.outputVisibleFor(msg.WorktreeName) {
+		// Three visibility states (same as AgentOutputMsg)
+		isVisibleOnScreen := p.outputVisibleForUnfocused(msg.WorktreeName)
+		if !isVisibleOnScreen {
 			background := p.backgroundPollInterval()
 			if background > interval {
 				interval = background
+			}
+		} else if !p.focused {
+			// Visible but plugin not focused - use medium interval
+			if interval < pollIntervalVisibleUnfocused {
+				interval = pollIntervalVisibleUnfocused
 			}
 		}
 		cmds = append(cmds, p.scheduleAgentPoll(msg.WorktreeName, interval))
@@ -509,20 +526,33 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 				}
 			}
 		}
-		// Schedule next poll with adaptive interval
+		// Schedule next poll with adaptive interval.
+		// Three visibility states:
+		// 1. Visible + focused → fast polling (500ms active, 5s idle)
+		// 2. Visible + unfocused → medium polling (2s) - user can see output but clicked elsewhere
+		// 3. Not visible → slow polling (10-20s)
 		interval := pollIntervalActive
 		if !msg.Changed {
 			interval = pollIntervalIdle
 		}
-		// Use longer interval if this shell's output isn't visible
 		selectedShell := p.getSelectedShell()
-		isVisible := selectedShell != nil && selectedShell.TmuxName == msg.TmuxName && p.focused && p.previewTab == PreviewTabOutput
-		if !isVisible {
+		isSelectedShell := selectedShell != nil && selectedShell.TmuxName == msg.TmuxName
+		isVisibleOnScreen := isSelectedShell && p.shellSelected &&
+			(p.viewMode == ViewModeList || p.viewMode == ViewModeInteractive)
+
+		if !isVisibleOnScreen {
+			// Not visible - use slow background polling
 			background := p.backgroundPollInterval()
 			if background > interval {
 				interval = background
 			}
+		} else if !p.focused {
+			// Visible but plugin not focused - use medium interval so user sees updates
+			if interval < pollIntervalVisibleUnfocused {
+				interval = pollIntervalVisibleUnfocused
+			}
 		}
+		// If visible AND focused, keep the fast interval (pollIntervalActive/pollIntervalIdle)
 		// Use interactive polling in interactive mode for fast response
 		if p.viewMode == ViewModeInteractive && p.shellSelected {
 			if selectedShell != nil && selectedShell.TmuxName == msg.TmuxName {

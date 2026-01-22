@@ -360,6 +360,17 @@ func (p *Plugin) enterInteractiveMode() tea.Cmd {
 
 	p.viewMode = ViewModeInteractive
 
+	// Invalidate existing poll timers to prevent duplicate poll chains (td-97327e).
+	// Without this, entering interactive mode creates a second poll chain that runs
+	// in parallel with the existing one, causing 200% CPU usage.
+	if p.shellSelected {
+		p.shellPollGeneration[sessionName]++
+	} else {
+		if wt := p.selectedWorktree(); wt != nil {
+			p.pollGeneration[wt.Name]++
+		}
+	}
+
 	// Trigger immediate poll for fresh content (cursor position is captured atomically with output)
 	return p.pollInteractivePane()
 }
@@ -715,11 +726,14 @@ func (p *Plugin) scheduleDebouncedPoll(delay time.Duration) tea.Cmd {
 		return nil
 	}
 
-	// Use shell or worktree polling mechanism based on current selection
+	// Use shell or worktree polling mechanism based on current selection.
+	// IMPORTANT: Use the correct generation map for each type (td-97327e):
+	// - Shells use shellPollGeneration (checked by scheduleShellPollByName)
+	// - Worktrees use pollGeneration (checked by scheduleAgentPoll)
 	if p.shellSelected && p.selectedShellIdx >= 0 && p.selectedShellIdx < len(p.shells) {
 		shellName := p.shells[p.selectedShellIdx].TmuxName
 		if shellName != "" {
-			p.pollGeneration[shellName]++
+			p.shellPollGeneration[shellName]++
 			return p.scheduleShellPollByName(shellName, delay)
 		}
 	} else if wt := p.selectedWorktree(); wt != nil {

@@ -574,12 +574,18 @@ func (p *Plugin) selectedWorktree() *Worktree {
 	return p.worktrees[p.selectedIdx]
 }
 
-// outputVisibleFor returns true when a worktree's output is on-screen.
+// outputVisibleFor returns true when a worktree's output is on-screen AND plugin is focused.
 func (p *Plugin) outputVisibleFor(worktreeName string) bool {
 	if !p.focused {
 		return false
 	}
-	if p.viewMode != ViewModeList {
+	return p.outputVisibleForUnfocused(worktreeName)
+}
+
+// outputVisibleForUnfocused returns true when a worktree's output is on-screen,
+// regardless of whether the plugin is focused. Used for "visible but unfocused" polling.
+func (p *Plugin) outputVisibleForUnfocused(worktreeName string) bool {
+	if p.viewMode != ViewModeList && p.viewMode != ViewModeInteractive {
 		return false
 	}
 	if p.previewTab != PreviewTabOutput {

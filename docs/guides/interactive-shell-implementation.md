@@ -92,7 +92,19 @@ if !p.sidebarVisible {
 
 ### 3. Polling and Performance
 
-**Adaptive Polling Strategy**:
+**Three-State Visibility Polling** (td-97327e):
+
+Output polling adapts based on visibility AND focus state:
+
+| State | Active | Idle |
+|-------|--------|------|
+| Visible + focused | 200ms | 2s |
+| Visible + unfocused | 500ms | 500ms |
+| Not visible | 10-20s | 10-20s |
+
+This ensures visible output updates reasonably even when the user clicks on another plugin.
+
+**Interactive Mode Adaptive Polling**:
 
 ```go
 pollingDecayFast   = 50ms   // During active typing
@@ -107,7 +119,7 @@ pollingDecaySlow   = 500ms  // After 10s inactivity
 
 **Critical Bug We Fixed**: After the debounced poll completed, the `AgentOutputMsg`/`ShellOutputMsg` handlers were scheduling the next poll using regular intervals (500ms-5s) instead of interactive mode intervals (50-500ms). This caused a 3-second delay before the prompt appeared after running commands like `ls`.
 
-**Solution** (`update.go:312-322, 526-534`):
+**Solution** (`update.go`):
 
 ```go
 // In AgentOutputMsg handler:
@@ -247,6 +259,27 @@ Cursor queries and tmux operations must run asynchronously in poll handlers, not
 
 Shells require `scheduleShellPollByName()`, worktrees require `scheduleAgentPoll()`. Mixing them breaks the polling mechanism.
 
+### ❌ Don't Use Wrong Generation Maps
+
+When incrementing poll generations to cancel stale timers:
+- Shells use `shellPollGeneration` (not `pollGeneration`)
+- Worktrees use `pollGeneration`
+
+Using the wrong map makes generation tracking ineffective. See td-97327e.
+
+### ❌ Don't Forget to Invalidate Old Poll Chains
+
+When entering interactive mode, increment the appropriate generation counter to invalidate existing poll timers. Without this, entering interactive mode creates a **second poll chain** running in parallel with the existing one, causing 200% CPU usage.
+
+```go
+// In enterInteractiveMode():
+if p.shellSelected {
+    p.shellPollGeneration[sessionName]++
+} else {
+    p.pollGeneration[wt.Name]++
+}
+```
+
 ## Performance Characteristics
 
 **CPU Usage**:
@@ -265,7 +298,7 @@ Shells require `scheduleShellPollByName()`, worktrees require `scheduleAgentPoll
 
 **Total**: ~42ms per keystroke worst case, ~36ms typical (when regex skipped)
 
-**Polling frequency**: 50ms when active = 20 polls/sec, reduced by debouncing to ~10 effective polls/sec during typing
+**Polling frequency**: 200ms when active (visible+focused) = 5 polls/sec, reduced by debouncing during typing
 
 ## Feature Flag
 
@@ -340,6 +373,7 @@ Enable in `~/.config/sidecar/config.json`:
   - td-380d89: Cursor adjustment (reverted, then re-added)
   - td-194689: Mouse escape regex strengthening
   - td-4218e8: Epic for all interactive mode fixes
+  - td-97327e: Duplicate poll chain fix (200% CPU)
 
 ## Key Takeaways
 
@@ -351,5 +385,8 @@ Enable in `~/.config/sidecar/config.json`:
 6. **Horizontal width is tricky** - sidebar calculations don't perfectly match tmux pane width
 7. **Atomic cursor capture** - query cursor with output to avoid race conditions
 8. **Separate shell/worktree polling** - use the right scheduling function for each type
+9. **Use correct generation maps** - shells use `shellPollGeneration`, worktrees use `pollGeneration`
+10. **Invalidate old poll chains on mode entry** - increment generation when entering interactive mode to prevent duplicate parallel poll chains (causes 200% CPU)
+11. **Three-state visibility polling** - visible+focused (fast), visible+unfocused (medium), not visible (slow)
 
 This feature is stable and works well with these learnings applied. The main remaining issue is text truncation on the right edge due to width calculation imprecision.
