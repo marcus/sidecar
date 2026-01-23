@@ -111,10 +111,5 @@ func SaveTheme(themeName string) error {
 		return err
 	}
 	cfg.UI.Theme.Name = themeName
-	// Preserve feature flags only if any are actually set; omit from config if empty
-	// to avoid polluting user configs that don't use feature flags
-	if cfg.Features.Flags != nil && len(cfg.Features.Flags) == 0 {
-		cfg.Features.Flags = nil
-	}
 	return Save(cfg)
 }

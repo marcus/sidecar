@@ -51,7 +51,6 @@ func DefaultBindings() []Binding {
 		{Key: "S", Command: "stage-all", Context: "git-status"},
 		{Key: "U", Command: "unstage-all", Context: "git-status"},
 		{Key: "c", Command: "commit", Context: "git-status"},
-		{Key: "A", Command: "amend", Context: "git-status"},
 		{Key: "d", Command: "show-diff", Context: "git-status"},
 		{Key: "enter", Command: "show-diff", Context: "git-status"},
 		{Key: "r", Command: "refresh", Context: "git-status"},
@@ -62,10 +61,11 @@ func DefaultBindings() []Binding {
 		{Key: "b", Command: "branch", Context: "git-status"},
 		{Key: "z", Command: "stash", Context: "git-status"},
 		{Key: "Z", Command: "stash-pop", Context: "git-status"},
-		{Key: "o", Command: "open-in-file-browser", Context: "git-status"},
+		{Key: "O", Command: "open-in-file-browser", Context: "git-status"},
+		{Key: "o", Command: "open-in-github", Context: "git-status"},
 		{Key: "y", Command: "yank-file", Context: "git-status"},
 		{Key: "Y", Command: "yank-path", Context: "git-status"},
-		{Key: "x", Command: "discard-changes", Context: "git-status"},
+		{Key: "D", Command: "discard-changes", Context: "git-status"},
 		{Key: "\\", Command: "toggle-sidebar", Context: "git-status"},
 
 		// Git status commits context (sidebar)

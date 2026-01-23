@@ -434,6 +434,13 @@ func (t *FileTree) StageAll() error {
 	return cmd.Run()
 }
 
+// UnstageAll unstages all staged files.
+func (t *FileTree) UnstageAll() error {
+	cmd := exec.Command("git", "reset", "HEAD")
+	cmd.Dir = t.workDir
+	return cmd.Run()
+}
+
 // HasStagedFiles returns true if there are any staged files.
 func (t *FileTree) HasStagedFiles() bool {
 	return len(t.Staged) > 0

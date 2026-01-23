@@ -209,6 +209,22 @@ func (p *Plugin) updateStatus(msg tea.KeyMsg) (plugin.Plugin, tea.Cmd) {
 			return p, tea.Batch(p.refresh(), p.loadRecentCommits())
 		}
 
+	case "U":
+		// Unstage all files
+		if err := p.tree.UnstageAll(); err == nil {
+			return p, tea.Batch(p.refresh(), p.loadRecentCommits())
+		}
+
+	case "h":
+		// Jump cursor to commits section (show history)
+		fileCount := len(entries)
+		commits := p.activeCommits()
+		if len(commits) > 0 && p.cursor < fileCount {
+			p.cursor = fileCount
+			p.ensureCommitVisible(0)
+			return p, p.autoLoadCommitPreview()
+		}
+
 	case "O":
 		// Open file in file browser (for files only, not commits)
 		if !p.cursorOnCommit() && len(entries) > 0 && p.cursor < len(entries) {
