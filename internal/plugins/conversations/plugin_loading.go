@@ -170,6 +170,70 @@ func (p *Plugin) loadSessions() tea.Cmd {
 	}
 }
 
+// refreshSessions updates only specific sessions in-place (td-2b8ebe).
+// Falls back to full loadSessions() if adapters don't support targeted refresh.
+func (p *Plugin) refreshSessions(sessionIDs []string) tea.Cmd {
+	adapters := p.adapters
+	currentSessions := p.sessions
+
+	return func() tea.Msg {
+		if len(adapters) == 0 {
+			return SessionsLoadedMsg{}
+		}
+
+		// Build lookup of current sessions by ID for in-place update
+		sessionMap := make(map[string]int, len(currentSessions))
+		for i, s := range currentSessions {
+			sessionMap[s.ID] = i
+		}
+
+		updated := make([]adapter.Session, len(currentSessions))
+		copy(updated, currentSessions)
+		changed := false
+
+		for _, sessionID := range sessionIDs {
+			var refreshed *adapter.Session
+
+			// Try each adapter's TargetedRefresher interface
+			for _, a := range adapters {
+				if tr, ok := a.(adapter.TargetedRefresher); ok {
+					s, err := tr.SessionByID(sessionID)
+					if err == nil && s != nil {
+						refreshed = s
+						break
+					}
+				}
+			}
+
+			if refreshed == nil {
+				continue
+			}
+
+			if idx, exists := sessionMap[sessionID]; exists {
+				// Preserve worktree fields from existing session
+				refreshed.WorktreeName = updated[idx].WorktreeName
+				refreshed.WorktreePath = updated[idx].WorktreePath
+				updated[idx] = *refreshed
+			} else {
+				// New session - append
+				updated = append(updated, *refreshed)
+			}
+			changed = true
+		}
+
+		if !changed {
+			return SessionsLoadedMsg{Sessions: updated}
+		}
+
+		// Re-sort by UpdatedAt descending
+		sort.Slice(updated, func(i, j int) bool {
+			return updated[i].UpdatedAt.After(updated[j].UpdatedAt)
+		})
+
+		return SessionsLoadedMsg{Sessions: updated}
+	}
+}
+
 // loadMessages loads messages for a session with pagination support (td-313ea851).
 func (p *Plugin) loadMessages(sessionID string) tea.Cmd {
 	offset := p.messageOffset

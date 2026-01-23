@@ -184,6 +184,56 @@ func (a *Adapter) Sessions(projectRoot string) ([]adapter.Session, error) {
 	return sessions, nil
 }
 
+// SessionByID returns a single session by ID without scanning the directory (td-27f6a1).
+// Implements adapter.TargetedRefresher for efficient targeted refresh.
+func (a *Adapter) SessionByID(sessionID string) (*adapter.Session, error) {
+	path := a.sessionFilePath(sessionID)
+	if path == "" {
+		return nil, fmt.Errorf("session %s not found", sessionID)
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		return nil, err
+	}
+	meta, err := a.sessionMetadata(path, info)
+	if err != nil {
+		return nil, err
+	}
+	if meta.MsgCount == 0 {
+		return nil, fmt.Errorf("session %s has no messages", sessionID)
+	}
+
+	name := ""
+	if meta.FirstUserMessage != "" {
+		name = truncateTitle(meta.FirstUserMessage, 120)
+	}
+	if name == "" && meta.Slug != "" {
+		name = meta.Slug
+	}
+	if name == "" {
+		name = shortID(meta.SessionID)
+	}
+
+	isSubAgent := strings.HasPrefix(filepath.Base(path), "agent-")
+
+	return &adapter.Session{
+		ID:           meta.SessionID,
+		Name:         name,
+		Slug:         meta.Slug,
+		AdapterID:    adapterID,
+		AdapterName:  adapterName,
+		AdapterIcon:  a.Icon(),
+		CreatedAt:    meta.FirstMsg,
+		UpdatedAt:    meta.LastMsg,
+		Duration:     meta.LastMsg.Sub(meta.FirstMsg),
+		IsActive:     time.Since(meta.LastMsg) < 5*time.Minute,
+		TotalTokens:  meta.TotalTokens,
+		EstCost:      meta.EstCost,
+		IsSubAgent:   isSubAgent,
+		MessageCount: meta.MsgCount,
+	}, nil
+}
+
 // Messages returns all messages for the given session.
 func (a *Adapter) Messages(sessionID string) ([]adapter.Message, error) {
 	path := a.sessionFilePath(sessionID)
@@ -459,11 +509,18 @@ func (a *Adapter) sessionFilePath(sessionID string) string {
 	return ""
 }
 
-// parseSessionMetadata extracts metadata from a session file.
+// parseSessionMetadata is a convenience wrapper for full metadata parsing.
 func (a *Adapter) parseSessionMetadata(path string) (*SessionMetadata, error) {
+	meta, _, _, _, err := a.parseSessionMetadataFull(path)
+	return meta, err
+}
+
+// parseSessionMetadataFull extracts metadata from a session file, scanning all lines.
+// Returns metadata, final byte offset, and per-model tracking for incremental use.
+func (a *Adapter) parseSessionMetadataFull(path string) (*SessionMetadata, int64, map[string]int, map[string]modelTokenEntry, error) {
 	file, err := os.Open(path)
 	if err != nil {
-		return nil, err
+		return nil, 0, nil, nil, err
 	}
 	defer file.Close()
 
@@ -478,64 +535,137 @@ func (a *Adapter) parseSessionMetadata(path string) (*SessionMetadata, error) {
 	scanner.Buffer(buf, 10*1024*1024)
 
 	modelCounts := make(map[string]int)
-	modelTokens := make(map[string]struct{ in, out, cache int })
+	modelTokens := make(map[string]modelTokenEntry)
+	var bytesRead int64
 
 	for scanner.Scan() {
-		var raw RawMessage
-		if err := json.Unmarshal(scanner.Bytes(), &raw); err != nil {
-			continue
-		}
+		line := scanner.Bytes()
+		bytesRead += int64(len(line)) + 1 // +1 for newline
 
-		// Skip non-message types
-		if raw.Type != "user" && raw.Type != "assistant" {
-			continue
-		}
+		a.processMetadataLine(line, meta, modelCounts, modelTokens)
+	}
 
-		if meta.FirstMsg.IsZero() {
-			meta.FirstMsg = raw.Timestamp
-			meta.CWD = raw.CWD
-			meta.Version = raw.Version
-			meta.GitBranch = raw.GitBranch
-		}
-		// Extract slug from first message that has it
-		if meta.Slug == "" && raw.Slug != "" {
-			meta.Slug = raw.Slug
-		}
-		// Extract first meaningful user message content for title
-		// Skip caveat-only messages, /clear commands, and empty messages
-		if meta.FirstUserMessage == "" && raw.Type == "user" && raw.Message != nil {
-			content, _, _ := a.parseContent(raw.Message.Content)
-			if content != "" {
-				// Use extractUserQuery to check if this has real content
-				extracted := extractUserQuery(content)
-				if extracted != "" && !isTrivialCommand(extracted) {
-					meta.FirstUserMessage = content
-				}
-			}
-		}
-		meta.LastMsg = raw.Timestamp
-		meta.MsgCount++
+	a.finalizeMetadataCost(meta, modelCounts, modelTokens)
 
-		// Accumulate token usage from assistant messages
-		if raw.Message != nil && raw.Message.Usage != nil {
-			usage := raw.Message.Usage
-			meta.TotalTokens += usage.InputTokens + usage.OutputTokens
+	if meta.FirstMsg.IsZero() {
+		meta.FirstMsg = time.Now()
+		meta.LastMsg = time.Now()
+	}
 
-			// Track per-model usage for cost calculation
-			model := raw.Message.Model
-			if model != "" {
-				modelCounts[model]++
-				mt := modelTokens[model]
-				mt.in += usage.InputTokens
-				mt.out += usage.OutputTokens
-				mt.cache += usage.CacheReadInputTokens
-				modelTokens[model] = mt
+	return meta, bytesRead, modelCounts, modelTokens, nil
+}
+
+// parseSessionMetadataIncremental resumes parsing from a byte offset (td-1b774e).
+// Reuses cached head metadata (FirstMsg, CWD, etc.) and accumulates new tail data.
+func (a *Adapter) parseSessionMetadataIncremental(path string, base *SessionMetadata, offset int64, baseModelCounts map[string]int, baseModelTokens map[string]modelTokenEntry) (*SessionMetadata, int64, map[string]int, map[string]modelTokenEntry, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, 0, nil, nil, err
+	}
+	defer file.Close()
+
+	if _, err := file.Seek(offset, 0); err != nil {
+		return nil, 0, nil, nil, err
+	}
+
+	// Copy base metadata (immutable fields preserved)
+	meta := &SessionMetadata{
+		Path:             base.Path,
+		SessionID:        base.SessionID,
+		Slug:             base.Slug,
+		CWD:              base.CWD,
+		Version:          base.Version,
+		GitBranch:        base.GitBranch,
+		FirstMsg:         base.FirstMsg,
+		LastMsg:          base.LastMsg,
+		MsgCount:         base.MsgCount,
+		TotalTokens:      base.TotalTokens,
+		FirstUserMessage: base.FirstUserMessage,
+	}
+
+	// Copy model tracking maps
+	modelCounts := make(map[string]int, len(baseModelCounts))
+	for k, v := range baseModelCounts {
+		modelCounts[k] = v
+	}
+	modelTokens := make(map[string]modelTokenEntry, len(baseModelTokens))
+	for k, v := range baseModelTokens {
+		modelTokens[k] = v
+	}
+
+	scanner := bufio.NewScanner(file)
+	buf := getScannerBuffer()
+	defer putScannerBuffer(buf)
+	scanner.Buffer(buf, 10*1024*1024)
+
+	bytesRead := offset
+	for scanner.Scan() {
+		line := scanner.Bytes()
+		bytesRead += int64(len(line)) + 1
+
+		a.processMetadataLine(line, meta, modelCounts, modelTokens)
+	}
+
+	a.finalizeMetadataCost(meta, modelCounts, modelTokens)
+
+	return meta, bytesRead, modelCounts, modelTokens, nil
+}
+
+// processMetadataLine parses a single JSONL line and accumulates metadata.
+func (a *Adapter) processMetadataLine(line []byte, meta *SessionMetadata, modelCounts map[string]int, modelTokens map[string]modelTokenEntry) {
+	var raw RawMessage
+	if err := json.Unmarshal(line, &raw); err != nil {
+		return
+	}
+
+	// Skip non-message types
+	if raw.Type != "user" && raw.Type != "assistant" {
+		return
+	}
+
+	if meta.FirstMsg.IsZero() {
+		meta.FirstMsg = raw.Timestamp
+		meta.CWD = raw.CWD
+		meta.Version = raw.Version
+		meta.GitBranch = raw.GitBranch
+	}
+	if meta.Slug == "" && raw.Slug != "" {
+		meta.Slug = raw.Slug
+	}
+	if meta.FirstUserMessage == "" && raw.Type == "user" && raw.Message != nil {
+		content, _, _ := a.parseContent(raw.Message.Content)
+		if content != "" {
+			extracted := extractUserQuery(content)
+			if extracted != "" && !isTrivialCommand(extracted) {
+				meta.FirstUserMessage = content
 			}
 		}
 	}
+	meta.LastMsg = raw.Timestamp
+	meta.MsgCount++
 
-	// Determine primary model and calculate cost
+	if raw.Message != nil && raw.Message.Usage != nil {
+		usage := raw.Message.Usage
+		meta.TotalTokens += usage.InputTokens + usage.OutputTokens
+
+		model := raw.Message.Model
+		if model != "" {
+			modelCounts[model]++
+			mt := modelTokens[model]
+			mt.in += usage.InputTokens
+			mt.out += usage.OutputTokens
+			mt.cache += usage.CacheReadInputTokens
+			modelTokens[model] = mt
+		}
+	}
+}
+
+// finalizeMetadataCost calculates PrimaryModel and EstCost from per-model tracking.
+func (a *Adapter) finalizeMetadataCost(meta *SessionMetadata, modelCounts map[string]int, modelTokens map[string]modelTokenEntry) {
 	var maxCount int
+	meta.PrimaryModel = ""
+	meta.EstCost = 0
+
 	for model, count := range modelCounts {
 		if count > maxCount {
 			maxCount = count
@@ -543,7 +673,6 @@ func (a *Adapter) parseSessionMetadata(path string) (*SessionMetadata, error) {
 		}
 	}
 
-	// Calculate cost per model
 	for model, mt := range modelTokens {
 		var inRate, outRate float64
 		switch {
@@ -564,50 +693,82 @@ func (a *Adapter) parseSessionMetadata(path string) (*SessionMetadata, error) {
 			float64(regularIn)*inRate/1_000_000 +
 			float64(mt.out)*outRate/1_000_000
 	}
+}
 
-	if meta.FirstMsg.IsZero() {
-		meta.FirstMsg = time.Now()
-		meta.LastMsg = time.Now()
-	}
-
-	return meta, nil
+// modelTokenEntry tracks per-model token accumulation for incremental cost calculation.
+type modelTokenEntry struct {
+	in, out, cache int
 }
 
 type sessionMetaCacheEntry struct {
-	meta       *SessionMetadata
-	modTime    time.Time
-	size       int64
-	lastAccess time.Time
+	meta        *SessionMetadata
+	modTime     time.Time
+	size        int64
+	lastAccess  time.Time
+	byteOffset  int64                    // position after last parsed line (for incremental)
+	modelCounts map[string]int           // per-model message counts
+	modelTokens map[string]modelTokenEntry // per-model token accumulation
 }
 
 // sessionMetadata returns cached metadata if valid, otherwise parses the file.
+// Supports incremental parsing when a file grows (td-1b774e): reuses cached
+// metadata and resumes parsing from the last byte offset.
 // Uses write lock for cache hits to safely update lastAccess (td-02e326f7).
 func (a *Adapter) sessionMetadata(path string, info os.FileInfo) (*SessionMetadata, error) {
 	now := time.Now()
 
-	// Use write lock since we update lastAccess on cache hit (td-02e326f7)
 	a.metaMu.Lock()
-	if entry, ok := a.metaCache[path]; ok && entry.size == info.Size() && entry.modTime.Equal(info.ModTime()) {
-		// Update lastAccess and return copy to prevent caller mutations
-		entry.lastAccess = now
-		a.metaCache[path] = entry
-		metaCopy := *entry.meta
+	entry, cached := a.metaCache[path]
+	if cached {
+		if entry.size == info.Size() && entry.modTime.Equal(info.ModTime()) {
+			// Exact cache hit (unchanged file)
+			entry.lastAccess = now
+			a.metaCache[path] = entry
+			metaCopy := *entry.meta
+			a.metaMu.Unlock()
+			return &metaCopy, nil
+		}
+		if info.Size() > entry.size && entry.byteOffset > 0 {
+			// File grew - try incremental parse from saved offset (td-1b774e)
+			a.metaMu.Unlock()
+			meta, newOffset, mc, mt, err := a.parseSessionMetadataIncremental(path, entry.meta, entry.byteOffset, entry.modelCounts, entry.modelTokens)
+			if err == nil {
+				a.metaMu.Lock()
+				a.metaCache[path] = sessionMetaCacheEntry{
+					meta:        meta,
+					modTime:     info.ModTime(),
+					size:        info.Size(),
+					lastAccess:  now,
+					byteOffset:  newOffset,
+					modelCounts: mc,
+					modelTokens: mt,
+				}
+				a.enforceSessionMetaCacheLimitLocked()
+				a.metaMu.Unlock()
+				return meta, nil
+			}
+			// Fall through to full parse on error
+		} else {
+			a.metaMu.Unlock()
+		}
+	} else {
 		a.metaMu.Unlock()
-		return &metaCopy, nil
 	}
-	a.metaMu.Unlock()
 
-	meta, err := a.parseSessionMetadata(path)
+	meta, offset, mc, mt, err := a.parseSessionMetadataFull(path)
 	if err != nil {
 		return nil, err
 	}
 
 	a.metaMu.Lock()
 	a.metaCache[path] = sessionMetaCacheEntry{
-		meta:       meta,
-		modTime:    info.ModTime(),
-		size:       info.Size(),
-		lastAccess: now,
+		meta:        meta,
+		modTime:     info.ModTime(),
+		size:        info.Size(),
+		lastAccess:  now,
+		byteOffset:  offset,
+		modelCounts: mc,
+		modelTokens: mt,
 	}
 	a.enforceSessionMetaCacheLimitLocked()
 	a.metaMu.Unlock()

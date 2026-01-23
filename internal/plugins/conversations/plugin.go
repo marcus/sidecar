@@ -505,8 +505,8 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 			// Full refresh needed
 			cmds = append(cmds, p.loadSessions())
 		} else {
-			// Phase 1: still do full refresh (Phase 2 will add targeted refresh)
-			cmds = append(cmds, p.loadSessions())
+			// Targeted refresh: only update specific sessions (td-2b8ebe)
+			cmds = append(cmds, p.refreshSessions(msg.SessionIDs))
 		}
 
 		return p, tea.Batch(cmds...)

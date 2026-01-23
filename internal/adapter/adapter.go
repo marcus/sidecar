@@ -24,6 +24,12 @@ type ProjectDiscoverer interface {
 	DiscoverRelatedProjectDirs(mainWorktreePath string) ([]string, error)
 }
 
+// TargetedRefresher is an optional interface for adapters that support refreshing
+// a single session by ID without scanning the full directory (td-2b8ebe).
+type TargetedRefresher interface {
+	SessionByID(sessionID string) (*Session, error)
+}
+
 // WatchScope indicates whether an adapter watches global or per-project paths.
 type WatchScope int
 

@@ -230,3 +230,95 @@ func TestParseSessionMetadataFallbacks(t *testing.T) {
 		t.Fatalf("expected LastMsg >= session_meta timestamp")
 	}
 }
+
+func TestSessionMetadataTailOnlyOnGrowth(t *testing.T) {
+	root := t.TempDir()
+	sessionsDir := filepath.Join(root, "sessions")
+	if err := os.MkdirAll(sessionsDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create a session file larger than metaParseSmallFileThreshold (16KB)
+	// by padding the initial session_meta with data
+	sessionPath := filepath.Join(sessionsDir, "grow-test.jsonl")
+
+	// Build a file > 16KB with session_meta + messages
+	f, err := os.Create(sessionPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Write session_meta
+	f.WriteString(`{"type":"session_meta","timestamp":"2024-01-01T10:00:00Z","payload":{"id":"grow-test","cwd":"/tmp"}}` + "\n")
+
+	// Write a user message
+	f.WriteString(`{"type":"response_item","timestamp":"2024-01-01T10:00:01Z","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"hello world"}]}}` + "\n")
+
+	// Write an assistant message
+	f.WriteString(`{"type":"response_item","timestamp":"2024-01-01T10:00:02Z","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"hi there"}]}}` + "\n")
+
+	// Pad to exceed 16KB threshold
+	padding := make([]byte, 17*1024)
+	for i := range padding {
+		padding[i] = ' '
+	}
+	padding[len(padding)-1] = '\n'
+	f.Write(padding)
+
+	// Write a token count event (tail data)
+	f.WriteString(`{"type":"event_msg","timestamp":"2024-01-01T10:01:00Z","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":100,"output_tokens":50,"total_tokens":150}}}}` + "\n")
+	f.Close()
+
+	a := &Adapter{
+		sessionsDir: root,
+		metaCache:   make(map[string]sessionMetaCacheEntry),
+	}
+
+	// First parse: full two-pass, should set headParsed=true
+	info1, _ := os.Stat(sessionPath)
+	meta1, err := a.sessionMetadata(sessionPath, info1)
+	if err != nil {
+		t.Fatalf("first parse: %v", err)
+	}
+	if meta1.SessionID != "grow-test" {
+		t.Errorf("expected SessionID grow-test, got %s", meta1.SessionID)
+	}
+	// Two-pass skips middle; head stops after finding all head data (after user msg)
+	if meta1.MsgCount < 1 {
+		t.Errorf("expected at least 1 msg, got %d", meta1.MsgCount)
+	}
+
+	// Verify cache has headParsed set
+	a.metaMu.RLock()
+	entry := a.metaCache[sessionPath]
+	a.metaMu.RUnlock()
+	if !entry.headParsed {
+		t.Error("expected headParsed=true for large file")
+	}
+
+	// Append new token usage event (simulating file growth)
+	f2, _ := os.OpenFile(sessionPath, os.O_APPEND|os.O_WRONLY, 0o644)
+	f2.WriteString(`{"type":"event_msg","timestamp":"2024-01-01T10:02:00Z","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":200,"output_tokens":100,"total_tokens":300}}}}` + "\n")
+	f2.Close()
+
+	// Second parse: should use tail-only path
+	info2, _ := os.Stat(sessionPath)
+	if info2.Size() <= info1.Size() {
+		t.Fatal("file didn't grow")
+	}
+	meta2, err := a.sessionMetadata(sessionPath, info2)
+	if err != nil {
+		t.Fatalf("tail-only parse: %v", err)
+	}
+
+	// Head fields preserved
+	if meta2.SessionID != "grow-test" {
+		t.Errorf("SessionID not preserved: %s", meta2.SessionID)
+	}
+	if meta2.CWD != "/tmp" {
+		t.Errorf("CWD not preserved: %s", meta2.CWD)
+	}
+	if meta2.TotalTokens != 300 {
+		t.Errorf("expected 300 tokens from tail update, got %d", meta2.TotalTokens)
+	}
+}

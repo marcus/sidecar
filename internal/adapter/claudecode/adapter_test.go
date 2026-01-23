@@ -3,6 +3,8 @@ package claudecode
 import (
 	"os"
 	"testing"
+
+	"github.com/marcus/sidecar/internal/adapter"
 )
 
 func TestDetect(t *testing.T) {
@@ -661,4 +663,171 @@ func TestDiscoverRelatedProjectDirs_NonexistentProjectsDir(t *testing.T) {
 	if len(got) != 0 {
 		t.Errorf("expected empty slice, got %v", got)
 	}
+}
+
+func TestIncrementalMetadataParsing(t *testing.T) {
+	// Create a temp session file
+	tmpDir := t.TempDir()
+	sessionPath := tmpDir + "/test-session.jsonl"
+
+	// Write initial messages
+	initial := `{"type":"user","timestamp":"2024-01-01T10:00:00Z","message":{"role":"user","content":"hello"},"cwd":"/tmp","version":"1.0"}
+{"type":"assistant","timestamp":"2024-01-01T10:01:00Z","message":{"role":"assistant","content":"hi","model":"claude-sonnet-4-20250514","usage":{"input_tokens":100,"output_tokens":50}}}
+`
+	if err := os.WriteFile(sessionPath, []byte(initial), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	a := New()
+
+	// Full parse
+	meta1, offset1, mc1, mt1, err := a.parseSessionMetadataFull(sessionPath)
+	if err != nil {
+		t.Fatalf("full parse: %v", err)
+	}
+	if meta1.MsgCount != 2 {
+		t.Errorf("expected 2 msgs, got %d", meta1.MsgCount)
+	}
+	if meta1.TotalTokens != 150 {
+		t.Errorf("expected 150 tokens, got %d", meta1.TotalTokens)
+	}
+
+	// Append new message
+	appended := `{"type":"assistant","timestamp":"2024-01-01T10:02:00Z","message":{"role":"assistant","content":"more","model":"claude-sonnet-4-20250514","usage":{"input_tokens":200,"output_tokens":100}}}
+`
+	f, err := os.OpenFile(sessionPath, os.O_APPEND|os.O_WRONLY, 0o644)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.WriteString(appended)
+	f.Close()
+
+	// Incremental parse from saved offset
+	meta2, _, _, _, err := a.parseSessionMetadataIncremental(sessionPath, meta1, offset1, mc1, mt1)
+	if err != nil {
+		t.Fatalf("incremental parse: %v", err)
+	}
+	if meta2.MsgCount != 3 {
+		t.Errorf("expected 3 msgs after incremental, got %d", meta2.MsgCount)
+	}
+	if meta2.TotalTokens != 450 {
+		t.Errorf("expected 450 tokens after incremental, got %d", meta2.TotalTokens)
+	}
+	// Head fields preserved
+	if meta2.CWD != "/tmp" {
+		t.Errorf("CWD not preserved: %s", meta2.CWD)
+	}
+	if meta2.FirstMsg != meta1.FirstMsg {
+		t.Error("FirstMsg changed after incremental parse")
+	}
+
+	// Full re-parse should give same results
+	meta3, _, _, _, err := a.parseSessionMetadataFull(sessionPath)
+	if err != nil {
+		t.Fatalf("full re-parse: %v", err)
+	}
+	if meta3.MsgCount != meta2.MsgCount {
+		t.Errorf("full vs incremental MsgCount: %d vs %d", meta3.MsgCount, meta2.MsgCount)
+	}
+	if meta3.TotalTokens != meta2.TotalTokens {
+		t.Errorf("full vs incremental TotalTokens: %d vs %d", meta3.TotalTokens, meta2.TotalTokens)
+	}
+}
+
+func TestSessionMetadataCacheIncremental(t *testing.T) {
+	// Test that sessionMetadata uses incremental path on file growth
+	tmpDir := t.TempDir()
+	sessionPath := tmpDir + "/cached-session.jsonl"
+
+	initial := `{"type":"user","timestamp":"2024-01-01T10:00:00Z","message":{"role":"user","content":"test"},"cwd":"/work"}
+{"type":"assistant","timestamp":"2024-01-01T10:01:00Z","message":{"role":"assistant","content":"reply","model":"claude-sonnet-4-20250514","usage":{"input_tokens":50,"output_tokens":25}}}
+`
+	if err := os.WriteFile(sessionPath, []byte(initial), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	a := New()
+	a.metaCache = make(map[string]sessionMetaCacheEntry)
+
+	// First call: full parse, populates cache
+	info1, _ := os.Stat(sessionPath)
+	meta1, err := a.sessionMetadata(sessionPath, info1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if meta1.MsgCount != 2 {
+		t.Errorf("expected 2 msgs, got %d", meta1.MsgCount)
+	}
+
+	// Append and re-stat
+	f, _ := os.OpenFile(sessionPath, os.O_APPEND|os.O_WRONLY, 0o644)
+	f.WriteString(`{"type":"assistant","timestamp":"2024-01-01T10:02:00Z","message":{"role":"assistant","content":"new","model":"claude-sonnet-4-20250514","usage":{"input_tokens":30,"output_tokens":20}}}` + "\n")
+	f.Close()
+
+	info2, _ := os.Stat(sessionPath)
+	if info2.Size() <= info1.Size() {
+		t.Fatal("file didn't grow")
+	}
+
+	// Second call: should use incremental path
+	meta2, err := a.sessionMetadata(sessionPath, info2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if meta2.MsgCount != 3 {
+		t.Errorf("expected 3 msgs after growth, got %d", meta2.MsgCount)
+	}
+	if meta2.TotalTokens != 125 {
+		t.Errorf("expected 125 tokens, got %d", meta2.TotalTokens)
+	}
+}
+
+func TestSessionByID(t *testing.T) {
+	tmpDir := t.TempDir()
+	projDir := tmpDir + "/-tmp-myproject"
+	if err := os.MkdirAll(projDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	sessionData := `{"type":"user","timestamp":"2024-01-01T10:00:00Z","message":{"role":"user","content":"implement feature X"},"cwd":"/tmp/myproject"}
+{"type":"assistant","timestamp":"2024-01-01T10:01:00Z","message":{"role":"assistant","content":"done","model":"claude-sonnet-4-20250514","usage":{"input_tokens":100,"output_tokens":50}}}
+`
+	sessionID := "test-session-123"
+	if err := os.WriteFile(projDir+"/"+sessionID+".jsonl", []byte(sessionData), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	a := &Adapter{
+		projectsDir:  tmpDir,
+		sessionIndex: map[string]string{sessionID: projDir + "/" + sessionID + ".jsonl"},
+		metaCache:    make(map[string]sessionMetaCacheEntry),
+	}
+
+	session, err := a.SessionByID(sessionID)
+	if err != nil {
+		t.Fatalf("SessionByID: %v", err)
+	}
+	if session.ID != sessionID {
+		t.Errorf("expected ID %s, got %s", sessionID, session.ID)
+	}
+	if session.MessageCount != 2 {
+		t.Errorf("expected 2 msgs, got %d", session.MessageCount)
+	}
+	if session.TotalTokens != 150 {
+		t.Errorf("expected 150 tokens, got %d", session.TotalTokens)
+	}
+	if session.AdapterID != "claude-code" {
+		t.Errorf("expected adapter claude-code, got %s", session.AdapterID)
+	}
+
+	// Unknown session
+	_, err = a.SessionByID("nonexistent")
+	if err == nil {
+		t.Error("expected error for unknown session")
+	}
+}
+
+func TestSessionByIDImplementsTargetedRefresher(t *testing.T) {
+	var a adapter.TargetedRefresher = New()
+	_ = a
 }

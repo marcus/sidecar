@@ -471,37 +471,66 @@ type sessionMetaCacheEntry struct {
 	modTime    time.Time
 	size       int64
 	lastAccess time.Time
+	headParsed bool // true = head data is immutable, can skip Pass 1 on growth (td-56c153)
 }
 
 // sessionMetadata returns cached metadata if valid, otherwise parses the file.
+// Supports tail-only re-parse when a file grows and head data was previously parsed (td-56c153).
 // Accepts FileInfo to avoid duplicate stat calls (td-5a1e8104).
 // Uses write lock for cache hits to safely update lastAccess (td-02e326f7).
 func (a *Adapter) sessionMetadata(path string, info os.FileInfo) (*SessionMetadata, error) {
 	now := time.Now()
 
-	// Use write lock since we update lastAccess on cache hit (td-02e326f7)
 	a.metaMu.Lock()
-	if entry, ok := a.metaCache[path]; ok && entry.size == info.Size() && entry.modTime.Equal(info.ModTime()) {
-		// Update lastAccess and return copy to prevent caller mutations
-		entry.lastAccess = now
-		a.metaCache[path] = entry
-		metaCopy := *entry.meta
+	entry, cached := a.metaCache[path]
+	if cached {
+		if entry.size == info.Size() && entry.modTime.Equal(info.ModTime()) {
+			// Exact cache hit (unchanged file)
+			entry.lastAccess = now
+			a.metaCache[path] = entry
+			metaCopy := *entry.meta
+			a.metaMu.Unlock()
+			return &metaCopy, nil
+		}
+		if entry.headParsed && info.Size() > entry.size {
+			// File grew - only re-read tail, reuse head data (td-56c153)
+			a.metaMu.Unlock()
+			meta, err := a.parseSessionMetadataTailOnly(path, entry.meta, info.Size())
+			if err == nil {
+				a.metaMu.Lock()
+				a.metaCache[path] = sessionMetaCacheEntry{
+					meta:       meta,
+					modTime:    info.ModTime(),
+					size:       info.Size(),
+					lastAccess: now,
+					headParsed: true,
+				}
+				a.enforceSessionMetaCacheLimitLocked()
+				a.metaMu.Unlock()
+				return meta, nil
+			}
+			// Fall through to full parse on error
+		} else {
+			a.metaMu.Unlock()
+		}
+	} else {
 		a.metaMu.Unlock()
-		return &metaCopy, nil
 	}
-	a.metaMu.Unlock()
 
 	meta, err := a.parseSessionMetadata(path)
 	if err != nil {
 		return nil, err
 	}
 
+	// Mark headParsed for files large enough to use two-pass
+	isLargeFile := info.Size() >= metaParseSmallFileThreshold
 	a.metaMu.Lock()
 	a.metaCache[path] = sessionMetaCacheEntry{
 		meta:       meta,
 		modTime:    info.ModTime(),
 		size:       info.Size(),
 		lastAccess: now,
+		headParsed: isLargeFile,
 	}
 	a.enforceSessionMetaCacheLimitLocked()
 	a.metaMu.Unlock()
@@ -653,6 +682,56 @@ func (a *Adapter) parseSessionMetadataTwoPass(file *os.File, path string, fileSi
 		for scanner.Scan() {
 			a.processMetadataRecord(scanner.Bytes(), meta, &sessionTimestamp, &lastRecord, &totalTokens)
 		}
+	}
+
+	a.finalizeMetadata(meta, path, sessionTimestamp, lastRecord, totalTokens)
+	return meta, nil
+}
+
+// parseSessionMetadataTailOnly re-reads only the tail of a file, reusing cached head data (td-56c153).
+// Skips Pass 1 entirely since head fields (SessionID, CWD, FirstMsg, FirstUserMessage) are immutable.
+func (a *Adapter) parseSessionMetadataTailOnly(path string, headMeta *SessionMetadata, fileSize int64) (*SessionMetadata, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+
+	// Copy immutable head fields
+	meta := &SessionMetadata{
+		Path:             headMeta.Path,
+		SessionID:        headMeta.SessionID,
+		CWD:              headMeta.CWD,
+		FirstMsg:         headMeta.FirstMsg,
+		FirstUserMessage: headMeta.FirstUserMessage,
+	}
+
+	var sessionTimestamp time.Time
+	var lastRecord time.Time
+	var totalTokens int
+
+	// Only read tail portion
+	tailOffset := fileSize - metaParseTailSize
+	if tailOffset > 0 {
+		if _, err := file.Seek(tailOffset, io.SeekStart); err != nil {
+			return nil, err
+		}
+
+		buf := getScannerBuffer()
+		defer putScannerBuffer(buf)
+
+		scanner := bufio.NewScanner(file)
+		scanner.Buffer(buf, 10*1024*1024)
+
+		// Skip first partial line after seek
+		scanner.Scan()
+
+		for scanner.Scan() {
+			a.processMetadataRecord(scanner.Bytes(), meta, &sessionTimestamp, &lastRecord, &totalTokens)
+		}
+	} else {
+		// File smaller than tail size - shouldn't happen since headParsed is only set for large files
+		return nil, fmt.Errorf("file too small for tail-only parse")
 	}
 
 	a.finalizeMetadata(meta, path, sessionTimestamp, lastRecord, totalTokens)
