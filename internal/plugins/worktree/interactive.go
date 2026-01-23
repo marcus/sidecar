@@ -594,6 +594,48 @@ func queryPaneSize(target string) (width, height int, ok bool) {
 	return width, height, true
 }
 
+// resizeSelectedPaneCmd resizes the currently selected tmux pane to match the
+// preview dimensions. Called in non-interactive mode so that capture-pane output
+// is already wrapped at the correct width (avoiding clipping when entering
+// interactive mode or width mismatches in preview).
+func (p *Plugin) resizeSelectedPaneCmd() tea.Cmd {
+	if p.width <= 0 || p.height <= 0 {
+		return nil
+	}
+
+	// Throttle to max once every 500ms
+	if !p.lastPreviewResizeAt.IsZero() && time.Since(p.lastPreviewResizeAt) < 500*time.Millisecond {
+		return nil
+	}
+
+	var target string
+	if p.shellSelected {
+		if shell := p.getSelectedShell(); shell != nil && shell.Agent != nil {
+			target = shell.Agent.TmuxPane
+			if target == "" {
+				target = shell.TmuxName
+			}
+		}
+	} else {
+		if wt := p.selectedWorktree(); wt != nil && wt.Agent != nil {
+			target = wt.Agent.TmuxPane
+			if target == "" {
+				target = wt.Agent.TmuxSession
+			}
+		}
+	}
+	if target == "" {
+		return nil
+	}
+
+	previewWidth, previewHeight := p.calculatePreviewDimensions()
+	p.lastPreviewResizeAt = time.Now()
+	return func() tea.Msg {
+		p.resizeTmuxPane(target, previewWidth, previewHeight)
+		return nil
+	}
+}
+
 // exitInteractiveMode exits interactive mode and returns to list view.
 func (p *Plugin) exitInteractiveMode() {
 	if p.interactiveState != nil {

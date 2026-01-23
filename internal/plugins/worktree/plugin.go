@@ -122,6 +122,7 @@ type Plugin struct {
 	autoScrollOutput   bool // Auto-scroll output to follow agent (paused when user scrolls up)
 	sidebarWidth       int       // Persisted sidebar width
 	sidebarVisible     bool      // Whether sidebar is visible (toggled with \)
+	lastPreviewResizeAt time.Time // Throttle background pane resizing
 	flashPreviewTime   time.Time // When preview flash was triggered
 	toastMessage       string    // Temporary toast message to display
 	toastTime          time.Time // When toast was triggered
@@ -881,6 +882,11 @@ func (p *Plugin) cyclePreviewTab(delta int) tea.Cmd {
 // Always loads diff (for preloading), and pre-fetches task details for worktrees with linked tasks.
 func (p *Plugin) loadSelectedContent() tea.Cmd {
 	var cmds []tea.Cmd
+
+	// Resize selected pane to match preview width so capture output is correct
+	if cmd := p.resizeSelectedPaneCmd(); cmd != nil {
+		cmds = append(cmds, cmd)
+	}
 
 	// If shell is selected, poll shell output immediately
 	if shell := p.getSelectedShell(); shell != nil && shell.Agent != nil && p.previewTab == PreviewTabOutput {

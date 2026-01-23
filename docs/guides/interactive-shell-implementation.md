@@ -68,10 +68,9 @@ lines[cursorRow] = line + strings.Repeat(" ", padding) + cursorStyle.Render("█
 
 **The Problem**: Getting the tmux pane width to exactly match Sidecar's preview area width is tricky.
 
-**Current Issue**: Text gets truncated on the right side because the tmux pane is resized to match the display width, but:
-1. Sidecar's sidebar takes up variable width (configurable percentage)
-2. Borders and padding consume additional columns
-3. The preview area width calculation must stay in sync with rendering
+**Solution**: Resize tmux panes in the background at all times (not just in interactive mode)
+so that `capture-pane` output is already wrapped at the correct width. This eliminates the
+mismatch between preview mode (client-side truncation) and interactive mode (pane-sized content).
 
 **Implementation** (`interactive.go:calculatePreviewDimensions()`):
 
@@ -86,8 +85,16 @@ if !p.sidebarVisible {
 }
 ```
 
-**Current Approach**:
-- Resize tmux panes to `calculatePreviewDimensions()` on entry, resize, and sidebar changes
+**Background Resize Triggers** (`resizeSelectedPaneCmd()`):
+- `WindowSizeMsg` — terminal resized (both interactive and non-interactive)
+- Sidebar toggle (`\` key) — preview width changes
+- Selection change (`loadSelectedContent()`) — different pane needs sizing
+- Agent/shell creation (`AgentStartedMsg`/`ShellCreatedMsg`) — new pane at default size
+- Interactive mode entry — immediate resize with verification
+
+**Throttling**: Background resizes are throttled to max once per 500ms via `lastPreviewResizeAt`.
+
+**Additional safety**:
 - Capture `pane_width` alongside cursor position and clamp rendering to it
 - If captured `pane_width/pane_height` mismatch the preview size, trigger a resize retry
 
@@ -380,11 +387,11 @@ Enable in `~/.config/sidecar/config.json`:
 3. **Poll continuity is critical** - interactive mode needs fast polling throughout
 4. **Hash before regex** - massive CPU savings when content unchanged
 5. **Debouncing works** - 20ms delay reduces subprocess spam significantly
-6. **Width sync matters** - resize to preview size and clamp rendering to `pane_width`
+6. **Width sync matters** - resize panes in background at all times (not just interactive mode) and clamp rendering to `pane_width`
 7. **Atomic cursor capture** - query cursor with output to avoid race conditions
 8. **Separate shell/worktree polling** - use the right scheduling function for each type
 9. **Use correct generation maps** - shells use `shellPollGeneration`, worktrees use `pollGeneration`
 10. **Invalidate old poll chains on mode entry** - increment generation when entering interactive mode to prevent duplicate parallel poll chains (causes 200% CPU)
 11. **Three-state visibility polling** - visible+focused (fast), visible+unfocused (medium), not visible (slow)
 
-This feature is stable and works well with these learnings applied. The main remaining issue is text truncation on the right edge due to width calculation imprecision.
+This feature is stable and works well with these learnings applied. Background pane resizing keeps tmux panes synced to the preview width at all times, eliminating width mismatches between preview and interactive modes.

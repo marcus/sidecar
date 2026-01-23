@@ -576,6 +576,8 @@ func (p *Plugin) handleListKeys(msg tea.KeyMsg) tea.Cmd {
 			// Poll captures cursor atomically - no separate query needed
 			return tea.Batch(p.resizeInteractivePaneCmd(), p.pollInteractivePaneImmediate())
 		}
+		// Resize pane in background to match new preview width
+		return p.resizeSelectedPaneCmd()
 	case "tab", "shift+tab":
 		// Switch focus between panes (consistent with other plugins)
 		if p.activePane == PaneSidebar && p.sidebarVisible {
