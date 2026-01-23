@@ -2,6 +2,29 @@
 
 All notable changes to sidecar are documented here.
 
+## [v0.43.0] - 2026-01-23
+
+### Features
+- **Interactive Mode**: Character-level selection granularity with drag-to-select
+- **Interactive Mode**: Selection background with preserved foreground colors
+- **Git**: Add git amend commit shortcut (A) in git-status
+- **Workspace**: Renamed worktrees to workspaces for clarity
+
+### Improvements
+- **Interactive Mode**: Incremental parsing with targeted session refresh reducing CPU usage
+- **Interactive Mode**: Named shells upon creation for better session tracking
+- **Modal**: Only close modals when clicking outside them (improved UX)
+- **Input**: Align interactive copy/paste hints with configured keys
+- Filter partial SGR mouse sequences to prevent stray ESC forwarding
+- Enhanced keyboard shortcut handling and escape sequence processing
+
+### Bug Fixes
+- Fixed selections in interactive mode
+- Fixed stray ESC forwarding in partial mouse sequence filter
+
+### Dependencies
+- Updated embedded td to latest version
+
 ## [v0.42.0] - 2026-01-23
 
 ### Improvements
