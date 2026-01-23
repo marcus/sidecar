@@ -252,7 +252,7 @@ func (p *Plugin) handleMouseClick(action mouse.MouseAction) tea.Cmd {
 	if p.viewMode == ViewModeInteractive && action.Region.ID == regionPreviewPane {
 		p.activePane = PanePreview
 		if p.interactiveState != nil && p.interactiveState.Active && !p.interactiveState.MouseReportingEnabled {
-			return p.startInteractiveSelection(action)
+			return p.prepareInteractiveDrag(action)
 		}
 		return tea.Batch(p.forwardClickToTmux(action.X, action.Y), p.pollInteractivePaneImmediate())
 	}

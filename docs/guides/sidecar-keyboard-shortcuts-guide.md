@@ -391,6 +391,17 @@ Tab navigation shortcuts (`[`/`]`, `x`) also work in the preview pane.
 | `workspace-create` | Create form | Create worktree input |
 | `workspace-task-link` | Task linking | Task selection modal |
 | `workspace-merge` | Merge workflow | Merge workflow modal |
+| `workspace-interactive` | Interactive mode | Embedded terminal active |
+
+#### Interactive Mode Shortcuts
+| Key | Command | Description |
+|-----|---------|-------------|
+| `ctrl+\` | exit | Exit interactive mode |
+| `ctrl+]` | attach | Attach (full-screen tmux) |
+| `alt+c` | copy | Copy selection to clipboard |
+| `alt+v` | paste | Paste clipboard into terminal |
+
+All interactive mode keys are configurable in `~/.config/sidecar/config.json` under `plugins.workspace`.
 
 #### Workspace List Shortcuts
 | Key | Command | Description |

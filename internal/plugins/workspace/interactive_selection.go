@@ -65,7 +65,9 @@ func (p *Plugin) interactiveLineIndexAtY(y int) (int, bool) {
 	return lineIdx, true
 }
 
-func (p *Plugin) startInteractiveSelection(action mouse.MouseAction) tea.Cmd {
+// prepareInteractiveDrag stores the click position and starts drag tracking
+// without initializing selection. Selection only activates on actual drag motion.
+func (p *Plugin) prepareInteractiveDrag(action mouse.MouseAction) tea.Cmd {
 	if action.Region == nil {
 		return nil
 	}
@@ -77,8 +79,8 @@ func (p *Plugin) startInteractiveSelection(action mouse.MouseAction) tea.Cmd {
 	}
 
 	p.interactiveSelectionActive = false
-	p.interactiveSelectionStart = lineIdx
-	p.interactiveSelectionEnd = lineIdx
+	p.interactiveSelectionStart = -1
+	p.interactiveSelectionEnd = -1
 	p.interactiveSelectionAnchor = lineIdx
 	p.autoScrollOutput = false
 
@@ -87,11 +89,18 @@ func (p *Plugin) startInteractiveSelection(action mouse.MouseAction) tea.Cmd {
 }
 
 func (p *Plugin) handleInteractiveSelectionDrag(action mouse.MouseAction) tea.Cmd {
-	p.interactiveSelectionActive = true
 	lineIdx, ok := p.interactiveLineIndexAtY(action.Y)
 	if !ok {
 		return nil
 	}
+
+	// First drag motion: initialize selection from anchor
+	if p.interactiveSelectionStart < 0 {
+		p.interactiveSelectionStart = p.interactiveSelectionAnchor
+		p.interactiveSelectionEnd = p.interactiveSelectionAnchor
+	}
+
+	p.interactiveSelectionActive = true
 
 	if lineIdx < p.interactiveSelectionAnchor {
 		p.interactiveSelectionStart = lineIdx
@@ -104,6 +113,11 @@ func (p *Plugin) handleInteractiveSelectionDrag(action mouse.MouseAction) tea.Cm
 }
 
 func (p *Plugin) finishInteractiveSelection() tea.Cmd {
+	if p.interactiveSelectionStart < 0 {
+		// No drag occurred — click without motion, clear state
+		p.clearInteractiveSelection()
+		return nil
+	}
 	p.interactiveSelectionActive = false
 	return nil
 }
