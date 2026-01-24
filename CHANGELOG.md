@@ -2,6 +2,11 @@
 
 All notable changes to sidecar are documented here.
 
+## [v0.45.0] - 2026-01-24
+
+### Bug Fixes
+- Add io.Closer return value to Watch() method for proper resource cleanup in adapter implementations
+
 ## [v0.44.0] - 2026-01-23
 
 ### Features
