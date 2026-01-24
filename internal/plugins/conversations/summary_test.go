@@ -161,20 +161,20 @@ func TestEstimateTotalCost_ZeroTokens(t *testing.T) {
 }
 
 func TestGroupSessionsByTime_Empty(t *testing.T) {
-	groups := GroupSessionsByTime(nil)
+	groups := groupSessionsByTimeAt(nil, testNow())
 	if len(groups) != 0 {
 		t.Errorf("expected 0 groups, got %d", len(groups))
 	}
 }
 
 func TestGroupSessionsByTime_Today(t *testing.T) {
-	now := time.Now()
+	now := testNow()
 	sessions := []adapter.Session{
 		{ID: "1", UpdatedAt: now},
 		{ID: "2", UpdatedAt: now.Add(-1 * time.Hour)},
 	}
 
-	groups := GroupSessionsByTime(sessions)
+	groups := groupSessionsByTimeAt(sessions, now)
 
 	if len(groups) != 1 {
 		t.Fatalf("expected 1 group, got %d", len(groups))
@@ -188,13 +188,13 @@ func TestGroupSessionsByTime_Today(t *testing.T) {
 }
 
 func TestGroupSessionsByTime_Yesterday(t *testing.T) {
-	now := time.Now()
+	now := testNow()
 	yesterday := now.AddDate(0, 0, -1)
 	sessions := []adapter.Session{
 		{ID: "1", UpdatedAt: yesterday},
 	}
 
-	groups := GroupSessionsByTime(sessions)
+	groups := groupSessionsByTimeAt(sessions, now)
 
 	if len(groups) != 1 {
 		t.Fatalf("expected 1 group, got %d", len(groups))
@@ -205,13 +205,13 @@ func TestGroupSessionsByTime_Yesterday(t *testing.T) {
 }
 
 func TestGroupSessionsByTime_ThisWeek(t *testing.T) {
-	now := time.Now()
+	now := testNow()
 	threeDaysAgo := now.AddDate(0, 0, -3)
 	sessions := []adapter.Session{
 		{ID: "1", UpdatedAt: threeDaysAgo},
 	}
 
-	groups := GroupSessionsByTime(sessions)
+	groups := groupSessionsByTimeAt(sessions, now)
 
 	if len(groups) != 1 {
 		t.Fatalf("expected 1 group, got %d", len(groups))
@@ -222,13 +222,13 @@ func TestGroupSessionsByTime_ThisWeek(t *testing.T) {
 }
 
 func TestGroupSessionsByTime_Older(t *testing.T) {
-	now := time.Now()
+	now := testNow()
 	twoWeeksAgo := now.AddDate(0, 0, -14)
 	sessions := []adapter.Session{
 		{ID: "1", UpdatedAt: twoWeeksAgo},
 	}
 
-	groups := GroupSessionsByTime(sessions)
+	groups := groupSessionsByTimeAt(sessions, now)
 
 	if len(groups) != 1 {
 		t.Fatalf("expected 1 group, got %d", len(groups))
@@ -239,7 +239,7 @@ func TestGroupSessionsByTime_Older(t *testing.T) {
 }
 
 func TestGroupSessionsByTime_AllBuckets(t *testing.T) {
-	now := time.Now()
+	now := testNow()
 	sessions := []adapter.Session{
 		{ID: "today", UpdatedAt: now},
 		{ID: "yesterday", UpdatedAt: now.AddDate(0, 0, -1)},
@@ -247,7 +247,7 @@ func TestGroupSessionsByTime_AllBuckets(t *testing.T) {
 		{ID: "older", UpdatedAt: now.AddDate(0, 0, -14)},
 	}
 
-	groups := GroupSessionsByTime(sessions)
+	groups := groupSessionsByTimeAt(sessions, now)
 
 	if len(groups) != 4 {
 		t.Fatalf("expected 4 groups, got %d", len(groups))
@@ -263,14 +263,14 @@ func TestGroupSessionsByTime_AllBuckets(t *testing.T) {
 }
 
 func TestGroupSessionsByTime_EmptyGroups(t *testing.T) {
-	now := time.Now()
+	now := testNow()
 	// Only today and older, skip yesterday and this week
 	sessions := []adapter.Session{
 		{ID: "today", UpdatedAt: now},
 		{ID: "older", UpdatedAt: now.AddDate(0, 0, -30)},
 	}
 
-	groups := GroupSessionsByTime(sessions)
+	groups := groupSessionsByTimeAt(sessions, now)
 
 	if len(groups) != 2 {
 		t.Fatalf("expected 2 groups, got %d", len(groups))
@@ -284,14 +284,14 @@ func TestGroupSessionsByTime_EmptyGroups(t *testing.T) {
 }
 
 func TestGroupSessionsByTime_GroupSummaryPopulated(t *testing.T) {
-	now := time.Now()
+	now := testNow()
 	sessions := []adapter.Session{
 		{ID: "1", UpdatedAt: now, TotalTokens: 1000, EstCost: 0.50},
 		{ID: "2", UpdatedAt: now, TotalTokens: 2000, EstCost: 1.00},
 		{ID: "3", UpdatedAt: now.AddDate(0, 0, -1), TotalTokens: 500, EstCost: 0.25},
 	}
 
-	groups := GroupSessionsByTime(sessions)
+	groups := groupSessionsByTimeAt(sessions, now)
 
 	if len(groups) != 2 {
 		t.Fatalf("expected 2 groups, got %d", len(groups))
@@ -326,6 +326,10 @@ func TestGroupSessionsByTime_GroupSummaryPopulated(t *testing.T) {
 	if yesterday.Summary.TotalCost < 0.24 || yesterday.Summary.TotalCost > 0.26 {
 		t.Errorf("expected cost ~0.25, got %f", yesterday.Summary.TotalCost)
 	}
+}
+
+func testNow() time.Time {
+	return time.Date(2024, 2, 15, 12, 0, 0, 0, time.Local)
 }
 
 func TestUpdateSessionSummary_Basic(t *testing.T) {

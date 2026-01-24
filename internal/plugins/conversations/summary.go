@@ -180,7 +180,10 @@ type GroupSummary struct {
 
 // GroupSessionsByTime organizes sessions into time-based groups.
 func GroupSessionsByTime(sessions []adapter.Session) []SessionGroup {
-	now := time.Now()
+	return groupSessionsByTimeAt(sessions, time.Now())
+}
+
+func groupSessionsByTimeAt(sessions []adapter.Session, now time.Time) []SessionGroup {
 	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
 	yesterday := today.AddDate(0, 0, -1)
 	weekAgo := today.AddDate(0, 0, -7)
