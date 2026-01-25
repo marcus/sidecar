@@ -1146,3 +1146,63 @@ func TestOutputBuffer_PreservesNormalBrackets(t *testing.T) {
 		t.Errorf("expected bash test brackets preserved, got: %q", result)
 	}
 }
+
+// TestCalculatePreviewDimensions_WidthConsistency verifies that calculatePreviewDimensions
+// returns the same content width as used in renderListView for both sidebar visible/hidden cases.
+// This prevents regression of td-0655df (width calculation mismatch causing right-side truncation).
+func TestCalculatePreviewDimensions_WidthConsistency(t *testing.T) {
+	tests := []struct {
+		name           string
+		totalWidth     int
+		totalHeight    int
+		sidebarVisible bool
+		sidebarWidth   int // percentage
+	}{
+		{"full_width_small", 80, 24, false, 30},
+		{"full_width_large", 200, 50, false, 30},
+		{"sidebar_25pct", 120, 30, true, 25},
+		{"sidebar_50pct", 120, 30, true, 50},
+		{"sidebar_min_clamped", 60, 20, true, 10}, // should clamp sidebar to min
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			p := &Plugin{
+				width:          tt.totalWidth,
+				height:         tt.totalHeight,
+				sidebarVisible: tt.sidebarVisible,
+				sidebarWidth:   tt.sidebarWidth,
+			}
+
+			// Get width from calculatePreviewDimensions (used for tmux resize)
+			calcWidth, _ := p.calculatePreviewDimensions()
+
+			// Simulate renderListView width calculation
+			var renderWidth int
+			if !p.sidebarVisible {
+				// Full width case: previewW = width, contentW = previewW - panelOverhead
+				renderWidth = tt.totalWidth - panelOverhead
+			} else {
+				// Sidebar visible: same calculation as in renderListView
+				available := tt.totalWidth - dividerWidth
+				sidebarW := (available * p.sidebarWidth) / 100
+				if sidebarW < 25 {
+					sidebarW = 25
+				}
+				if sidebarW > available-40 {
+					sidebarW = available - 40
+				}
+				previewW := available - sidebarW
+				if previewW < 40 {
+					previewW = 40
+				}
+				renderWidth = previewW - panelOverhead
+			}
+
+			if calcWidth != renderWidth {
+				t.Errorf("width mismatch: calculatePreviewDimensions()=%d, renderListView would use=%d",
+					calcWidth, renderWidth)
+			}
+		})
+	}
+}
