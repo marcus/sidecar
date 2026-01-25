@@ -1,6 +1,6 @@
 # Sidecar Modal Inventory & Quality Conformity
 
-This document provides a complete inventory of all modals in Sidecar and tracks their conformity with modal best practices defined in `docs/guides/modal-creator-guide.md` and `docs/guides/mouse-support-guide.md`.
+This document provides a complete inventory of all modals in Sidecar and tracks their conformity with modal best practices defined in `docs/guides/ui-feature-guide.md` and `docs/spec-modal-library.md`.
 
 ## Quality Checklist
 
@@ -419,8 +419,8 @@ Optional enhancement:
 ## Files Referenced
 
 **Best Practice Guides:**
-- `docs/guides/modal-creator-guide.md` — Complete modal implementation guide
-- `docs/guides/mouse-support-guide.md` — Mouse support & hit regions guide
+- `docs/guides/ui-feature-guide.md` — UI feature guide (modals, shortcuts, mouse)
+- `docs/spec-modal-library.md` — Modal library spec
 
 **Implementation Examples:**
 - `internal/ui/overlay.go` — `OverlayModal()` function

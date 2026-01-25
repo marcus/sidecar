@@ -12,9 +12,10 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/marcus/sidecar/internal/app"
-	"github.com/marcus/sidecar/internal/styles"
+	"github.com/marcus/sidecar/internal/modal"
 	"github.com/marcus/sidecar/internal/mouse"
 	"github.com/marcus/sidecar/internal/plugin"
+	"github.com/marcus/sidecar/internal/styles"
 	"github.com/marcus/sidecar/internal/plugins/filebrowser"
 	"github.com/marcus/sidecar/internal/state"
 	"github.com/marcus/sidecar/internal/ui"
@@ -139,10 +140,9 @@ type Plugin struct {
 	mouseHandler *mouse.Handler
 
 	// Discard confirm state
-	discardFile            *FileEntry // File being confirmed for discard
-	discardReturnMode      ViewMode   // Mode to return to when modal closes
-	discardButtonFocus     int        // 0=none, 1=confirm, 2=cancel
-	discardButtonHover     int        // 0=none, 1=confirm, 2=cancel
+	discardFile       *FileEntry    // File being confirmed for discard
+	discardReturnMode ViewMode      // Mode to return to when modal closes
+	discardModal      *modal.Modal  // Modal instance for discard confirmation
 
 	// Stash pop confirm state
 	stashPopItem        *Stash // Stash being confirmed for pop
@@ -313,6 +313,8 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 			return p.handleCommitMouse(msg)
 		case ViewModePullMenu:
 			return p.handlePullMenuMouse(msg)
+		case ViewModeConfirmDiscard:
+			return p.handleDiscardMouse(msg)
 		}
 
 	case app.RefreshMsg:

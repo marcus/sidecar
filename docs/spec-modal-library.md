@@ -23,7 +23,7 @@ internal/modal/
     modal.go       -- Modal type, Render(), HandleKey(), HandleMouse()
     section.go     -- Section interface + built-in types (Text, Input, Buttons, etc.)
     layout.go      -- Layout engine: per-section render + measurement + hit registration
-    options.go     -- Functional options (WithWidth, WithVariant, WithHints, WithPrimaryAction)
+    options.go     -- Functional options (WithWidth, WithVariant, WithHints, WithPrimaryAction, WithCloseOnBackdropClick)
     modal_test.go  -- Tests for hit region accuracy, keyboard nav, hover
 ```
 
@@ -69,6 +69,7 @@ case tea.MouseMsg:
 ```
 
 `HandleKey` returns an optional `tea.Cmd` to support bubbles models (cursor blink, etc.).
+Backdrop clicks return `"cancel"` by default; set `WithCloseOnBackdropClick(false)` to disable.
 
 ## Core Types
 
@@ -82,6 +83,7 @@ type Modal struct {
     sections  []Section
     showHints bool          // "Tab to switch · Enter to confirm"
     primaryAction string    // Action ID for implicit submit
+    closeOnBackdrop bool    // Click outside modal returns "cancel" when true
 
     // State (managed internally)
     focusIdx  int           // Current focused element index
@@ -174,17 +176,15 @@ func (m *Modal) buildLayout(screenW, screenH int, handler *mouse.Handler) string
     fullContent := strings.Join(parts, "\n")
 
     // 3. Compute scroll viewport
-    contentHeight := 0
-    for _, r := range rendered {
-        contentHeight += r.height
-    }
+    contentHeight := measureHeight(fullContent)
     modalInnerHeight := desiredModalInnerHeight(screenH) // border/padding excluded
     headerLines := 0
     if m.title != "" {
-        headerLines = 1
+        headerLines = 2 // title + blank line
     }
     footerLines := hintLines(m.showHints)
-    viewportHeight := max(0, modalInnerHeight-headerLines-footerLines)
+    maxViewportHeight := max(1, modalInnerHeight-headerLines-footerLines)
+    viewportHeight := min(maxViewportHeight, max(1, contentHeight))
     m.scrollOffset = clamp(m.scrollOffset, 0, max(0, contentHeight-viewportHeight))
     viewport := sliceLines(fullContent, m.scrollOffset, viewportHeight)
 
@@ -230,7 +230,7 @@ func (m *Modal) buildLayout(screenW, screenH int, handler *mouse.Handler) string
 `measureHeight` trims trailing newlines and returns 0 for empty strings before calling `lipgloss.Height`.
 `desiredModalInnerHeight` clamps to the available screen height; if content fits, the modal shrinks to content height, otherwise it scrolls within the fixed viewport.
 Width is clamped between `minModalWidth` and `screenW-4` to prevent negative offsets on narrow terminals.
-`sliceLines` must truncate to `viewportHeight` and pad with blank lines when needed.
+`sliceLines` must truncate to `viewportHeight` and only pad with blank lines when scrolling is enabled (content taller than viewport).
 
 **Why this eliminates off-by-one errors:**
 
@@ -286,7 +286,7 @@ Variants control: border color, primary button style (danger buttons use `Button
 ### Step 1: Core Framework
 
 - `modal.go`: `Modal` struct, `New()`, `AddSection()`, `Render()`, `HandleKey()`, `HandleMouse()`
-- `options.go`: `WithWidth`, `WithVariant`, `WithHints`, `WithPrimaryAction`
+- `options.go`: `WithWidth`, `WithVariant`, `WithHints`, `WithPrimaryAction`, `WithCloseOnBackdropClick`
 - `layout.go`: `buildLayout()` with measure-and-register + scrolling
 
 ### Step 2: Built-in Sections

@@ -6,7 +6,7 @@ This guide covers how to add drag-to-resize support for two-pane plugin layouts.
 
 - Plugin already has a two-pane layout (sidebar + main content)
 - State persistence functions exist (e.g., `state.GetPluginSidebarWidth()` / `state.SetPluginSidebarWidth()`)
-- Familiarity with `internal/mouse` package (see `mouse-support-guide.md`)
+- Familiarity with `internal/mouse` package (see `docs/guides/ui-feature-guide.md`)
 
 ## Implementation Checklist
 

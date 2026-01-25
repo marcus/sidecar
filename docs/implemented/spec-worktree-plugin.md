@@ -780,7 +780,7 @@ func (p *Plugin) renderDiffPane(width, height int) string {
 
 ### 4.11 Mouse Support
 
-The worktree plugin supports mouse interactions for list selection, scrolling, pane focus, and drag-to-resize. Follow the patterns in `internal/mouse` and `mouse-support-guide.md`.
+The worktree plugin supports mouse interactions for list selection, scrolling, pane focus, and drag-to-resize. Follow the patterns in `internal/mouse` and `docs/guides/ui-feature-guide.md`.
 
 #### 4.11.1 Handler Setup
 

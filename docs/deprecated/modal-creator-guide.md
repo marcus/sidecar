@@ -1,3 +1,5 @@
+> DEPRECATED: Superseded by `docs/guides/ui-feature-guide.md`. Modal creation must follow `docs/spec-modal-library.md`.
+
 # Modal Overlay Implementation Guide
 
 This guide covers how to implement modals with dimmed backgrounds in Sidecar.

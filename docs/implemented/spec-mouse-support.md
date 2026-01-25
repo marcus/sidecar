@@ -77,7 +77,7 @@ TD has mouse support at `~/code/td/pkg/monitor/model.go`. After enabling mouse i
 
 ### 5. Documentation (td-3ddea960)
 
-**New file**: `docs/guides/mouse-support-guide.md`
+**New file**: `docs/guides/ui-feature-guide.md`
 
 - Architecture (HitMap, coordinate systems)
 - Adding mouse to a plugin step-by-step
@@ -93,7 +93,7 @@ TD has mouse support at `~/code/td/pkg/monitor/model.go`. After enabling mouse i
 | `internal/plugins/gitstatus/plugin.go`       | Add mouseHandler field           |
 | `internal/plugins/gitstatus/mouse.go`        | New - mouse update handlers      |
 | `internal/plugins/gitstatus/sidebar_view.go` | Register hit regions             |
-| `docs/guides/mouse-support-guide.md`         | New - documentation              |
+| `docs/guides/ui-feature-guide.md`           | New - documentation              |
 
 ## Reference: TD's Mouse Implementation
 

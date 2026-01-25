@@ -287,6 +287,7 @@ func (p *Plugin) updateStatus(msg tea.KeyMsg) (plugin.Plugin, tea.Cmd) {
 			p.discardFile = entry
 			p.discardReturnMode = p.viewMode
 			p.viewMode = ViewModeConfirmDiscard
+			p.buildDiscardModal()
 		}
 
 	case "z":
@@ -928,26 +929,45 @@ func (p *Plugin) updateConfirmStashPop(msg tea.KeyMsg) (plugin.Plugin, tea.Cmd) 
 
 // updateConfirmDiscard handles key events in the confirm discard modal.
 func (p *Plugin) updateConfirmDiscard(msg tea.KeyMsg) (plugin.Plugin, tea.Cmd) {
-	var cmd tea.Cmd
-	handled, _ := p.handleConfirmKey(msg, &p.discardButtonFocus,
-		func() {
-			// Confirm
-			if p.discardFile != nil {
-				cmd = p.doDiscard(p.discardFile)
-			}
-			p.viewMode = p.discardReturnMode
-			p.discardFile = nil
-			p.discardButtonFocus = 1
-		},
-		func() {
-			// Cancel
-			p.viewMode = p.discardReturnMode
-			p.discardFile = nil
-			p.discardButtonFocus = 1
-		},
-	)
-	if handled {
-		return p, cmd
+	if p.discardModal == nil {
+		return p, nil
 	}
+
+	// Handle quick confirm shortcuts
+	switch msg.String() {
+	case "y", "Y":
+		return p.confirmDiscard()
+	}
+
+	// Route to modal
+	action, cmd := p.discardModal.HandleKey(msg)
+
+	switch action {
+	case "discard":
+		return p.confirmDiscard()
+	case "cancel":
+		return p.cancelDiscard()
+	}
+
+	return p, cmd
+}
+
+// confirmDiscard executes the discard and closes the modal.
+func (p *Plugin) confirmDiscard() (plugin.Plugin, tea.Cmd) {
+	var cmd tea.Cmd
+	if p.discardFile != nil {
+		cmd = p.doDiscard(p.discardFile)
+	}
+	p.viewMode = p.discardReturnMode
+	p.discardFile = nil
+	p.discardModal = nil
+	return p, cmd
+}
+
+// cancelDiscard closes the modal without discarding.
+func (p *Plugin) cancelDiscard() (plugin.Plugin, tea.Cmd) {
+	p.viewMode = p.discardReturnMode
+	p.discardFile = nil
+	p.discardModal = nil
 	return p, nil
 }

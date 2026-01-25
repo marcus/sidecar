@@ -1,3 +1,5 @@
+> DEPRECATED: Superseded by `docs/guides/ui-feature-guide.md`.
+
 # Mouse Support for Sidecar Plugins
 
 This guide explains how to add mouse support to sidecar plugins using the `internal/mouse` package.

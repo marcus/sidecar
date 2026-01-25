@@ -1,3 +1,5 @@
+> DEPRECATED: Superseded by `docs/guides/ui-feature-guide.md`.
+
 # Sidecar Keyboard Shortcuts Guide
 
 How to implement keyboard shortcuts for plugins.

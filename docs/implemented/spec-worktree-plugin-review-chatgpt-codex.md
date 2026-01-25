@@ -10,13 +10,13 @@ Review of `docs/spec-worktree-plugin.md` against sidecar and td code patterns.
    - The spec mockups show a plugin footer line, but sidecar renders a unified footer and plugins must not render their own.
    - Plugins must always constrain output height to avoid the header scrolling off-screen.
    - Add an explicit note to follow sidecar's `View(width,height)` rules and avoid plugin footers.
-   - References: docs/spec-worktree-plugin.md:236, docs/guides/sidecar-keyboard-shortcuts-guide.md:439, internal/plugins/tdmonitor/plugin.go:191, internal/plugins/tdmonitor/plugin.go:210.
+   - References: docs/spec-worktree-plugin.md:236, docs/guides/ui-feature-guide.md, internal/plugins/tdmonitor/plugin.go:191, internal/plugins/tdmonitor/plugin.go:210.
 
 2. Keymap conflicts with sidecar conventions.
    - Spec uses `Tab`/`Shift+Tab` for plugin switching and `Tab` for preview tabs; sidecar uses `` ` `` and `~` for plugin switching and `Tab`/`\` for pane focus.
    - Spec uses `r` for resume and `R` for refresh; sidecar treats `r` as global refresh in some contexts unless opted out.
    - Update spec keymap to align with sidecar's keyboard shortcut guide and update root/non-root contexts.
-   - References: docs/spec-worktree-plugin.md:329, docs/spec-worktree-plugin.md:360, internal/keymap/bindings.go:9, internal/app/update.go:492, docs/guides/sidecar-keyboard-shortcuts-guide.md:231.
+   - References: docs/spec-worktree-plugin.md:329, docs/spec-worktree-plugin.md:360, internal/keymap/bindings.go:9, internal/app/update.go:492, docs/guides/ui-feature-guide.md.
 
 3. TD worktree sharing is incomplete and DB filename is wrong.
    - Spec uses `.todos/db.sqlite`, but td uses `.todos/issues.db`.
@@ -39,7 +39,7 @@ Review of `docs/spec-worktree-plugin.md` against sidecar and td code patterns.
 2. Keymap/contexts wiring and root-context handling are under-specified.
    - Spec lists shortcuts but does not define `Commands()`, `FocusContext()`, `bindings.go` entries, or `isRootContext`/`isTextInputContext` updates for modals and search.
    - Add a section that mirrors the sidecar keymap workflow and contexts.
-   - References: docs/guides/sidecar-plugin-guide.md:35, docs/guides/sidecar-keyboard-shortcuts-guide.md:7, internal/app/update.go:492.
+   - References: docs/guides/sidecar-plugin-guide.md:35, docs/guides/ui-feature-guide.md, internal/app/update.go:492.
 
 3. Metadata paths conflict with sidecar conventions.
    - Spec writes `.sidecar` metadata inside worktrees and `~/.sidecar/agent-events.jsonl`, but sidecar uses `~/.config/sidecar` (via `ctx.ConfigDir` and `internal/state`).

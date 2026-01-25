@@ -22,7 +22,7 @@ Version is set via ldflags at build time. Without it, sidecar shows git revision
 
 ## Keyboard Shortcut Parity
 
-See docs/guides/sidecar-keyboard-shortcuts-guide.md
+See docs/guides/ui-feature-guide.md
 
 See td-331dbf19 for diff paging implementation.
 
