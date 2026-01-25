@@ -129,7 +129,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if !m.intro.Done || m.intro.RepoOpacity < 1.0 {
 				return m, IntroTick()
 			}
-			// All animations complete
+			// All animations complete - mark intro as inactive so header clicks work
+			m.intro.Active = false
 			return m, Refresh()
 		}
 		return m, nil
