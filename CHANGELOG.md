@@ -2,6 +2,20 @@
 
 All notable changes to sidecar are documented here.
 
+## [v0.46.0] - 2026-01-25
+
+### Improvements
+- Watcher improvements for better file monitoring
+- Better project switching with improved context handling
+- Enhanced conversation switch guidance
+- Cursor position improvements in modals
+
+### Bug Fixes
+- Project switcher context improvements
+
+### Documentation
+- Docs changes and additional tests
+
 ## [v0.45.0] - 2026-01-24
 
 ### Bug Fixes
