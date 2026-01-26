@@ -2,7 +2,6 @@ package conversations
 
 import (
 	"fmt"
-	"os/exec"
 	"strings"
 	"time"
 
@@ -79,67 +78,6 @@ func (p *Plugin) yankResumeCommand() tea.Cmd {
 		}
 		return app.ToastMsg{Message: "Yanked: " + cmd, Duration: 2 * time.Second}
 	}
-}
-
-// OpenSessionReturnedMsg is sent when returning from an external session.
-type OpenSessionReturnedMsg struct {
-	Err error
-}
-
-// openSessionInCLI opens the selected session in its native CLI tool.
-// Supports: claude, codex, opencode, gemini, cursor-agent.
-// Uses tea.ExecProcess to suspend Bubble Tea and run the CLI resume command.
-func (p *Plugin) openSessionInCLI() tea.Cmd {
-	var session *adapter.Session
-
-	// If in message view, find session by selectedSession ID
-	if p.selectedSession != "" {
-		for i := range p.sessions {
-			if p.sessions[i].ID == p.selectedSession {
-				session = &p.sessions[i]
-				break
-			}
-		}
-	} else {
-		// Use cursor selection from session list
-		sessions := p.visibleSessions()
-		if p.cursor >= 0 && p.cursor < len(sessions) {
-			session = &sessions[p.cursor]
-		}
-	}
-
-	if session == nil {
-		return func() tea.Msg {
-			return app.ToastMsg{Message: "No session selected", Duration: 2 * time.Second, IsError: true}
-		}
-	}
-
-	// Build the resume command based on adapter
-	var cmd *exec.Cmd
-	switch session.AdapterID {
-	case "claude-code":
-		cmd = exec.Command("claude", "--resume", session.ID)
-	case "codex":
-		cmd = exec.Command("codex", "resume", session.ID)
-	case "opencode":
-		cmd = exec.Command("opencode", "--continue", "-s", session.ID)
-	case "gemini-cli":
-		cmd = exec.Command("gemini", "--resume", session.ID)
-	case "cursor-cli":
-		cmd = exec.Command("cursor-agent", "--resume", session.ID)
-	default:
-		return func() tea.Msg {
-			return app.ToastMsg{Message: "Resume not supported for " + session.AdapterName, Duration: 2 * time.Second, IsError: true}
-		}
-	}
-
-	// Print hint before launching, then execute
-	return tea.Sequence(
-		tea.Printf("\nOpening %s session. Press Ctrl+C to exit and return to sidecar.\n", session.AdapterName),
-		tea.ExecProcess(cmd, func(err error) tea.Msg {
-			return OpenSessionReturnedMsg{Err: err}
-		}),
-	)
 }
 
 // getSelectedSession returns the session under cursor based on current view mode.

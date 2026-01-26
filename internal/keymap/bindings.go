@@ -171,7 +171,6 @@ func DefaultBindings() []Binding {
 		{Key: "/", Command: "search", Context: "conversations-sidebar"},
 		{Key: "s", Command: "toggle-star", Context: "conversations-sidebar"},
 		{Key: "A", Command: "show-analytics", Context: "conversations-sidebar"},
-		{Key: "o", Command: "open-in-claude-code", Context: "conversations-sidebar"},
 		{Key: "l", Command: "focus-right", Context: "conversations-sidebar"},
 		{Key: "right", Command: "focus-right", Context: "conversations-sidebar"},
 		{Key: "v", Command: "toggle-view", Context: "conversations-sidebar"},
@@ -179,6 +178,7 @@ func DefaultBindings() []Binding {
 		{Key: "\\", Command: "toggle-sidebar", Context: "conversations-sidebar"},
 		{Key: "y", Command: "yank-details", Context: "conversations-sidebar"},
 		{Key: "Y", Command: "yank-resume", Context: "conversations-sidebar"},
+		{Key: "R", Command: "resume-in-workspace", Context: "conversations-sidebar"},
 
 		// Conversations main context (two-pane mode, right pane focused)
 		{Key: "tab", Command: "switch-pane", Context: "conversations-main"},
@@ -196,6 +196,7 @@ func DefaultBindings() []Binding {
 		{Key: "\\", Command: "toggle-sidebar", Context: "conversations-main"},
 		{Key: "y", Command: "yank-details", Context: "conversations-main"},
 		{Key: "Y", Command: "yank-resume", Context: "conversations-main"},
+		{Key: "R", Command: "resume-in-workspace", Context: "conversations-main"},
 
 		// File browser tree context
 		{Key: "tab", Command: "switch-pane", Context: "file-browser-tree"},

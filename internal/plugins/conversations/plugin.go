@@ -8,10 +8,12 @@ import (
 	"sync"
 	"time"
 
+	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/marcus/sidecar/internal/adapter"
 	"github.com/marcus/sidecar/internal/app"
+	"github.com/marcus/sidecar/internal/modal"
 	"github.com/marcus/sidecar/internal/mouse"
 	"github.com/marcus/sidecar/internal/plugin"
 	"github.com/marcus/sidecar/internal/state"
@@ -207,6 +209,18 @@ type Plugin struct {
 	initialLoadDone    bool        // true after sessions settle (no new arrivals for settleDelay)
 	skeleton           ui.Skeleton // shimmer loading animation
 	loadSettleToken    int         // token for debounced settle check
+
+	// Resume modal state (td-aa4136)
+	showResumeModal       bool
+	resumeModal           *modal.Modal
+	resumeModalWidth      int
+	resumeType            int // 0=shell, 1=worktree
+	resumeNameInput       textinput.Model
+	resumeBaseBranchInput textinput.Model
+	resumeAgentIdx        int
+	resumeSkipPermissions bool
+	resumeFocus           int
+	resumeSession         *adapter.Session
 }
 
 // msgLineRange tracks which screen lines a message occupies (after scroll).
@@ -449,6 +463,12 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 		return p.handleMouse(msg)
 
 	case tea.KeyMsg:
+		// Handle resume modal first if open (td-aa4136)
+		if p.showResumeModal {
+			cmd := p.handleResumeModalKeys(msg)
+			return p, cmd
+		}
+
 		switch p.view {
 		case ViewAnalytics:
 			return p.updateAnalytics(msg)
@@ -705,22 +725,6 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 
 		return p, tea.Batch(cmds...)
 
-	case OpenSessionReturnedMsg:
-		// After returning from external session, re-enable mouse and refresh
-		cmds := []tea.Cmd{
-			func() tea.Msg { return tea.EnableMouseAllMotion() },
-			p.loadSessions(), // Refresh sessions in case something changed
-		}
-		if p.selectedSession != "" {
-			cmds = append(cmds, p.loadMessages(p.selectedSession))
-		}
-		if msg.Err != nil {
-			cmds = append(cmds, func() tea.Msg {
-				return app.ToastMsg{Message: "Session exited: " + msg.Err.Error(), Duration: 2 * time.Second, IsError: true}
-			})
-		}
-		return p, tea.Batch(cmds...)
-
 	case tea.WindowSizeMsg:
 		p.width = msg.Width
 		p.height = msg.Height
@@ -747,6 +751,12 @@ func (p *Plugin) View(width, height int) string {
 	p.height = height
 	// Note: sidebarWidth is calculated in renderTwoPane, not here,
 	// to avoid resetting drag-adjusted widths on every render
+
+	// Handle resume modal overlay (td-aa4136)
+	if p.showResumeModal {
+		content := p.renderResumeModal(width, height)
+		return lipgloss.NewStyle().Width(width).Height(height).MaxHeight(height).Render(content)
+	}
 
 	var content string
 	if len(p.adapters) == 0 {
@@ -813,15 +823,19 @@ func (p *Plugin) Commands() []plugin.Command {
 		{ID: "view-session", Name: "View", Description: "View session messages", Category: plugin.CategoryView, Context: "conversations-sidebar", Priority: 1},
 		{ID: "search", Name: "Search", Description: "Search conversations", Category: plugin.CategorySearch, Context: "conversations-sidebar", Priority: 2},
 		{ID: "filter", Name: "Filter", Description: "Filter by project", Category: plugin.CategorySearch, Context: "conversations-sidebar", Priority: 2},
-		{ID: "open", Name: "Open", Description: "Open in CLI", Category: plugin.CategoryActions, Context: "conversations-sidebar", Priority: 3},
-		{ID: "yank", Name: "Yank", Description: "Yank session details", Category: plugin.CategoryActions, Context: "conversations-sidebar", Priority: 4},
-		{ID: "yank-resume", Name: "Resume", Description: "Yank resume command", Category: plugin.CategoryActions, Context: "conversations-sidebar", Priority: 4},
+		{ID: "resume-in-workspace", Name: "Resume", Description: "Resume in workspace", Category: plugin.CategoryActions, Context: "conversations-sidebar", Priority: 3},
+		{ID: "yank-details", Name: "Copy Details", Description: "Copy session details", Category: plugin.CategoryActions, Context: "conversations-sidebar", Priority: 3},
+		{ID: "yank-resume", Name: "Copy Resume", Description: "Copy resume command", Category: plugin.CategoryActions, Context: "conversations-sidebar", Priority: 4},
 		{ID: "toggle-sidebar", Name: "Panel", Description: "Toggle sidebar visibility", Category: plugin.CategoryView, Context: "conversations-sidebar", Priority: 5},
 	}
 }
 
 // FocusContext returns the current focus context.
 func (p *Plugin) FocusContext() string {
+	// Resume modal takes precedence (td-aa4136)
+	if p.showResumeModal {
+		return "conversations-resume-modal"
+	}
 	if p.searchMode {
 		return "conversations-search"
 	}

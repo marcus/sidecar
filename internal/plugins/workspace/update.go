@@ -286,6 +286,12 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 			}
 			// Start polling for output
 			cmds = append(cmds, p.scheduleAgentPoll(msg.WorkspaceName, pollIntervalInitial))
+
+			// If this is a resume operation, enter interactive mode (td-aa4136)
+			if p.pendingResumeWorktree == msg.WorkspaceName {
+				p.pendingResumeWorktree = ""
+				cmds = append(cmds, p.enterInteractiveMode())
+			}
 		}
 
 	case pollAgentMsg:
@@ -425,6 +431,7 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 	case ShellCreatedMsg:
 		if msg.Err != nil {
 			// Creation failed, show error toast
+			p.pendingResumeCmd = "" // Clear pending resume
 			return p, func() tea.Msg {
 				return app.ToastMsg{Message: msg.Err.Error(), Duration: 5 * time.Second, IsError: true}
 			}
@@ -460,6 +467,15 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 		// Start polling for output using stable TmuxName
 		cmds = append(cmds, p.scheduleShellPollByName(shell.TmuxName, 500*time.Millisecond))
 
+		// If there's a pending resume command, inject it and enter interactive mode (td-aa4136)
+		if p.pendingResumeCmd != "" {
+			resumeCmd := p.pendingResumeCmd
+			p.pendingResumeCmd = "" // Clear pending command
+			cmds = append(cmds, p.sendResumeCommandToShell(msg.SessionName, resumeCmd))
+			// Enter interactive mode after command is injected
+			cmds = append(cmds, func() tea.Msg { return shellResumeInjectedMsg{TmuxSession: msg.SessionName} })
+		}
+
 	case ShellDetachedMsg:
 		// User detached from shell session - re-enable mouse and resume polling
 		cmds = append(cmds, func() tea.Msg { return tea.EnableMouseAllMotion() })
@@ -494,6 +510,40 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 	case shellAttachAfterCreateMsg:
 		// Attach to shell after it was created
 		return p, p.attachToShellByIndex(msg.Index)
+
+	case shellResumeInjectedMsg:
+		// Resume command was injected into shell - enter interactive mode (td-aa4136)
+		p.activePane = PaneSidebar
+		return p, p.enterInteractiveMode()
+
+	case shellResumeErrorMsg:
+		// Failed to inject resume command - just show toast, shell still usable
+		return p, func() tea.Msg {
+			return app.ToastMsg{Message: "Failed to inject resume command", Duration: 3 * time.Second, IsError: true}
+		}
+
+	case worktreeResumeCreatedMsg:
+		// Worktree created for resume - start agent with resume command (td-aa4136)
+		if msg.Err != nil {
+			return p, func() tea.Msg {
+				return app.ToastMsg{Message: msg.Err.Error(), Duration: 5 * time.Second, IsError: true}
+			}
+		}
+
+		// Add worktree to list and select it
+		p.worktrees = append(p.worktrees, msg.Worktree)
+		p.shellSelected = false
+		p.selectedIdx = len(p.worktrees) - 1
+		p.previewOffset = 0
+		p.autoScrollOutput = true
+		p.saveSelectionState()
+		p.ensureVisible()
+
+		// Store pending resume state to enter interactive mode after agent starts
+		p.pendingResumeWorktree = msg.Worktree.Name
+
+		// Start agent with resume command
+		return p, p.startAgentWithResumeCmd(msg.Worktree, msg.AgentType, msg.SkipPerms, msg.ResumeCmd)
 
 	case ShellKilledMsg:
 		// Timer leak prevention (td-83dc22): increment generation to invalidate pending timers
@@ -1003,6 +1053,10 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 
 	case OpenCreateModalWithTaskMsg:
 		return p, p.openCreateModalWithTask(msg.TaskID, msg.TaskTitle)
+
+	case ResumeConversationMsg:
+		// Handle resume from conversations plugin (td-aa4136)
+		return p.handleResumeConversation(msg)
 
 	case cursorPositionMsg:
 		// Update cached cursor position for interactive mode rendering (td-648af4)

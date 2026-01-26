@@ -291,6 +291,10 @@ type Plugin struct {
 	typeSelectorNameInput   textinput.Model // Optional shell name input
 	typeSelectorModal       *modal.Modal    // Modal instance
 	typeSelectorModalWidth  int             // Cached width for rebuild detection
+
+	// Resume conversation state (td-aa4136)
+	pendingResumeCmd      string // Resume command to inject after shell creation
+	pendingResumeWorktree string // Worktree name to enter interactive mode after agent starts
 }
 
 // New creates a new worktree manager plugin.

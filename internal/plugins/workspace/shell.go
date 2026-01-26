@@ -573,3 +573,161 @@ func (p *Plugin) getSelectedShell() *ShellSession {
 	}
 	return p.shells[p.selectedShellIdx]
 }
+
+// handleResumeConversation processes ResumeConversationMsg from conversations plugin (td-aa4136).
+// Creates a new shell or worktree based on msg.Type and starts the resume flow.
+func (p *Plugin) handleResumeConversation(msg ResumeConversationMsg) (*Plugin, tea.Cmd) {
+	switch msg.Type {
+	case "shell":
+		return p, p.createShellWithResume(msg.ResumeCmd)
+	case "worktree":
+		return p, p.createWorktreeWithResume(msg)
+	default:
+		return p, nil
+	}
+}
+
+// createShellWithResume creates a new shell and injects the resume command.
+// The command is typed into the shell but not executed - user presses Enter.
+func (p *Plugin) createShellWithResume(resumeCmd string) tea.Cmd {
+	// Store pending resume command to inject after shell creation
+	p.pendingResumeCmd = resumeCmd
+
+	// Create new shell (ShellCreatedMsg will trigger command injection)
+	return p.createNewShell("")
+}
+
+// sendResumeCommandToShell injects a command into the shell without executing it.
+func (p *Plugin) sendResumeCommandToShell(tmuxSession string, resumeCmd string) tea.Cmd {
+	if !isTmuxInstalled() {
+		return nil
+	}
+
+	return func() tea.Msg {
+		// Use tmux send-keys to type the command without pressing Enter
+		// This lets the user review before executing
+		cmd := exec.Command("tmux", "send-keys", "-t", tmuxSession, resumeCmd)
+		if err := cmd.Run(); err != nil {
+			return shellResumeErrorMsg{Err: err}
+		}
+		return shellResumeInjectedMsg{TmuxSession: tmuxSession}
+	}
+}
+
+// shellResumeInjectedMsg signals that resume command was injected into shell.
+type shellResumeInjectedMsg struct {
+	TmuxSession string
+}
+
+// shellResumeErrorMsg signals an error injecting resume command.
+type shellResumeErrorMsg struct {
+	Err error
+}
+
+// worktreeResumeCreatedMsg signals that a worktree for resume was created (td-aa4136).
+type worktreeResumeCreatedMsg struct {
+	Worktree  *Worktree
+	ResumeCmd string
+	AgentType AgentType
+	SkipPerms bool
+	Err       error
+}
+
+// createWorktreeWithResume creates a new worktree and starts the agent with the resume command.
+func (p *Plugin) createWorktreeWithResume(msg ResumeConversationMsg) tea.Cmd {
+	name := msg.WorktreeName
+	baseBranch := msg.BaseBranch
+	agentType := msg.AgentType
+	skipPerms := msg.SkipPerms
+	resumeCmd := msg.ResumeCmd
+
+	if name == "" {
+		return func() tea.Msg {
+			return worktreeResumeCreatedMsg{Err: fmt.Errorf("workspace name is required")}
+		}
+	}
+
+	return func() tea.Msg {
+		// Create the worktree (reuse doCreateWorktree)
+		wt, err := p.doCreateWorktree(name, baseBranch, "", "", agentType)
+		if err != nil {
+			return worktreeResumeCreatedMsg{Err: err}
+		}
+
+		return worktreeResumeCreatedMsg{
+			Worktree:  wt,
+			ResumeCmd: resumeCmd,
+			AgentType: agentType,
+			SkipPerms: skipPerms,
+		}
+	}
+}
+
+// startAgentWithResumeCmd starts an agent in a worktree with a resume command instead of normal startup.
+func (p *Plugin) startAgentWithResumeCmd(wt *Worktree, agentType AgentType, skipPerms bool, resumeCmd string) tea.Cmd {
+	return func() tea.Msg {
+		sessionName := tmuxSessionPrefix + sanitizeName(wt.Name)
+
+		// Check if session already exists
+		checkCmd := exec.Command("tmux", "has-session", "-t", sessionName)
+		if checkCmd.Run() == nil {
+			// Session exists - should not happen for new resume worktree
+			paneID := getPaneID(sessionName)
+			return AgentStartedMsg{
+				WorkspaceName: wt.Name,
+				SessionName:   sessionName,
+				PaneID:        paneID,
+				AgentType:     agentType,
+				Reconnected:   true,
+			}
+		}
+
+		// Create new detached session with working directory
+		args := []string{
+			"new-session",
+			"-d",              // Detached
+			"-s", sessionName, // Session name
+			"-c", wt.Path, // Working directory
+		}
+
+		cmd := exec.Command("tmux", args...)
+		if err := cmd.Run(); err != nil {
+			return AgentStartedMsg{Err: fmt.Errorf("create session: %w", err)}
+		}
+
+		// Set history limit for scrollback capture
+		exec.Command("tmux", "set-option", "-t", sessionName, "history-limit",
+			strconv.Itoa(tmuxHistoryLimit)).Run()
+
+		// Set TD_SESSION_ID environment variable for td session tracking
+		tdEnvCmd := fmt.Sprintf("export TD_SESSION_ID=%s", shellQuote(sessionName))
+		exec.Command("tmux", "send-keys", "-t", sessionName, tdEnvCmd, "Enter").Run()
+
+		// Apply environment isolation
+		envOverrides := BuildEnvOverrides(p.ctx.WorkDir)
+		if envCmd := GenerateSingleEnvCommand(envOverrides); envCmd != "" {
+			exec.Command("tmux", "send-keys", "-t", sessionName, envCmd, "Enter").Run()
+		}
+
+		// Small delay to ensure env is set
+		time.Sleep(100 * time.Millisecond)
+
+		// Send the resume command instead of the normal agent command
+		sendCmd := exec.Command("tmux", "send-keys", "-t", sessionName, resumeCmd, "Enter")
+		if err := sendCmd.Run(); err != nil {
+			// Try to kill the session if we failed to start the agent
+			exec.Command("tmux", "kill-session", "-t", sessionName).Run()
+			return AgentStartedMsg{Err: fmt.Errorf("start agent with resume: %w", err)}
+		}
+
+		// Capture pane ID for interactive mode support
+		paneID := getPaneID(sessionName)
+
+		return AgentStartedMsg{
+			WorkspaceName: wt.Name,
+			SessionName:   sessionName,
+			PaneID:        paneID,
+			AgentType:     agentType,
+		}
+	}
+}

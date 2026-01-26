@@ -139,9 +139,9 @@ func (p *Plugin) updateSessions(msg tea.KeyMsg) (plugin.Plugin, tea.Cmd) {
 		// Yank resume command to clipboard
 		return p, p.yankResumeCommand()
 
-	case "o":
-		// Open session in native CLI tool
-		return p, p.openSessionInCLI()
+	case "R":
+		// Open resume modal for workspace
+		return p, p.openResumeModal()
 	}
 
 	return p, nil
@@ -631,9 +631,9 @@ func (p *Plugin) updateMessages(msg tea.KeyMsg) (plugin.Plugin, tea.Cmd) {
 		// Yank resume command to clipboard
 		return p, p.yankResumeCommand()
 
-	case "o":
-		// Open session in native CLI tool
-		return p, p.openSessionInCLI()
+	case "R":
+		// Open resume modal for workspace
+		return p, p.openResumeModal()
 	}
 
 	return p, nil

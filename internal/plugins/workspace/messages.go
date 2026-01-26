@@ -190,6 +190,20 @@ type OpenCreateModalWithTaskMsg struct {
 	TaskTitle string
 }
 
+// ResumeConversationMsg requests resuming a conversation in a new shell or worktree.
+// Sent from conversations plugin when user presses O key.
+type ResumeConversationMsg struct {
+	SessionID string // Adapter session ID for resume command
+	AdapterID string // Adapter type (claude-code, codex, etc.)
+	ResumeCmd string // Full resume command (e.g., "claude --resume xyz")
+	Type      string // "shell" or "worktree"
+	// Worktree-specific fields (only used when Type == "worktree")
+	WorktreeName string    // Branch name for new worktree
+	BaseBranch   string    // Base branch to create from
+	AgentType    AgentType // Agent to start (matches adapter or user selection)
+	SkipPerms    bool      // Whether to auto-approve agent actions
+}
+
 // cursorPositionMsg delivers async cursor position updates for interactive mode (td-648af4).
 // Queried during poll handler when output changes, not during View() rendering.
 type cursorPositionMsg struct {

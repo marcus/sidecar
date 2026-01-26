@@ -8,6 +8,12 @@ import (
 
 // handleMouse processes mouse events in the two-pane view.
 func (p *Plugin) handleMouse(msg tea.MouseMsg) (*Plugin, tea.Cmd) {
+	// Handle resume modal first if open (td-aa4136)
+	if p.showResumeModal {
+		cmd := p.handleResumeModalMouse(msg)
+		return p, cmd
+	}
+
 	action := p.mouseHandler.HandleMouse(msg)
 
 	switch action.Type {
