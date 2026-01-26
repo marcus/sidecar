@@ -235,6 +235,7 @@ type Plugin struct {
 	inlineEditSession   string      // Tmux session name for editor
 	inlineEditFile      string      // Path of file being edited
 	inlineEditOrigMtime time.Time   // Original file mtime (to detect changes)
+	inlineEditEditor    string      // Editor command used (vim, nano, emacs, etc.)
 
 	// Exit confirmation state (when clicking away from editor)
 	showExitConfirmation bool        // True when confirmation dialog is shown

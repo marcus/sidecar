@@ -16,9 +16,10 @@ import (
 
 // InlineEditStartedMsg is sent when inline edit mode starts successfully.
 type InlineEditStartedMsg struct {
-	SessionName  string
-	FilePath     string
+	SessionName   string
+	FilePath      string
 	OriginalMtime time.Time // File mtime before editing (to detect changes)
+	Editor        string    // Editor command used (vim, nano, emacs, etc.)
 }
 
 // InlineEditExitedMsg is sent when inline edit mode exits.
@@ -73,15 +74,11 @@ func (p *Plugin) enterInlineEditMode(path string) tea.Cmd {
 			}
 		}
 
-		// Get the pane ID for the new session (for future use)
-		paneCmd := exec.Command("tmux", "list-panes", "-t", sessionName, "-F", "#{pane_id}")
-		output, _ := paneCmd.Output()
-		_ = strings.TrimSpace(string(output)) // paneID for future use
-
 		return InlineEditStartedMsg{
 			SessionName:   sessionName,
 			FilePath:      path,
 			OriginalMtime: origMtime,
+			Editor:        editor,
 		}
 	}
 }
@@ -92,6 +89,7 @@ func (p *Plugin) handleInlineEditStarted(msg InlineEditStartedMsg) tea.Cmd {
 	p.inlineEditSession = msg.SessionName
 	p.inlineEditFile = msg.FilePath
 	p.inlineEditOrigMtime = msg.OriginalMtime
+	p.inlineEditEditor = msg.Editor
 
 	// Configure the tty model callbacks
 	p.inlineEditor.OnExit = func() tea.Cmd {
@@ -122,6 +120,7 @@ func (p *Plugin) exitInlineEditMode() {
 	p.inlineEditSession = ""
 	p.inlineEditFile = ""
 	p.inlineEditOrigMtime = time.Time{}
+	p.inlineEditEditor = ""
 	p.inlineEditor.Exit()
 }
 
@@ -300,19 +299,110 @@ func (p *Plugin) renderExitConfirmation(visibleHeight int) string {
 	return sb.String()
 }
 
+// normalizeEditorName extracts the base editor name from a command string.
+// Handles paths like /usr/bin/vim, aliases like nvim, and arguments.
+func normalizeEditorName(editor string) string {
+	// Get base name (handles /usr/bin/vim -> vim)
+	base := filepath.Base(editor)
+
+	// Remove common suffixes/variations
+	base = strings.TrimSuffix(base, ".exe")
+
+	// Handle common aliases
+	switch base {
+	case "nvim", "neovim":
+		return "vim"
+	case "vi":
+		return "vim"
+	case "hx":
+		return "helix"
+	case "kak":
+		return "kakoune"
+	case "emacsclient":
+		return "emacs"
+	}
+
+	return base
+}
+
+// sendEditorSaveAndQuit sends the appropriate save-and-quit key sequence for the editor.
+// Returns true if a known editor sequence was sent, false for unknown editors.
+func sendEditorSaveAndQuit(target, editor string) bool {
+	normalized := normalizeEditorName(editor)
+
+	send := func(keys ...string) {
+		for _, k := range keys {
+			exec.Command("tmux", "send-keys", "-t", target, k).Run()
+		}
+	}
+
+	switch normalized {
+	case "vim":
+		// vim/nvim/vi: Escape to normal mode, :wq to save and quit
+		send("Escape", ":wq", "Enter")
+		return true
+
+	case "nano":
+		// nano: Ctrl+O to write, Enter to confirm, Ctrl+X to exit
+		send("C-o", "Enter", "C-x")
+		return true
+
+	case "emacs":
+		// emacs: Ctrl+X Ctrl+S to save, Ctrl+X Ctrl+C to quit
+		send("C-x", "C-s", "C-x", "C-c")
+		return true
+
+	case "helix":
+		// helix: Escape to normal mode, :wq to save and quit (vim-like)
+		send("Escape", ":wq", "Enter")
+		return true
+
+	case "micro":
+		// micro: Ctrl+S to save, Ctrl+Q to quit
+		send("C-s", "C-q")
+		return true
+
+	case "kakoune":
+		// kakoune: Escape to normal mode, :write-quit
+		send("Escape", ":write-quit", "Enter")
+		return true
+
+	case "joe":
+		// joe: Ctrl+K X to save and exit
+		send("C-k", "x")
+		return true
+
+	case "ne":
+		// ne (nice editor): Escape, then save command, then exit
+		send("Escape", "Escape", ":s", "Enter", ":q", "Enter")
+		return true
+
+	case "amp":
+		// amp: similar to vim
+		send("Escape", ":wq", "Enter")
+		return true
+
+	default:
+		// Unknown editor - don't attempt to send commands
+		return false
+	}
+}
+
 // handleExitConfirmationChoice processes the user's selection in the exit confirmation dialog.
 func (p *Plugin) handleExitConfirmationChoice() (*Plugin, tea.Cmd) {
 	p.showExitConfirmation = false
 
 	switch p.exitConfirmSelection {
 	case 0: // Save & Exit
-		// Send :wq to vim, then exit immediately
 		target := p.inlineEditSession
-		// Send Escape to ensure normal mode, then :wq to save and quit
-		exec.Command("tmux", "send-keys", "-t", target, "Escape").Run()
-		exec.Command("tmux", "send-keys", "-t", target, ":wq", "Enter").Run()
-		// Give vim a moment to save, then kill session and proceed
-		// (The session may already be dead from :wq, kill-session will just fail silently)
+		editor := p.inlineEditEditor
+
+		// Try to send editor-specific save-and-quit commands
+		// If unknown editor, we still proceed but skip the save attempt
+		sendEditorSaveAndQuit(target, editor)
+
+		// Give editor a moment to process, then kill session
+		// (Session may already be dead from quit command, kill-session will fail silently)
 		p.exitInlineEditMode()
 		return p.processPendingClickAction()
 

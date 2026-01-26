@@ -166,6 +166,7 @@ func (b *OutputBuffer) Clear() {
 	defer b.mu.Unlock()
 	b.lines = b.lines[:0]
 	b.lastHash = 0
+	b.lastRawHash = 0
 	b.lastLen = 0
 }
 
