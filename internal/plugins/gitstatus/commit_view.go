@@ -12,7 +12,6 @@ import (
 
 const (
 	commitMessageID = "commit-message"
-	commitAmendID   = "commit-amend"
 	commitActionID  = "execute-commit"
 )
 
@@ -43,7 +42,7 @@ func (p *Plugin) ensureCommitModal() {
 		AddSection(p.commitStagedSection()).
 		AddSection(modal.Spacer()).
 		AddSection(modal.Textarea(commitMessageID, &p.commitMessage, 4)).
-		AddSection(modal.When(p.showCommitAmendToggle, modal.Checkbox(commitAmendID, "Amend last commit", &p.commitAmend))).
+		AddSection(modal.When(p.showCommitAmendToggle, modal.CheckboxDisplay("Amend last commit", &p.commitAmend, "ctrl+a"))).
 		AddSection(p.commitStatusSection()).
 		AddSection(modal.Buttons(
 			modal.Btn(p.commitButtonLabel(), commitActionID),

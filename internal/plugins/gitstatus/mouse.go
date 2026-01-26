@@ -364,11 +364,6 @@ func (p *Plugin) handleCommitMouse(msg tea.MouseMsg) (*Plugin, tea.Cmd) {
 	switch action {
 	case commitActionID:
 		return p, p.tryCommit()
-	case commitAmendID:
-		p.commitAmend = !p.commitAmend
-		p.commitModal = nil
-		p.commitModalWidthCache = 0
-		return p, nil
 	case "cancel":
 		p.viewMode = ViewModeStatus
 		p.commitAmend = false

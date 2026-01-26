@@ -335,6 +335,49 @@ func (c *checkboxSection) Update(msg tea.Msg, focusID string) (string, tea.Cmd) 
 	return "", nil
 }
 
+// --- Checkbox Display Section (non-focusable) ---
+
+// checkboxDisplaySection renders a checkbox state indicator (not focusable).
+// Use a keyboard shortcut to toggle the value externally.
+type checkboxDisplaySection struct {
+	label   string
+	checked *bool
+	hint    string
+}
+
+// CheckboxDisplay creates a non-focusable checkbox display.
+// The hint shows the keyboard shortcut to toggle (e.g., "ctrl+a").
+func CheckboxDisplay(label string, checked *bool, hint string) Section {
+	return &checkboxDisplaySection{label: label, checked: checked, hint: hint}
+}
+
+func (c *checkboxDisplaySection) Render(contentWidth int, focusID, hoverID string) RenderedSection {
+	box := "[ ]"
+	if c.checked != nil && *c.checked {
+		box = "[x]"
+	}
+
+	// Always use muted style since it's not focusable
+	content := styles.Muted.Render(box + " " + c.label)
+
+	// Add hint if provided
+	if c.hint != "" {
+		hintText := styles.Muted.Render(" (" + c.hint + ")")
+		content += hintText
+	}
+
+	// Return empty Focusables slice - this element is not in tab order
+	return RenderedSection{
+		Content:    content,
+		Focusables: nil,
+	}
+}
+
+func (c *checkboxDisplaySection) Update(msg tea.Msg, focusID string) (string, tea.Cmd) {
+	// Non-focusable, so no updates handled here
+	return "", nil
+}
+
 // --- Helper functions ---
 
 // wrapText wraps text to fit within the given width.

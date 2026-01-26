@@ -718,6 +718,21 @@ func (p *Plugin) updateCommit(msg tea.KeyMsg) (plugin.Plugin, tea.Cmd) {
 	switch msg.String() {
 	case "ctrl+s", "ctrl+enter":
 		return p, p.tryCommit()
+
+	case "ctrl+a":
+		// Toggle amend mode (only if there are commits to amend and staged files)
+		if len(p.recentCommits) > 0 && p.tree.HasStagedFiles() {
+			p.commitAmend = !p.commitAmend
+			// Invalidate modal cache to rebuild with new state
+			p.commitModal = nil
+			p.commitModalWidthCache = 0
+			// If enabling amend and message is empty, prefill with last commit message
+			if p.commitAmend && strings.TrimSpace(p.commitMessage.Value()) == "" {
+				msg := getLastCommitMessage(p.repoRoot)
+				p.commitMessage.SetValue(msg)
+			}
+		}
+		return p, nil
 	}
 
 	wasAmend := p.commitAmend
@@ -729,7 +744,7 @@ func (p *Plugin) updateCommit(msg tea.KeyMsg) (plugin.Plugin, tea.Cmd) {
 		p.commitModalWidthCache = 0
 	}
 
-	if action == commitActionID && (focusID == commitMessageID || focusID == commitAmendID) {
+	if action == commitActionID && focusID == commitMessageID {
 		return p, cmd
 	}
 
