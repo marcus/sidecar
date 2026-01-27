@@ -195,14 +195,61 @@ func ContainsMouseSequence(s string) bool {
 // like "[<" or "M[<" that occur when terminal splits mouse events across reads.
 // Used to suppress snap-back and key forwarding during fast scrolling.
 func LooksLikeMouseFragment(s string) bool {
-	// Very short: just check for mouse sequence markers
+	if len(s) == 0 {
+		return false
+	}
+
+	// Very short strings (1-4 chars): check for mouse sequence markers
 	if len(s) <= 4 {
+		// Single [ or repeated [ is likely CSI start from split sequence
+		if s == "[" || (len(s) >= 2 && len(s) <= 3 && strings.Count(s, "[") == len(s)) {
+			return true
+		}
 		return strings.Contains(s, "[<") || // Start of sequence
+			strings.Contains(s, "[") && containsDigit(s) || // [ with digit (partial CSI)
 			strings.Contains(s, ";") && containsDigit(s) || // Mid-sequence
 			(strings.HasSuffix(s, "M") || strings.HasSuffix(s, "m")) && containsDigit(s) // End of sequence
 	}
+
+	// Repeated [ characters (split CSI sequences arriving together)
+	if isRepeatedBrackets(s) {
+		return true
+	}
+
+	// Check for mouse sequence markers anywhere in the string
+	if strings.Contains(s, "[<") {
+		return true // Any string containing [< is likely mouse garbage
+	}
+
+	// Check for [ followed by digit (partial CSI parameter)
+	if strings.Contains(s, "[") && containsDigit(s) && !strings.ContainsAny(s, " \t\n") {
+		return true
+	}
+
+	// Check for concatenated sequences like "M[<" or sequences ending with M/m
+	if (strings.Contains(s, "M[") || strings.Contains(s, "m[")) && containsDigit(s) {
+		return true
+	}
+
+	// Check for semicolon-heavy strings with digits (mouse coordinate data)
+	// Pattern: multiple semicolons with digits suggests mouse sequence garbage
+	semicolonCount := strings.Count(s, ";")
+	if semicolonCount >= 2 && containsDigit(s) && !strings.ContainsAny(s, " \t\n") {
+		return true
+	}
+
 	// Longer strings: use full check
 	return ContainsMouseSequence(s)
+}
+
+// isRepeatedBrackets returns true if s is mostly repeated [ characters.
+func isRepeatedBrackets(s string) bool {
+	if len(s) < 2 {
+		return false
+	}
+	bracketCount := strings.Count(s, "[")
+	// If more than 60% brackets, it's likely split CSI garbage
+	return bracketCount > 0 && bracketCount*100/len(s) > 60
 }
 
 // containsDigit returns true if s contains at least one ASCII digit.

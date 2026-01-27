@@ -228,6 +228,22 @@ func TestLooksLikeMouseFragment(t *testing.T) {
 		{"[<65;143;", true, "truncated (no M)"},
 		{"8M[<65;143;8M", true, "starts mid-sequence"},
 
+		// Concatenated sequences (td-3b15ee: fast trackpad scroll pattern)
+		{"[<64;107;16M[<64;107;16M[<64;107;16M", true, "many concatenated scroll events"},
+		{"[<65;107;14M[<65;107;14M[<35;111;12M", true, "mixed scroll events"},
+		{"M[<64;107;16M", true, "sequence starting with M (split boundary)"},
+		{"m[<64;107;16M", true, "sequence starting with m (split boundary)"},
+
+		// Split CSI sequences (just brackets arriving separately)
+		{"[", true, "single bracket (CSI start)"},
+		{"[[", true, "double brackets"},
+		{"[[[", true, "triple brackets"},
+		{"[[[[[[[[[[", true, "many brackets (burst of split CSI)"},
+
+		// Semicolon-heavy patterns (coordinate garbage)
+		{"64;107;16", true, "raw coordinates (multi-semicolon)"},
+		{"65;107;14;65;107;14", true, "multiple coordinate sets"},
+
 		// Non-matches
 		{"hello", false, "normal text"},
 		{"a", false, "single letter"},
@@ -237,6 +253,8 @@ func TestLooksLikeMouseFragment(t *testing.T) {
 		{"[test]", false, "normal brackets without <"},
 		{"M", false, "just M (no digit)"},
 		{";", false, "just semicolon (no digit)"},
+		{"hello world", false, "text with space"},
+		{"foo;bar", false, "semicolon but no digits"},
 	}
 
 	for _, tt := range tests {

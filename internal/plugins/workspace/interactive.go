@@ -55,6 +55,38 @@ const (
 	defaultPasteKey = "alt+v"
 )
 
+// =============================================================================
+// Scroll tuning constants (td-3b15ee)
+// Adjust these to balance scroll responsiveness vs escape sequence filtering.
+// =============================================================================
+const (
+	// scrollDebounceInterval is the base debounce for scroll events (~60fps).
+	// Lower = more responsive but more CPU. Higher = smoother but laggy.
+	scrollDebounceInterval = 16 * time.Millisecond
+
+	// scrollBurstDebounce is used during fast scrolling (burst mode).
+	// Lower = more responsive. Higher = better filtering but feels sluggish.
+	// 32ms ≈ 30fps, good balance of smooth scrolling and reduced event spam.
+	scrollBurstDebounce = 32 * time.Millisecond
+
+	// scrollBurstThreshold is scroll events needed to enter burst mode.
+	// Lower = enter burst mode faster. Higher = more normal scrolling before burst kicks in.
+	scrollBurstThreshold = 3
+
+	// scrollBurstTimeout is how long after last scroll before burst mode ends.
+	// Should be long enough for garbage events to clear. Too long = delayed typing response.
+	scrollBurstTimeout = 500 * time.Millisecond
+
+	// snapBackCooldown prevents snap-back to live output during active scrolling.
+	// If user scrolled within this window, suspicious input won't trigger snap-back.
+	snapBackCooldown = 100 * time.Millisecond
+
+	// postScrollFilterWindow is how long after scrolling to keep filtering garbage input.
+	// Mouse event garbage can arrive after scroll ends due to terminal/OS buffering.
+	// Longer = better filtering but may eat legitimate keystrokes. Shorter = risk of leakage.
+	postScrollFilterWindow = 500 * time.Millisecond
+)
+
 // partialMouseSeqRegex is now provided by the tty package as tty.PartialMouseSeqRegex
 
 // escapeTimerMsg is sent when the escape delay timer fires.
@@ -341,6 +373,27 @@ func isPasteInput(msg tea.KeyMsg) bool {
 	text := string(msg.Runes)
 	// Treat as paste if contains newline or is suspiciously long for typing
 	return strings.Contains(text, "\n") || len(msg.Runes) > 10
+}
+
+// isNormalTyping returns true if the input looks like normal keyboard typing.
+// Used during scroll bursts to distinguish real typing from garbage input.
+func isNormalTyping(s string) bool {
+	if len(s) == 0 {
+		return false
+	}
+	// Single printable character is normal typing
+	if len(s) == 1 {
+		r := rune(s[0])
+		return r >= 32 && r < 127 // Printable ASCII
+	}
+	// Multi-char: only allow if all are printable alphanumeric or common punctuation
+	// Reject anything that looks like control sequences
+	for _, r := range s {
+		if r < 32 || r > 126 {
+			return false
+		}
+	}
+	return true
 }
 
 // enterInteractiveMode enters interactive mode for the current selection.
@@ -724,6 +777,21 @@ func (p *Plugin) handleInteractiveKeys(msg tea.KeyMsg) tea.Cmd {
 		return nil
 	}
 
+	// td-3b15ee: Fast-path rejection during and after scroll bursts.
+	// Mouse event garbage can continue arriving after scroll ends due to
+	// terminal/OS buffering. Use time-based check for wider protection window.
+	timeSinceScroll := time.Since(p.lastScrollTime)
+	if timeSinceScroll < postScrollFilterWindow && msg.Type == tea.KeyRunes {
+		s := string(msg.Runes)
+		// Drop anything that looks like mouse sequence garbage:
+		// - Contains [, <, ;, M, m (mouse sequence chars)
+		// - Is not normal alphanumeric typing
+		if strings.ContainsAny(s, "[<;Mm") || !isNormalTyping(s) {
+			p.interactiveState.EscapePressed = false
+			return nil
+		}
+	}
+
 	// Filter partial SGR mouse sequences that leaked through Bubble Tea's
 	// input parser due to split-read timing (ESC arrived separately) (td-791865).
 	// Must be checked BEFORE forwarding pending escape, since the ESC was part
@@ -859,20 +927,29 @@ func (p *Plugin) handleEscapeTimer() tea.Cmd {
 	)
 }
 
-// scrollDebounceInterval limits scroll events to ~60fps to prevent lag (td-e2ce50).
-const scrollDebounceInterval = 16 * time.Millisecond
-
-// snapBackCooldown prevents snap-back during active scrolling (td-e2ce50).
-// If user scrolled within this window, don't snap back on suspicious input.
-const snapBackCooldown = 100 * time.Millisecond
-
 // forwardScrollToTmux scrolls through the captured pane output using previewOffset.
 // No tmux subprocesses needed — we scroll through the already-captured 600 lines of scrollback.
 // Scroll up (delta < 0) pauses auto-scroll, scroll down (delta > 0) moves toward live output.
 func (p *Plugin) forwardScrollToTmux(delta int) tea.Cmd {
-	// td-e2ce50: Debounce rapid scroll events to prevent lag
 	now := time.Now()
-	if now.Sub(p.lastScrollTime) < scrollDebounceInterval {
+
+	// Detect and handle scroll bursts (fast trackpad scrolling)
+	timeSinceLastScroll := now.Sub(p.lastScrollTime)
+	if timeSinceLastScroll < scrollBurstTimeout {
+		p.scrollBurstCount++
+	} else {
+		// Burst ended, reset
+		p.scrollBurstCount = 1
+		p.scrollBurstStarted = now
+	}
+
+	// During burst mode, use more aggressive debouncing
+	debounceInterval := scrollDebounceInterval
+	if p.scrollBurstCount > scrollBurstThreshold {
+		debounceInterval = scrollBurstDebounce
+	}
+
+	if timeSinceLastScroll < debounceInterval {
 		return nil
 	}
 	p.lastScrollTime = now
@@ -1015,6 +1092,13 @@ func (p *Plugin) pollInteractivePane() tea.Cmd {
 		return nil
 	}
 
+	// td-3b15ee: Skip polling during active scroll bursts.
+	// User is scrolling through already-captured content; no need for new captures.
+	// This reduces CPU load and prevents capturing garbage during fast scrolling.
+	if time.Since(p.lastScrollTime) < scrollBurstTimeout && p.scrollBurstCount > 0 {
+		return nil
+	}
+
 	// Determine polling interval based on activity
 	interval := pollingDecayFast
 	inactivity := time.Since(p.interactiveState.LastKeyTime)
@@ -1066,6 +1150,11 @@ func (p *Plugin) scheduleDebouncedPoll(delay time.Duration) tea.Cmd {
 // waiting for the next poll cycle.
 func (p *Plugin) pollInteractivePaneImmediate() tea.Cmd {
 	if p.interactiveState == nil || !p.interactiveState.Active {
+		return nil
+	}
+
+	// td-3b15ee: Skip polling during active scroll bursts.
+	if time.Since(p.lastScrollTime) < scrollBurstTimeout && p.scrollBurstCount > 0 {
 		return nil
 	}
 

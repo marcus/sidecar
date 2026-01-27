@@ -809,9 +809,25 @@ func (p *Plugin) scrollPreview(delta int) tea.Cmd {
 	// - Scroll UP (delta < 0): show older content (increase offset from bottom)
 	// - Scroll DOWN (delta > 0): show newer content (decrease offset from bottom)
 	if p.previewTab == PreviewTabOutput {
-		// td-e2ce50: Debounce rapid scroll events to prevent lag
 		now := time.Now()
-		if now.Sub(p.lastScrollTime) < scrollDebounceInterval {
+
+		// Detect and handle scroll bursts (fast trackpad scrolling)
+		timeSinceLastScroll := now.Sub(p.lastScrollTime)
+		if timeSinceLastScroll < scrollBurstTimeout {
+			p.scrollBurstCount++
+		} else {
+			// Burst ended, reset
+			p.scrollBurstCount = 1
+			p.scrollBurstStarted = now
+		}
+
+		// During burst mode, use more aggressive debouncing
+		debounceInterval := scrollDebounceInterval
+		if p.scrollBurstCount > scrollBurstThreshold {
+			debounceInterval = scrollBurstDebounce
+		}
+
+		if timeSinceLastScroll < debounceInterval {
 			return nil
 		}
 		p.lastScrollTime = now

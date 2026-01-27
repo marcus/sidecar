@@ -278,8 +278,10 @@ type Plugin struct {
 	stateRestored bool
 
 	// Interactive mode state (feature-gated behind tmux_interactive_input)
-	interactiveState *InteractiveState
-	lastScrollTime   time.Time // For scroll debouncing (td-e2ce50)
+	interactiveState   *InteractiveState
+	lastScrollTime     time.Time // For scroll debouncing (td-e2ce50)
+	scrollBurstCount   int       // Consecutive scroll events for burst detection
+	scrollBurstStarted time.Time // When current burst started
 
 	// Sidebar header hover state
 	hoverNewButton            bool
