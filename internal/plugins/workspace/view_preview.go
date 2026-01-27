@@ -193,9 +193,9 @@ func (p *Plugin) renderTabs(width int) string {
 
 	for i, tab := range tabs {
 		if PreviewTab(i) == p.previewTab {
-			rendered = append(rendered, styles.BarChipActive.Render(" "+tab+" "))
+			rendered = append(rendered, styles.RenderPillWithStyle(tab, styles.BarChipActive, ""))
 		} else {
-			rendered = append(rendered, styles.BarChip.Render(" "+tab+" "))
+			rendered = append(rendered, styles.RenderPillWithStyle(tab, styles.BarChip, ""))
 		}
 	}
 

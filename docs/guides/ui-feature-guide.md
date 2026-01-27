@@ -5,6 +5,7 @@ All new modals must use the internal modal library. See `docs/guides/declarative
 
 ## Quick checklist
 - Modals: use `internal/modal`, render with `ui.OverlayModal`, avoid manual hit region math.
+- Pills/chips/tabs: use `styles.RenderPillWithStyle`; auto-fallback when `nerdFontsEnabled` is false.
 - Keyboard: Commands + FocusContext + bindings match; names are short; priorities set.
 - Mouse: rebuild hit regions on each render; add general regions first, specific last.
 - Rendering: keep output within the View width and height to avoid header/footer overlap. The plugin's View height parameter already accounts for the header. Use `contentHeight := height - linesTakenByYourHeaders - footerLines` to ensure content fits.
@@ -120,6 +121,74 @@ after Update in bubbletea).
 - Do not pre-center modal content with `lipgloss.Place` when using OverlayModal.
 - OverlayModal strips ANSI color and applies a consistent gray dim (242) for reliability.
 - For a full blackout (rare, non-modal overlays), use `lipgloss.Place` with whitespace fill.
+
+## Pill-shaped elements (internal/styles)
+
+Pill-shaped tabs, chips, and buttons use Nerd Font Powerline characters for rounded corners. This is controlled by the `nerdFontsEnabled` config flag.
+
+### Feature flag
+Set in `~/.config/sidecar/config.json`:
+```json
+{
+  "ui": {
+    "nerdFontsEnabled": true
+  }
+}
+```
+
+When enabled, `styles.PillTabsEnabled` is `true` and pill functions render rounded caps. When disabled, elements render as standard rectangular chips with padding.
+
+### Render a pill with explicit colors
+```go
+// RenderPill(text, foreground, background, outerBackground)
+label := styles.RenderPill("Output", styles.TextPrimary, styles.Primary, "")
+```
+- `outerBg` defaults to `styles.BgSecondary` if empty.
+
+### Render a pill with a lipgloss.Style
+```go
+// Active tab
+active := styles.RenderPillWithStyle("Output", styles.BarChipActive, "")
+
+// Inactive tab
+inactive := styles.RenderPillWithStyle("Diff", styles.BarChip, "")
+```
+This extracts foreground/background from the style automatically. Use this for chips and tab headers.
+
+### Tab row example
+```go
+func (p *Plugin) renderTabs(width int) string {
+    tabs := []string{"Output", "Diff", "Task"}
+    var rendered []string
+    for i, tab := range tabs {
+        if i == p.activeTab {
+            rendered = append(rendered, styles.RenderPillWithStyle(tab, styles.BarChipActive, ""))
+        } else {
+            rendered = append(rendered, styles.RenderPillWithStyle(tab, styles.BarChip, ""))
+        }
+    }
+    return strings.Join(rendered, " ")
+}
+```
+
+### Available styles for pills
+| Style | Use case |
+|-------|----------|
+| `styles.BarChip` | Inactive tab/chip (muted text, tertiary bg) |
+| `styles.BarChipActive` | Active tab/chip (primary text, primary bg, bold) |
+| Custom `lipgloss.Style` | Buttons with danger/success variants |
+
+### How it works
+- Nerd Font characters: `\ue0b6` (left cap) and `\ue0b4` (right cap)
+- Left cap: foreground = pill bg, background = outer bg
+- Right cap: foreground = pill bg, background = outer bg
+- Content: foreground = text color, background = pill bg
+
+### Checklist
+- Use `styles.RenderPillWithStyle` for tabs/chips with existing styles.
+- Use `styles.RenderPill` when you need explicit color control.
+- Ensure the outer background matches the surrounding area (or leave empty for default).
+- Test with `nerdFontsEnabled: true` and `false` to verify fallback rendering.
 
 ## Keyboard shortcuts
 
