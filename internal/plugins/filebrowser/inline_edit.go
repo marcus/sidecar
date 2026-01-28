@@ -118,6 +118,31 @@ func (p *Plugin) handleInlineEditStarted(msg InlineEditStartedMsg) tea.Cmd {
 	return p.inlineEditor.Enter(msg.SessionName, "")
 }
 
+// reattachInlineEditSession re-attaches to an existing tmux session after tab switch.
+// Called when returning to a tab that was previously in edit mode.
+func (p *Plugin) reattachInlineEditSession() tea.Cmd {
+	if p.inlineEditSession == "" {
+		return nil
+	}
+
+	// Configure the tty model callbacks (same as handleInlineEditStarted)
+	p.inlineEditor.OnExit = func() tea.Cmd {
+		return func() tea.Msg {
+			return InlineEditExitedMsg{FilePath: p.inlineEditFile}
+		}
+	}
+	p.inlineEditor.OnAttach = func() tea.Cmd {
+		return p.attachToInlineEditSession()
+	}
+
+	// Enter interactive mode with the existing session
+	width := p.calculateInlineEditorWidth()
+	height := p.calculateInlineEditorHeight()
+	p.inlineEditor.SetDimensions(width, height)
+
+	return p.inlineEditor.Enter(p.inlineEditSession, "")
+}
+
 // exitInlineEditMode cleans up inline edit state and kills the tmux session.
 func (p *Plugin) exitInlineEditMode() {
 	if p.inlineEditSession != "" {
@@ -451,28 +476,16 @@ func (p *Plugin) processPendingClickAction() (*Plugin, tea.Cmd) {
 		p.activePane = PaneTree
 		return p, p.loadCurrentTreeItemPreview()
 	case "preview-tab":
-		// User clicked a tab - switch to it
+		// User clicked a tab - switch to it using switchTab to trigger edit state restoration
 		if idx, ok := data.(int); ok {
-			p.activeTab = idx
-			if idx < len(p.tabs) {
-				// Update previewFile so PreviewLoadedMsg is accepted
-				p.previewFile = p.tabs[idx].Path
-				return p, LoadPreview(p.ctx.WorkDir, p.tabs[idx].Path, p.ctx.Epoch)
-			}
+			return p, p.switchTab(idx)
 		} else if len(p.tabs) > 1 {
-			// Fallback: if we don't know which tab was clicked but user clicked
-			// in the tab area, switch to a different tab than current
-			// (they were editing current tab and want to switch away)
+			// Fallback: switch to a different tab than current
 			newTab := 0
 			if p.activeTab == 0 {
 				newTab = 1
 			}
-			p.activeTab = newTab
-			if newTab < len(p.tabs) {
-				// Update previewFile so PreviewLoadedMsg is accepted
-				p.previewFile = p.tabs[newTab].Path
-				return p, LoadPreview(p.ctx.WorkDir, p.tabs[newTab].Path, p.ctx.Epoch)
-			}
+			return p, p.switchTab(newTab)
 		}
 	}
 
@@ -617,6 +630,23 @@ func (p *Plugin) forwardMouseReleaseToInlineEditor(col, row int) tea.Cmd {
 		}
 		return nil
 	}
+}
+
+// isSessionAlive checks if a tmux session exists.
+func isSessionAlive(sessionName string) bool {
+	if sessionName == "" {
+		return false
+	}
+	err := exec.Command("tmux", "has-session", "-t", sessionName).Run()
+	return err == nil
+}
+
+// killSession kills a tmux session by name.
+func killSession(sessionName string) {
+	if sessionName == "" {
+		return
+	}
+	_ = exec.Command("tmux", "kill-session", "-t", sessionName).Run()
 }
 
 // selectTreeItem selects the given tree item and loads its preview.

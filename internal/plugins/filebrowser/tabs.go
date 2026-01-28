@@ -22,6 +22,11 @@ type FileTab struct {
 	Scroll int
 	Loaded bool
 	Result PreviewResult
+
+	// Edit state (persisted when switching away from inline editor)
+	EditSession   string    // Tmux session name (empty if not in edit mode)
+	EditOrigMtime time.Time // Original file mtime when editing started
+	EditEditor    string    // Editor command used (vim, nano, etc.)
 }
 
 type tabHit struct {
@@ -143,6 +148,14 @@ func (p *Plugin) closeTab(index int) tea.Cmd {
 		return nil
 	}
 
+	// Kill any tmux session associated with this tab
+	p.killTabEditSession(index)
+
+	// If closing the active tab that's currently in edit mode, clean up plugin state
+	if index == p.activeTab && p.inlineEditMode {
+		p.clearPluginEditState()
+	}
+
 	if index == p.activeTab {
 		p.saveActiveTabState()
 	}
@@ -182,6 +195,12 @@ func (p *Plugin) applyActiveTab() tea.Cmd {
 	p.resetPreviewContent()
 	p.updateWatchedFile()
 	p.syncTreeSelection(tab.Path)
+
+	// Check if this tab has a persisted edit session to restore
+	if p.restoreEditStateFromTab() {
+		// Re-attach to the still-running tmux session
+		return p.reattachInlineEditSession()
+	}
 
 	if tab.Loaded {
 		p.applyPreviewResult(tab.Result)
@@ -460,4 +479,91 @@ func (p *Plugin) tabLabels(width int) []string {
 	}
 
 	return labels
+}
+
+// saveEditStateToTab saves the current plugin-level edit state to the active tab.
+// Call this when switching away from a tab that's in inline edit mode.
+func (p *Plugin) saveEditStateToTab() {
+	if len(p.tabs) == 0 || p.activeTab < 0 || p.activeTab >= len(p.tabs) {
+		return
+	}
+	if !p.inlineEditMode || p.inlineEditSession == "" {
+		return
+	}
+	tab := &p.tabs[p.activeTab]
+	tab.EditSession = p.inlineEditSession
+	tab.EditOrigMtime = p.inlineEditOrigMtime
+	tab.EditEditor = p.inlineEditEditor
+}
+
+// clearPluginEditState clears plugin-level edit state without killing the tmux session.
+// Used when detaching from editor (session keeps running in background).
+func (p *Plugin) clearPluginEditState() {
+	p.inlineEditMode = false
+	p.inlineEditSession = ""
+	p.inlineEditFile = ""
+	p.inlineEditOrigMtime = time.Time{}
+	p.inlineEditEditor = ""
+	p.inlineEditorDragging = false
+	p.inlineEditor.Exit()
+}
+
+// restoreEditStateFromTab restores plugin-level edit state from the active tab.
+// Returns true if the tab has a live edit session to restore.
+func (p *Plugin) restoreEditStateFromTab() bool {
+	if len(p.tabs) == 0 || p.activeTab < 0 || p.activeTab >= len(p.tabs) {
+		return false
+	}
+	tab := &p.tabs[p.activeTab]
+	if tab.EditSession == "" {
+		return false
+	}
+	// Check if session is still alive
+	if !isSessionAlive(tab.EditSession) {
+		// Session died while away - clear tab edit state
+		tab.EditSession = ""
+		tab.EditOrigMtime = time.Time{}
+		tab.EditEditor = ""
+		return false
+	}
+	// Restore to plugin-level state
+	p.inlineEditMode = true
+	p.inlineEditSession = tab.EditSession
+	p.inlineEditFile = tab.Path
+	p.inlineEditOrigMtime = tab.EditOrigMtime
+	p.inlineEditEditor = tab.EditEditor
+	return true
+}
+
+// killTabEditSession kills the tmux session for a tab if it has one.
+func (p *Plugin) killTabEditSession(index int) {
+	if index < 0 || index >= len(p.tabs) {
+		return
+	}
+	tab := &p.tabs[index]
+	if tab.EditSession != "" {
+		killSession(tab.EditSession)
+		tab.EditSession = ""
+		tab.EditOrigMtime = time.Time{}
+		tab.EditEditor = ""
+	}
+}
+
+// cleanupAllEditSessions kills all tmux edit sessions for all tabs.
+// Called on plugin exit to ensure no orphan tmux sessions remain.
+func (p *Plugin) cleanupAllEditSessions() {
+	// Clean up current plugin-level edit state
+	if p.inlineEditMode && p.inlineEditSession != "" {
+		killSession(p.inlineEditSession)
+		p.clearPluginEditState()
+	}
+	// Clean up any backgrounded sessions in tabs
+	for i := range p.tabs {
+		if p.tabs[i].EditSession != "" {
+			killSession(p.tabs[i].EditSession)
+			p.tabs[i].EditSession = ""
+			p.tabs[i].EditOrigMtime = time.Time{}
+			p.tabs[i].EditEditor = ""
+		}
+	}
 }

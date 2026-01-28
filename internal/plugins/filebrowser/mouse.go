@@ -33,12 +33,12 @@ func (p *Plugin) handleMouse(msg tea.MouseMsg) (*Plugin, tea.Cmd) {
 	if p.inlineEditMode && p.inlineEditor != nil && p.inlineEditor.IsActive() {
 		action := p.mouseHandler.HandleMouse(msg)
 
-		// Helper to handle click-away: always show confirmation when session is alive
-		// (we can't detect unsaved changes in vim, so always confirm to be safe)
+		// Helper to handle click-away: save edit state to tab and detach
+		// The tmux session keeps running in background; returning to the tab restores it
 		handleClickAway := func(regionID string, regionData interface{}) (*Plugin, tea.Cmd) {
 			p.inlineEditorDragging = false // Cancel any drag in progress
-			// First check if the editor session is still alive
-			// (vim may have exited via :wq before this click)
+
+			// Check if the editor session is still alive
 			if !p.isInlineEditSessionAlive() {
 				// Session is dead - just clean up and process click
 				p.exitInlineEditMode()
@@ -47,13 +47,14 @@ func (p *Plugin) handleMouse(msg tea.MouseMsg) (*Plugin, tea.Cmd) {
 				return p.processPendingClickAction()
 			}
 
-			// Session is alive - always show confirmation
-			// (can't detect unsaved vim changes, so always ask to be safe)
+			// Session is alive - save state to tab and detach (no confirmation)
+			p.saveEditStateToTab()
+			p.clearPluginEditState()
+
+			// Process the click directly
 			p.pendingClickRegion = regionID
 			p.pendingClickData = regionData
-			p.showExitConfirmation = true
-			p.exitConfirmSelection = 0 // Default to Save & Exit
-			return p, nil
+			return p.processPendingClickAction()
 		}
 
 		// Handle click (mouse press) - start potential drag

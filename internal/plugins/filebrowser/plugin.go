@@ -300,6 +300,8 @@ func (p *Plugin) Stop() {
 	if p.watcher != nil {
 		p.watcher.Stop()
 	}
+	// Kill any active inline edit sessions
+	p.cleanupAllEditSessions()
 	// Save state on shutdown
 	p.saveState()
 }
