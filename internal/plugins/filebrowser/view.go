@@ -782,9 +782,15 @@ func (p *Plugin) renderPreviewPane(visibleHeight int) string {
 		} else {
 			// Get line content
 			var lineContent string
-			if p.contentSearchMode && len(p.contentSearchMatches) > 0 && showLineNumbers {
-				// Use raw lines for highlighting (loses syntax highlighting on matched lines)
-				lineContent = p.highlightLineMatches(i)
+			if p.contentSearchMode && len(p.contentSearchMatches) > 0 {
+				if p.markdownRenderMode && p.isMarkdownFile() && len(p.markdownRendered) > 0 {
+					lineContent = p.highlightMarkdownLineMatches(i)
+				} else if showLineNumbers {
+					// Use raw lines for highlighting (loses syntax highlighting on matched lines)
+					lineContent = p.highlightLineMatches(i)
+				} else if i < len(lines) {
+					lineContent = lines[i]
+				}
 			} else if i < len(lines) {
 				lineContent = lines[i]
 			}

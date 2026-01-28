@@ -861,7 +861,7 @@ func (p *Plugin) handleContentSearchKey(msg tea.KeyMsg) (plugin.Plugin, tea.Cmd)
 	case "j", "down":
 		// Scroll preview down one line
 		visibleHeight := p.height - 4
-		maxScroll := len(p.previewLines) - visibleHeight
+		maxScroll := len(p.getPreviewLines()) - visibleHeight
 		if maxScroll < 0 {
 			maxScroll = 0
 		}
@@ -880,7 +880,7 @@ func (p *Plugin) handleContentSearchKey(msg tea.KeyMsg) (plugin.Plugin, tea.Cmd)
 	case "ctrl+d":
 		// Half-page scroll down while keeping search active
 		visibleHeight := p.height - 4
-		maxScroll := len(p.previewLines) - visibleHeight
+		maxScroll := len(p.getPreviewLines()) - visibleHeight
 		if maxScroll < 0 {
 			maxScroll = 0
 		}

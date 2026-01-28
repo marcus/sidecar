@@ -503,6 +503,10 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 		// Invalidate markdown cache when size changes (width affects rendering)
 		if p.markdownRenderMode && p.isMarkdownFile() {
 			p.markdownRendered = nil
+			p.renderMarkdownContent()
+			if p.contentSearchMode && p.contentSearchQuery != "" {
+				p.updateContentMatches()
+			}
 		}
 		// Invalidate image cache when size changes (will re-render at new size)
 		p.imageResult = nil

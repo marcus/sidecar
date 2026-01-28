@@ -15,6 +15,7 @@ import (
 
 	"github.com/atotto/clipboard"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/marcus/sidecar/internal/msg"
 	"github.com/marcus/sidecar/internal/plugin"
 )
@@ -477,7 +478,7 @@ func (p *Plugin) updateContentMatches() {
 
 	query := strings.ToLower(p.contentSearchQuery)
 
-	for lineNo, line := range p.previewLines {
+	for lineNo, line := range p.getSearchableLines() {
 		lineLower := strings.ToLower(line)
 		startIdx := 0
 		for {
@@ -516,7 +517,7 @@ func (p *Plugin) scrollToContentMatch() {
 		targetScroll = 0
 	}
 
-	maxScroll := len(p.previewLines) - visibleHeight
+	maxScroll := len(p.getPreviewLines()) - visibleHeight
 	if maxScroll < 0 {
 		maxScroll = 0
 	}
@@ -1208,6 +1209,19 @@ func (p *Plugin) getPreviewLines() []string {
 	return p.previewLines
 }
 
+// getSearchableLines returns plain-text lines for content search.
+// In markdown render mode, strips ANSI codes from rendered lines.
+func (p *Plugin) getSearchableLines() []string {
+	if p.markdownRenderMode && p.isMarkdownFile() && len(p.markdownRendered) > 0 {
+		stripped := make([]string, len(p.markdownRendered))
+		for i, line := range p.markdownRendered {
+			stripped[i] = ansi.Strip(line)
+		}
+		return stripped
+	}
+	return p.previewLines
+}
+
 // toggleMarkdownRender toggles between rendered and raw markdown view.
 func (p *Plugin) toggleMarkdownRender() {
 	if !p.isMarkdownFile() {
@@ -1216,6 +1230,10 @@ func (p *Plugin) toggleMarkdownRender() {
 	p.markdownRenderMode = !p.markdownRenderMode
 	if p.markdownRenderMode && len(p.markdownRendered) == 0 {
 		p.renderMarkdownContent()
+	}
+	// Re-run search if active (line indices change between modes)
+	if p.contentSearchMode && p.contentSearchQuery != "" {
+		p.updateContentMatches()
 	}
 }
 
