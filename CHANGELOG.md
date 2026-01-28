@@ -2,6 +2,20 @@
 
 All notable changes to sidecar are documented here.
 
+## [v0.53.0] - 2026-01-28
+
+### Features
+
+- Auto-load preview on cursor landing after state transitions
+- Add search highlighting in markdown preview mode
+
+### Bug Fixes
+
+- Fix ANSI mouse escape sequences appearing in modal filter inputs
+- Fix stale shell entries across worktrees
+- Better git error display (modal)
+- Throttle inline editor mouse drag to prevent subprocess spam
+
 ## [v0.52.0] - 2026-01-27
 
 ### Features
