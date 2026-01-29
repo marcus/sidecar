@@ -381,7 +381,8 @@ var (
 
 // RenderTab renders a tab label using the current tab theme.
 // tabIndex is the 0-based index of this tab, totalTabs is the total count.
-func RenderTab(label string, tabIndex, totalTabs int, isActive bool) string {
+// If isPreview is true, the label is rendered in italic to indicate an ephemeral preview tab.
+func RenderTab(label string, tabIndex, totalTabs int, isActive bool, isPreview bool) string {
 	style := CurrentTabStyle
 	colors := CurrentTabColors
 
@@ -395,23 +396,23 @@ func RenderTab(label string, tabIndex, totalTabs int, isActive bool) string {
 
 	switch style {
 	case "gradient":
-		return renderGradientTab(label, tabIndex, totalTabs, isActive, colors)
+		return renderGradientTab(label, tabIndex, totalTabs, isActive, isPreview, colors)
 	case "per-tab":
-		return renderPerTabColor(label, tabIndex, isActive, colors)
+		return renderPerTabColor(label, tabIndex, isActive, isPreview, colors)
 	case "solid":
-		return renderSolidTab(label, isActive)
+		return renderSolidTab(label, isActive, isPreview)
 	case "minimal":
-		return renderMinimalTab(label, isActive)
+		return renderMinimalTab(label, isActive, isPreview)
 	default:
 		// Default to gradient
-		return renderGradientTab(label, tabIndex, totalTabs, isActive, colors)
+		return renderGradientTab(label, tabIndex, totalTabs, isActive, isPreview, colors)
 	}
 }
 
 // RenderGradientTab renders a tab label with a gradient background.
 // Kept for backwards compatibility - delegates to RenderTab.
 func RenderGradientTab(label string, tabIndex, totalTabs int, isActive bool) string {
-	return renderGradientTab(label, tabIndex, totalTabs, isActive, CurrentTabColors)
+	return renderGradientTab(label, tabIndex, totalTabs, isActive, false, CurrentTabColors)
 }
 
 func tabTextColor(isActive bool, backgrounds []RGB) lipgloss.Color {
@@ -510,7 +511,7 @@ func RenderPillWithStyle(text string, style lipgloss.Style, outerBg lipgloss.Col
 }
 
 // renderGradientTab renders a tab with per-character gradient coloring.
-func renderGradientTab(label string, tabIndex, totalTabs int, isActive bool, colors []RGB) string {
+func renderGradientTab(label string, tabIndex, totalTabs int, isActive bool, isPreview bool, colors []RGB) string {
 	if totalTabs == 0 {
 		totalTabs = 1
 	}
@@ -564,6 +565,9 @@ func renderGradientTab(label string, tabIndex, totalTabs int, isActive bool, col
 		} else {
 			style = lipgloss.NewStyle().Background(bg).Foreground(textColor)
 		}
+		if isPreview {
+			style = style.Italic(true)
+		}
 		result += style.Render(string(ch))
 	}
 
@@ -578,9 +582,9 @@ func renderGradientTab(label string, tabIndex, totalTabs int, isActive bool, col
 }
 
 // renderPerTabColor renders a tab with a single solid color from the colors array.
-func renderPerTabColor(label string, tabIndex int, isActive bool, colors []RGB) string {
+func renderPerTabColor(label string, tabIndex int, isActive bool, isPreview bool, colors []RGB) string {
 	if len(colors) == 0 {
-		return renderSolidTab(label, isActive)
+		return renderSolidTab(label, isActive, isPreview)
 	}
 
 	// Guard against negative tabIndex (Go modulo returns negative for negative input)
@@ -614,6 +618,9 @@ func renderPerTabColor(label string, tabIndex int, isActive bool, colors []RGB) 
 	} else {
 		style = lipgloss.NewStyle().Background(bg).Foreground(textColor)
 	}
+	if isPreview {
+		style = style.Italic(true)
+	}
 
 	if PillTabsEnabled {
 		leftCap := lipgloss.NewStyle().Foreground(bg).Background(BgSecondary).Render(pillLeftCap)
@@ -624,7 +631,7 @@ func renderPerTabColor(label string, tabIndex int, isActive bool, colors []RGB) 
 }
 
 // renderSolidTab renders a tab with the theme's primary/tertiary colors.
-func renderSolidTab(label string, isActive bool) string {
+func renderSolidTab(label string, isActive bool, isPreview bool) string {
 	padded := " " + label + " "
 	if !PillTabsEnabled {
 		padded = "  " + label + "  "
@@ -642,6 +649,9 @@ func renderSolidTab(label string, isActive bool) string {
 	if isActive {
 		style = style.Bold(true)
 	}
+	if isPreview {
+		style = style.Italic(true)
+	}
 
 	if PillTabsEnabled {
 		leftCap := lipgloss.NewStyle().Foreground(bg).Background(BgSecondary).Render(pillLeftCap)
@@ -652,7 +662,7 @@ func renderSolidTab(label string, isActive bool) string {
 }
 
 // renderMinimalTab renders a tab with no background, using underline for active.
-func renderMinimalTab(label string, isActive bool) string {
+func renderMinimalTab(label string, isActive bool, isPreview bool) string {
 	padded := "  " + label + "  "
 
 	var style lipgloss.Style
@@ -660,6 +670,9 @@ func renderMinimalTab(label string, isActive bool) string {
 		style = lipgloss.NewStyle().Foreground(Primary).Bold(true).Underline(true)
 	} else {
 		style = lipgloss.NewStyle().Foreground(TextMuted)
+	}
+	if isPreview {
+		style = style.Italic(true)
 	}
 
 	return style.Render(padded)

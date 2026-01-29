@@ -3,6 +3,7 @@ package filebrowser
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
 	"time"
 
@@ -96,9 +97,11 @@ func (p *Plugin) handleTreeKey(key string) (plugin.Plugin, tea.Cmd) {
 			if node.IsDir {
 				_ = p.tree.Expand(node)
 			} else {
-				// Load file preview and switch to preview pane
+				// Load file preview, switch to preview pane, and pin the tab
 				p.activePane = PanePreview
-				return p, p.openTab(node.Path, TabOpenReplace)
+				cmd := p.openTab(node.Path, TabOpenReplace)
+				p.pinTab(p.activeTab)
+				return p, cmd
 			}
 		}
 
@@ -109,9 +112,11 @@ func (p *Plugin) handleTreeKey(key string) (plugin.Plugin, tea.Cmd) {
 				// Toggle expand/collapse
 				_ = p.tree.Toggle(node)
 			} else {
-				// Load file preview and switch to preview pane
+				// Load file preview, switch to preview pane, and pin the tab
 				p.activePane = PanePreview
-				return p, p.openTab(node.Path, TabOpenReplace)
+				cmd := p.openTab(node.Path, TabOpenReplace)
+				p.pinTab(p.activeTab)
+				return p, cmd
 			}
 		}
 
@@ -174,6 +179,7 @@ func (p *Plugin) handleTreeKey(key string) (plugin.Plugin, tea.Cmd) {
 		node := p.tree.GetNode(p.treeCursor)
 		if node != nil && !node.IsDir {
 			cmd := p.openTab(node.Path, TabOpenReplace)
+			p.pinTab(p.activeTab)
 			// Use inline editing if supported, otherwise open in external editor
 			if p.isInlineEditSupported(node.Path) {
 				return p, tea.Batch(cmd, p.enterInlineEditMode(node.Path))
@@ -186,6 +192,7 @@ func (p *Plugin) handleTreeKey(key string) (plugin.Plugin, tea.Cmd) {
 		node := p.tree.GetNode(p.treeCursor)
 		if node != nil && !node.IsDir {
 			cmd := p.openTab(node.Path, TabOpenReplace)
+			p.pinTab(p.activeTab)
 			return p, tea.Batch(cmd, p.openFile(node.Path))
 		}
 
@@ -193,6 +200,13 @@ func (p *Plugin) handleTreeKey(key string) (plugin.Plugin, tea.Cmd) {
 		node := p.tree.GetNode(p.treeCursor)
 		if node != nil && !node.IsDir {
 			p.activePane = PanePreview
+			// If the active tab is a preview of this file, promote it instead of duplicating
+			if p.activeTab >= 0 && p.activeTab < len(p.tabs) &&
+				p.tabs[p.activeTab].IsPreview &&
+				filepath.Clean(p.tabs[p.activeTab].Path) == filepath.Clean(node.Path) {
+				p.pinTab(p.activeTab)
+				return p, nil
+			}
 			return p, p.openTab(node.Path, TabOpenNew)
 		}
 
@@ -1232,7 +1246,7 @@ func (p *Plugin) loadPreviewForCursor() tea.Cmd {
 	if node == nil || node.IsDir {
 		return nil
 	}
-	return p.openTab(node.Path, TabOpenReplace)
+	return p.openTab(node.Path, TabOpenPreview)
 }
 
 // openBlameView opens the blame view for the specified file.

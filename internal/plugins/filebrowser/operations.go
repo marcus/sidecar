@@ -629,9 +629,11 @@ func (p *Plugin) selectQuickOpenMatch() (plugin.Plugin, tea.Cmd) {
 		}
 	}
 
-	// Load preview
+	// Load preview and pin (explicit user selection)
 	p.activePane = PanePreview
-	return p, p.openTab(match.Path, TabOpenReplace)
+	cmd := p.openTab(match.Path, TabOpenReplace)
+	p.pinTab(p.activeTab)
+	return p, cmd
 }
 
 // openProjectSearch enters project-wide search mode.
@@ -675,9 +677,10 @@ func (p *Plugin) openProjectSearchResult() (plugin.Plugin, tea.Cmd) {
 		}
 	}
 
-	// Load preview
+	// Load preview and pin (explicit user selection)
 	p.activePane = PanePreview
 	cmd := p.openTabAtLine(path, lineNo, TabOpenReplace)
+	p.pinTab(p.activeTab)
 
 	// Set up content search for highlighting the matched term
 	if searchQuery != "" {

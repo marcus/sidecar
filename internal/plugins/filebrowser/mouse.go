@@ -351,8 +351,13 @@ func (p *Plugin) handleMouseDoubleClick(action mouse.MouseAction) (*Plugin, tea.
 		return p, nil
 	}
 
-	// Open file in editor (same as 'e' key)
-	return p, p.openFile(node.Path)
+	// Open file in editor (same as 'e' key) and pin the tab
+	cmd := p.openTab(node.Path, TabOpenReplace)
+	p.pinTab(p.activeTab)
+	if p.isInlineEditSupported(node.Path) {
+		return p, tea.Batch(cmd, p.enterInlineEditMode(node.Path))
+	}
+	return p, tea.Batch(cmd, p.openFile(node.Path))
 }
 
 // handleMouseScroll handles scroll wheel actions.

@@ -15,13 +15,15 @@ type TabOpenMode int
 const (
 	TabOpenReplace TabOpenMode = iota
 	TabOpenNew
+	TabOpenPreview
 )
 
 type FileTab struct {
-	Path   string
-	Scroll int
-	Loaded bool
-	Result PreviewResult
+	Path      string
+	Scroll    int
+	Loaded    bool
+	Result    PreviewResult
+	IsPreview bool // Ephemeral preview tab, replaced on next j/k navigation
 
 	// Edit state (persisted when switching away from inline editor)
 	EditSession   string    // Tmux session name (empty if not in edit mode)
@@ -33,6 +35,21 @@ type tabHit struct {
 	Index int
 	X     int
 	Width int
+}
+
+func (p *Plugin) findPreviewTab() int {
+	for i, tab := range p.tabs {
+		if tab.IsPreview {
+			return i
+		}
+	}
+	return -1
+}
+
+func (p *Plugin) pinTab(idx int) {
+	if idx >= 0 && idx < len(p.tabs) {
+		p.tabs[idx].IsPreview = false
+	}
 }
 
 func (p *Plugin) findTab(path string) int {
@@ -81,8 +98,28 @@ func (p *Plugin) openTab(path string, mode TabOpenMode) tea.Cmd {
 
 	p.normalizeActiveTab()
 
-	if idx := p.findTab(path); idx >= 0 {
-		return p.switchTab(idx)
+	// Preview mode: reuse or create a single ephemeral preview tab
+	if mode == TabOpenPreview {
+		if idx := p.findPreviewTab(); idx >= 0 {
+			if filepath.Clean(p.tabs[idx].Path) == filepath.Clean(path) {
+				return p.switchTab(idx)
+			}
+			p.saveActiveTabState()
+			p.tabs[idx] = FileTab{Path: path, IsPreview: true}
+			p.activeTab = idx
+			return p.applyActiveTab()
+		}
+		p.saveActiveTabState()
+		p.tabs = append(p.tabs, FileTab{Path: path, IsPreview: true})
+		p.activeTab = len(p.tabs) - 1
+		return p.applyActiveTab()
+	}
+
+	// Only deduplicate for non-TabOpenNew; TabOpenNew always creates a new tab
+	if mode != TabOpenNew {
+		if idx := p.findTab(path); idx >= 0 {
+			return p.switchTab(idx)
+		}
 	}
 
 	p.saveActiveTabState()
@@ -120,6 +157,23 @@ func (p *Plugin) switchTab(index int) tea.Cmd {
 	}
 	if index == p.activeTab {
 		return nil
+	}
+
+	// Auto-close preview tab when switching to a pinned tab
+	if previewIdx := p.findPreviewTab(); previewIdx >= 0 && previewIdx != index {
+		p.killTabEditSession(previewIdx)
+		p.tabs = append(p.tabs[:previewIdx], p.tabs[previewIdx+1:]...)
+		if previewIdx < index {
+			index--
+		}
+		if previewIdx < p.activeTab {
+			p.activeTab--
+		} else if previewIdx == p.activeTab {
+			p.activeTab = index
+		}
+		if index < 0 || index >= len(p.tabs) {
+			return nil
+		}
 	}
 
 	p.saveActiveTabState()
@@ -336,7 +390,7 @@ func (p *Plugin) renderPreviewTabs(width int) string {
 
 	for i, label := range labels {
 		isActive := i == p.activeTab
-		item := styles.RenderTab(label, i, len(p.tabs), isActive)
+		item := styles.RenderTab(label, i, len(p.tabs), isActive, p.tabs[i].IsPreview)
 		rendered = append(rendered, item)
 		widths = append(widths, lipgloss.Width(item))
 	}

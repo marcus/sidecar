@@ -279,6 +279,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		} else {
 			m.updateChangelog = msg.Content
 		}
+		m.clearChangelogModal() // Force rebuild with new content
 		return m, nil
 
 	case FocusPluginByIDMsg:

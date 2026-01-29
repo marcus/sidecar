@@ -92,6 +92,27 @@ func (p *Plugin) ensureMyModal() {
 }
 ```
 
+#### Async content invalidation
+
+When a modal's content depends on data loaded asynchronously (network fetch, file read, etc.), the cache **must** be invalidated when that data arrives. The width-only cache check will not detect content changes.
+
+```go
+// BAD: Content loaded async but cache only checks width
+case MyDataLoadedMsg:
+    p.myData = msg.Data
+    return p, nil  // Modal cache still has stale content!
+
+// GOOD: Invalidate modal cache when content changes
+case MyDataLoadedMsg:
+    p.myData = msg.Data
+    p.clearMyModal()  // Force rebuild with new content
+    return p, nil
+```
+
+**Pattern**: Any `ensureModal()` that renders data from a field set by an async message handler must have a corresponding `clearModal()` call in that message handler.
+
+**Common pitfall**: The modal renders correctly on second open (because close calls `clearModal()`), but the first display is stuck on placeholder content. This makes the bug intermittent and hard to spot during testing.
+
 **The key handler MUST call ensure before checking nil:**
 ```go
 func (p *Plugin) handleMyModalKeys(msg tea.KeyMsg) tea.Cmd {

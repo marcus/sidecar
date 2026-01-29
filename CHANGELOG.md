@@ -2,6 +2,22 @@
 
 All notable changes to sidecar are documented here.
 
+## [Unreleased]
+
+### Features
+
+- **Preview tabs in file browser**: j/k navigation creates ephemeral preview tabs (italic in tab bar) that auto-replace on next navigation. Press `t`, `enter`, or `e` to pin permanently. Prevents duplicate tabs when browsing then opening files.
+
+### Bug Fixes
+
+- **Changelog modal not updating after fetch**: Added `clearChangelogModal()` after async content load so modal rebuilds with actual content instead of staying stuck on "Loading changelog..."
+- **'t' key not opening new tabs**: `TabOpenNew` now skips dedup so `t` always creates a new tab
+- **Preview tab ANSI escape codes visible**: Fixed `[3m...[0m` leaking into tab labels by applying italic via lipgloss style attributes instead of pre-rendering
+
+### Docs
+
+- Added async content invalidation warning to modal caching guide
+
 ## [v0.55.0] - 2026-01-29
 
 ### Features

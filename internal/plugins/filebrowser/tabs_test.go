@@ -175,7 +175,7 @@ func TestTabs_CycleSingleTab(t *testing.T) {
 }
 
 // TestTabs_OpenExistingSwitchesInsteadOfDuplicating verifies opening an already-open file
-// switches to that tab instead of creating a duplicate.
+// with TabOpenReplace switches to that tab instead of creating a duplicate.
 func TestTabs_OpenExistingSwitchesInsteadOfDuplicating(t *testing.T) {
 	tmpDir := t.TempDir()
 	p := createTabTestPlugin(t, tmpDir)
@@ -187,8 +187,8 @@ func TestTabs_OpenExistingSwitchesInsteadOfDuplicating(t *testing.T) {
 	p.activeTab = 0
 	p.previewFile = "main.go"
 
-	// Try to open src/helper.go which is already open
-	_ = p.openTab("src/helper.go", TabOpenNew)
+	// Try to open src/helper.go which is already open (TabOpenReplace deduplicates)
+	_ = p.openTab("src/helper.go", TabOpenReplace)
 
 	// Should switch to existing tab, not create new one
 	if len(p.tabs) != 2 {
@@ -199,6 +199,84 @@ func TestTabs_OpenExistingSwitchesInsteadOfDuplicating(t *testing.T) {
 	}
 	if p.previewFile != "src/helper.go" {
 		t.Errorf("expected previewFile src/helper.go, got %s", p.previewFile)
+	}
+}
+
+// TestTabs_TabOpenNewAlwaysCreatesNewTab verifies TabOpenNew creates a new tab
+// even if the file is already open (intentional user action).
+func TestTabs_TabOpenNewAlwaysCreatesNewTab(t *testing.T) {
+	tmpDir := t.TempDir()
+	p := createTabTestPlugin(t, tmpDir)
+
+	p.tabs = []FileTab{
+		{Path: "main.go", Loaded: true, Scroll: 5},
+	}
+	p.activeTab = 0
+	p.previewFile = "main.go"
+
+	_ = p.openTab("main.go", TabOpenNew)
+
+	if len(p.tabs) != 2 {
+		t.Fatalf("expected 2 tabs (TabOpenNew should not deduplicate), got %d", len(p.tabs))
+	}
+	if p.activeTab != 1 {
+		t.Errorf("expected activeTab 1, got %d", p.activeTab)
+	}
+}
+
+// TestTabs_PreviewTabReplacedOnNavigation verifies that preview tabs are replaced
+// when navigating to a different file.
+func TestTabs_PreviewTabReplacedOnNavigation(t *testing.T) {
+	tmpDir := t.TempDir()
+	p := createTabTestPlugin(t, tmpDir)
+
+	// Open first file as preview
+	_ = p.openTab("file1.go", TabOpenPreview)
+	if len(p.tabs) != 1 {
+		t.Fatalf("expected 1 tab, got %d", len(p.tabs))
+	}
+	if !p.tabs[0].IsPreview {
+		t.Error("expected tab to be preview")
+	}
+
+	// Navigate to second file — should replace the preview tab
+	_ = p.openTab("file2.go", TabOpenPreview)
+	if len(p.tabs) != 1 {
+		t.Fatalf("expected 1 tab (preview replaced), got %d", len(p.tabs))
+	}
+	if p.tabs[0].Path != "file2.go" {
+		t.Errorf("expected file2.go, got %s", p.tabs[0].Path)
+	}
+	if !p.tabs[0].IsPreview {
+		t.Error("expected tab to still be preview")
+	}
+}
+
+// TestTabs_PinPromotesPreviewTab verifies that pinning a preview tab makes it permanent.
+func TestTabs_PinPromotesPreviewTab(t *testing.T) {
+	tmpDir := t.TempDir()
+	p := createTabTestPlugin(t, tmpDir)
+
+	_ = p.openTab("file1.go", TabOpenPreview)
+	if !p.tabs[0].IsPreview {
+		t.Fatal("expected preview tab")
+	}
+
+	p.pinTab(0)
+	if p.tabs[0].IsPreview {
+		t.Error("expected tab to be pinned (not preview)")
+	}
+
+	// Navigate to another file — should create new preview tab, not replace pinned
+	_ = p.openTab("file2.go", TabOpenPreview)
+	if len(p.tabs) != 2 {
+		t.Fatalf("expected 2 tabs (pinned + preview), got %d", len(p.tabs))
+	}
+	if p.tabs[0].IsPreview {
+		t.Error("first tab should still be pinned")
+	}
+	if !p.tabs[1].IsPreview {
+		t.Error("second tab should be preview")
 	}
 }
 

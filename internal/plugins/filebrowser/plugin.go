@@ -340,7 +340,7 @@ func (p *Plugin) saveState() {
 
 	tabStates := make([]state.FileBrowserTabState, 0, len(p.tabs))
 	for _, tab := range p.tabs {
-		if tab.Path == "" {
+		if tab.Path == "" || tab.IsPreview {
 			continue
 		}
 		tabStates = append(tabStates, state.FileBrowserTabState{
@@ -741,8 +741,15 @@ func (p *Plugin) View(width, height int) string {
 // IsFocused returns whether the plugin is focused.
 func (p *Plugin) IsFocused() bool { return p.focused }
 
-// SetFocused sets the focus state.
-func (p *Plugin) SetFocused(f bool) { p.focused = f }
+// SetFocused sets the focus state. Closes ephemeral preview tab on blur.
+func (p *Plugin) SetFocused(f bool) {
+	p.focused = f
+	if !f {
+		if idx := p.findPreviewTab(); idx >= 0 {
+			p.closeTab(idx)
+		}
+	}
+}
 
 // Commands returns the available commands.
 func (p *Plugin) Commands() []plugin.Command {

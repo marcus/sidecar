@@ -509,7 +509,7 @@ func (m Model) renderHeader() string {
 	var tabs []string
 	for i, p := range plugins {
 		isActive := i == m.activePlugin
-		tab := styles.RenderTab(p.Name(), i, len(plugins), isActive)
+		tab := styles.RenderTab(p.Name(), i, len(plugins), isActive, false)
 		tabs = append(tabs, tab)
 	}
 	tabBar := strings.Join(tabs, " ")
@@ -556,7 +556,7 @@ func (m Model) getTabBounds() []TabBounds {
 	totalTabWidth := 0
 	for i, p := range plugins {
 		isActive := i == m.activePlugin
-		tab := styles.RenderTab(p.Name(), i, len(plugins), isActive)
+		tab := styles.RenderTab(p.Name(), i, len(plugins), isActive, false)
 		w := lipgloss.Width(tab)
 		tabWidths = append(tabWidths, w)
 		totalTabWidth += w
