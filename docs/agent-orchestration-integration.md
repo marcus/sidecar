@@ -205,27 +205,22 @@ Read the task and its full context:
   td show td-a1b2
   td context td-a1b2
 
-Start a work session and log your progress:
+Start a work session and log your plan:
   td usage --new-session
   td log --decision "your plan here"
 
-Produce a plan: which files to modify, the approach, and any risks.
+Plan the implementation. Use your judgment on scope and structure.
+Your plan will be reviewed before implementation begins.
 Log your plan as a decision in td when done.
 ```
 
+The prompt is identical regardless of whether the task is a fully specified epic, a leaf task with acceptance criteria, or a bare task created from a user's idea. The planner reads the task, assesses what's there, and plans accordingly.
+
 The orchestrator does **not** read the task and inject its content. The planner agent runs `td show` and `td context` itself, reads acceptance criteria, prior logs, handoffs, and comments, then produces a plan.
 
-The plan is captured from the agent's output (or read from td logs) and displayed in the TUI. The user can accept, modify, or reject before implementation begins.
+The planner always runs, regardless of how well-specified the task is. Even for detailed epics with subtasks, the planner reads the codebase and logs its assessment. For bare tasks created from a user prompt, the planner does the heavy lifting: reading code, determining scope, and adding structure. The planner's effort scales naturally with how much planning the task needs — no special instructions required.
 
-```go
-type Plan struct {
-    Summary     string
-    Steps       []string
-    FilesTouch  []string
-    Risks       []string
-    Accepted    bool      // user can review before proceeding
-}
-```
+The plan is whatever the planner logs to td (via `td log --decision`). There is no structured `Plan` type in the orchestrator. The TUI's Plan Review view reads the planner's decision logs from td and displays them. The user can accept, modify (by editing the task in td), or reject before implementation begins. The transition from "planner running" to "plan ready for review" is signaled by the planner process exiting.
 
 **Phase 2: Implement**
 
@@ -571,12 +566,17 @@ The adapter parses whatever format the backend uses. The orchestrator only sees 
 
 ### TUI Plugin Design
 
-The orchestrator plugin integrates with sidecar's existing plugin system.
+The orchestrator plugin integrates with sidecar's existing plugin system. All UI implementation must follow `docs/guides/ui-feature-guide.md`:
+
+- **Modals**: Built with `internal/modal`, rendered with `ui.OverlayModal`, no manual hit region math. Use `ensureModal()` pattern in both View and Update handlers. Each modal view mode gets a dedicated `FocusContext()` for correct footer hints.
+- **Keyboard shortcuts**: Commands + FocusContext + bindings must match. Names are short (one word preferred). Priorities set per the guide. See `docs/guides/keyboard-shortcuts-reference.md` for established patterns.
+- **Mouse support**: Rebuild hit regions on each render. General regions first, specific last.
+- **Rendering**: Constrain output to allocated height. Use `contentHeight := height - headerLines - footerLines`. Never render plugin-level footers — the app renders the unified footer from `Commands()`.
 
 #### View Modes
 
-1. **Task Selection** - Pick a td task to work on (or create one)
-2. **Plan Review** - See the agent's plan, accept/modify/reject
+1. **Task Selection** - Pick a td task to work on, or press `n` to start from an idea
+2. **Plan Review** - See the planner's decision logs from td, accept/modify/reject
 3. **Implementation Progress** - Watch files being modified, see agent output
 4. **Validation Results** - See each validator's findings, approval/rejection
 5. **Iteration View** - Show rejection feedback being sent back to implementer
@@ -596,6 +596,8 @@ Orchestration worktrees appear in the workspace plugin's worktree list with a li
 The badge updates in real-time as the orchestration engine emits events.
 
 #### Run Detail Modal
+
+> Implementation note: follows `docs/guides/ui-feature-guide.md` — built with `internal/modal`, uses `ui.OverlayModal` for background dim, `ensureModal()` in both View/Update, dedicated `FocusContext()` for footer hints. The modal uses `modal.Custom` sections for the live-updating timeline.
 
 Accessible from the worktree list (press `Enter` on an orchestration worktree) or from the orchestrator plugin. This modal is **live-updating** — it polls orchestration state from td at a reasonable interval (1-2 seconds) so users watching the modal see progress in real time without needing to dismiss and reopen.
 
@@ -665,13 +667,30 @@ workspace.CreateWorktreeMsg{Branch: "agent/td-123-oauth"}
 
 #### Launch Modal
 
+> Implementation note: follows `docs/guides/ui-feature-guide.md` — modal library, `ensureModal()` pattern, dedicated `FocusContext()` per view mode, no plugin-level footer rendering.
+
 The primary entry point for orchestration. Designed for one-keypress launch on the happy path while exposing configuration for users who want it.
 
-**Design philosophy**: The workspace create modal is a multi-step form wizard with 6+ focus steps because worktree creation has many independent parameters (name, branch, prompt, task, agent, permissions). Orchestration is different - the task already exists, and most configuration has sensible defaults. The modal should feel more like a confirmation dialog than a form.
+**Design philosophy**: The workspace create modal is a multi-step form wizard with 6+ focus steps because worktree creation has many independent parameters (name, branch, prompt, task, agent, permissions). Orchestration is different — most configuration has sensible defaults. The modal should feel more like a confirmation dialog than a form. It supports two entry modes: selecting an existing task, or typing an idea.
 
-**Trigger**: Press `Enter` on a task in the task list, or `r` (run) from anywhere in the orchestrator plugin. Can also be invoked cross-plugin from TD Monitor (e.g., "Run orchestration" action on a task).
+**Trigger**: Press `Enter` on a task in the task list, or `r` (run) from anywhere in the orchestrator plugin. Press `n` (new) to open the modal in idea-first mode with focus on the text input. Can also be invoked cross-plugin from TD Monitor (e.g., "Run orchestration" action on a task).
 
-**Layout**:
+**Two entry modes**:
+
+1. **From existing task** — User selects a task from the list and presses Enter. The modal shows the task header and skips the idea input.
+
+2. **From idea** — User presses `n` or opens the modal without a task selected. The modal shows a text input where the user types their idea. On submit, the orchestrator creates a minimal td task from the input before launching:
+
+```go
+// Auto-create task from user idea
+taskID, err := taskEngine.CreateTask(ideaText, CreateOpts{
+    Label: "source:prompt",
+})
+```
+
+The created task has the user's text as the title, no description or acceptance criteria (the planner adds those), and a `source:prompt` label so it's identifiable. From this point forward, the orchestrator has a task ID and the flow is identical.
+
+**Layout** (from existing task):
 
 ```
 ┌─ Run Task ────────────────────────────────────────────┐
@@ -695,20 +714,51 @@ The primary entry point for orchestration. Designed for one-keypress launch on t
 └────────────────────────────────────────────────────────┘
 ```
 
-**Focus steps** (4 total, compared to workspace modal's 8):
+**Layout** (from idea):
+
+```
+┌─ Run Task ────────────────────────────────────────────┐
+│                                                        │
+│  What do you want to build?                            │
+│  ┌──────────────────────────────────────────────────┐  │
+│  │ Allow users to change the theme                  │  │
+│  └──────────────────────────────────────────────────┘  │
+│  A task will be created automatically · source:prompt  │
+│                                                        │
+│  Provider                                              │
+│  ▸ Claude Code                                         │
+│    Codex                                               │
+│    Gemini                                              │
+│    OpenCode                                            │
+│                                                        │
+│  ─────────────────────────────────────────────────     │
+│  Iterations: 2    Validators: 1    Workspace: worktree │
+│  ─────────────────────────────────────────────────     │
+│                                                        │
+│             [ Run ]          [ Cancel ]                 │
+│                                                        │
+│  Enter to run · Tab for options · Esc to cancel        │
+└────────────────────────────────────────────────────────┘
+```
+
+**Focus steps** (existing task — 4 total, idea mode — 5 total):
 
 | Step | ID | Component | Notes |
 |------|----|-----------|-------|
-| 0 | `provider-list` | `modal.List` (single-focus) | Provider selection, j/k to navigate |
-| 1 | `options-row` | Custom section | Iterations / validators / workspace (inline editable) |
-| 2 | `run-btn` | Button | Primary action |
-| 3 | `cancel-btn` | Button | Cancel |
+| 0* | `idea-input` | `modal.Input` | Text input for idea (only in idea mode) |
+| 0/1 | `provider-list` | `modal.List` (single-focus) | Provider selection, j/k to navigate |
+| 1/2 | `options-row` | Custom section | Iterations / validators / workspace (inline editable) |
+| 2/3 | `run-btn` | Button | Primary action |
+| 3/4 | `cancel-btn` | Button | Cancel |
 
-**Fast path**: Modal opens with focus on the provider list. If the user's last-used provider is pre-selected (persisted in state.json), pressing `Enter` immediately hits the Run button. One keypress to open, one to confirm. Two keypresses total from task list to running orchestration.
+**Fast path**: When opened from an existing task, modal opens with focus on the provider list. If the user's last-used provider is pre-selected (persisted in state.json), pressing `Enter` immediately hits the Run button. Two keypresses total from task list to running orchestration.
 
-**Task header** (non-interactive): The top of the modal shows the task summary, read from td at modal open time. This is the one place the orchestrator reads task content - purely for display in the modal, never passed to agent prompts. Shows:
+**Quick-idea path**: `n` opens the modal in idea mode with focus on the text input. Type the idea, press `Enter` to advance to provider, press `Enter` again to run. Three keypresses from anywhere to running orchestration on a new idea.
+
+**Task header** (non-interactive, existing task mode only): The top of the modal shows the task summary, read from td at modal open time. This is the one place the orchestrator reads task content — purely for display in the modal, never passed to agent prompts. Shows:
 - Task ID and title
 - Priority, type, and points (single line, muted style)
+- If task has `source:prompt` label, shows "from prompt" in muted text
 
 **Provider list**: Same agent types as the workspace plugin (`AgentTypeOrder`), minus `AgentNone`. Reuses the existing `AgentType` constants and display names. Pre-selects the last provider used (from state.json) or the first available.
 
@@ -760,7 +810,8 @@ Most users never touch these. The collapsed display keeps the modal compact whil
 
 ```go
 type LaunchConfig struct {
-    TaskID         string
+    TaskID         string    // set from existing task or auto-created from idea
+    IdeaText       string    // non-empty only in idea mode (used to create task)
     Provider       AgentType
     MaxIterations  int
     ValidatorCount int
@@ -769,12 +820,14 @@ type LaunchConfig struct {
 ```
 
 On submit, the orchestrator:
-1. Creates the worktree (if workspace mode is "worktree")
-2. Creates td sessions for each agent role
-3. Calls `td start <taskID>`
-4. Emits `EventPlanStarted`
-5. Transitions to Plan Review view mode
-6. Persists selected provider to state.json
+1. If idea mode: creates td task from `IdeaText` with `source:prompt` label, sets `TaskID`
+2. Generates run ID (`sc-<6hex>`)
+3. Creates the worktree (if workspace mode is "worktree")
+4. Calls `td start <taskID>`
+5. Logs `{"run_id":"...","phase":"plan","status":"starting",...}` to td
+6. Emits `EventPlanStarted`
+7. Transitions to Plan Review view mode (shows planner running)
+8. Persists selected provider to state.json
 
 **Modal construction** (using existing modal library):
 
@@ -784,7 +837,15 @@ p.launchModal = modal.New("Run Task",
     modal.WithPrimaryAction(launchRunID),
     modal.WithHints(true),
 ).
-    AddSection(p.taskHeaderSection(taskID)).     // Custom: reads td show
+    // Idea mode: show text input; existing task mode: show task header
+    AddSection(modal.When(ideaMode,
+        modal.Input(launchIdeaID, &ideaInput,
+            modal.WithPlaceholder("What do you want to build?"),
+        ),
+    )).
+    AddSection(modal.When(!ideaMode,
+        p.taskHeaderSection(taskID),              // Custom: reads td show
+    )).
     AddSection(modal.Spacer()).
     AddSection(modal.Text("Provider")).
     AddSection(modal.List(launchProviderID,       // Single-focus list
@@ -805,23 +866,25 @@ p.launchModal = modal.New("Run Task",
 
 | Aspect | Workspace Create | Orchestration Launch |
 |--------|-----------------|---------------------|
-| Focus steps | 8 (name, branch, prompt, task, agent, perms, create, cancel) | 4 (provider, options, run, cancel) |
-| Required input | Name (text input with validation) | None (task already selected) |
+| Focus steps | 8 (name, branch, prompt, task, agent, perms, create, cancel) | 4-5 (idea input in idea mode, provider, options, run, cancel) |
+| Required input | Name (text input with validation) | Idea text (idea mode only) |
 | Dropdowns | Branch (filtered), Task (filtered) | None |
-| Text inputs | 3 (name, branch, task search) | 0 |
+| Text inputs | 3 (name, branch, task search) | 0-1 (idea input in idea mode) |
 | Primary purpose | Configure from scratch | Confirm and go |
-| Fast path | Cannot skip - name is required | Shift+Enter skips modal entirely |
-| Conditional sections | Prompt ticket mode hides/shows task | Validators=0 could hide related options |
+| Fast path | Cannot skip — name is required | Shift+Enter skips modal entirely (existing task) |
+| Conditional sections | Prompt ticket mode hides/shows task | Idea mode swaps header for text input |
 
-The orchestration modal is deliberately simpler. The workspace modal is a creation form; the orchestration modal is a launch confirmation.
+The orchestration modal is deliberately simpler. The workspace modal is a creation form; the orchestration modal is a launch confirmation (or a one-field creation + launch confirmation in idea mode).
 
 #### Keyboard Commands
+
+Each context below maps to a `FocusContext()` return value, a set of `Commands()` entries, and bindings in `internal/keymap/bindings.go` — per `docs/guides/ui-feature-guide.md`. Command names are one word where possible. `q` behavior follows `isRootContext()` conventions (orchestrator-select is a root context).
 
 ```
 Context: orchestrator-select
   Enter    Open launch modal for selected task
   Shift+Enter  Quick-run with last provider + defaults
-  n        Create new task (opens td create, then launch modal)
+  n        Open launch modal in idea mode (type an idea, task auto-created)
   /        Search tasks
 
 Context: orchestrator-plan
@@ -905,6 +968,10 @@ var (
 )
 
 type TaskEngineAdapter interface {
+    // Task creation (for idea-first flow)
+    // Creates a minimal task with the given title and source:prompt label
+    CreateTask(title string) (taskID string, err error)
+
     // Lifecycle commands (called by orchestrator)
     // StartTask returns nil if already in_progress (idempotent)
     StartTask(taskID string) error
@@ -934,7 +1001,63 @@ The `StartTask` method is idempotent — if the task is already `in_progress`, i
 
 The default implementation uses td. Alternative implementations could wrap Jira, Linear, GitHub Issues, or any other task system. The adapter provides both the CLI commands the orchestrator calls and the command strings injected into agent prompts.
 
-This means swapping task engines is a matter of implementing a new adapter - the orchestration logic, agent runner, and TUI plugin don't change.
+This means swapping task engines is a matter of implementing a new adapter — the orchestration logic, agent runner, and TUI plugin don't change.
+
+#### Task Engine Portability Assessment
+
+The adapter pattern is designed to make the task engine swappable. Here's what's portable and what would need work:
+
+**Fully portable (adapter handles it):**
+
+| Capability | td | Jira/Linear/GitHub | Notes |
+|---|---|---|---|
+| Create task | `td create` | API call | Adapter's `CreateTask()` |
+| Read task | `td show` | API call | Adapter's `ViewTaskCmd()` returns CLI string for agent |
+| State transitions | `td start`, `td review`, `td approve` | API calls | Adapter's lifecycle methods |
+| Log progress | `td log` | Add comment via API | Adapter's `LogProgressCmd()` returns CLI string |
+| Orchestration state | `td log --type orchestration` | Structured comment | Adapter's `LogOrchestrationEvent()` |
+| Task creation labels | `--label source:prompt` | Jira labels, Linear labels | Adapter's `CreateTask()` |
+
+**Requires a CLI wrapper for the backend:**
+
+Agents interact with the task engine by running shell commands (e.g., `td show td-a1b2`). This is fundamental to the task-ID-driven prompt design. For Jira or Linear, agents would need a CLI tool that provides equivalent commands:
+
+```
+# td adapter prompt fragments
+td show td-a1b2
+td context td-a1b2
+td log --decision "my plan"
+
+# hypothetical Jira adapter prompt fragments
+jira-cli show PROJ-123
+jira-cli context PROJ-123
+jira-cli comment PROJ-123 --type decision "my plan"
+```
+
+The adapter's prompt fragment methods (`ViewTaskCmd`, `FullContextCmd`, `LogProgressCmd`, etc.) return these command strings. The orchestrator doesn't know or care what CLI the agent runs — it just injects the strings the adapter provides.
+
+If no CLI exists for the backend, a thin wrapper would need to be built. This is the main integration cost for non-td backends.
+
+**td-specific features that degrade gracefully:**
+
+| Feature | td | Without td | Impact |
+|---|---|---|---|
+| Session isolation (`TD_SESSION_ID`) | Native support | Adapter ignores or simulates | Validators still get separate sessions; audit trail less granular |
+| Typed logs (`--type orchestration`) | Native log types | Prefixed comments (e.g., `[orchestration] {...}`) | Recovery parsing works the same via adapter |
+| `td context` (full task context) | Rich multi-section output | Varies by backend | Agents get whatever the CLI provides |
+| `source:prompt` label | Native labels | Backend-specific labels or tags | Display-only; no functional impact |
+
+**Not coupled to td at all:**
+
+- Orchestration engine lifecycle (plan → implement → validate → iterate)
+- Agent runner (shells out to CLI agents)
+- Event system (TUI updates)
+- Run ID generation and session ID format
+- Crash recovery logic (reads from adapter, not td directly)
+- All TUI views and modals
+- Worktree management
+
+**Bottom line:** The orchestrator is coupled to the *adapter interface*, not to td. Swapping backends requires: (1) implementing the adapter (~15 methods), and (2) providing a CLI tool that agents can run to read/write task state. The orchestration engine, agent runner, TUI, and all recovery logic are unchanged.
 
 ### Configuration
 
@@ -1040,11 +1163,81 @@ td needs one small addition: an `orchestration` log type. This is a one-line enu
 
 Validators run in their own td sessions and naturally don't see the implementer's session conversation. But they have full access to the task's shared state: description, acceptance criteria, logs, git history, and the full codebase. This gives them maximum context for quality review while preventing them from unconsciously deferring to the implementer's reasoning. The isolation is a natural consequence of td's session model, not an artificial restriction.
 
+### Why does the planner always run?
+
+Even for well-specified tasks with detailed acceptance criteria, the planner reads the codebase and logs its assessment before implementation begins. This produces better results than skipping straight to implementation because:
+
+1. **The planner catches mismatches** between the task description and the actual codebase state. A task written last week may reference files that have since changed.
+2. **The plan becomes a contract** that the user reviews. The user accepts the plan, not just the task description. This is the last checkpoint before agents start modifying code.
+3. **The implementer benefits from the planner's codebase analysis.** The planner's decision logs (read by the implementer via `td context`) contain file paths, approach notes, and risk assessments that orient the implementer faster than reading the whole codebase from scratch.
+
+For simple tasks, the planner's work is light — it confirms the approach and logs a brief decision. The overhead is one agent invocation, which is worth the consistency of always having a reviewed plan.
+
+### Why a unified entry point (task ID always)?
+
+The orchestrator always receives a task ID. When the user starts from an idea (text string), the orchestrator creates a minimal td task before anything else. This means:
+
+1. **One engine path.** No branching logic for "idea vs. task vs. epic." The planner always gets a task ID, reads it from td, and plans accordingly.
+2. **Everything is tracked.** Even ideas get a td task, so there's a record of what was requested, what was planned, and what was implemented.
+3. **The planner adapts naturally.** A planner that reads a bare task with just a title does more work than one that reads a detailed epic. No special instructions needed — the planner uses its judgment based on what it finds.
+
+The `source:prompt` label on auto-created tasks lets users distinguish them from manually created tasks without adding noise to agent prompts.
+
 ### Why not complexity-based model selection?
 
 It adds substantial configuration surface area for marginal benefit. Most users want to use their preferred model for everything. If cost matters, they can configure their CLI agent to use a cheaper model. The orchestrator doesn't need to second-guess the user's model choice.
 
 If demand emerges, this can be added later as an optional feature without changing the core architecture.
+
+## Implementation Watch Points
+
+Three areas that will need particular care during implementation.
+
+### 1. Planner-to-Implementation Handoff
+
+The transition from planning to implementation is the most stateful moment in the lifecycle. The planner process exits, the TUI must display the plan for review, and the user's accept/reject decision gates the entire rest of the run.
+
+```
+                    Orchestrator                TUI                     User
+                        │                        │                        │
+  log(plan,starting) ───┤                        │                        │
+  spawn planner ────────┤                        │                        │
+  log(plan,running) ────┤──── EventPlanStarted──▶│ "Planning..."          │
+                        │                        │                        │
+          ┌─────────────┤                        │                        │
+          │ planner runs│                        │                        │
+          │ logs to td  │──── EventFileModified─▶│ (live updates)         │
+          │ exits       │                        │                        │
+          └─────────────┤                        │                        │
+                        │                        │                        │
+  detect exit ──────────┤                        │                        │
+  log(plan,done) ───────┤──── EventPlanReady ──▶│ show plan review ──────▶│
+                        │                        │◀──── accept/reject ────│
+                        │◀── PlanAccepted ───────│                        │
+  log(impl,starting) ───┤                        │                        │
+  spawn implementer ────┤──── EventImplStarted─▶│ "Implementing..."      │
+                        │                        │                        │
+```
+
+Key: the orchestrator blocks between `EventPlanReady` and receiving the user's decision. No agent is running during plan review. The plan lives in td as the planner's decision logs — the TUI reads and displays them, the user reviews, and only then does the orchestrator proceed.
+
+### 2. Run Detail Modal Responsiveness
+
+The Run Detail Modal is how users judge the entire system. If it feels laggy or shows stale state, the orchestrator feels untrustworthy.
+
+- Poll td for orchestration logs every 1-2 seconds while the modal is open. Use sidecar's existing adaptive polling pattern (faster when state is changing, slower when idle).
+- The timeline is append-only — new events add to the bottom. Never re-render the full timeline on each poll; diff against the last known event count.
+- Show "Last output: Xs ago" for the active agent so the user can see liveness without watching raw output.
+- Test: open the modal, leave it open for a full plan→implement→validate cycle, verify every transition appears without dismissing/reopening.
+
+### 3. Recovery Testing
+
+The write-then-act pattern (`starting` → spawn → `running`) creates clean seams for testing, but recovery is still the hardest thing to get right because it's the least exercised code path.
+
+- Write tests that kill the engine at every phase transition point (after `starting` but before `running`, after `running` but before `done`, mid-validation with partial results).
+- Verify that recovery from each kill point produces the correct `RecoveryState` and that resuming from that state reaches `phase:complete`.
+- Test the degenerate case: multiple interrupted runs on the same task. Recovery must find the latest incomplete run ID and ignore older completed/failed/cancelled runs.
+- Keep recovery logic in the engine (not the TUI plugin) so it's testable without rendering.
 
 ## Open Questions
 
