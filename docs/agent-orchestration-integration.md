@@ -53,7 +53,7 @@ View the task and its full context:
   td context td-a1b2
 
 Start a work session and log your progress:
-  td usage --new-session
+  td usage
   td log "your progress here"
 
 Commit when done.
@@ -192,7 +192,7 @@ type Config struct {
 
 The orchestrator never reads task content from td and injects it into prompts. It passes a task ID and short instructions for how the agent should orient itself using the task engine. This keeps prompts small, avoids stale context, and trains agents to treat td as their source of truth.
 
-**Phase transitions are entirely the orchestrator's responsibility.** Agents never log phase events. The orchestrator logs a `starting` event before spawning an agent, a `running` event on first output, and a `done` event when the process exits. This is mechanical — no agent cooperation required. If the orchestrator crashes between `starting` and `running`, recovery knows the agent was never spawned and can safely retry.
+**Phase transitions are entirely the orchestrator's responsibility.** Agents never log phase events. The orchestrator logs a `starting` event before spawning an agent, a `spawned` event immediately after process start (PID acquired), a `running` event on first output, and a `done` event when the process exits. This is mechanical — no agent cooperation required. If the orchestrator crashes between `starting` and `spawned`, recovery knows the agent was never started and can safely retry. If it crashes between `spawned` and `running`, recovery knows the agent may be running silently and should not re-spawn blindly.
 
 **Phase 1: Plan**
 
@@ -206,7 +206,7 @@ Read the task and its full context:
   td context td-a1b2
 
 Start a work session and log your plan:
-  td usage --new-session
+  td usage
   td log --decision "your plan here"
 
 Plan the implementation. Use your judgment on scope and structure.
@@ -220,7 +220,13 @@ The orchestrator does **not** read the task and inject its content. The planner 
 
 The planner always runs, regardless of how well-specified the task is. Even for detailed epics with subtasks, the planner reads the codebase and logs its assessment. For bare tasks created from a user prompt, the planner does the heavy lifting: reading code, determining scope, and adding structure. The planner's effort scales naturally with how much planning the task needs — no special instructions required.
 
-The plan is whatever the planner logs to td (via `td log --decision`). There is no structured `Plan` type in the orchestrator. The TUI's Plan Review view reads the planner's decision logs from td and displays them. The user can accept, modify (by editing the task in td), or reject before implementation begins. The transition from "planner running" to "plan ready for review" is signaled by the planner process exiting.
+The plan is whatever the planner updates in td — either task edits (description/acceptance criteria/subtasks) or explicit decision logs. There is no structured `Plan` type in the orchestrator. The TUI's Plan Review view prioritizes planner decision logs, but falls back to "task updated by planner at <timestamp>" if no decision log exists. The user can accept, modify (by editing the task in td), or reject before implementation begins. If the user rejects the plan, the orchestrator calls `td unstart <id> --reason "plan rejected"` to return the task to `open`, logs a `phase:plan` orchestration event with `status:"rejected"`, and ends the run.
+
+The transition from "planner running" to "plan ready for review" happens when the planner exits **and** the orchestrator detects planner activity, defined as either:
+- a log entry authored by the planner session (decision or progress), **or**
+- a task update attributed to the planner session (title/description/criteria/subtasks changed).
+
+If neither is found, the run is marked as failed with a clear "planner produced no updates" message and a one-click "retry plan" action.
 
 **Phase 2: Implement**
 
@@ -234,8 +240,11 @@ Read the task and plan:
   td context td-a1b2
 
 Log progress as you work:
-  td usage --new-session
+  td usage
   td log "what you did"
+
+Before finishing, record a handoff:
+  td handoff td-a1b2 --done "..." --remaining "..."
 
 Commit when done.
 ```
@@ -249,7 +258,9 @@ Progress events stream to the TUI:
 
 **Phase 3: Validate**
 
-N validator agents run in parallel. Each receives:
+Once the implementer finishes and a handoff exists, the orchestrator submits the task for review (`td review <id>`). This moves the task to `in_review` and enforces td's "different session must review" guard.
+
+N validator agents run in parallel in the same worktree (read-only by convention). Each receives:
 
 ```
 You are reviewing the implementation of task td-a1b2.
@@ -261,13 +272,21 @@ Read the task and its full context:
 Review the implementation diff against the task's acceptance criteria.
 
 Log your review:
-  td usage --new-session
+  td usage
   td log "your findings"
 
-Approve or reject with specific findings.
+If you're the reviewer-of-record, finalize in td:
+  td approve td-a1b2 --reason "approved because..."
+  # or
+  td reject td-a1b2 --reason "rejected because..."
 ```
 
 Validators run in independent td sessions. They have full access to the task definition, acceptance criteria, logs, git history, and codebase — the more context they have, the better their review. What they naturally don't see is the implementer's session-internal conversation history, since each agent runs in its own CLI session. This is sufficient isolation; no additional filtering is needed.
+
+To keep td's review workflow authoritative while still supporting multiple validators:
+- All validators log findings to td.
+- Exactly one validator (the reviewer-of-record) is instructed to call `td approve` or `td reject --reason "..."`.
+- The orchestrator still aggregates all validator results for display and iteration logic, but td's status transitions reflect the reviewer-of-record's decision.
 
 Each validator independently assesses:
 - Does the implementation satisfy acceptance criteria?
@@ -292,9 +311,9 @@ type Finding struct {
 
 **Phase 4: Iterate or Complete**
 
-If all validators approve: mark complete, optionally merge worktree, update td task status.
+If all validators approve: the reviewer-of-record calls `td approve`, the orchestrator marks the run complete, optionally merges the worktree, and updates the task status.
 
-If any validator rejects: the orchestrator logs findings to td as comments or blocker logs, then launches a fresh implementer with:
+If any validator rejects: the reviewer-of-record calls `td reject` (returns the task to `in_progress`). The orchestrator logs findings to td as comments or blocker logs, then launches a fresh implementer with:
 
 ```
 You are fixing issues found during review of task td-a1b2.
@@ -307,7 +326,7 @@ The review comments describe what needs to be fixed.
 Commit when done.
 
 Log progress:
-  td usage --new-session
+  td usage
   td log "what you fixed"
 ```
 
@@ -362,6 +381,8 @@ Each runner:
 - Monitors process exit code, wall-clock time, and output liveness
 
 The prompt is intentionally small. The agent's first actions will be running td commands to read its assignment. This means the agent needs tool access to run shell commands (which CLI agents like Claude Code and Codex already have).
+
+Prompts should avoid `td usage --new-session` because the runner sets `TD_SESSION_ID` explicitly. Agents should run `td usage` to view their assigned session without rotating it.
 
 No model level abstraction. The user configures their CLI agent with whatever model they want. The orchestrator doesn't care.
 
@@ -437,7 +458,7 @@ The orchestrator logs phase transitions to td as JSON-structured orchestration l
 type OrchestrationEvent struct {
     RunID      string `json:"run_id"`               // e.g. "sc-a1b2c3"
     Phase      string `json:"phase"`                // plan, implement, validate, iterate, complete, failed, cancelled
-    Status     string `json:"status,omitempty"`      // starting, running, done
+    Status     string `json:"status,omitempty"`      // starting, spawned, running, done
     Provider   string `json:"provider,omitempty"`
     Iteration  int    `json:"iteration,omitempty"`
     Validator  int    `json:"validator,omitempty"`
@@ -453,9 +474,11 @@ Example log sequence:
 
 ```
 td log --type orchestration '{"run_id":"sc-a1b2c3","phase":"plan","status":"starting","provider":"claude","validators":2,"max_iter":3}'
+td log --type orchestration '{"run_id":"sc-a1b2c3","phase":"plan","status":"spawned"}'
 td log --type orchestration '{"run_id":"sc-a1b2c3","phase":"plan","status":"running"}'
 td log --type orchestration '{"run_id":"sc-a1b2c3","phase":"plan","status":"done"}'
 td log --type orchestration '{"run_id":"sc-a1b2c3","phase":"implement","status":"starting","iteration":1}'
+td log --type orchestration '{"run_id":"sc-a1b2c3","phase":"implement","status":"spawned","iteration":1}'
 td log --type orchestration '{"run_id":"sc-a1b2c3","phase":"implement","status":"running","iteration":1}'
 td log --type orchestration '{"run_id":"sc-a1b2c3","phase":"implement","status":"done","iteration":1}'
 td log --type orchestration '{"run_id":"sc-a1b2c3","phase":"validate","status":"starting","iteration":1}'
@@ -466,6 +489,8 @@ td log --type orchestration '{"run_id":"sc-a1b2c3","phase":"complete"}'
 ```
 
 The run ID is generated once at launch and included in every orchestration event. Recovery filters to the latest incomplete run ID. td may want a `--json-pretty` display option for `td context` to render these readably.
+
+The `spawned` status is the minimal guardrail for recovery: if the last log is `starting` with no `spawned`, the agent never started and can be safely re-spawned. If `spawned` exists but no `running`, treat the agent as possibly still running (silent/buffered output) and ask the user before re-spawning.
 
 On sidecar startup, the orchestrator plugin checks td for any task that is `in_progress` and has orchestration logs but no `phase:complete`, `phase:failed`, or `phase:cancelled` entry for the latest run ID. This means the run was interrupted.
 
@@ -918,13 +943,14 @@ The orchestrator calls td directly for lifecycle transitions that require coordi
 | Event | td Command | Why orchestrator, not agent |
 |-------|------------|----------------------------|
 | Run starts | `td start <id>` | Must happen before any agent spawns |
-| Session creation | `TD_SESSION` env var per agent | Agents need isolated sessions |
+| Plan rejected | `td unstart <id> --reason "plan rejected"` | Return task to `open` if user rejects plan |
+| Session creation | `TD_SESSION_ID` env var per agent | Agents need isolated sessions |
 | Phase transition | `td log --type orchestration '<json>'` | Run state for crash recovery |
 | Agent timeout | `td log --blocker "agent timed out"` | Orchestrator monitors liveness |
-| Validation pass | `td review <id>` | Orchestrator knows all validators passed |
+| Submit for review | `td review <id>` | Moves task to `in_review` once handoff exists |
+| Review decision | `td approve <id>` / `td reject <id>` | Reviewer-of-record session enforces td review guard |
 | Iteration start | `td log --blocker "findings..."` | Routes validator output to td before next implementer |
 | Run complete | `td log --type orchestration '<json phase:complete>'` | Marks run state as finished |
-| Task complete | `td approve <id>` (or user approves) | Orchestrator knows the lifecycle is done |
 | Run failed | `td log --type orchestration '<json phase:failed>'` | Marks run state for recovery |
 | Run cancelled | `td log --type orchestration '<json phase:cancelled>'` | User-initiated cancellation |
 | Handoff | `td handoff <id> --done "..." --remaining "..."` | Captures final state for future sessions |
@@ -937,7 +963,7 @@ Agents are told to use td commands in their prompt. The orchestrator does not en
 |--------|---------------------|---------|
 | Read assignment | `td show <id>` | Agent reads task title, description, criteria |
 | Read full context | `td context <id>` | Agent reads logs, handoffs, comments, deps |
-| Orient session | `td usage --new-session` | Agent sees its session state and open work |
+| Orient session | `td usage` | Agent sees its session state and open work |
 | Log progress | `td log "what I did"` | Creates audit trail |
 | Log decisions | `td log --decision "why I chose X"` | Captures reasoning for future sessions |
 | Log blockers | `td log --blocker "stuck on Y"` | Signals issues |
@@ -954,6 +980,8 @@ The orchestrator creates a td session for each agent role by setting `TD_SESSION
 - Validator 2 (iteration 1): `sc-a1b2c3-val2i1`
 
 This produces unique, human-readable session IDs that are traceable back to the run. td stores these under `.todos/sessions/<branch>/explicit_sc-a1b2c3-impl1.json`. The `sc-` prefix makes it clear these sessions belong to sidecar orchestration. td's existing `TD_SESSION_ID` mechanism supports arbitrary strings, so no changes to td are needed for this.
+
+**Important:** agent prompts should **not** call `td usage --new-session` or otherwise rotate sessions. The orchestrator assigns the session explicitly via `TD_SESSION_ID`; agents should only run `td usage` to view their current session. This keeps all logs and review history correctly attributed to the run.
 
 ### Task Engine Adapter Pattern
 
@@ -975,8 +1003,10 @@ type TaskEngineAdapter interface {
     // Lifecycle commands (called by orchestrator)
     // StartTask returns nil if already in_progress (idempotent)
     StartTask(taskID string) error
+    UnstartTask(taskID string, reason string) error
     SubmitForReview(taskID string) error
     ApproveTask(taskID string) error
+    RejectTask(taskID string, reason string) error
     LogBlocker(taskID string, message string) error
     RecordHandoff(taskID string, done, remaining string) error
 
@@ -987,7 +1017,7 @@ type TaskEngineAdapter interface {
     // Prompt fragments (included in agent prompts)
     ViewTaskCmd(taskID string) string      // e.g. "td show td-a1b2"
     FullContextCmd(taskID string) string   // e.g. "td context td-a1b2"
-    OrientSessionCmd() string              // e.g. "td usage --new-session"
+    OrientSessionCmd() string              // e.g. "td usage"
     LogProgressCmd() string                // e.g. "td log \"your progress\""
     LogDecisionCmd() string                // e.g. "td log --decision \"your decision\""
 
@@ -1013,7 +1043,7 @@ The adapter pattern is designed to make the task engine swappable. Here's what's
 |---|---|---|---|
 | Create task | `td create` | API call | Adapter's `CreateTask()` |
 | Read task | `td show` | API call | Adapter's `ViewTaskCmd()` returns CLI string for agent |
-| State transitions | `td start`, `td review`, `td approve` | API calls | Adapter's lifecycle methods |
+| State transitions | `td start`, `td unstart`, `td review`, `td approve`, `td reject` | API calls | Adapter's lifecycle methods |
 | Log progress | `td log` | Add comment via API | Adapter's `LogProgressCmd()` returns CLI string |
 | Orchestration state | `td log --type orchestration` | Structured comment | Adapter's `LogOrchestrationEvent()` |
 | Task creation labels | `--label source:prompt` | Jira labels, Linear labels | Adapter's `CreateTask()` |
@@ -1202,6 +1232,7 @@ The transition from planning to implementation is the most stateful moment in th
                         │                        │                        │
   log(plan,starting) ───┤                        │                        │
   spawn planner ────────┤                        │                        │
+  log(plan,spawned) ────┤                        │                        │
   log(plan,running) ────┤──── EventPlanStarted──▶│ "Planning..."          │
                         │                        │                        │
           ┌─────────────┤                        │                        │
@@ -1213,13 +1244,17 @@ The transition from planning to implementation is the most stateful moment in th
   detect exit ──────────┤                        │                        │
   log(plan,done) ───────┤──── EventPlanReady ──▶│ show plan review ──────▶│
                         │                        │◀──── accept/reject ────│
+                        │◀── PlanRejected ───────│                        │
+  td unstart task ──────┤                        │                        │
+  log(plan,rejected) ───┤                        │                        │
                         │◀── PlanAccepted ───────│                        │
   log(impl,starting) ───┤                        │                        │
   spawn implementer ────┤──── EventImplStarted─▶│ "Implementing..."      │
+  log(impl,spawned) ────┤                        │                        │
                         │                        │                        │
 ```
 
-Key: the orchestrator blocks between `EventPlanReady` and receiving the user's decision. No agent is running during plan review. The plan lives in td as the planner's decision logs — the TUI reads and displays them, the user reviews, and only then does the orchestrator proceed.
+Key: the orchestrator blocks between `EventPlanReady` and receiving the user's decision. No agent is running during plan review. The plan lives in td as planner-authored updates (decision logs or task edits) — the TUI reads and displays them, the user reviews, and only then does the orchestrator proceed.
 
 ### 2. Run Detail Modal Responsiveness
 
