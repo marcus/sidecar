@@ -503,8 +503,16 @@ func (p *Plugin) renderWorktreeItem(wt *Worktree, selected bool, width int) stri
 			line1 = line1 + strings.Repeat(" ", width-line1Width-timeWidth-1) + timeStr
 		}
 		line2 := "   " + strings.Join(parts, "  ")
-		// Pad line2 to full width for consistent background
+		// Truncate line2 to prevent wrapping
 		line2Width := lipgloss.Width(line2)
+		if line2Width > width {
+			line2Runes := []rune(line2)
+			if width > 1 {
+				line2 = string(line2Runes[:width-1]) + "…"
+			}
+			line2Width = width
+		}
+		// Pad line2 to full width for consistent background
 		if line2Width < width {
 			line2 = line2 + strings.Repeat(" ", width-line2Width)
 		}
@@ -596,6 +604,10 @@ func (p *Plugin) renderWorktreeItem(wt *Worktree, selected bool, width int) stri
 		line1 = line1 + strings.Repeat(" ", width-line1Width-timeWidth-1) + timeStr
 	}
 	line2 := "   " + strings.Join(styledParts, "  ")
+	// Truncate line2 to prevent wrapping
+	if ansi.StringWidth(line2) > width {
+		line2 = ansi.Truncate(line2, width-1, "…")
+	}
 
 	content := line1 + "\n" + line2
 	return styles.ListItemNormal.Width(width).Render(content)
@@ -697,6 +709,13 @@ func (p *Plugin) renderShellEntryForSession(shell *ShellSession, selected bool, 
 		}
 		line2 := "   " + statusText
 		line2Width := lipgloss.Width(line2)
+		if line2Width > width {
+			line2Runes := []rune(line2)
+			if width > 1 {
+				line2 = string(line2Runes[:width-1]) + "…"
+			}
+			line2Width = width
+		}
 		if line2Width < width {
 			line2 = line2 + strings.Repeat(" ", width-line2Width)
 		}
@@ -717,6 +736,10 @@ func (p *Plugin) renderShellEntryForSession(shell *ShellSession, selected bool, 
 	icon := statusStyle.Render(statusIcon)
 	line1 := fmt.Sprintf(" %s %s", icon, displayName)
 	line2 := "   " + dimText(statusText)
+	// Truncate line2 to prevent wrapping
+	if ansi.StringWidth(line2) > width {
+		line2 = ansi.Truncate(line2, width-1, "…")
+	}
 	content := line1 + "\n" + line2
 	return styles.ListItemNormal.Width(width).Render(content)
 }

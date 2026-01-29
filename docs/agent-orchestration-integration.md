@@ -23,8 +23,8 @@ Current multi-agent orchestrators share several problems:
 ### Plan-Build-Review Cycle
 The core loop: plan the work, implement it, independently validate it. Isolated agents checking each other's work produces better code than single-agent runs where context degradation is real.
 
-### Blind Validation
-Validators never see the implementer's context or justifications. They evaluate work on merit alone. This prevents the "rubber stamp" problem where reviewers unconsciously accept work because the reasoning sounds plausible.
+### Independent Validation
+Validators run in their own sessions and never see the implementer's session context. They have full access to the task (description, acceptance criteria, logs, git history, codebase) but not the implementer's reasoning or conversation history. This is enforced naturally by td's session isolation — each validator gets its own session ID, so they see the task's shared state but not another session's internal dialogue. This prevents the "rubber stamp" problem where reviewers unconsciously accept work because the reasoning sounds plausible.
 
 ### Task-Driven Execution
 Every run starts from a task with acceptance criteria. The system knows what "done" means before work begins. This maps directly to td's issue model.
@@ -33,7 +33,10 @@ Every run starts from a task with acceptance criteria. The system knows what "do
 When validators reject work, findings route back to the implementer with specific, actionable feedback. The loop continues until consensus or explicit failure. This is fundamentally different from "run once and hope."
 
 ### Workspace Isolation
-Git worktrees prevent agent work from contaminating the main branch. Sidecar's workspace plugin already manages worktrees - this is a natural integration point.
+Git worktrees prevent agent work from contaminating the main branch. Sidecar's workspace plugin already manages worktrees — this is a natural integration point.
+
+### Worktree-Agnostic Agents
+Agents are started with the worktree as their working directory but are never told they're in a worktree. Agent prompts contain no worktree paths. The agent assumes it's working in whatever directory it was started in. Worktree creation, lifecycle, and cleanup are entirely the orchestrator's and sidecar's responsibility. This keeps agent prompts clean, avoids path-related bugs, and means the same prompts work identically in "direct" mode (no worktree).
 
 ### Task-ID-Driven Prompts
 The orchestrator passes a task ID and brief td commands to agents. It does **not** inject task content into prompts. Agents read their own context from td. This keeps prompts small, avoids stale context, and trains agents to treat the task engine as their source of truth.
@@ -53,7 +56,7 @@ Start a work session and log your progress:
   td usage --new-session
   td log "your progress here"
 
-Work in the worktree at /path/to/worktree. Commit when done.
+Commit when done.
 ```
 
 The orchestrator does **not** pass task titles, descriptions, acceptance criteria, or any other task content in the prompt. It passes a task ID and brief td commands. The agent reads the task itself using td. This is a deliberate design choice with several benefits:
@@ -165,6 +168,7 @@ internal/plugins/orchestrator/
 ```go
 type Engine struct {
     taskID     string            // task ID (e.g. "td-a1b2")
+    runID      string            // unique run ID (e.g. "sc-a1b2c3")
     workspace  *Workspace        // git worktree or direct
     runner     AgentRunner       // CLI agent executor
     taskEngine TaskEngineAdapter // td (or other task backend)
@@ -187,6 +191,8 @@ type Config struct {
 **Core principle: task ID in, td commands in, everything else the agent reads itself.**
 
 The orchestrator never reads task content from td and injects it into prompts. It passes a task ID and short instructions for how the agent should orient itself using the task engine. This keeps prompts small, avoids stale context, and trains agents to treat td as their source of truth.
+
+**Phase transitions are entirely the orchestrator's responsibility.** Agents never log phase events. The orchestrator logs a `starting` event before spawning an agent, a `running` event on first output, and a `done` event when the process exits. This is mechanical — no agent cooperation required. If the orchestrator crashes between `starting` and `running`, recovery knows the agent was never spawned and can safely retry.
 
 **Phase 1: Plan**
 
@@ -223,7 +229,7 @@ type Plan struct {
 
 **Phase 2: Implement**
 
-The implementer agent works in an isolated worktree. It receives:
+The implementer agent works in an isolated worktree. The orchestrator starts it with the worktree as its working directory — the agent doesn't need to know it's in a worktree. It receives:
 
 ```
 You are implementing task td-a1b2.
@@ -236,10 +242,10 @@ Log progress as you work:
   td usage --new-session
   td log "what you did"
 
-Work in the worktree at /path/to/worktree. Commit when done.
+Commit when done.
 ```
 
-The implementer reads the task and the planner's logged decisions from td itself. It does not receive: validator instructions, previous rejection details from other tasks, or prescriptive coding rules.
+The implementer reads the task and the planner's logged decisions from td itself. It does not receive: validator instructions, previous rejection details from other tasks, or prescriptive coding rules. The agent works in whatever directory it was started in — worktree management is entirely the orchestrator's responsibility.
 
 Progress events stream to the TUI:
 - Files being modified
@@ -253,11 +259,11 @@ N validator agents run in parallel. Each receives:
 ```
 You are reviewing the implementation of task td-a1b2.
 
-Read the task requirements:
+Read the task and its full context:
   td show td-a1b2
+  td context td-a1b2
 
-The implementation diff is in the worktree at /path/to/worktree.
-Review the diff against the task's acceptance criteria.
+Review the implementation diff against the task's acceptance criteria.
 
 Log your review:
   td usage --new-session
@@ -266,7 +272,7 @@ Log your review:
 Approve or reject with specific findings.
 ```
 
-Validators are **blind**: they read the task requirements from td and review the diff, but do not see the implementer's logs, reasoning, or session history. The orchestrator ensures validators get a td session that only exposes the task definition, not implementation logs. (This can be achieved by passing a filtered `td show` rather than `td context`, or by using td's query capabilities to scope what's visible.)
+Validators run in independent td sessions. They have full access to the task definition, acceptance criteria, logs, git history, and codebase — the more context they have, the better their review. What they naturally don't see is the implementer's session-internal conversation history, since each agent runs in its own CLI session. This is sufficient isolation; no additional filtering is needed.
 
 Each validator independently assesses:
 - Does the implementation satisfy acceptance criteria?
@@ -303,7 +309,7 @@ Read the task and review feedback:
   td context td-a1b2
 
 The review comments describe what needs to be fixed.
-Work in the worktree at /path/to/worktree. Commit when done.
+Commit when done.
 
 Log progress:
   td usage --new-session
@@ -314,6 +320,16 @@ The implementer reads the rejection findings from td (where they were logged as 
 
 After `MaxIterations` rejections: stop, report failure, log to td with details.
 
+**Cancellation**
+
+The user can cancel a running orchestration at any time (`c` key in the running view). Cancellation:
+
+1. Sends SIGTERM to the running agent process, then SIGKILL after 5 seconds if it hasn't exited
+2. Logs `{"run_id":"...","phase":"cancelled"}` to td
+3. Leaves the worktree in place with whatever changes the agent made
+
+The worktree and its contents are managed by sidecar's existing workspace lifecycle — the user can inspect, keep, or discard changes through the workspace plugin. The orchestrator does not clean up worktrees. The task remains in its current td status (typically `in_progress`); the user can re-run orchestration on the same task with no manual cleanup needed.
+
 #### Agent Runner
 
 The runner shells out to CLI agents:
@@ -321,7 +337,13 @@ The runner shells out to CLI agents:
 ```go
 type AgentRunner interface {
     Run(ctx context.Context, prompt string, workDir string, env []string) (*AgentResult, error)
-    Stream(ctx context.Context, prompt string, workDir string, env []string) (<-chan AgentEvent, error)
+    Stream(ctx context.Context, prompt string, workDir string, env []string) (*AgentStream, error)
+}
+
+// AgentStream provides both events and completion status
+type AgentStream struct {
+    Events <-chan AgentEvent
+    Done   <-chan AgentResult // sends final result (exit code, error) on completion
 }
 
 // ClaudeRunner implements AgentRunner using claude CLI
@@ -337,11 +359,12 @@ type CodexRunner struct {
 
 Each runner:
 - Spawns the CLI process with a minimal prompt (task ID + td commands)
-- Sets `TD_SESSION` env var so the agent gets its own td session
-- Sets working directory to the worktree
+- Sets `TD_SESSION_ID` env var so the agent gets its own td session (format: `sc-<run_id>-<role>`, e.g. `sc-a1b2c3-impl1`)
+- Sets working directory to the worktree (the agent is worktree-agnostic — it just works in its cwd)
 - Captures stdout/stderr
 - Optionally streams events (for real-time TUI updates)
 - Returns structured output or raw text
+- Monitors process exit code, wall-clock time, and output liveness
 
 The prompt is intentionally small. The agent's first actions will be running td commands to read its assignment. This means the agent needs tool access to run shell commands (which CLI agents like Claude Code and Codex already have).
 
@@ -394,8 +417,16 @@ case <-time.After(config.AgentTimeout):
     taskEngine.LogBlocker(taskID, fmt.Sprintf(
         "%s agent timed out after %v with no output", role, config.AgentTimeout))
     events <- Event{Type: EventFailed, Data: TimeoutError{Role: role}}
+case <-ctx.Done():
+    process.Kill()
+    events <- Event{Type: EventFailed, Data: CancelledError{Role: role}}
 }
 ```
+
+The runner also monitors for:
+- **Process exit code**: Non-zero exit means the agent crashed. Log the exit code and stderr tail to td as a blocker.
+- **Maximum wall-clock time**: A separate per-phase timeout (default: 30 minutes) kills agents that produce output but never complete. This catches infinite loops with output.
+- **Silent completion**: Process exits with code 0 but produced no meaningful output. Log as a warning and treat as failure.
 
 The TUI shows the time since last agent output in the progress view, so users can see if an agent appears stuck before the timeout fires.
 
@@ -405,72 +436,102 @@ Orchestration runs need to survive sidecar restarts. Instead of maintaining a se
 
 **How it works:**
 
-The orchestrator logs phase transitions to td with a structured prefix that can be parsed on recovery:
+The orchestrator logs phase transitions to td as JSON-structured orchestration log entries. Each entry includes a run ID (`sc-<6hex>`) to distinguish multiple orchestration runs on the same task:
+
+```go
+type OrchestrationEvent struct {
+    RunID      string `json:"run_id"`               // e.g. "sc-a1b2c3"
+    Phase      string `json:"phase"`                // plan, implement, validate, iterate, complete, failed, cancelled
+    Status     string `json:"status,omitempty"`      // starting, running, done
+    Provider   string `json:"provider,omitempty"`
+    Iteration  int    `json:"iteration,omitempty"`
+    Validator  int    `json:"validator,omitempty"`
+    Approved   *bool  `json:"approved,omitempty"`
+    Validators int    `json:"validators,omitempty"`
+    MaxIter    int    `json:"max_iter,omitempty"`
+    Error      string `json:"error,omitempty"`
+    ExitCode   *int   `json:"exit_code,omitempty"`
+}
+```
+
+Example log sequence:
 
 ```
-td log --type orchestration "phase:plan provider:claude worktree:/path/to/wt validators:2 max_iterations:3"
-td log --type orchestration "phase:implement iteration:1"
-td log --type orchestration "phase:validate iteration:1 validators_started:2"
-td log --type orchestration "phase:validate iteration:1 validator:1 approved:true"
-td log --type orchestration "phase:validate iteration:1 validator:2 approved:false"
-td log --type orchestration "phase:iterate iteration:2"
-td log --type orchestration "phase:complete"
+td log --type orchestration '{"run_id":"sc-a1b2c3","phase":"plan","status":"starting","provider":"claude","validators":2,"max_iter":3}'
+td log --type orchestration '{"run_id":"sc-a1b2c3","phase":"plan","status":"running"}'
+td log --type orchestration '{"run_id":"sc-a1b2c3","phase":"plan","status":"done"}'
+td log --type orchestration '{"run_id":"sc-a1b2c3","phase":"implement","status":"starting","iteration":1}'
+td log --type orchestration '{"run_id":"sc-a1b2c3","phase":"implement","status":"running","iteration":1}'
+td log --type orchestration '{"run_id":"sc-a1b2c3","phase":"implement","status":"done","iteration":1}'
+td log --type orchestration '{"run_id":"sc-a1b2c3","phase":"validate","status":"starting","iteration":1}'
+td log --type orchestration '{"run_id":"sc-a1b2c3","phase":"validate","iteration":1,"validator":1,"approved":true}'
+td log --type orchestration '{"run_id":"sc-a1b2c3","phase":"validate","iteration":1,"validator":2,"approved":false}'
+td log --type orchestration '{"run_id":"sc-a1b2c3","phase":"iterate","iteration":2}'
+td log --type orchestration '{"run_id":"sc-a1b2c3","phase":"complete"}'
 ```
 
-On sidecar startup, the orchestrator plugin checks td for any task that is `in_progress` and has orchestration logs but no `phase:complete` or `phase:failed` entry. This means the run was interrupted.
+The run ID is generated once at launch and included in every orchestration event. Recovery filters to the latest incomplete run ID. td may want a `--json-pretty` display option for `td context` to render these readably.
+
+On sidecar startup, the orchestrator plugin checks td for any task that is `in_progress` and has orchestration logs but no `phase:complete`, `phase:failed`, or `phase:cancelled` entry for the latest run ID. This means the run was interrupted.
 
 **Recovery logic:**
 
 ```go
+type RecoveryAction int
+const (
+    AskUser    RecoveryAction = iota // Prompt user: resume, restart, or abandon
+    AutoResume                        // Safe to resume automatically
+)
+
 func (e *Engine) RecoverIfNeeded(taskID string) (*RecoveryState, error) {
-    // Read orchestration logs from td
+    // Read orchestration logs from td, filtered to latest incomplete run
     logs := e.taskEngine.GetOrchestrationLogs(taskID)
     if logs == nil {
         return nil, nil // no active run
     }
 
-    lastPhase := logs.LastPhase()
+    runID := logs.LatestIncompleteRunID()
+    if runID == "" {
+        return nil, nil // all runs completed
+    }
+
+    runLogs := logs.ForRun(runID)
+    lastPhase := runLogs.LastPhase()
+    lastStatus := runLogs.LastStatus()
+
     switch lastPhase {
     case "plan":
-        // Planner was running or plan wasn't accepted yet
-        // Offer: resume planning or start over
-        return &RecoveryState{Phase: "plan", Action: AskUser}, nil
+        return &RecoveryState{RunID: runID, Phase: "plan", Action: AskUser}, nil
 
-    case "implement":
-        // Implementer was running - worktree may have partial changes
-        // Offer: resume implementation (agent reads td context for where it left off)
-        // or abandon and start fresh
+    case "implement", "iterate":
         return &RecoveryState{
-            Phase:      "implement",
-            Iteration:  logs.LastIteration(),
-            Worktree:   logs.WorktreePath(),
-            Action:     AskUser,
+            RunID:     runID,
+            Phase:     lastPhase,
+            Iteration: runLogs.LastIteration(),
+            Action:    AskUser,
         }, nil
 
     case "validate":
-        // Some validators may have finished
-        completed := logs.CompletedValidators()
-        if len(completed) == logs.ValidatorCount() {
-            // All validators finished but orchestrator died before processing results
-            // Can resume directly: check results and proceed
-            return &RecoveryState{Phase: "validate", Action: AutoResume}, nil
+        completed := runLogs.CompletedValidators()
+        if len(completed) == runLogs.ValidatorCount() {
+            // All validators finished but orchestrator died before processing
+            return &RecoveryState{RunID: runID, Phase: "validate", Action: AutoResume}, nil
         }
-        // Some validators still pending - restart just those
         return &RecoveryState{
+            RunID:     runID,
             Phase:     "validate",
-            Remaining: logs.ValidatorCount() - len(completed),
+            Remaining: runLogs.ValidatorCount() - len(completed),
             Action:    AutoResume,
         }, nil
-
-    case "iterate":
-        // Same as implement - worktree has partial changes
-        return &RecoveryState{
-            Phase:     "iterate",
-            Iteration: logs.LastIteration(),
-            Worktree:  logs.WorktreePath(),
-            Action:    AskUser,
-        }, nil
     }
+
+    // Check for phases that logged "starting" but never "running"
+    // (orchestrator crashed between logging intent and spawning agent)
+    if lastStatus == "starting" {
+        // Safe to retry — the agent was never spawned
+        return &RecoveryState{RunID: runID, Phase: lastPhase, Action: AutoResume}, nil
+    }
+
     return nil, nil
 }
 ```
@@ -520,6 +581,61 @@ The orchestrator plugin integrates with sidecar's existing plugin system.
 4. **Validation Results** - See each validator's findings, approval/rejection
 5. **Iteration View** - Show rejection feedback being sent back to implementer
 6. **Complete/Failed** - Final status with summary
+
+#### Worktree List Integration
+
+Orchestration worktrees appear in the workspace plugin's worktree list with a live status badge:
+
+- `⚡ Planning` — planner agent running
+- `⚡ Implementing (1/3)` — implementer running, showing iteration/max
+- `⚡ Validating` — validators running
+- `✓ Complete` — all validators approved
+- `✗ Failed` — max iterations exhausted
+- `⏸ Interrupted` — sidecar exited mid-run
+
+The badge updates in real-time as the orchestration engine emits events.
+
+#### Run Detail Modal
+
+Accessible from the worktree list (press `Enter` on an orchestration worktree) or from the orchestrator plugin. This modal is **live-updating** — it polls orchestration state from td at a reasonable interval (1-2 seconds) so users watching the modal see progress in real time without needing to dismiss and reopen.
+
+```
+┌─ Run sc-a1b2c3 ───────────────────────────────────────┐
+│                                                         │
+│  td-a1b2: Add rate limiting to API endpoints            │
+│  Claude Code · Iteration 2 of 3 · ⚡ Implementing       │
+│                                                         │
+│  Timeline                                               │
+│  14:02  ✓ Plan accepted                                 │
+│  14:03  ✓ Implementation done (iteration 1)             │
+│  14:16  ✓ Validation: 1 approved, 1 rejected            │
+│         ├ Validator 1: approved                          │
+│         └ Validator 2: rejected — 2 findings             │
+│           • error: missing rate limit on /api/upload     │
+│           • warning: no test for burst handling          │
+│  14:19  ⚡ Implementation started (iteration 2)          │
+│         └ Last output: 3s ago                            │
+│                                                         │
+│  [ Cancel Run ]                                          │
+│                                                         │
+│  c to cancel · Esc to dismiss · d to view diff           │
+└─────────────────────────────────────────────────────────┘
+```
+
+When the modal detects an interrupted run (on sidecar startup or when the user opens it), it shows recovery actions:
+
+```
+│  14:19  ⏸ Interrupted during implementation (iteration 2) │
+│         └ sidecar exited 2h ago                            │
+│                                                            │
+│  [ Resume ]    [ Restart ]    [ Abandon ]                  │
+│                                                            │
+│  Enter to resume · r to restart · Esc to dismiss           │
+```
+
+- **Resume**: Re-launches the agent for the interrupted phase. The agent reads td context to pick up where it left off.
+- **Restart**: Creates a new run ID, starts from planning phase.
+- **Abandon**: Logs `phase:cancelled`, leaves worktree for user to manage via workspace plugin.
 
 #### Cross-Plugin Integration
 
@@ -614,6 +730,17 @@ Detection: Gray out unavailable providers (binary not found) but still show them
 - **Iterations**: Number input, default 3, range 1-10. Controls `MaxIterations`.
 - **Validators**: Number input, default 2, range 0-5. Zero means no validation (single-agent mode, like TRIVIAL complexity).
 - **Workspace**: Cycle through "worktree" / "direct" / "docker". Default "worktree".
+
+**Progressive defaults**: The modal pre-populates sensible defaults based on task metadata:
+
+| Task Signal | Default Validators | Default Iterations |
+|-------------|-------------------|-------------------|
+| Type `chore` or ≤3 points | 0 | 1 |
+| Has acceptance criteria | 2 | 3 |
+| Type `bug` | 1 | 2 |
+| Otherwise | 1 | 2 |
+
+Users can always override. The defaults reduce friction for simple tasks (no validation overhead for a typo fix) while providing full orchestration for complex tasks that have explicit acceptance criteria.
 
 Most users never touch these. The collapsed display keeps the modal compact while making configuration accessible.
 
@@ -729,13 +856,14 @@ The orchestrator calls td directly for lifecycle transitions that require coordi
 |-------|------------|----------------------------|
 | Run starts | `td start <id>` | Must happen before any agent spawns |
 | Session creation | `TD_SESSION` env var per agent | Agents need isolated sessions |
-| Phase transition | `td log --type orchestration "phase:..."` | Run state for crash recovery |
+| Phase transition | `td log --type orchestration '<json>'` | Run state for crash recovery |
 | Agent timeout | `td log --blocker "agent timed out"` | Orchestrator monitors liveness |
 | Validation pass | `td review <id>` | Orchestrator knows all validators passed |
 | Iteration start | `td log --blocker "findings..."` | Routes validator output to td before next implementer |
-| Run complete | `td log --type orchestration "phase:complete"` | Marks run state as finished |
+| Run complete | `td log --type orchestration '<json phase:complete>'` | Marks run state as finished |
 | Task complete | `td approve <id>` (or user approves) | Orchestrator knows the lifecycle is done |
-| Run failed | `td log --type orchestration "phase:failed"` | Marks run state for recovery |
+| Run failed | `td log --type orchestration '<json phase:failed>'` | Marks run state for recovery |
+| Run cancelled | `td log --type orchestration '<json phase:cancelled>'` | User-initiated cancellation |
 | Handoff | `td handoff <id> --done "..." --remaining "..."` | Captures final state for future sessions |
 
 #### Agent-side (self-directed)
@@ -755,20 +883,39 @@ This split means the orchestrator handles **when** things happen (lifecycle), wh
 
 #### Session Management
 
-The orchestrator creates a td session for each agent role (planner, implementer, validator-1, validator-2) by setting `TD_SESSION` as an environment variable. This preserves td's session isolation - the implementer session cannot approve its own work.
+The orchestrator creates a td session for each agent role by setting `TD_SESSION_ID` as an environment variable. Session IDs follow the format `sc-<run_id>-<role>`:
+
+- Planner: `sc-a1b2c3-plan`
+- Implementer (iteration 1): `sc-a1b2c3-impl1`
+- Validator 1 (iteration 1): `sc-a1b2c3-val1i1`
+- Validator 2 (iteration 1): `sc-a1b2c3-val2i1`
+
+This produces unique, human-readable session IDs that are traceable back to the run. td stores these under `.todos/sessions/<branch>/explicit_sc-a1b2c3-impl1.json`. The `sc-` prefix makes it clear these sessions belong to sidecar orchestration. td's existing `TD_SESSION_ID` mechanism supports arbitrary strings, so no changes to td are needed for this.
 
 ### Task Engine Adapter Pattern
 
 The orchestrator's only coupling to td is a set of **prompt templates** and **lifecycle commands**. These are defined in a task engine adapter:
 
 ```go
+// Sentinel errors for idempotent handling
+var (
+    ErrTaskNotFound      = errors.New("task not found")
+    ErrInvalidTransition = errors.New("invalid state transition")
+    ErrSelfReview        = errors.New("reviewer cannot be implementer")
+)
+
 type TaskEngineAdapter interface {
     // Lifecycle commands (called by orchestrator)
+    // StartTask returns nil if already in_progress (idempotent)
     StartTask(taskID string) error
     SubmitForReview(taskID string) error
     ApproveTask(taskID string) error
     LogBlocker(taskID string, message string) error
     RecordHandoff(taskID string, done, remaining string) error
+
+    // Orchestration run state (stored as JSON logs in the task engine)
+    LogOrchestrationEvent(taskID string, event OrchestrationEvent) error
+    GetOrchestrationLogs(taskID string) (*OrchestrationLogs, error)
 
     // Prompt fragments (included in agent prompts)
     ViewTaskCmd(taskID string) string      // e.g. "td show td-a1b2"
@@ -778,9 +925,12 @@ type TaskEngineAdapter interface {
     LogDecisionCmd() string                // e.g. "td log --decision \"your decision\""
 
     // Session management
-    CreateSession(role string) (sessionID string, err error)
+    // Returns a session ID for the given run and role, e.g. "sc-a1b2c3-impl1"
+    SessionID(runID string, role string) string
 }
 ```
+
+The `StartTask` method is idempotent — if the task is already `in_progress`, it returns nil. This is critical for crash recovery: retrying a phase transition is always safe. Other `ErrInvalidTransition` errors (e.g., trying to approve a task that's not `in_review`) are logged and surfaced to the user.
 
 The default implementation uses td. Alternative implementations could wrap Jira, Linear, GitHub Issues, or any other task system. The adapter provides both the CLI commands the orchestrator calls and the command strings injected into agent prompts.
 
@@ -884,11 +1034,11 @@ Storing orchestration state as td logs means:
 - `td context` shows orchestration events alongside progress logs and decisions
 - The TaskEngineAdapter pattern keeps this pluggable - other backends store run state however they need to
 
-td needs one small addition: an `orchestration` log type. This is a one-line enum change. The structured content (`phase:validate iteration:2 validator:1 approved:true`) is just the log message string, parsed by the adapter on recovery.
+td needs one small addition: an `orchestration` log type. This is a one-line enum change. The log message is JSON, parsed by the adapter via `json.Unmarshal` on recovery. td may also want a display enhancement to pretty-print orchestration log entries in `td context` output.
 
-### Why keep blind validation?
+### Why independent validation?
 
-When validators see the implementer's reasoning, they unconsciously defer to it. Blind validation catches real bugs that sighted review misses. Worth the extra agent invocations.
+Validators run in their own td sessions and naturally don't see the implementer's session conversation. But they have full access to the task's shared state: description, acceptance criteria, logs, git history, and the full codebase. This gives them maximum context for quality review while preventing them from unconsciously deferring to the implementer's reasoning. The isolation is a natural consequence of td's session model, not an artificial restriction.
 
 ### Why not complexity-based model selection?
 
@@ -908,4 +1058,4 @@ If demand emerges, this can be added later as an optional feature without changi
 
 5. **Failure escalation** - After max iterations, the orchestrator logs a handoff to td and marks the run as failed. Should it also offer to open the worktree in the user's editor for manual intervention? The worktree still exists with the agent's partial work.
 
-6. **Orchestration log format** - The structured `phase:X key:value` format is simple but ad-hoc. Should we use JSON log messages for machine parseability, or keep the human-readable format and accept some parsing fragility?
+6. ~~**Orchestration log format**~~ **Resolved**: JSON log messages with a structured `OrchestrationEvent` type. Each entry includes a `run_id` for disambiguation. td may want a pretty-print option for `td context` display.
