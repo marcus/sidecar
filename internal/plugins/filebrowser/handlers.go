@@ -378,6 +378,7 @@ func (p *Plugin) handleTreeKey(key string) (plugin.Plugin, tea.Cmd) {
 		if !p.treeVisible {
 			// When hiding tree, focus moves to preview pane
 			p.activePane = PanePreview
+			return p, appmsg.ShowToast("Sidebar hidden (\\ to restore)", 2*time.Second)
 		}
 
 	case "H":
@@ -463,7 +464,10 @@ func (p *Plugin) handlePreviewKey(key string) (plugin.Plugin, tea.Cmd) {
 		}
 
 	case "h", "left", "esc":
-		// Return to tree pane
+		// Restore tree pane if hidden, otherwise return to it
+		if !p.treeVisible {
+			p.treeVisible = true
+		}
 		p.activePane = PaneTree
 		p.clearTextSelection()
 
@@ -589,6 +593,7 @@ func (p *Plugin) handlePreviewKey(key string) (plugin.Plugin, tea.Cmd) {
 		p.treeVisible = !p.treeVisible
 		if !p.treeVisible {
 			p.activePane = PanePreview
+			return p, appmsg.ShowToast("Sidebar hidden (\\ to restore)", 2*time.Second)
 		} else {
 			p.activePane = PaneTree
 		}

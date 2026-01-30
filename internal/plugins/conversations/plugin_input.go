@@ -1,7 +1,10 @@
 package conversations
 
 import (
+	"time"
+
 	tea "github.com/charmbracelet/bubbletea"
+	appmsg "github.com/marcus/sidecar/internal/msg"
 	"github.com/marcus/sidecar/internal/plugin"
 )
 
@@ -95,6 +98,9 @@ func (p *Plugin) updateSessions(msg tea.KeyMsg) (plugin.Plugin, tea.Cmd) {
 	case "\\":
 		// Toggle sidebar visibility
 		p.toggleSidebar()
+		if !p.sidebarVisible {
+			return p, appmsg.ShowToast("Sidebar hidden (\\ to restore)", 2*time.Second)
+		}
 
 	case "l", "right":
 		// Switch focus to messages pane
@@ -343,8 +349,14 @@ func (p *Plugin) updateMessages(msg tea.KeyMsg) (plugin.Plugin, tea.Cmd) {
 
 	switch msg.String() {
 	case "esc":
-		// ESC returns focus to sidebar
-		p.activePane = PaneSidebar
+		// Restore sidebar if hidden, otherwise return focus to sidebar
+		if !p.sidebarVisible {
+			p.sidebarVisible = true
+			p.sidebarRestore = PaneSidebar
+			p.activePane = PaneSidebar
+		} else {
+			p.activePane = PaneSidebar
+		}
 		return p, nil
 
 	case "h", "left":
@@ -362,6 +374,9 @@ func (p *Plugin) updateMessages(msg tea.KeyMsg) (plugin.Plugin, tea.Cmd) {
 	case "\\":
 		// Toggle sidebar visibility
 		p.toggleSidebar()
+		if !p.sidebarVisible {
+			return p, appmsg.ShowToast("Sidebar hidden (\\ to restore)", 2*time.Second)
+		}
 		return p, nil
 
 	case "j", "down":

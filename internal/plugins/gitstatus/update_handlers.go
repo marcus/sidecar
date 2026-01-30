@@ -6,6 +6,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/marcus/sidecar/internal/app"
+	appmsg "github.com/marcus/sidecar/internal/msg"
 	"github.com/marcus/sidecar/internal/plugin"
 	"github.com/marcus/sidecar/internal/state"
 )
@@ -124,6 +125,9 @@ func (p *Plugin) updateStatus(msg tea.KeyMsg) (plugin.Plugin, tea.Cmd) {
 	case "\\":
 		// Toggle sidebar visibility
 		p.toggleSidebar()
+		if !p.sidebarVisible {
+			return p, appmsg.ShowToast("Sidebar hidden (\\ to restore)", 2*time.Second)
+		}
 
 	case "s":
 		if len(entries) > 0 && p.cursor < len(entries) {
@@ -437,7 +441,10 @@ func (p *Plugin) updateStatusDiffPane(msg tea.KeyMsg) (plugin.Plugin, tea.Cmd) {
 
 	switch msg.String() {
 	case "esc":
-		// ESC always returns to sidebar
+		// Restore sidebar if hidden, then return to it
+		if !p.sidebarVisible {
+			p.sidebarVisible = true
+		}
 		p.activePane = PaneSidebar
 
 	case "h", "left":
@@ -523,6 +530,9 @@ func (p *Plugin) updateStatusDiffPane(msg tea.KeyMsg) (plugin.Plugin, tea.Cmd) {
 	case "\\":
 		// Toggle sidebar visibility
 		p.toggleSidebar()
+		if !p.sidebarVisible {
+			return p, appmsg.ShowToast("Sidebar hidden (\\ to restore)", 2*time.Second)
+		}
 
 	case "d":
 		// Open full-screen diff view for current file

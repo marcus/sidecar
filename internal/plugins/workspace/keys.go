@@ -2,12 +2,14 @@ package workspace
 
 import (
 	"fmt"
+	"math"
 	"os/exec"
 	"strings"
 	"time"
 
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
+	appmsg "github.com/marcus/sidecar/internal/msg"
 	"github.com/marcus/sidecar/internal/state"
 )
 
@@ -468,7 +470,7 @@ func (p *Plugin) handleListKeys(msg tea.KeyMsg) tea.Cmd {
 		// Go to top (oldest content) - pause auto-scroll
 		p.autoScrollOutput = false
 		p.captureScrollBaseLineCount() // td-f7c8be: prevent bounce on poll
-		p.previewOffset = 10000 // Large offset, will be clamped in render
+		p.previewOffset = math.MaxInt // Will be clamped in render
 	case "G":
 		if p.activePane == PaneSidebar {
 			// Jump to bottom = select last worktree (not shell)
@@ -586,6 +588,10 @@ func (p *Plugin) handleListKeys(msg tea.KeyMsg) tea.Cmd {
 			p.activePane = PaneSidebar
 		}
 	case "esc":
+		if !p.sidebarVisible {
+			p.toggleSidebar()
+			return p.resizeSelectedPaneCmd()
+		}
 		if p.activePane == PanePreview {
 			p.activePane = PaneSidebar
 		}
@@ -594,6 +600,9 @@ func (p *Plugin) handleListKeys(msg tea.KeyMsg) tea.Cmd {
 		if p.viewMode == ViewModeInteractive {
 			// Poll captures cursor atomically - no separate query needed
 			return tea.Batch(p.resizeInteractivePaneCmd(), p.pollInteractivePaneImmediate())
+		}
+		if !p.sidebarVisible {
+			return tea.Batch(p.resizeSelectedPaneCmd(), appmsg.ShowToast("Sidebar hidden (\\ to restore)", 2*time.Second))
 		}
 		// Resize pane in background to match new preview width
 		return p.resizeSelectedPaneCmd()
