@@ -96,9 +96,34 @@ func (m *Model) ensureIssueInputModal() {
 		return
 	}
 	m.issueInputModalWidth = modalW
+
+	// Build footer hint string (always visible outside viewport)
+	var hintBuf strings.Builder
+	hasResults := len(m.issueSearchResults) > 0
+	if hasResults {
+		hintBuf.WriteString(styles.KeyHint.Render("enter"))
+		hintBuf.WriteString(styles.Muted.Render(" open  "))
+		hintBuf.WriteString(styles.KeyHint.Render("↑↓"))
+		hintBuf.WriteString(styles.Muted.Render(" select  "))
+		hintBuf.WriteString(styles.KeyHint.Render("tab"))
+		hintBuf.WriteString(styles.Muted.Render(" fill  "))
+	}
+	if m.issueSearchIncludeClosed {
+		hintBuf.WriteString(styles.KeyHint.Render("^x"))
+		hintBuf.WriteString(styles.Muted.Render(" hide closed  "))
+	} else {
+		hintBuf.WriteString(styles.KeyHint.Render("^x"))
+		hintBuf.WriteString(styles.Muted.Render(" show closed  "))
+	}
+	if hasResults {
+		hintBuf.WriteString(styles.KeyHint.Render("esc"))
+		hintBuf.WriteString(styles.Muted.Render(" cancel"))
+	}
+
 	b := modal.New("Open Issue",
 		modal.WithWidth(modalW),
 		modal.WithHints(false),
+		modal.WithCustomFooter(hintBuf.String()),
 	).
 		AddSection(modal.Input("issue-id", &m.issueInputInput))
 
@@ -173,15 +198,10 @@ func (m *Model) ensureIssueInputModal() {
 		}, nil))
 	} else {
 		// Reserve space for results even when empty
-		showClosedHint := m.issueSearchQuery != "" && !m.issueSearchLoading && !m.issueSearchIncludeClosed
 		b = b.AddSection(modal.Custom(func(contentWidth int, _, _ string) modal.RenderedSection {
 			var sb strings.Builder
-			if showClosedHint {
-				hint := styles.KeyHint.Render("^x") + styles.Muted.Render(" to include closed issues")
-				sb.WriteString(hint)
-			}
 			for i := 0; i < minResultLines; i++ {
-				if i > 0 || !showClosedHint {
+				if i > 0 {
 					sb.WriteString("\n")
 				}
 			}
@@ -189,38 +209,13 @@ func (m *Model) ensureIssueInputModal() {
 		}, nil))
 	}
 
-	// Buttons
-	b = b.AddSection(modal.Spacer())
-	b = b.AddSection(modal.Buttons(
-		modal.Btn(" Open ", "open", modal.BtnPrimary()),
-		modal.Btn(" Cancel ", "cancel"),
-	))
-
-	// Hint line
-	hasResults := len(m.issueSearchResults) > 0
-	includeClosed := m.issueSearchIncludeClosed
-	b = b.AddSection(modal.Custom(func(contentWidth int, focusID, hoverID string) modal.RenderedSection {
-		var sb strings.Builder
-		sb.WriteString("\n")
-		sb.WriteString(styles.KeyHint.Render("enter"))
-		sb.WriteString(styles.Muted.Render(" open  "))
-		if hasResults {
-			sb.WriteString(styles.KeyHint.Render("↑↓"))
-			sb.WriteString(styles.Muted.Render(" select  "))
-			sb.WriteString(styles.KeyHint.Render("tab"))
-			sb.WriteString(styles.Muted.Render(" fill  "))
-		}
-		if includeClosed {
-			sb.WriteString(styles.KeyHint.Render("^x"))
-			sb.WriteString(styles.Muted.Render(" hide closed  "))
-		} else {
-			sb.WriteString(styles.KeyHint.Render("^x"))
-			sb.WriteString(styles.Muted.Render(" show closed  "))
-		}
-		sb.WriteString(styles.KeyHint.Render("esc"))
-		sb.WriteString(styles.Muted.Render(" cancel"))
-		return modal.RenderedSection{Content: sb.String()}
-	}, nil))
+	if hasResults {
+		b = b.AddSection(modal.Spacer())
+		b = b.AddSection(modal.Buttons(
+			modal.Btn(" Open ", "open", modal.BtnPrimary()),
+			modal.Btn(" Cancel ", "cancel"),
+		))
+	}
 
 	m.issueInputModal = b
 }
