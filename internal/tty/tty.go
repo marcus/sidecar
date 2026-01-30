@@ -292,6 +292,9 @@ func (m *Model) handleKey(msg tea.KeyMsg) tea.Cmd {
 
 	// Filter partial SGR mouse sequences (td-e2ce50: use lenient check for truncated sequences)
 	// Catches even very short fragments like "[<" that occur when terminal splits mouse events.
+	// Note: bare "[" is NEVER filtered. With tea.WithMouseAllMotion(), leaked mouse ESC bytes
+	// frequently set EscapePressed, making EscapePressed unreliable for gating "[".
+	// Multi-char fragments like "[<35;10;20M" are caught by LooksLikeMouseFragment.
 	if msg.Type == tea.KeyRunes && len(msg.Runes) > 0 {
 		if LooksLikeMouseFragment(string(msg.Runes)) {
 			m.State.EscapePressed = false

@@ -784,9 +784,11 @@ func (p *Plugin) handleInteractiveKeys(msg tea.KeyMsg) tea.Cmd {
 	if timeSinceScroll < postScrollFilterWindow && msg.Type == tea.KeyRunes {
 		s := string(msg.Runes)
 		// Drop anything that looks like mouse sequence garbage:
-		// - Contains [, <, ;, M, m (mouse sequence chars)
+		// - Contains <, ;, M, m (mouse sequence chars)
 		// - Is not normal alphanumeric typing
-		if strings.ContainsAny(s, "[<;Mm") || !isNormalTyping(s) {
+		// Note: bare "[" is NOT filtered here — it's a normal typeable character.
+		// It's only suspicious after ESC (handled below).
+		if strings.ContainsAny(s, "<;Mm") || !isNormalTyping(s) {
 			p.interactiveState.EscapePressed = false
 			return nil
 		}
@@ -797,7 +799,9 @@ func (p *Plugin) handleInteractiveKeys(msg tea.KeyMsg) tea.Cmd {
 	// Must be checked BEFORE forwarding pending escape, since the ESC was part
 	// of the mouse sequence, not a real user keypress.
 	// td-e2ce50: Use lenient check to catch truncated/split sequences during fast scrolling.
-	// Catches even very short fragments like "[<" that were previously slipping through.
+	// Note: bare "[" is NEVER filtered. With tea.WithMouseAllMotion(), leaked mouse ESC bytes
+	// frequently set EscapePressed, making EscapePressed unreliable for gating "[".
+	// Multi-char fragments like "[<35;10;20M" are caught by LooksLikeMouseFragment.
 	if msg.Type == tea.KeyRunes && len(msg.Runes) > 0 {
 		if tty.LooksLikeMouseFragment(string(msg.Runes)) {
 			// Cancel the pending escape — it was the leading byte of this mouse event

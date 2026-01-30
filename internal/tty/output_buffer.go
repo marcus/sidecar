@@ -201,8 +201,10 @@ func LooksLikeMouseFragment(s string) bool {
 
 	// Very short strings (1-4 chars): check for mouse sequence markers
 	if len(s) <= 4 {
-		// Single [ or repeated [ is likely CSI start from split sequence
-		if s == "[" || (len(s) >= 2 && len(s) <= 3 && strings.Count(s, "[") == len(s)) {
+		// Repeated [ (2-3 chars) is likely CSI start from split sequence.
+		// A single "[" is NOT filtered here — it's a normal typeable character.
+		// Callers gate single "[" on EscapePressed state instead.
+		if len(s) >= 2 && len(s) <= 3 && strings.Count(s, "[") == len(s) {
 			return true
 		}
 		return strings.Contains(s, "[<") || // Start of sequence
