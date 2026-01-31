@@ -15,6 +15,7 @@ const (
 	regionCommit       = "commit"
 	regionCommitFile   = "commit-file"   // Files in commit preview pane
 	regionDiffModal    = "diff-modal"    // Full-screen diff view
+	regionDiffBack     = "diff-back"     // Back button in diff breadcrumb
 	regionCommitButton = "commit-button" // Commit modal button
 )
 
@@ -166,6 +167,8 @@ func (p *Plugin) handleMouseDoubleClick(action mouse.MouseAction) (*Plugin, tea.
 				p.viewMode = ViewModeDiff
 				p.diffFile = entry.Path
 				p.diffCommit = ""
+				p.diffCommitSubject = ""
+				p.diffCommitShortHash = ""
 				p.diffScroll = 0
 				p.diffLoaded = false
 				if entry.IsFolder {
@@ -185,6 +188,8 @@ func (p *Plugin) handleMouseDoubleClick(action mouse.MouseAction) (*Plugin, tea.
 				p.viewMode = ViewModeDiff
 				p.diffFile = file.Path
 				p.diffCommit = p.previewCommit.Hash
+				p.diffCommitSubject = p.previewCommit.Subject
+				p.diffCommitShortHash = p.previewCommit.ShortHash
 				p.diffScroll = 0
 				p.diffLoaded = false
 				parentHash := ""
@@ -496,12 +501,8 @@ func (p *Plugin) handleDiffMouse(msg tea.MouseMsg) (*Plugin, tea.Cmd) {
 					p.cursor = fileCount + idx
 					p.ensureCursorVisible()
 					p.ensureCommitVisible(idx)
-					// Close the diff view
-					p.diffContent = ""
-					p.diffRaw = ""
-					p.parsedDiff = nil
-					p.diffLoaded = false
-					p.viewMode = ViewModeStatus
+					p.closeDiffView()
+					p.viewMode = ViewModeStatus // override: navigate to specific commit
 					return p, p.autoLoadCommitPreview()
 				}
 			case regionFile:
@@ -509,14 +510,13 @@ func (p *Plugin) handleDiffMouse(msg tea.MouseMsg) (*Plugin, tea.Cmd) {
 				if idx, ok := action.Region.Data.(int); ok {
 					p.cursor = idx
 					p.ensureCursorVisible()
-					// Close the diff view
-					p.diffContent = ""
-					p.diffRaw = ""
-					p.parsedDiff = nil
-					p.diffLoaded = false
-					p.viewMode = ViewModeStatus
+					p.closeDiffView()
+					p.viewMode = ViewModeStatus // override: navigate to specific file
 					return p, p.autoLoadDiff()
 				}
+			case regionDiffBack:
+				p.closeDiffView()
+				return p, nil
 			}
 		}
 

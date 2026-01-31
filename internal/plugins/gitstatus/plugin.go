@@ -95,13 +95,16 @@ type Plugin struct {
 	diffFile       string
 	diffScroll     int
 	diffRaw        string       // Raw diff before delta processing
-	diffCommit     string       // Commit hash if viewing commit diff
+	diffCommit          string // Commit hash if viewing commit diff
+	diffCommitSubject   string // Subject of commit being diffed (for breadcrumb)
+	diffCommitShortHash string // Short hash of commit being diffed (for breadcrumb)
 	diffViewMode   DiffViewMode // Line or side-by-side
 	diffHorizOff   int          // Horizontal scroll for side-by-side
 	parsedDiff     *ParsedDiff  // Parsed diff for enhanced rendering
 	diffReturnMode ViewMode     // View mode to return to on esc
 	diffLoaded      bool         // True once diff load completes (distinguishes loading vs empty)
 	diffWrapEnabled bool         // Wrap long lines instead of truncating
+	diffBackWidth   int          // Width of back button for hit region (set during render)
 
 	// Push status state
 	pushStatus              *PushStatus

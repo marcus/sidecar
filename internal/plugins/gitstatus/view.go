@@ -172,16 +172,9 @@ func (p *Plugin) renderDiffModal() string {
 
 	var sb strings.Builder
 
-	// Header with view mode indicator and scroll indicators
-	viewModeStr := "unified"
-	if p.diffViewMode == DiffViewSideBySide {
-		viewModeStr = "side-by-side"
-	}
-
 	// Calculate scroll indicators for side-by-side mode
 	scrollIndicator := ""
 	if p.diffViewMode == DiffViewSideBySide && p.parsedDiff != nil {
-		// Calculate content width for side-by-side (each panel)
 		panelWidth := (contentWidth - 3) / 2
 		lineNoWidth := 5
 		sideContentWidth := panelWidth - lineNoWidth - 2
@@ -200,8 +193,11 @@ func (p *Plugin) renderDiffModal() string {
 		}
 	}
 
-	header := fmt.Sprintf("Diff: %s [%s]%s", p.diffFile, viewModeStr, scrollIndicator)
-	sb.WriteString(styles.ModalTitle.Render(header))
+	breadcrumb, backWidth := p.renderDiffBreadcrumb(contentWidth, scrollIndicator)
+	// Register back button hit region (after regionDiffModal so it takes priority)
+	// Y=1 accounts for panel border top line, X=2 for panel padding
+	p.mouseHandler.HitMap.AddRect(regionDiffBack, 2, 1, backWidth, 1, nil)
+	sb.WriteString(breadcrumb)
 	sb.WriteString("\n")
 	sb.WriteString(styles.Muted.Render(strings.Repeat("━", contentWidth)))
 	sb.WriteString("\n")
@@ -296,6 +292,12 @@ func (p *Plugin) renderDiffTwoPane() string {
 	sidebarContent := p.renderSidebar(innerHeight)
 	diffContent := p.renderFullDiffContent(innerHeight)
 
+	// Register back button hit region in the diff pane header
+	// diffX+2 for panel border+padding, y=1 for panel border top
+	if p.diffBackWidth > 0 {
+		p.mouseHandler.HitMap.AddRect(regionDiffBack, diffX+2, 1, p.diffBackWidth, 1, nil)
+	}
+
 	// Apply gradient border styles (consistent with renderThreePaneView)
 	leftPane := styles.RenderPanel(sidebarContent, p.sidebarWidth, paneHeight, sidebarActive)
 
@@ -316,20 +318,9 @@ func (p *Plugin) renderFullDiffContent(visibleHeight int) string {
 		diffWidth = 40
 	}
 
-	// Header with view mode indicator and scroll indicators
-	viewModeStr := "unified"
-	if p.diffViewMode == DiffViewSideBySide {
-		viewModeStr = "side-by-side"
-	}
-	header := "Diff"
-	if p.diffFile != "" {
-		header = truncateDiffPath(p.diffFile, p.diffPaneWidth-20) // Leave room for mode + indicators
-	}
-
 	// Calculate scroll indicators for side-by-side mode
 	scrollIndicator := ""
 	if p.diffViewMode == DiffViewSideBySide && p.parsedDiff != nil {
-		// Calculate content width for side-by-side (each panel)
 		panelWidth := (diffWidth - 3) / 2
 		lineNoWidth := 5
 		contentWidth := panelWidth - lineNoWidth - 2
@@ -348,8 +339,9 @@ func (p *Plugin) renderFullDiffContent(visibleHeight int) string {
 		}
 	}
 
-	header = fmt.Sprintf("%s [%s]%s", header, viewModeStr, scrollIndicator)
-	sb.WriteString(styles.Title.Render(header))
+	breadcrumb, backWidth := p.renderDiffBreadcrumb(diffWidth, scrollIndicator)
+	p.diffBackWidth = backWidth
+	sb.WriteString(breadcrumb)
 	sb.WriteString("\n\n")
 
 	if p.diffContent == "" && p.diffRaw == "" {
@@ -425,4 +417,72 @@ func (p *Plugin) renderDiffLine(line string) string {
 	default:
 		return styles.DiffContext.Render(line)
 	}
+}
+
+// renderDiffBreadcrumb renders the breadcrumb navigation bar for the diff view.
+// Returns the rendered string and the visible width of the clickable "← Back" area.
+func (p *Plugin) renderDiffBreadcrumb(maxWidth int, scrollIndicator string) (string, int) {
+	back := styles.Link.Render("← Back")
+	backWidth := lipgloss.Width(back)
+	sep := styles.Muted.Render(" · ")
+	sepWidth := lipgloss.Width(sep)
+
+	viewModeStr := "unified"
+	if p.diffViewMode == DiffViewSideBySide {
+		viewModeStr = "side-by-side"
+	}
+	modePart := styles.Muted.Render("[" + viewModeStr + "]")
+	modeWidth := lipgloss.Width(modePart) + lipgloss.Width(scrollIndicator)
+
+	// Budget for the middle content (commit info + filename)
+	budget := maxWidth - backWidth - sepWidth - modeWidth
+	if p.diffCommit != "" {
+		budget -= sepWidth // extra separator between commit info and filename
+	}
+
+	var commitPart string
+	commitWidth := 0
+	if p.diffCommit != "" && p.diffCommitShortHash != "" {
+		commitInfo := p.diffCommitShortHash
+		if p.diffCommitSubject != "" {
+			commitInfo += " " + p.diffCommitSubject
+		}
+		// Truncate commit info to leave room for filename (at least 15 chars)
+		fileMinWidth := 15
+		maxCommitWidth := budget - fileMinWidth
+		if maxCommitWidth < len(p.diffCommitShortHash) {
+			maxCommitWidth = len(p.diffCommitShortHash)
+		}
+		if len(commitInfo) > maxCommitWidth {
+			commitInfo = commitInfo[:maxCommitWidth-1] + "…"
+		}
+		commitPart = styles.Muted.Render(commitInfo)
+		commitWidth = lipgloss.Width(commitPart)
+	}
+
+	// Filename gets remaining budget
+	fileBudget := budget - commitWidth
+	if fileBudget < 5 {
+		fileBudget = 5
+	}
+	fileName := p.diffFile
+	if len(fileName) > fileBudget {
+		fileName = truncateDiffPath(fileName, fileBudget)
+	}
+	filePart := styles.Title.Render(fileName)
+
+	// Assemble
+	var sb strings.Builder
+	sb.WriteString(back)
+	sb.WriteString(sep)
+	if commitPart != "" {
+		sb.WriteString(commitPart)
+		sb.WriteString(sep)
+	}
+	sb.WriteString(filePart)
+	sb.WriteString(" ")
+	sb.WriteString(modePart)
+	sb.WriteString(scrollIndicator)
+
+	return sb.String(), backWidth
 }

@@ -188,6 +188,8 @@ func (p *Plugin) updateStatus(msg tea.KeyMsg) (plugin.Plugin, tea.Cmd) {
 			p.viewMode = ViewModeDiff
 			p.diffFile = entry.Path
 			p.diffCommit = ""
+			p.diffCommitSubject = ""
+			p.diffCommitShortHash = ""
 			p.diffScroll = 0
 			p.diffLoaded = false
 			if entry.IsFolder {
@@ -543,6 +545,8 @@ func (p *Plugin) updateStatusDiffPane(msg tea.KeyMsg) (plugin.Plugin, tea.Cmd) {
 			p.viewMode = ViewModeDiff
 			p.diffFile = entry.Path
 			p.diffCommit = ""
+			p.diffCommitSubject = ""
+			p.diffCommitShortHash = ""
 			p.diffScroll = 0
 			p.diffLoaded = false
 			return p, p.loadDiff(entry.Path, entry.Staged, entry.Status)
@@ -595,6 +599,8 @@ func (p *Plugin) updateCommitPreviewPane(msg tea.KeyMsg) (plugin.Plugin, tea.Cmd
 			p.viewMode = ViewModeDiff
 			p.diffFile = file.Path
 			p.diffCommit = c.Hash
+			p.diffCommitSubject = c.Subject
+			p.diffCommitShortHash = c.ShortHash
 			p.diffScroll = 0
 			p.diffLoaded = false
 			parentHash := ""
@@ -637,23 +643,28 @@ func (p *Plugin) updateCommitPreviewPane(msg tea.KeyMsg) (plugin.Plugin, tea.Cmd
 	return p, nil
 }
 
+// closeDiffView clears diff state and returns to the previous view mode.
+func (p *Plugin) closeDiffView() {
+	p.diffContent = ""
+	p.diffRaw = ""
+	p.parsedDiff = nil
+	p.diffLoaded = false
+	p.diffHorizOff = 0
+	p.diffCommit = ""
+	p.diffCommitSubject = ""
+	p.diffCommitShortHash = ""
+	p.diffFile = ""
+	p.viewMode = p.diffReturnMode
+	if p.diffReturnMode == ViewModeStatus && p.previewCommit != nil {
+		p.activePane = PaneDiff
+	}
+}
+
 // updateDiff handles key events in the diff view.
 func (p *Plugin) updateDiff(msg tea.KeyMsg) (plugin.Plugin, tea.Cmd) {
 	switch msg.String() {
 	case "esc", "q":
-		// Return to previous view
-		p.diffContent = ""
-		p.diffRaw = ""
-		p.parsedDiff = nil
-		p.diffLoaded = false
-		p.diffHorizOff = 0
-		p.diffCommit = ""
-		p.diffFile = ""
-		p.viewMode = p.diffReturnMode
-		// If returning to status view with commit preview, focus the preview pane
-		if p.diffReturnMode == ViewModeStatus && p.previewCommit != nil {
-			p.activePane = PaneDiff
-		}
+		p.closeDiffView()
 
 	case "j", "down":
 		p.diffScroll++
