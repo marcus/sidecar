@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -14,6 +15,7 @@ import (
 	"github.com/marcus/sidecar/internal/msg"
 	"github.com/marcus/sidecar/internal/styles"
 	"github.com/marcus/sidecar/internal/tty"
+	xterm "golang.org/x/term"
 )
 
 // InlineEditStartedMsg is sent when inline edit mode starts successfully.
@@ -82,8 +84,16 @@ func (p *Plugin) enterInlineEditMode(path string, lineNo int) tea.Cmd {
 		}
 		editorArgs = append(editorArgs, fullPath)
 
+		editorW, editorH := p.width, p.height
+		if editorW <= 0 || editorH <= 0 {
+			if w, h, err := xterm.GetSize(int(os.Stdout.Fd())); err == nil && w > 0 && h > 0 {
+				editorW, editorH = w, h
+			} else {
+				editorW, editorH = 80, 24
+			}
+		}
 		tmuxArgs := []string{"new-session", "-d", "-s", sessionName,
-			"-x", "80", "-y", "24", "-e", "TERM=" + term}
+			"-x", strconv.Itoa(editorW), "-y", strconv.Itoa(editorH), "-e", "TERM=" + term}
 		tmuxArgs = append(tmuxArgs, editorArgs...)
 
 		cmd := exec.Command("tmux", tmuxArgs...)
