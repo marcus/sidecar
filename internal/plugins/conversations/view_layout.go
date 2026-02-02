@@ -300,9 +300,9 @@ func (p *Plugin) renderSidebarPane(height int) string {
 	}
 	sb.WriteString(styles.Title.Render("Sessions"))
 	sb.WriteString(styles.Muted.Render(" " + countStr))
-	// Show loading indicator while adapters are still sending batches (td-7198a5)
+	// Show animated spinner while adapters are still sending batches (td-7198a5)
 	if p.loadingAdapters {
-		sb.WriteString(styles.Muted.Render(" ⟳"))
+		sb.WriteString(" " + p.adapterSpinner.View())
 	}
 	sb.WriteString("\n")
 
@@ -354,9 +354,12 @@ func (p *Plugin) renderSidebarPane(height int) string {
 
 	// Render sessions
 	contentHeight := height - linesUsed
-	// Reserve 1 line for "load more" indicator when paginated (td-7198a5)
+	// Reserve lines for indicators below session list (td-7198a5)
 	if p.hasMoreSessions && !p.searchMode && !p.filterMode {
-		contentHeight--
+		contentHeight-- // "load more" line
+	}
+	if p.loadingAdapters && !p.searchMode && !p.filterMode {
+		contentHeight-- // spinner line
 	}
 	if contentHeight < 1 {
 		contentHeight = 1
@@ -391,6 +394,10 @@ func (p *Plugin) renderSidebarPane(height int) string {
 		remaining := len(p.sessions) - p.displayedCount
 		loadMoreLine := fmt.Sprintf("  \u2193 %d more", remaining)
 		sessionSB.WriteString(styles.Muted.Render(loadMoreLine) + "\n")
+	}
+	// Show animated loading indicator at bottom while adapters still loading (td-7198a5)
+	if p.loadingAdapters && !p.searchMode && !p.filterMode {
+		sessionSB.WriteString("  " + p.adapterSpinner.View() + "\n")
 	}
 
 	sessionContent := strings.TrimRight(sessionSB.String(), "\n")

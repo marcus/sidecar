@@ -161,6 +161,7 @@ type Plugin struct {
 
 	// Incremental adapter session batches (td-7198a5)
 	adapterBatchChan chan AdapterBatchMsg
+	adapterSpinner   ui.BrailleSpinner // animated loading indicator while adapters load
 
 	// Search state
 	searchMode    bool
@@ -274,6 +275,7 @@ func New() *Plugin {
 		contentRenderer:     renderer,
 		coalesceChan:        coalesceChan,
 		adapterBatchChan:    make(chan AdapterBatchMsg, 8),
+		adapterSpinner:      ui.NewBrailleSpinner(),
 		renderCache:         make(map[renderCacheKey]string),
 		hitRegionsDirty:     true, // Start dirty to ensure first render builds regions
 		sidebarVisible:      true, // Sidebar visible by default
@@ -502,6 +504,8 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 		if cmd := p.skeleton.Update(msg); cmd != nil {
 			cmds = append(cmds, cmd)
 		}
+		// Advance braille spinner frame (td-7198a5)
+		p.adapterSpinner.Tick()
 		// Also forward to content search skeleton if modal is open (td-e740e4)
 		if p.contentSearchMode && p.contentSearchState != nil {
 			if cmd := p.contentSearchState.Skeleton.Update(msg); cmd != nil {
@@ -544,6 +548,7 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 			return p, nil
 		}
 		p.loadingAdapters = true
+		p.adapterSpinner.Start()
 		return p, p.listenForAdapterBatch()
 
 	case AdapterBatchMsg:
@@ -589,6 +594,7 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 		} else {
 			// All adapters done (td-7198a5)
 			p.loadingAdapters = false
+			p.adapterSpinner.Stop()
 			// Final batch: update worktree cache
 			if msg.WorktreePaths != nil {
 				p.cachedWorktreePaths = msg.WorktreePaths
