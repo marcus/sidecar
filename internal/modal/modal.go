@@ -177,6 +177,7 @@ func (m *Modal) SetFocus(id string) {
 	for i, fid := range m.focusIDs {
 		if fid == id {
 			m.focusIdx = i
+			m.scrollToFocused()
 			return
 		}
 	}
