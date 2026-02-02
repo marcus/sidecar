@@ -544,6 +544,18 @@ func (p *Plugin) handleListKeys(msg tea.KeyMsg) tea.Cmd {
 	case "enter":
 		// Enter interactive mode (tmux input passthrough) - feature gated
 		// Works from sidebar for selected shell/worktree with active session
+		// Handle orphaned worktrees: start new agent instead of silently returning nil
+		if !p.shellSelected {
+			wt := p.selectedWorktree()
+			if wt != nil && wt.IsOrphaned && wt.Agent == nil {
+				wt.IsOrphaned = false
+				agentType := wt.ChosenAgentType
+				if agentType == AgentNone || agentType == "" {
+					agentType = AgentClaude
+				}
+				return p.StartAgent(wt, agentType)
+			}
+		}
 		return p.enterInteractiveMode()
 	case "t":
 		// Attach to tmux session
