@@ -1198,10 +1198,10 @@ func (p *Plugin) copySelectedTextToClipboard() tea.Cmd {
 
 		text := strings.Join(result, "\n")
 		if err := clipboard.WriteAll(text); err != nil {
-			return msg.ShowToast("Copy failed: "+err.Error(), 2*time.Second)
+			return msg.ToastMsg{Message: "Copy failed: " + err.Error(), Duration: 2 * time.Second, IsError: true}
 		}
 		lineCount := endLine - startLine + 1
-		return msg.ShowToast(fmt.Sprintf("Copied %d line(s)", lineCount), 2*time.Second)
+		return msg.ToastMsg{Message: fmt.Sprintf("Copied %d line(s)", lineCount), Duration: 2 * time.Second}
 	}
 }
 
