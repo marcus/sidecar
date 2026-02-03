@@ -6,6 +6,8 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
+	"github.com/charmbracelet/x/cellbuf"
 	"github.com/marcus/sidecar/internal/image"
 	"github.com/marcus/sidecar/internal/styles"
 	"github.com/marcus/sidecar/internal/ui"
@@ -737,7 +739,6 @@ func (p *Plugin) renderPreviewPane(visibleHeight int) string {
 
 	// Style for truncating lines with ANSI codes
 	lineStyle := lipgloss.NewStyle().MaxWidth(maxLineWidth)
-	wrapStyle := lipgloss.NewStyle().Width(maxLineWidth)
 
 	// Reserve 1 line for truncation message if needed
 	contentEnd := end
@@ -746,6 +747,7 @@ func (p *Plugin) renderPreviewPane(visibleHeight int) string {
 	}
 
 	visualLinesRendered := 0
+	renderedAll := false
 	for i := start; i < contentEnd; i++ {
 		if p.previewWrapEnabled && visualLinesRendered >= visibleHeight {
 			break
@@ -754,34 +756,84 @@ func (p *Plugin) renderPreviewPane(visibleHeight int) string {
 		// Check if this line is selected for text selection highlighting
 		startCol, endCol := p.selection.GetLineSelectionCols(i)
 		if startCol >= 0 && showLineNumbers {
-			// Line number with selection background
-			lineNumStr := fmt.Sprintf("%4d ", i+1)
-			sb.WriteString(ui.InjectSelectionBackground(lineNumStr))
-
 			// Get syntax-highlighted content and inject character-level selection background
 			var lineContent string
 			if i < len(lines) {
 				lineContent = lines[i]
 			}
-			lineContent = ui.ExpandTabs(lineContent, 8)
-			// Truncate using lipgloss (handles ANSI codes properly)
-			lineContent = lipgloss.NewStyle().MaxWidth(maxLineWidth).Render(lineContent)
-			lineContent = ui.InjectCharacterRangeBackground(lineContent, startCol, endCol)
-			sb.WriteString(lineContent)
 
-			// Pad remaining width with selection background if full-line selection
-			if startCol == 0 && endCol == -1 {
-				contentWidth := lipgloss.Width(lineNumStr) + lipgloss.Width(lineContent)
-				if contentWidth < p.previewWidth-4 {
-					padding := strings.Repeat(" ", p.previewWidth-4-contentWidth)
-					sb.WriteString(ui.InjectSelectionBackground(padding))
-				}
-			}
-			visualLinesRendered++
 			if p.previewWrapEnabled {
-				if i < contentEnd-1 || p.isTruncated {
-					sb.WriteString("\n")
+				wrappedLines := p.wrapPreviewLine(lineContent, maxLineWidth)
+				lineNumPad := strings.Repeat(" ", lineNumWidth)
+
+				// Track visual column offset into the original (expanded) line.
+				// endCol == -1 means "to end of line".
+				selStart := startCol
+				selEnd := endCol
+				if selEnd == -1 {
+					selEnd = int(^uint(0) >> 1) // MaxInt
 				}
+
+				offset := 0
+				for wi, wl := range wrappedLines {
+					if visualLinesRendered >= visibleHeight {
+						renderedAll = true
+						break
+					}
+
+					segWidth := ansi.StringWidth(wl)
+					segStart := offset
+					segEnd := offset + segWidth - 1
+
+					// Apply selection only if this wrapped segment overlaps.
+					if selStart <= segEnd && selEnd >= segStart && segWidth > 0 {
+						localStart := selStart - segStart
+						if localStart < 0 {
+							localStart = 0
+						}
+						localEnd := selEnd - segStart
+						if localEnd >= segWidth {
+							localEnd = segWidth - 1
+						}
+						wl = ui.InjectCharacterRangeBackground(wl, localStart, localEnd)
+					}
+
+					// Line number with selection background (first wrapped line only)
+					if wi == 0 {
+						lineNumStr := fmt.Sprintf("%4d ", i+1)
+						sb.WriteString(ui.InjectSelectionBackground(lineNumStr))
+					} else {
+						sb.WriteString(lineNumPad)
+					}
+					sb.WriteString(wl)
+					if visualLinesRendered < visibleHeight-1 || p.isTruncated {
+						sb.WriteString("\n")
+					}
+					visualLinesRendered++
+					offset += segWidth
+				}
+
+				if renderedAll {
+					break
+				}
+			} else {
+				lineContent = ui.ExpandTabs(lineContent, 8)
+				lineContent = ui.InjectCharacterRangeBackground(lineContent, startCol, endCol)
+				// Truncate using lipgloss (handles ANSI codes properly)
+				lineNumStr := fmt.Sprintf("%4d ", i+1)
+				sb.WriteString(ui.InjectSelectionBackground(lineNumStr))
+				lineContent = lipgloss.NewStyle().MaxWidth(maxLineWidth).Render(lineContent)
+				sb.WriteString(lineContent)
+
+				// Pad remaining width with selection background if full-line selection
+				if startCol == 0 && endCol == -1 {
+					contentWidth := lipgloss.Width(lineNumStr) + lipgloss.Width(lineContent)
+					if contentWidth < p.previewWidth-4 {
+						padding := strings.Repeat(" ", p.previewWidth-4-contentWidth)
+						sb.WriteString(ui.InjectSelectionBackground(padding))
+					}
+				}
+				visualLinesRendered++
 			}
 		} else {
 			// Get line content
@@ -798,11 +850,9 @@ func (p *Plugin) renderPreviewPane(visibleHeight int) string {
 			} else if i < len(lines) {
 				lineContent = lines[i]
 			}
-			lineContent = ui.ExpandTabs(lineContent, 8)
 
 			if p.previewWrapEnabled {
-				wrapped := wrapStyle.Render(lineContent)
-				wrappedLines := strings.Split(wrapped, "\n")
+				wrappedLines := p.wrapPreviewLine(lineContent, maxLineWidth)
 				lineNumPad := strings.Repeat(" ", lineNumWidth)
 				for wi, wl := range wrappedLines {
 					if visualLinesRendered >= visibleHeight {
@@ -823,6 +873,7 @@ func (p *Plugin) renderPreviewPane(visibleHeight int) string {
 					visualLinesRendered++
 				}
 			} else {
+				lineContent = ui.ExpandTabs(lineContent, 8)
 				line := lineStyle.Render(lineContent)
 
 				// Render with or without line numbers
@@ -848,6 +899,35 @@ func (p *Plugin) renderPreviewPane(visibleHeight int) string {
 	}
 
 	return sb.String()
+}
+
+// wrapPreviewLine wraps a single line to width using plain-text breakpoints,
+// then slices the original ANSI line to preserve styling.
+func (p *Plugin) wrapPreviewLine(line string, width int) []string {
+	if width < 1 {
+		return []string{""}
+	}
+
+	expanded := ui.ExpandTabs(line, 8)
+	plain := ansi.Strip(expanded)
+	wrappedPlain := cellbuf.Wrap(plain, width, "")
+	plainSegments := strings.Split(wrappedPlain, "\n")
+
+	wrapped := make([]string, 0, len(plainSegments))
+	offset := 0
+	for _, seg := range plainSegments {
+		segWidth := ansi.StringWidth(seg)
+		if segWidth == 0 {
+			wrapped = append(wrapped, "")
+			continue
+		}
+		slice := ansi.TruncateLeft(expanded, offset, "")
+		slice = ansi.Truncate(slice, segWidth, "")
+		wrapped = append(wrapped, slice)
+		offset += segWidth
+	}
+
+	return wrapped
 }
 
 // highlightLineMatches applies search match highlighting to a line.
