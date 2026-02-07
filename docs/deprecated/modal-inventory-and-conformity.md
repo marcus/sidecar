@@ -1,6 +1,6 @@
 # Sidecar Modal Inventory & Quality Conformity
 
-This document provides a complete inventory of all modals in Sidecar and tracks their conformity with modal best practices defined in `docs/guides/ui-feature-guide.md` and `docs/spec-modal-library.md`.
+This document provides a complete inventory of all modals in Sidecar and tracks their conformity with modal best practices defined in `docs/deprecated/guides/ui-feature-guide.md` and `docs/spec-modal-library.md`.
 
 ## Quality Checklist
 
@@ -419,7 +419,7 @@ Optional enhancement:
 ## Files Referenced
 
 **Best Practice Guides:**
-- `docs/guides/ui-feature-guide.md` — UI feature guide (modals, shortcuts, mouse)
+- `docs/deprecated/guides/ui-feature-guide.md` — UI feature guide (modals, shortcuts, mouse)
 - `docs/spec-modal-library.md` — Modal library spec
 
 **Implementation Examples:**

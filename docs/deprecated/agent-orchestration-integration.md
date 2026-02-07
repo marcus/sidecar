@@ -591,10 +591,10 @@ The adapter parses whatever format the backend uses. The orchestrator only sees 
 
 ### TUI Plugin Design
 
-The orchestrator plugin integrates with sidecar's existing plugin system. All UI implementation must follow `docs/guides/ui-feature-guide.md`:
+The orchestrator plugin integrates with sidecar's existing plugin system. All UI implementation must follow `docs/deprecated/guides/ui-feature-guide.md`:
 
 - **Modals**: Built with `internal/modal`, rendered with `ui.OverlayModal`, no manual hit region math. Use `ensureModal()` pattern in both View and Update handlers. Each modal view mode gets a dedicated `FocusContext()` for correct footer hints.
-- **Keyboard shortcuts**: Commands + FocusContext + bindings must match. Names are short (one word preferred). Priorities set per the guide. See `docs/guides/keyboard-shortcuts-reference.md` for established patterns.
+- **Keyboard shortcuts**: Commands + FocusContext + bindings must match. Names are short (one word preferred). Priorities set per the guide. See `docs/deprecated/guides/keyboard-shortcuts-reference.md` for established patterns.
 - **Mouse support**: Rebuild hit regions on each render. General regions first, specific last.
 - **Rendering**: Constrain output to allocated height. Use `contentHeight := height - headerLines - footerLines`. Never render plugin-level footers — the app renders the unified footer from `Commands()`.
 
@@ -622,7 +622,7 @@ The badge updates in real-time as the orchestration engine emits events.
 
 #### Run Detail Modal
 
-> Implementation note: follows `docs/guides/ui-feature-guide.md` — built with `internal/modal`, uses `ui.OverlayModal` for background dim, `ensureModal()` in both View/Update, dedicated `FocusContext()` for footer hints. The modal uses `modal.Custom` sections for the live-updating timeline.
+> Implementation note: follows `docs/deprecated/guides/ui-feature-guide.md` — built with `internal/modal`, uses `ui.OverlayModal` for background dim, `ensureModal()` in both View/Update, dedicated `FocusContext()` for footer hints. The modal uses `modal.Custom` sections for the live-updating timeline.
 
 Accessible from the worktree list (press `Enter` on an orchestration worktree) or from the orchestrator plugin. This modal is **live-updating** — it polls orchestration state from td at a reasonable interval (1-2 seconds) so users watching the modal see progress in real time without needing to dismiss and reopen.
 
@@ -692,7 +692,7 @@ workspace.CreateWorktreeMsg{Branch: "agent/td-123-oauth"}
 
 #### Launch Modal
 
-> Implementation note: follows `docs/guides/ui-feature-guide.md` — modal library, `ensureModal()` pattern, dedicated `FocusContext()` per view mode, no plugin-level footer rendering.
+> Implementation note: follows `docs/deprecated/guides/ui-feature-guide.md` — modal library, `ensureModal()` pattern, dedicated `FocusContext()` per view mode, no plugin-level footer rendering.
 
 The primary entry point for orchestration. Designed for one-keypress launch on the happy path while exposing configuration for users who want it.
 
@@ -903,7 +903,7 @@ The orchestration modal is deliberately simpler. The workspace modal is a creati
 
 #### Keyboard Commands
 
-Each context below maps to a `FocusContext()` return value, a set of `Commands()` entries, and bindings in `internal/keymap/bindings.go` — per `docs/guides/ui-feature-guide.md`. Command names are one word where possible. `q` behavior follows `isRootContext()` conventions (orchestrator-select is a root context).
+Each context below maps to a `FocusContext()` return value, a set of `Commands()` entries, and bindings in `internal/keymap/bindings.go` — per `docs/deprecated/guides/ui-feature-guide.md`. Command names are one word where possible. `q` behavior follows `isRootContext()` conventions (orchestrator-select is a root context).
 
 ```
 Context: orchestrator-select

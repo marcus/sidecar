@@ -99,8 +99,8 @@ If the current worktree is deleted externally:
 
 ## Reference Docs
 
-- `docs/guides/ui-feature-guide.md` - Modal creation, keyboard shortcuts, mouse support patterns
-- `docs/guides/declarative-modal-guide.md` - Full modal API reference
+- `docs/deprecated/guides/ui-feature-guide.md` - Modal creation, keyboard shortcuts, mouse support patterns
+- `docs/deprecated/guides/declarative-modal-guide.md` - Full modal API reference
 
 ---
 

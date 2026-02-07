@@ -1,6 +1,6 @@
 # Keyboard Shortcuts Reference
 
-Complete shortcut listings and context reference. For implementation patterns, see `docs/guides/ui-feature-guide.md`.
+Complete shortcut listings and context reference. For implementation patterns, see `docs/deprecated/guides/ui-feature-guide.md`.
 
 ## Global Shortcuts
 

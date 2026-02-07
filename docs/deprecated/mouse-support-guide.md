@@ -1,4 +1,4 @@
-> DEPRECATED: Superseded by `docs/guides/ui-feature-guide.md`.
+> DEPRECATED: Superseded by `docs/deprecated/guides/ui-feature-guide.md`.
 
 # Mouse Support for Sidecar Plugins
 

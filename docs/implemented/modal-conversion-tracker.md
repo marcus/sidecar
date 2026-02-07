@@ -18,7 +18,7 @@ The **Rename Shell modal** is the simplest complete example of a converted modal
 - `internal/plugins/workspace/mouse.go` - search for `handleRenameShellModalMouse`
 - `internal/plugins/workspace/plugin.go` - search for `renameShellModal` fields
 
-Also see `docs/guides/ui-feature-guide.md` for the modal initialization pattern.
+Also see `.claude/skills/ui-features/SKILL.md` for the modal initialization pattern.
 
 ### Conversion Checklist
 

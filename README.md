@@ -185,7 +185,7 @@ Press `#` to open the theme switcher. Choose from built-in themes (default, drac
 
 The community browser supports search filtering, live preview as you navigate, and color swatches for each scheme. Press `Enter` to save a scheme as your active theme.
 
-See [Theme Creator Guide](docs/guides/theme-creator-guide.md) for custom theme creation and color palette reference.
+See [Theme Creation Skill](.claude/skills/create-theme/SKILL.md) for custom theme creation and color palette reference.
 
 ## Keyboard Shortcuts
 

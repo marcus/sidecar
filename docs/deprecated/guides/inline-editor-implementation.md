@@ -463,7 +463,7 @@ Enable in `~/.config/sidecar/config.json`:
 
 ## References
 
-- Original interactive shell guide: `docs/guides/interactive-shell-implementation.md`
+- Original interactive shell guide: `docs/deprecated/guides/interactive-shell-implementation.md`
 - TTY model implementation: `internal/tty/tty.go`
 - Feature flag system: `internal/features/features.go`
 - Related task: td-284383 (epic), td-b520d0d7 (original implementation)

@@ -1,7 +1,7 @@
 # UI Feature Implementation Guide
 
 This is the single entry point for Sidecar UI feature work: modals, keyboard shortcuts, and mouse support.
-All new modals must use the internal modal library. See `docs/guides/declarative-modal-guide.md` for the full API reference.
+All new modals must use the internal modal library. See `docs/deprecated/guides/declarative-modal-guide.md` for the full API reference.
 
 ## Quick checklist
 - Modals: use `internal/modal`, render with `ui.OverlayModal`, avoid manual hit region math.
@@ -15,7 +15,7 @@ All new modals must use the internal modal library. See `docs/guides/declarative
 
 ### Requirements
 - All new modals must be built with `internal/modal`.
-- See `docs/guides/declarative-modal-guide.md` for the full API and patterns.
+- See `docs/deprecated/guides/declarative-modal-guide.md` for the full API and patterns.
 - Do not implement custom hit region math or manual button focus logic.
 
 ### Create a modal
@@ -295,7 +295,7 @@ func (p *Plugin) renderTabs(width int) string {
 
 ## Keyboard shortcuts
 
-For complete shortcut listings per plugin, see `docs/guides/keyboard-shortcuts-reference.md`.
+For complete shortcut listings per plugin, see `docs/deprecated/guides/keyboard-shortcuts-reference.md`.
 
 ### Key routing flow
 ```
@@ -463,7 +463,7 @@ The app forwards all keys (except `ctrl+c`) to the active plugin while text inpu
 | `internal/app/view.go` | Footer rendering |
 
 ### TD Monitor integration
-TD Monitor uses dynamic shortcut export—TD is the single source of truth. See `docs/guides/keyboard-shortcuts-reference.md` for details.
+TD Monitor uses dynamic shortcut export—TD is the single source of truth. See `docs/deprecated/guides/keyboard-shortcuts-reference.md` for details.
 
 ### Testing
 - Run `sidecar --debug` to inspect key handling.

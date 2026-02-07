@@ -587,7 +587,7 @@ All notable changes to sidecar are documented here.
 
 ### Documentation
 
-- Added project switcher developer guide (`docs/guides/project-switcher-dev-guide.md`)
+- Added project switcher developer guide (`docs/deprecated/guides/project-switcher-dev-guide.md`)
 
 ## [v0.29.0] - 2026-01-19
 

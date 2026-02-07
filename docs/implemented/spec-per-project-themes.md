@@ -211,7 +211,7 @@ This mirrors the existing live-preview pattern in the theme switcher.
 
 ## Part 6: Doc Updates
 
-### `docs/guides/theme-creator-guide.md`
+### `docs/deprecated/guides/theme-creator-guide.md`
 
 - Update the "Community Themes" section to document the new storage format (`community` field)
 - Add a "Per-Project Themes" section explaining the config format
@@ -244,7 +244,7 @@ This mirrors the existing live-preview pattern in the theme switcher.
 | `internal/app/update.go`                | Theme switcher scope selector + save logic, project switcher live preview, add-project theme picker keys |
 | `internal/app/view.go`                  | Add-project theme field, scope selector in `#` modal                                                     |
 | `cmd/sidecar/main.go`                   | Use `ResolveTheme`+`ApplyResolved` instead of direct apply                                               |
-| `docs/guides/theme-creator-guide.md`    | Document community storage fix + per-project themes                                                      |
+| `docs/deprecated/guides/theme-creator-guide.md`    | Document community storage fix + per-project themes                                                      |
 
 ---
 

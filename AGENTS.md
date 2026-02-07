@@ -17,12 +17,12 @@ go install -ldflags "-X main.Version=v0.1.0" ./cmd/sidecar
 # Tag a release
 ```
 
-See docs/guides/releasing-new-version.md
+See .claude/skills/release/SKILL.md
 Version is set via ldflags at build time. Without it, sidecar shows git revision info.
 
 ## Keyboard Shortcut Parity
 
-See docs/guides/ui-feature-guide.md
+See .claude/skills/ui-features/SKILL.md
 
 See td-331dbf19 for diff paging implementation.
 

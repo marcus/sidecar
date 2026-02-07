@@ -126,7 +126,7 @@ func (p *Plugin) promptPickerEmptySection() modal.Section {
 		sb.WriteString("\n")
 		sb.WriteString(styles.Muted.Render("  Project: .sidecar/config.json"))
 		sb.WriteString("\n\n")
-		sb.WriteString(styles.Muted.Render("See: docs/guides/creating-prompts.md"))
+		sb.WriteString(styles.Muted.Render("See: .claude/skills/create-prompt/SKILL.md"))
 		sb.WriteString("\n\n")
 		sb.WriteString(styles.Muted.Render("Press d to add defaults, or Esc/Enter to continue without a prompt."))
 		return modal.RenderedSection{Content: sb.String()}

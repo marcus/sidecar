@@ -1,4 +1,4 @@
-> DEPRECATED: Superseded by `docs/guides/ui-feature-guide.md`.
+> DEPRECATED: Superseded by `docs/deprecated/guides/ui-feature-guide.md`.
 
 # Sidecar Keyboard Shortcuts Guide
 
@@ -245,7 +245,7 @@ Each plugin returns a context string that determines which bindings are active.
 
 Typing in the filter box always updates the filter; use arrows or `ctrl+n/ctrl+p` to navigate.
 
-See `docs/guides/project-switching-guide.md` for configuration and usage details.
+See `docs/deprecated/guides/project-switching-guide.md` for configuration and usage details.
 
 ### Unified Sidebar Controls
 

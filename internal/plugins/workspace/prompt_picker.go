@@ -198,7 +198,7 @@ func (pp *PromptPicker) View() string {
 		sb.WriteString("\n")
 		sb.WriteString(dimText("  Project: .sidecar/config.json"))
 		sb.WriteString("\n\n")
-		sb.WriteString(dimText("See: docs/guides/creating-prompts.md"))
+		sb.WriteString(dimText("See: .claude/skills/create-prompt/SKILL.md"))
 		sb.WriteString("\n\n")
 		sb.WriteString(dimText("d: add defaults   Esc/Enter: continue without prompt"))
 		return sb.String()

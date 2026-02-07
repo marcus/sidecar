@@ -293,7 +293,7 @@ func (p *Plugin) createPromptSection() modal.Section {
 		})
 
 		if len(p.createPrompts) == 0 {
-			lines = append(lines, dimText("  See: docs/guides/creating-prompts.md"))
+			lines = append(lines, dimText("  See: .claude/skills/create-prompt/SKILL.md"))
 		} else if selectedPrompt == nil {
 			lines = append(lines, dimText("  Press Enter to select a prompt template"))
 		} else {

@@ -302,7 +302,7 @@ return styles.RenderPanel(content, w, h, p.focused)
 
 ### Phase 6: Documentation Updates
 
-**File**: `docs/guides/theme-creator-guide.md`
+**File**: `docs/deprecated/guides/theme-creator-guide.md`
 
 Add new section:
 
@@ -338,7 +338,7 @@ overrides:
 | `internal/plugins/gitstatus/sidebar_view.go` | Modify | Use gradient panels |
 | `internal/plugins/conversations/view.go` | Modify | Use gradient panels |
 | `internal/palette/view.go` | Modify | Use gradient borders |
-| `docs/guides/theme-creator-guide.md` | Modify | Document gradient options |
+| `docs/deprecated/guides/theme-creator-guide.md` | Modify | Document gradient options |
 
 ---
 

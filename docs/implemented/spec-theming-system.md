@@ -481,7 +481,7 @@ Create a theme registry that:
 
 **Files to create/modify:**
 - `docs/GETTING_STARTED.md`
-- `docs/guides/theming-guide.md` (new)
+- `docs/deprecated/guides/theming-guide.md` (new)
 - `configs/default.json` - Add theme examples
 
 **Estimated complexity:** Low
@@ -588,10 +588,10 @@ Optional: Add runtime theme switching for improved UX.
 | `internal/ui/confirm_dialog.go` | 7 | Audit for hardcoded colors |
 | `internal/palette/view.go` | 9 | Consolidate styles |
 | `docs/GETTING_STARTED.md` | 13 | Theme documentation |
-| `docs/guides/theming-guide.md` | 13 | New: theming guide |
+| `docs/deprecated/guides/theming-guide.md` | 13 | New: theming guide |
 | `configs/default.json` | 2, 13 | Theme examples |
 
 ### New Files
 - `internal/styles/themes.go` - Theme definitions and registry
 - `internal/styles/themes_test.go` - Theme tests
-- `docs/guides/theming-guide.md` - User guide for theming
+- `docs/deprecated/guides/theming-guide.md` - User guide for theming

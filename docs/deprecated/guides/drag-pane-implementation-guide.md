@@ -10,7 +10,7 @@ This guide covers how to add drag-to-resize support for two-pane plugin layouts.
   - GitStatus: `GetGitStatusSidebarWidth()` / `SetGitStatusSidebarWidth(width)`
   - Conversations: `GetConversationsSideWidth()` / `SetConversationsSideWidth(width)`
   - Workspace: `GetWorkspaceSidebarWidth()` / `SetWorkspaceSidebarWidth(width)`
-- Familiarity with `internal/mouse` package (see `docs/guides/ui-feature-guide.md`)
+- Familiarity with `internal/mouse` package (see `docs/deprecated/guides/ui-feature-guide.md`)
 
 ## Implementation Checklist
 
