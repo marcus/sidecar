@@ -1,10 +1,5 @@
 {
   "permissions": {
-    "allow": [
-      "Bash(grep:*)",
-      "Bash(td create:*)",
-      "Bash(git checkout:*)",
-      "Bash(go build:*)"
-    ]
+    "allow": ["Bash(grep:*)", "Bash(td create:*)"]
   }
 }
