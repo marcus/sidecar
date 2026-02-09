@@ -208,19 +208,22 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 		}
 
 	case HookResultMsg:
-		// Log hook results, show toast for failures
 		var failures []string
+		var successes []string
 		for _, r := range msg.Results {
 			if r.Err != nil {
 				failures = append(failures, r.Name)
 				p.ctx.Logger.Warn("hook failed", "hook", r.Name, "cmd", r.Command, "output", r.Output, "err", r.Err)
 			} else {
-				p.ctx.Logger.Debug("hook ok", "hook", r.Name)
+				successes = append(successes, r.Name)
+				p.ctx.Logger.Info("hook ok", "hook", r.Name, "output", r.Output)
 			}
 		}
 		if len(failures) > 0 {
-			toastMsg := fmt.Sprintf("Hook failed: %s", strings.Join(failures, ", "))
-			p.toastMessage = toastMsg
+			p.toastMessage = fmt.Sprintf("Hook failed: %s", strings.Join(failures, ", "))
+			p.toastTime = time.Now()
+		} else if len(successes) > 0 {
+			p.toastMessage = fmt.Sprintf("Hooks done: %s", strings.Join(successes, ", "))
 			p.toastTime = time.Now()
 		}
 
