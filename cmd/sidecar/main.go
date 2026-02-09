@@ -18,6 +18,7 @@ import (
 	_ "github.com/marcus/sidecar/internal/adapter/codex"
 	_ "github.com/marcus/sidecar/internal/adapter/cursor"
 	_ "github.com/marcus/sidecar/internal/adapter/geminicli"
+	_ "github.com/marcus/sidecar/internal/adapter/kiro"
 	_ "github.com/marcus/sidecar/internal/adapter/opencode"
 	_ "github.com/marcus/sidecar/internal/adapter/warp"
 	"github.com/marcus/sidecar/internal/app"
