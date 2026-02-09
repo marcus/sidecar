@@ -20,6 +20,7 @@ The Conversations plugin automatically detects and displays sessions from:
 | Codex | ▶ | OpenAI's CLI coding agent |
 | Cursor CLI | ▌ | Cursor's background agent |
 | Gemini CLI | ★ | Google's CLI coding agent |
+| GitHub Copilot CLI | ⋮⋮ | GitHub's terminal assistant |
 | Kiro | κ | Amazon's AI coding assistant |
 | OpenCode | ◇ | Open-source coding agent |
 | Warp | » | Warp terminal AI |
