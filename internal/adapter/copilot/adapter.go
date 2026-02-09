@@ -359,9 +359,3 @@ func (a *Adapter) Usage(sessionID string) (*adapter.UsageStats, error) {
 	return &adapter.UsageStats{}, nil
 }
 
-// Watch watches for changes to Copilot CLI sessions.
-// TODO: Implement file system watching for events.jsonl files
-func (a *Adapter) Watch(projectRoot string) (<-chan adapter.Event, io.Closer, error) {
-	// For now, return an error indicating it's not implemented
-	return nil, nil, fmt.Errorf("watch not yet implemented for copilot adapter")
-}

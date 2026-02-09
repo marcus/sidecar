@@ -211,3 +211,26 @@ func TestCountMessages(t *testing.T) {
 		t.Errorf("expected 0 messages for nonexistent file, got %d", count)
 	}
 }
+
+func TestWatch(t *testing.T) {
+a := New()
+
+cwd, err := os.Getwd()
+if err != nil {
+t.Fatalf("failed to get cwd: %v", err)
+}
+
+// Test that Watch can be created
+eventChan, closer, err := a.Watch(cwd)
+if err != nil {
+t.Fatalf("Watch error: %v", err)
+}
+defer closer.Close()
+
+if eventChan == nil {
+t.Error("event channel should not be nil")
+}
+
+// Just verify it doesn't panic and can be closed
+t.Log("Watch implementation created successfully")
+}
