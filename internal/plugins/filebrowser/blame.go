@@ -46,7 +46,7 @@ func RunGitBlame(workDir, filePath string, epoch uint64) tea.Cmd {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 
-		cmd := exec.CommandContext(ctx, "git", "blame", "--line-porcelain", filePath)
+		cmd := exec.CommandContext(ctx, "git", "blame", "--line-porcelain", "--", filePath)
 		cmd.Dir = workDir
 		output, err := cmd.Output()
 		if err != nil {

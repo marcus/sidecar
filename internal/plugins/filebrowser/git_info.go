@@ -21,7 +21,7 @@ func (p *Plugin) fetchGitInfo(path string) tea.Cmd {
 		defer cancel()
 
 		// Check status
-		statusCmd := exec.CommandContext(ctx, "git", "status", "--porcelain", path)
+		statusCmd := exec.CommandContext(ctx, "git", "status", "--porcelain", "--", path)
 		statusCmd.Dir = p.ctx.WorkDir
 		statusOut, err := statusCmd.Output()
 		var status string
@@ -40,7 +40,7 @@ func (p *Plugin) fetchGitInfo(path string) tea.Cmd {
 		}
 
 		// Check last commit
-		logCmd := exec.CommandContext(ctx, "git", "log", "-1", "--format=%h - %s (%cr)", path)
+		logCmd := exec.CommandContext(ctx, "git", "log", "-1", "--format=%h - %s (%cr)", "--", path)
 		logCmd.Dir = p.ctx.WorkDir
 		logOut, err := logCmd.Output()
 		var lastCommit string

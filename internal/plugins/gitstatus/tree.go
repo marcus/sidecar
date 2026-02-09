@@ -414,7 +414,7 @@ func (t *FileTree) AllEntries() []*FileEntry {
 
 // StageFile stages a file.
 func (t *FileTree) StageFile(path string) error {
-	cmd := exec.Command("git", "add", path)
+	cmd := exec.Command("git", "add", "--", path)
 	cmd.Dir = t.workDir
 	output, err := cmd.CombinedOutput()
 	if err != nil {
@@ -425,7 +425,7 @@ func (t *FileTree) StageFile(path string) error {
 
 // UnstageFile unstages a file.
 func (t *FileTree) UnstageFile(path string) error {
-	cmd := exec.Command("git", "restore", "--staged", path)
+	cmd := exec.Command("git", "restore", "--staged", "--", path)
 	cmd.Dir = t.workDir
 	output, err := cmd.CombinedOutput()
 	if err != nil {
@@ -530,7 +530,7 @@ func (e *CommitError) Error() string {
 
 // DiscardModified discards unstaged changes to a modified file.
 func DiscardModified(workDir, path string) error {
-	cmd := exec.Command("git", "restore", path)
+	cmd := exec.Command("git", "restore", "--", path)
 	cmd.Dir = workDir
 	return cmd.Run()
 }
@@ -538,13 +538,13 @@ func DiscardModified(workDir, path string) error {
 // DiscardStaged discards staged changes to a file (unstages and restores).
 func DiscardStaged(workDir, path string) error {
 	// First unstage
-	cmd := exec.Command("git", "restore", "--staged", path)
+	cmd := exec.Command("git", "restore", "--staged", "--", path)
 	cmd.Dir = workDir
 	if err := cmd.Run(); err != nil {
 		return err
 	}
 	// Then restore working tree
-	cmd = exec.Command("git", "restore", path)
+	cmd = exec.Command("git", "restore", "--", path)
 	cmd.Dir = workDir
 	return cmd.Run()
 }
