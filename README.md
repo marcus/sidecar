@@ -261,6 +261,11 @@ Config file: `~/.config/sidecar/config.json`
 }
 ```
 
+## Contributing
+
+- **Bug reports**: [Open an issue](https://github.com/marcus/sidecar/issues)
+- **Feature requests**: Check the [Sidecar Roadmap](https://github.com/users/marcus/projects/3) for planned features and backlog
+
 ## Development
 
 ```bash
