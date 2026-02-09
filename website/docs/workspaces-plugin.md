@@ -375,6 +375,7 @@ Press `n` to open the create modal:
 | **Name** | Workspace branch name (e.g., `feature-auth`) |
 | **Base branch** | Branch to create from (defaults to `HEAD` / current branch) |
 | **Prompt** | Reusable prompt template with variables (optional) |
+| **Hooks** | Post-create hooks to run after workspace setup (optional) |
 | **Task** | Link to TD task for context (optional) |
 | **Agent** | AI agent to launch (Claude Code, Cursor, etc.) |
 | **Skip perms** | Auto-approve agent actions (dangerous, see warning above) |
@@ -384,9 +385,10 @@ Press `n` to open the create modal:
 1. Git creates a workspace in a sibling directory (e.g., `../feature-auth`)
 2. A new branch is created from the base branch
 3. If a task is linked, a `.sidecar-task` file is created and `td start` runs
-4. If an agent is selected, it launches in a tmux session named `sidecar-ws-<name>`
-5. If a prompt is selected, it's passed as the initial instruction to the agent
-6. The workspace appears in the list with "Active" status (if agent running)
+4. Selected post-create hooks run in the new workspace directory (e.g., `npm ci`)
+5. If an agent is selected, it launches in a tmux session named `sidecar-ws-<name>`
+6. If a prompt is selected, it's passed as the initial instruction to the agent
+7. The workspace appears in the list with "Active" status (if agent running)
 
 #### Reusable Prompts
 
@@ -432,6 +434,50 @@ Prompts are templates stored in JSON config files. They support variables like `
 - `required`: Must link a task, variable is replaced
 - `optional`: Can link a task, variable is replaced if present
 - `none`: No task linking, no variable substitution
+
+#### Post-Create Hooks
+
+Hooks run shell commands automatically after workspace creation. Use them to install dependencies, copy environment files, assign unique ports, or run any project-specific setup.
+
+**Config locations** (same files as prompts):
+
+- **Global**: `~/.config/sidecar/config.json`
+- **Project**: `.sidecar/config.json` (project-specific, overrides global)
+
+**Example config:**
+
+```json
+{
+  "hooks": {
+    "post-create": [
+      {
+        "name": "Install deps",
+        "command": "npm ci"
+      },
+      {
+        "name": "Copy env",
+        "command": "cp .env.example .env.local"
+      },
+      {
+        "name": "Setup ports",
+        "command": "echo PORT=$((10000 + RANDOM % 9999)) >> .env.local"
+      }
+    ]
+  }
+}
+```
+
+Hooks appear as checkboxes in the create modal. Select which hooks to run for each workspace—you don't have to run all of them every time.
+
+Each hook runs in the new workspace directory with these environment variables available:
+
+| Variable | Value |
+|----------|-------|
+| `MAIN_WORKTREE` | Path to main repo |
+| `WORKTREE_BRANCH` | New branch name |
+| `WORKTREE_PATH` | New workspace directory |
+
+Hook failures show a toast notification but don't block workspace creation or agent launch.
 
 Modal navigation:
 

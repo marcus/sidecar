@@ -20,6 +20,7 @@ const MINI_FEATURES = [
   { icon: 'move', title: 'Vim Navigation', description: 'h/j/k/l, gg/G, Ctrl+d/u, and more. Navigate like you would in vim.' },
   { icon: 'git-merge', title: 'Merge Workflow', description: 'Merge PRs, delete branches, and clean up workspaces with guided prompts.' },
   { icon: 'git-fork', title: 'Worktree Switcher', description: 'Switch back and forth between git worktrees instantly. Per-worktree state restores automatically.' },
+  { icon: 'play', title: 'Worktree Hooks', description: 'Run setup commands automatically when creating workspaces. Install deps, copy .env files, assign ports—all configurable per-project.' },
   { icon: 'refresh-cw', title: 'Global Refresh', description: 'Press R to refresh all plugins at once. Git status, files, and tasks update together.' },
   { icon: 'sun', title: 'Theme Switching', description: 'Cycle through themes or browse the community gallery. Changes apply instantly.' },
   { icon: 'gauge', title: 'Lightweight', description: 'Minimal CPU and memory footprint. Runs in the background without slowing down your machine like heavy editors.' },

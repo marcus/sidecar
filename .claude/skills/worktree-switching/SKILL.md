@@ -199,6 +199,62 @@ case WorkDirDeletedMsg:
 | `FileBrowser` | File browser selections and view state |
 | `Workspace` | Workspace/shell selections |
 
+## Post-Create Hooks
+
+Hooks run shell commands after a worktree is created. Users select which hooks to run via checkboxes in the create worktree modal.
+
+### Config Format
+
+Hooks are defined in `config.json` under `hooks.post-create`:
+
+```json
+{
+  "hooks": {
+    "post-create": [
+      {"name": "Install deps", "command": "npm ci"},
+      {"name": "Copy env", "command": "cp .env.example .env.local"}
+    ]
+  }
+}
+```
+
+**Config locations** (same as prompts):
+- Global: `~/.config/sidecar/config.json`
+- Project: `.sidecar/config.json` (overrides global by name)
+
+### Implementation
+
+**Hook type** (`internal/plugins/workspace/hooks.go`):
+```go
+type Hook struct {
+    Name    string `json:"name"`
+    Command string `json:"command"`
+    Source  string `json:"-"` // "global" or "project"
+}
+```
+
+**Loading**: `LoadHooks(globalConfigDir, projectDir)` merges global + project hooks, project overrides by name, returns sorted by name. Follows the `LoadPrompts()` pattern exactly.
+
+**Modal integration**: Hooks appear as inline checkboxes in the create modal between Prompt and Task sections. Each shows `[x]/[ ]`, name, scope `[G]/[P]`, and dimmed command preview.
+
+**Focus index**: `createFocus` 3 = hooks (0=name, 1=base, 2=prompt, 3=hooks, 4=task, 5=agent, 6=skipPerms, 7=create, 8=cancel).
+
+**Execution**: `runPostCreateHooks()` runs selected hooks sequentially in the new worktree directory after `setupWorktree()` completes. Environment variables:
+- `MAIN_WORKTREE` -- path to main repo
+- `WORKTREE_BRANCH` -- new branch name
+- `WORKTREE_PATH` -- new worktree directory
+
+**Result handling**: `HookResultMsg` carries results. Failures show a toast; successes log silently. Hook errors do not block worktree use or agent start.
+
+### Key Files
+
+| File | Purpose |
+|------|---------|
+| `internal/plugins/workspace/hooks.go` | Hook type, LoadHooks, runPostCreateHooks, HookResultMsg |
+| `internal/plugins/workspace/create_modal.go` | createHookSection, focus routing |
+| `internal/plugins/workspace/keys.go` | Hook toggle/navigation in create modal |
+| `internal/plugins/workspace/mouse.go` | Click-to-toggle hook checkboxes |
+
 ## Best Practices
 
 1. **Reset all state in `Init()`** -- do not carry over stale data from previous worktree
