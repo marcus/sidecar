@@ -2,6 +2,16 @@
 
 All notable changes to sidecar are documented here.
 
+## [v0.69.1] - 2026-02-08
+
+### Bug Fixes
+
+- Fix file search (`/`) hanging on large projects by reusing Ctrl+P file cache with fuzzy matching (#107)
+
+### Dependencies
+
+- Update td to v0.32.0
+
 ## [v0.69.0] - 2026-02-08
 
 ### Features
