@@ -56,6 +56,11 @@ var (
 func main() {
 	flag.Parse()
 
+	// Unset TMUX so sidecar's internal tmux sessions are independent of any
+	// outer tmux session. This allows prefix+d to detach from the workspace's
+	// inner session rather than the user's outer tmux.
+	os.Unsetenv("TMUX")
+
 	// Start pprof server if enabled (for memory profiling)
 	if pprofPort := os.Getenv("SIDECAR_PPROF"); pprofPort != "" {
 		if pprofPort == "1" {
