@@ -619,14 +619,13 @@ func (p *Plugin) handleListKeys(msg tea.KeyMsg) tea.Cmd {
 			p.activePane = PanePreview
 		}
 	case "enter":
-		// Kanban mode: sync cursor to selection and activate the highlighted item
+		// Kanban mode: sync cursor to selection, then fall through to activate
 		if p.viewMode == ViewModeKanban {
 			oldShellSelected := p.shellSelected
 			oldShellIdx := p.selectedShellIdx
 			oldWorktreeIdx := p.selectedIdx
 			p.syncKanbanToList()
 			p.applyKanbanSelectionChange(oldShellSelected, oldShellIdx, oldWorktreeIdx)
-			return p.loadSelectedContent()
 		}
 		// Enter interactive mode (tmux input passthrough) - feature gated
 		// Works from sidebar for selected shell/worktree with active session
@@ -642,7 +641,11 @@ func (p *Plugin) handleListKeys(msg tea.KeyMsg) tea.Cmd {
 				return p.StartAgent(wt, agentType)
 			}
 		}
-		return p.enterInteractiveMode()
+		if cmd := p.enterInteractiveMode(); cmd != nil {
+			return cmd
+		}
+		// Interactive mode couldn't start — at least load content for the selection
+		return p.loadSelectedContent()
 	case "t":
 		// Attach to tmux session
 		// Shell entry: attach to selected shell session
