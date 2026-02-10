@@ -1,6 +1,7 @@
 package docdrift
 
 import (
+	"fmt"
 	"go/ast"
 	"go/parser"
 	"go/token"
@@ -103,14 +104,91 @@ func (ca *CodeAnalyzer) analyzeFuncDecl(d *ast.FuncDecl, pkgName, fileName strin
 		featureType = "method"
 	}
 
+	signature := ca.extractFuncSignature(d)
 	ca.Features = append(ca.Features, CodeFeature{
 		Name:       d.Name.Name,
 		Type:       featureType,
-		Signature:  d.Name.Name + "()",
+		Signature:  signature,
 		Package:    pkgName,
 		SourceFile: filepath.Base(fileName),
 		IsExported: true,
 	})
+}
+
+// extractFuncSignature builds a function signature from AST.
+func (ca *CodeAnalyzer) extractFuncSignature(d *ast.FuncDecl) string {
+	var sb strings.Builder
+
+	// Receiver (for methods)
+	if d.Recv != nil {
+		sb.WriteString("(")
+		for i, field := range d.Recv.List {
+			if i > 0 {
+				sb.WriteString(", ")
+			}
+			sb.WriteString(ca.typeToString(field.Type))
+		}
+		sb.WriteString(") ")
+	}
+
+	sb.WriteString(d.Name.Name)
+	sb.WriteString("(")
+
+	// Parameters
+	if d.Type.Params != nil {
+		for i, field := range d.Type.Params.List {
+			if i > 0 {
+				sb.WriteString(", ")
+			}
+			if len(field.Names) > 0 {
+				for j, name := range field.Names {
+					if j > 0 {
+						sb.WriteString(", ")
+					}
+					sb.WriteString(name.Name)
+					sb.WriteString(" ")
+				}
+			}
+			sb.WriteString(ca.typeToString(field.Type))
+		}
+	}
+	sb.WriteString(")")
+
+	// Return types
+	if d.Type.Results != nil && len(d.Type.Results.List) > 0 {
+		sb.WriteString(" (")
+		for i, field := range d.Type.Results.List {
+			if i > 0 {
+				sb.WriteString(", ")
+			}
+			sb.WriteString(ca.typeToString(field.Type))
+		}
+		sb.WriteString(")")
+	}
+
+	return sb.String()
+}
+
+// typeToString converts an AST type to a string representation.
+func (ca *CodeAnalyzer) typeToString(expr ast.Expr) string {
+	switch t := expr.(type) {
+	case *ast.Ident:
+		return t.Name
+	case *ast.SelectorExpr:
+		return fmt.Sprintf("%s.%s", ca.typeToString(t.X), t.Sel.Name)
+	case *ast.StarExpr:
+		return "*" + ca.typeToString(t.X)
+	case *ast.ArrayType:
+		return "[]" + ca.typeToString(t.Elt)
+	case *ast.MapType:
+		return fmt.Sprintf("map[%s]%s", ca.typeToString(t.Key), ca.typeToString(t.Value))
+	case *ast.InterfaceType:
+		return "interface{}"
+	case *ast.FuncType:
+		return "func(...)"
+	default:
+		return "unknown"
+	}
 }
 
 // ExtractPluginNames extracts plugin IDs from the plugins directory.

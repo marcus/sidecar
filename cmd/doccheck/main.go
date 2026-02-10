@@ -60,10 +60,12 @@ func main() {
 	}
 
 	// Print report
-	fmt.Print(detector.GetFormattedReport())
+	if detector.Report != nil {
+		fmt.Print(detector.GetFormattedReport())
 
-	// Exit with non-zero if gaps found
-	if len(detector.Report.Gaps) > 0 {
-		os.Exit(1)
+		// Exit with non-zero if gaps found
+		if len(detector.Report.Gaps) > 0 {
+			os.Exit(1)
+		}
 	}
 }

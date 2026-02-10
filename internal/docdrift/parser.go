@@ -38,6 +38,8 @@ func (dp *DocumentationParser) Parse() error {
 		dp.parsePluginsInSection(sectionName, sectionContent)
 		dp.parseCommandsInSection(sectionName, sectionContent)
 	}
+	// Deduplicate claims after parsing all sections
+	dp.deduplicateClaims()
 	return nil
 }
 
@@ -115,8 +117,8 @@ func (dp *DocumentationParser) parseFeaturesInSection(section, content string) {
 
 // parsePluginsInSection extracts plugin mentions from a section.
 func (dp *DocumentationParser) parsePluginsInSection(section, content string) {
-	// Look for plugin names in headers and links
-	pluginPattern := regexp.MustCompile(`(?i)(plugin|workspace|git|conversations|file.?browser|td.?monitor|notes)`)
+	// Look for plugin names in headers and links with word boundaries
+	pluginPattern := regexp.MustCompile(`\b(?i)(plugin|workspace|git|conversations|file-?browser|td-?monitor|notes)\b`)
 	matches := pluginPattern.FindAllString(content, -1)
 
 	for _, match := range matches {
@@ -134,15 +136,14 @@ func (dp *DocumentationParser) parsePluginsInSection(section, content string) {
 
 // parseCommandsInSection extracts keyboard command mentions.
 func (dp *DocumentationParser) parseCommandsInSection(section, content string) {
-	// Look for keyboard commands in backticks
-	commandPattern := regexp.MustCompile("`([a-zA-Z0-9@#]+)`")
+	// Look for keyboard commands in backticks - more specific patterns
+	commandPattern := regexp.MustCompile("`((?:ctrl|cmd|alt|shift|@|#)(?:\\+\\w+)*|[a-zA-Z0-9@#])`")
 	matches := commandPattern.FindAllStringSubmatch(content, -1)
 
 	for _, match := range matches {
 		if len(match) > 1 {
 			cmd := match[1]
-			// Filter to likely commands (single char or @ prefixed)
-			if len(cmd) == 1 || strings.HasPrefix(cmd, "@") || strings.HasPrefix(cmd, "#") || strings.HasPrefix(cmd, "ctrl+") {
+			if cmd != "" {
 				dp.Claims = append(dp.Claims, DocumentationClaim{
 					Name:     cmd,
 					Type:     "command",
@@ -152,6 +153,23 @@ func (dp *DocumentationParser) parseCommandsInSection(section, content string) {
 			}
 		}
 	}
+}
+
+// deduplicateClaims removes duplicate claims based on name, type, and document.
+func (dp *DocumentationParser) deduplicateClaims() {
+	seen := make(map[string]bool)
+	var unique []DocumentationClaim
+
+	for _, claim := range dp.Claims {
+		// Create a unique key combining name, type, and document
+		key := claim.Name + "|" + claim.Type + "|" + claim.Document
+		if !seen[key] {
+			seen[key] = true
+			unique = append(unique, claim)
+		}
+	}
+
+	dp.Claims = unique
 }
 
 // ExtractTableFeatures extracts feature names from markdown tables.
