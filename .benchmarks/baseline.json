@@ -1,0 +1,110 @@
+{
+  "commit": "main",
+  "timestamp": "2025-02-09T00:00:00Z",
+  "version": "1.0",
+  "benchmarks": {
+    "claudecode": {
+      "FullParse_1MB": {
+        "threshold_ms": 50,
+        "iterations": 0,
+        "ns_per_op": 0,
+        "bytes_per_op": 0,
+        "allocs_per_op": 0
+      },
+      "FullParse_10MB": {
+        "threshold_ms": 500,
+        "iterations": 0,
+        "ns_per_op": 0,
+        "bytes_per_op": 0,
+        "allocs_per_op": 0
+      },
+      "CacheHit": {
+        "threshold_ms": 1,
+        "iterations": 0,
+        "ns_per_op": 0,
+        "bytes_per_op": 0,
+        "allocs_per_op": 0
+      },
+      "IncrementalParse": {
+        "threshold_ms": 10,
+        "iterations": 0,
+        "ns_per_op": 0,
+        "bytes_per_op": 0,
+        "allocs_per_op": 0
+      },
+      "Allocs": {
+        "threshold_ms": 5,
+        "iterations": 0,
+        "ns_per_op": 0,
+        "bytes_per_op": 0,
+        "allocs_per_op": 0
+      }
+    },
+    "codex": {
+      "SessionFiles": {
+        "threshold_ms": 100,
+        "iterations": 0,
+        "ns_per_op": 0,
+        "bytes_per_op": 0,
+        "allocs_per_op": 0
+      },
+      "SessionFilesCached": {
+        "threshold_ms": 5,
+        "iterations": 0,
+        "ns_per_op": 0,
+        "bytes_per_op": 0,
+        "allocs_per_op": 0
+      },
+      "SessionMetadataSmall": {
+        "threshold_ms": 5,
+        "iterations": 0,
+        "ns_per_op": 0,
+        "bytes_per_op": 0,
+        "allocs_per_op": 0
+      },
+      "SessionMetadataLarge": {
+        "threshold_ms": 10,
+        "iterations": 0,
+        "ns_per_op": 0,
+        "bytes_per_op": 0,
+        "allocs_per_op": 0
+      },
+      "SessionMetadataCached": {
+        "threshold_ms": 1,
+        "iterations": 0,
+        "ns_per_op": 0,
+        "bytes_per_op": 0,
+        "allocs_per_op": 0
+      },
+      "Sessions_10": {
+        "threshold_ms": 50,
+        "iterations": 0,
+        "ns_per_op": 0,
+        "bytes_per_op": 0,
+        "allocs_per_op": 0
+      },
+      "Sessions_50": {
+        "threshold_ms": 100,
+        "iterations": 0,
+        "ns_per_op": 0,
+        "bytes_per_op": 0,
+        "allocs_per_op": 0
+      },
+      "CwdMatchesProject": {
+        "threshold_ms": 1,
+        "iterations": 0,
+        "ns_per_op": 0,
+        "bytes_per_op": 0,
+        "allocs_per_op": 0
+      },
+      "ResolvedProjectPath": {
+        "threshold_ms": 1,
+        "iterations": 0,
+        "ns_per_op": 0,
+        "bytes_per_op": 0,
+        "allocs_per_op": 0
+      }
+    }
+  },
+  "note": "Baseline metrics for performance regression detection - initialize with go test -bench"
+}

@@ -1,0 +1,142 @@
+name: Performance Benchmarks
+
+on:
+  pull_request:
+    paths:
+      - 'internal/adapter/**'
+      - 'scripts/ci-benchmark-check.sh'
+      - 'scripts/perf-regressor.go'
+      - '.github/workflows/benchmark.yml'
+  push:
+    branches:
+      - main
+    paths:
+      - 'internal/adapter/**'
+  workflow_dispatch:
+
+jobs:
+  benchmark:
+    name: Run Performance Benchmarks
+    runs-on: macos-latest  # Use macOS for consistency with CI environment
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Fetch full history for baseline comparison
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.23'
+          cache: true
+
+      - name: Create baseline directory
+        run: mkdir -p .benchmarks
+
+      - name: Download baseline from main
+        if: github.event_name == 'pull_request'
+        run: |
+          # Fetch baseline from main branch
+          git fetch origin main:main
+          git show main:.benchmarks/baseline.json > .benchmarks/baseline-main.json 2>/dev/null || {
+            echo "⚠️  Baseline not found on main branch, skipping regression check"
+            echo "To create baseline: scripts/benchmark-baseline.sh"
+            exit 0
+          }
+          mv .benchmarks/baseline-main.json .benchmarks/baseline.json
+        continue-on-error: true
+
+      - name: Run benchmark regression check
+        if: github.event_name == 'pull_request'
+        run: |
+          chmod +x scripts/ci-benchmark-check.sh
+          REGRESSION_THRESHOLD=10 scripts/ci-benchmark-check.sh
+        continue-on-error: true
+        env:
+          CI_COMMIT_SHA: ${{ github.sha }}
+
+      - name: Create baseline (main branch)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          chmod +x scripts/benchmark-baseline.sh
+          scripts/benchmark-baseline.sh
+          # The baseline file is created as .benchmarks/baseline-<commit>.json
+
+      - name: Upload benchmark results
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: benchmark-reports
+          path: .benchmarks/
+          retention-days: 30
+
+      - name: Comment PR with results
+        if: github.event_name == 'pull_request' && always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const path = require('path');
+
+            // Look for regression report
+            const reportFiles = fs.readdirSync('.benchmarks')
+              .filter(f => f.startsWith('regression-report'));
+
+            if (reportFiles.length === 0) {
+              console.log('No regression report found');
+              return;
+            }
+
+            const reportFile = path.join('.benchmarks', reportFiles[0]);
+            const report = JSON.parse(fs.readFileSync(reportFile, 'utf8'));
+
+            let comment = '## 📊 Performance Benchmark Results\n\n';
+
+            if (report.passed_threshold) {
+              comment += '✅ **All benchmarks passed!** No performance regressions detected.\n\n';
+              comment += `- Total benchmarks checked: ${report.total_benchmarks}\n`;
+            } else {
+              comment += '❌ **Performance regression detected**\n\n';
+              comment += `- Regressions: ${report.regression_count}/${report.total_benchmarks}\n`;
+              comment += '\n### Regressions\n\n';
+
+              for (const reg of report.regressions) {
+                comment += `- **${reg.benchmark}**: ${reg.degradation_percent}% slower\n`;
+                comment += `  - Threshold: ${reg.threshold_ms}ms\n`;
+                comment += `  - Actual: ${reg.actual_ms}ms\n`;
+              }
+            }
+
+            if (report.warnings && report.warnings.length > 0) {
+              comment += '\n### Warnings\n\n';
+              for (const warning of report.warnings) {
+                comment += `- ⚠️  ${warning}\n`;
+              }
+            }
+
+            comment += '\n**Regression threshold**: 10%\n';
+            comment += `**Report**: [Download](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})`;
+
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: comment
+            });
+
+  benchmark-summary:
+    name: Benchmark Summary
+    needs: benchmark
+    runs-on: ubuntu-latest
+    if: always()
+
+    steps:
+      - name: Check benchmark status
+        run: |
+          if [ "${{ needs.benchmark.result }}" == "failure" ]; then
+            echo "⚠️  Benchmark check completed with issues"
+          else
+            echo "✅ Benchmark check passed"
+          fi

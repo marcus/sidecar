@@ -403,8 +403,8 @@ func TestFindKiroDB(t *testing.T) {
 
 	// Create a fake DB at the ~/.kiro location
 	kiroDir := filepath.Join(tmpDir, ".kiro")
-	os.MkdirAll(kiroDir, 0755)
-	os.WriteFile(filepath.Join(kiroDir, "data.sqlite3"), []byte("fake"), 0644)
+	_ = os.MkdirAll(kiroDir, 0755)
+	_ = os.WriteFile(filepath.Join(kiroDir, "data.sqlite3"), []byte("fake"), 0644)
 
 	result := findKiroDB(tmpDir)
 	expected := filepath.Join(kiroDir, "data.sqlite3")

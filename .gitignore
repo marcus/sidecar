@@ -67,3 +67,10 @@ screenshots/
 
 # Sidecar worktree state files
 .sidecar-base
+
+# Benchmark artifacts and profiles
+cpu.prof
+mem.prof
+*.prof
+.benchmarks/*-*.json
+!.benchmarks/baseline.json

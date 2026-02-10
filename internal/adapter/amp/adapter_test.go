@@ -1762,7 +1762,7 @@ func TestFindAmpThreadsDir(t *testing.T) {
 
 		// Create the default directory structure
 		threadsDir := filepath.Join(tmpDir, ".local", "share", "amp", "threads")
-		os.MkdirAll(threadsDir, 0755)
+		_ = os.MkdirAll(threadsDir, 0755)
 
 		result := findAmpThreadsDir(tmpDir)
 		if result != threadsDir {
@@ -1774,7 +1774,7 @@ func TestFindAmpThreadsDir(t *testing.T) {
 		tmpDir := t.TempDir()
 		customDir := filepath.Join(tmpDir, "custom")
 		threadsDir := filepath.Join(customDir, "amp", "threads")
-		os.MkdirAll(threadsDir, 0755)
+		_ = os.MkdirAll(threadsDir, 0755)
 
 		t.Setenv("AMP_DATA_HOME", customDir)
 
