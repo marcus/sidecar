@@ -67,7 +67,8 @@ type PIIMatch struct {
 	StartIdx  int
 	EndIdx    int
 	Line      int
-	Sensitive bool // whether this type is sensitive (should trigger warnings)
+	MessageID string // ID of the message containing this PII
+	Sensitive bool   // whether this type is sensitive (should trigger warnings)
 }
 
 // PatternConfig maps sensitivity levels to which patterns to detect

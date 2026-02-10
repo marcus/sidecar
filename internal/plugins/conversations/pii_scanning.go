@@ -28,9 +28,9 @@ func (p *Plugin) ScanSessionForPII() tea.Cmd {
 	return func() tea.Msg {
 		var allMatches []security.PIIMatch
 
-		// Scan all messages in the session
+		// Scan all messages in the session with message IDs
 		for _, msg := range p.messages {
-			matches := p.piiScanner.Scan(msg.Content)
+			matches := p.piiScanner.ScanMessageWithID(msg.Content, msg.ID)
 			allMatches = append(allMatches, matches...)
 		}
 
@@ -97,14 +97,15 @@ func (p *Plugin) GetPIIWarningForMessage(msgID string) string {
 	}
 
 	// Find PII in this specific message
-	msgMatches := make([]security.PIIMatch, 0)
+	hasSensitivePII := false
 	for _, m := range matches {
-		if m.Type == "" { // In a real implementation, we'd have message ID tracking
-			msgMatches = append(msgMatches, m)
+		if m.MessageID == msgID && security.SensitiveTypes[m.Type] {
+			hasSensitivePII = true
+			break
 		}
 	}
 
-	if len(msgMatches) > 0 {
+	if hasSensitivePII {
 		return security.PIIIndicator(true)
 	}
 	return ""

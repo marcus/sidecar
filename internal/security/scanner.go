@@ -71,6 +71,16 @@ func (s *Scanner) ScanMessage(content string) []PIIMatch {
 	return s.Scan(content)
 }
 
+// ScanMessageWithID scans a message for PII and returns matches with the message ID attached
+func (s *Scanner) ScanMessageWithID(content, messageID string) []PIIMatch {
+	matches := s.Scan(content)
+	// Attach message ID to all matches
+	for i := range matches {
+		matches[i].MessageID = messageID
+	}
+	return matches
+}
+
 // HasSensitivePII returns true if any sensitive PII is detected in the text
 func (s *Scanner) HasSensitivePII(text string) bool {
 	matches := s.Scan(text)

@@ -15,6 +15,7 @@ import (
 	"github.com/marcus/sidecar/internal/adapter"
 	"github.com/marcus/sidecar/internal/adapter/tieredwatcher"
 	"github.com/marcus/sidecar/internal/app"
+	"github.com/marcus/sidecar/internal/config"
 	"github.com/marcus/sidecar/internal/modal"
 	"github.com/marcus/sidecar/internal/mouse"
 	"github.com/marcus/sidecar/internal/plugin"
@@ -462,7 +463,17 @@ func (p *Plugin) Init(ctx *plugin.Context) error {
 	}
 
 	// Initialize PII scanner from config
-	piiConfig := ctx.Config.Plugins.Conversations.PII
+	var piiConfig config.PIIScannerConfig
+	if ctx.Config != nil {
+		piiConfig = ctx.Config.Plugins.Conversations.PII
+	} else {
+		// Default config when ctx.Config is nil
+		piiConfig = config.PIIScannerConfig{
+			Enabled:      true,
+			Sensitivity:  "medium",
+			ShowWarnings: true,
+		}
+	}
 	sensitivity := security.SensitivityMedium
 	if piiConfig.Sensitivity == "low" {
 		sensitivity = security.SensitivityLow

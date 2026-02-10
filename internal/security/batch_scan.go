@@ -29,7 +29,7 @@ func BatchScanSessions(sessions []adapter.Session, messages map[string][]adapter
 		hasSensitive := false
 
 		for _, msg := range sessionMessages {
-			matches := scanner.Scan(msg.Content)
+			matches := scanner.ScanMessageWithID(msg.Content, msg.ID)
 			allMatches = append(allMatches, matches...)
 
 			for _, m := range matches {
