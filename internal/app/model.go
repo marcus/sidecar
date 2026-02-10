@@ -482,6 +482,11 @@ func (m *Model) runInstallPhase() tea.Cmd {
 		var sidecarUpdated, tdUpdated bool
 		var newSidecarVersion, newTdVersion string
 
+		// Refresh Homebrew tap so brew knows about new versions
+		if method == version.InstallMethodHomebrew {
+			_ = exec.Command("brew", "update").Run() // best-effort
+		}
+
 		// Update sidecar
 		if sidecarUpdate != nil {
 			switch method {
