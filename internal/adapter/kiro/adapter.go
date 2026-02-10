@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -33,10 +34,63 @@ type Adapter struct {
 // New creates a new Kiro adapter.
 func New() *Adapter {
 	home, _ := os.UserHomeDir()
-	dbPath := filepath.Join(home, "Library", "Application Support", "kiro-cli", "data.sqlite3")
+	dbPath := findKiroDB(home)
 	return &Adapter{
 		dbPath: dbPath,
 	}
+}
+
+// findKiroDB searches candidate paths for the kiro-cli SQLite database.
+// Returns the first path that exists, or the primary platform default if none found.
+func findKiroDB(home string) string {
+	candidates := kiroDBCandidates(home)
+	for _, path := range candidates {
+		if _, err := os.Stat(path); err == nil {
+			return path
+		}
+	}
+	if len(candidates) > 0 {
+		return candidates[0]
+	}
+	return filepath.Join(home, ".kiro", "data.sqlite3")
+}
+
+// kiroDBCandidates returns platform-ordered candidate paths for the kiro-cli database.
+func kiroDBCandidates(home string) []string {
+	var candidates []string
+
+	// Newer kiro-cli versions (post-.amazonq migration) — all platforms
+	candidates = append(candidates, filepath.Join(home, ".kiro", "data.sqlite3"))
+
+	switch runtime.GOOS {
+	case "darwin":
+		candidates = append(candidates, filepath.Join(home, "Library", "Application Support", "kiro-cli", "data.sqlite3"))
+	case "linux":
+		dataHome := os.Getenv("XDG_DATA_HOME")
+		if dataHome == "" {
+			dataHome = filepath.Join(home, ".local", "share")
+		}
+		candidates = append(candidates, filepath.Join(dataHome, "kiro-cli", "data.sqlite3"))
+		configHome := os.Getenv("XDG_CONFIG_HOME")
+		if configHome == "" {
+			configHome = filepath.Join(home, ".config")
+		}
+		candidates = append(candidates, filepath.Join(configHome, "kiro-cli", "data.sqlite3"))
+	case "windows":
+		appData := os.Getenv("APPDATA")
+		if appData != "" {
+			candidates = append(candidates, filepath.Join(appData, "kiro-cli", "data.sqlite3"))
+		}
+		localAppData := os.Getenv("LOCALAPPDATA")
+		if localAppData != "" {
+			candidates = append(candidates, filepath.Join(localAppData, "kiro-cli", "data.sqlite3"))
+		}
+	}
+
+	// Legacy: ~/.amazonq/data.sqlite3 (pre-migration)
+	candidates = append(candidates, filepath.Join(home, ".amazonq", "data.sqlite3"))
+
+	return candidates
 }
 
 // ID returns the adapter identifier.
