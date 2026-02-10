@@ -492,8 +492,13 @@ func (m *Model) runInstallPhase() tea.Cmd {
 			switch method {
 			case version.InstallMethodHomebrew:
 				cmd := exec.Command("brew", "upgrade", "sidecar")
-				if output, err := cmd.CombinedOutput(); err != nil {
+				output, err := cmd.CombinedOutput()
+				if err != nil {
 					return UpdateErrorMsg{Step: "sidecar", Err: fmt.Errorf("%v: %s", err, output)}
+				}
+				outLower := strings.ToLower(string(output))
+				if strings.Contains(outLower, "already installed") || strings.Contains(outLower, "already up-to-date") {
+					return UpdateErrorMsg{Step: "sidecar", Err: fmt.Errorf("brew reports sidecar is already at latest version — tap may be out of date. Try: brew update && brew upgrade sidecar")}
 				}
 				sidecarUpdated = true
 				newSidecarVersion = sidecarUpdate.LatestVersion
