@@ -35,6 +35,7 @@ import (
 	"github.com/marcus/sidecar/internal/plugins/notes"
 	"github.com/marcus/sidecar/internal/plugins/tdmonitor"
 	"github.com/marcus/sidecar/internal/plugins/workspace"
+	"github.com/marcus/sidecar/internal/security"
 	"github.com/marcus/sidecar/internal/state"
 	"github.com/marcus/sidecar/internal/styles"
 	"github.com/marcus/sidecar/internal/theme"
@@ -52,6 +53,7 @@ var (
 	shortVersion   = flag.Bool("v", false, "print version and exit (short)")
 	enableFeature  = flag.String("enable-feature", "", "enable a feature flag (comma-separated)")
 	disableFeature = flag.String("disable-feature", "", "disable a feature flag (comma-separated)")
+	scanPIIFlag    = flag.Bool("scan-pii", false, "scan conversations for PII exposure and exit")
 )
 
 func main() {
@@ -60,7 +62,7 @@ func main() {
 	// Unset TMUX so sidecar's internal tmux sessions are independent of any
 	// outer tmux session. This allows prefix+d to detach from the workspace's
 	// inner session rather than the user's outer tmux.
-	os.Unsetenv("TMUX")
+	_ = os.Unsetenv("TMUX")
 
 	// Start pprof server if enabled (for memory profiling)
 	if pprofPort := os.Getenv("SIDECAR_PPROF"); pprofPort != "" {
@@ -116,6 +118,11 @@ func main() {
 	// Initialize feature flags
 	features.Init(cfg)
 	applyFeatureOverrides()
+
+	// Handle --scan-pii flag for batch scanning
+	if *scanPIIFlag {
+		scanPIIAndExit(cfg, *projectRoot)
+	}
 
 	// Load persistent state (ignore errors - state is optional)
 	_ = state.Init()
@@ -306,4 +313,74 @@ func applyFeatureOverrides() {
 			features.SetOverride(name, false)
 		}
 	}
+}
+
+// scanPIIAndExit performs PII scanning on all sessions in a project and exits.
+func scanPIIAndExit(cfg *config.Config, projectRoot string) {
+	// Convert project root to absolute path
+	workDir, err := filepath.Abs(projectRoot)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to resolve project root: %v\n", err)
+		os.Exit(1)
+	}
+
+	// Create adapters
+	adapters := adapter.AllAdapters()
+
+	// Filter adapters that detect in this project
+	var detectedAdapters []adapter.Adapter
+	for _, a := range adapters {
+		found, err := a.Detect(workDir)
+		if err == nil && found {
+			detectedAdapters = append(detectedAdapters, a)
+		}
+	}
+
+	if len(detectedAdapters) == 0 {
+		fmt.Fprintf(os.Stderr, "No conversation adapters found in %s\n", workDir)
+		os.Exit(1)
+	}
+
+	// Load sessions from all adapters
+	var allSessions []adapter.Session
+	sessionMessages := make(map[string][]adapter.Message)
+
+	for _, a := range detectedAdapters {
+		sessions, err := a.Sessions(workDir)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error loading sessions: %v\n", err)
+			continue
+		}
+
+		for _, s := range sessions {
+			allSessions = append(allSessions, s)
+			messages, err := a.Messages(s.ID)
+			if err == nil {
+				sessionMessages[s.ID] = messages
+			}
+		}
+	}
+
+	if len(allSessions) == 0 {
+		fmt.Fprintf(os.Stderr, "No sessions found\n")
+		os.Exit(1)
+	}
+
+	// Determine sensitivity level from config
+	sensitivity := security.SensitivityMedium
+	piiConfig := cfg.Plugins.Conversations.PII
+	if piiConfig.Sensitivity == "low" {
+		sensitivity = security.SensitivityLow
+	} else if piiConfig.Sensitivity == "high" {
+		sensitivity = security.SensitivityHigh
+	}
+
+	// Perform batch scan
+	results := security.BatchScanSessions(allSessions, sessionMessages, sensitivity)
+
+	// Format and print results
+	output := security.FormatBatchResults(results)
+	fmt.Print(output)
+
+	os.Exit(0)
 }

@@ -658,6 +658,9 @@ func (p *Plugin) renderMessageBubble(msg adapter.Message, msgIndex int, maxWidth
 		cursorPrefix = "> "
 	}
 
+	// Get PII warning for this message (if enabled and PII detected)
+	piiWarning := p.GetPIIWarningForMessage(msg.ID)
+
 	var headerLine string
 	if selected {
 		// For selected messages, use plain text (no colored backgrounds) for consistent highlighting
@@ -684,7 +687,7 @@ func (p *Plugin) renderMessageBubble(msg adapter.Message, msgIndex int, maxWidth
 	} else {
 		// For non-selected messages, use colorful styling
 		if msg.Role == "user" {
-			userLabel := "you"
+			var userLabel string
 			if msg.SourceLabel != "" {
 				// Show channel badge dim, user name styled
 				userLabel = renderSourceLabel(msg.SourceLabel)
@@ -710,6 +713,12 @@ func (p *Plugin) renderMessageBubble(msg adapter.Message, msgIndex int, maxWidth
 			}
 		}
 	}
+
+	// Add PII warning if present
+	if piiWarning != "" {
+		headerLine += " " + piiWarning
+	}
+
 	lines = append(lines, headerLine)
 
 	// Render content blocks (same for selected and non-selected)

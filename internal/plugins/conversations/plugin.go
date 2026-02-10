@@ -15,9 +15,11 @@ import (
 	"github.com/marcus/sidecar/internal/adapter"
 	"github.com/marcus/sidecar/internal/adapter/tieredwatcher"
 	"github.com/marcus/sidecar/internal/app"
+	"github.com/marcus/sidecar/internal/config"
 	"github.com/marcus/sidecar/internal/modal"
 	"github.com/marcus/sidecar/internal/mouse"
 	"github.com/marcus/sidecar/internal/plugin"
+	"github.com/marcus/sidecar/internal/security"
 	"github.com/marcus/sidecar/internal/state"
 	"github.com/marcus/sidecar/internal/ui"
 )
@@ -249,6 +251,11 @@ type Plugin struct {
 	// Uses message ID (not index) to handle pagination correctly
 	pendingScrollMsgID  string // Target message ID to scroll to after load ("" = none)
 	pendingScrollActive bool   // True when we have a pending scroll request
+
+	// PII scanning
+	piiScanner        *security.Scanner
+	piiShowWarnings   bool                           // whether to show inline PII warnings in UI
+	sessionPIIMatches map[string][]security.PIIMatch // session ID -> PII matches
 }
 
 // msgLineRange tracks which screen lines a message occupies (after scroll).
@@ -428,6 +435,12 @@ func (p *Plugin) resetState() {
 	// Tiered watcher manager (td-dca6fe)
 	// Close existing manager before resetting (handled by closeWatchers in Stop)
 	p.tieredManager = nil
+
+	// PII scanning
+	p.sessionPIIMatches = make(map[string][]security.PIIMatch)
+	p.piiShowWarnings = false
+	// Scanner will be initialized in Init() based on config
+	p.piiScanner = nil
 }
 
 // Init initializes the plugin with context.
@@ -450,6 +463,28 @@ func (p *Plugin) Init(ctx *plugin.Context) error {
 	} else {
 		p.defaultCategoryFilter = []string{adapter.SessionCategoryInteractive}
 	}
+
+	// Initialize PII scanner from config
+	var piiConfig config.PIIScannerConfig
+	if ctx.Config != nil {
+		piiConfig = ctx.Config.Plugins.Conversations.PII
+	} else {
+		// Default config when ctx.Config is nil
+		piiConfig = config.PIIScannerConfig{
+			Enabled:      true,
+			Sensitivity:  "medium",
+			ShowWarnings: true,
+		}
+	}
+	sensitivity := security.SensitivityMedium
+	switch piiConfig.Sensitivity {
+	case "low":
+		sensitivity = security.SensitivityLow
+	case "high":
+		sensitivity = security.SensitivityHigh
+	}
+	p.piiScanner = security.NewScanner(sensitivity, piiConfig.Enabled)
+	p.piiShowWarnings = piiConfig.ShowWarnings
 
 	p.adapters = make(map[string]adapter.Adapter)
 	for id, a := range ctx.Adapters {
@@ -817,6 +852,17 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 			if p.sessionSummary != nil {
 				UpdateSessionSummary(p.sessionSummary, newMessages, p.summaryModelCounts, p.summaryFileSet)
 			}
+
+			// Incrementally update PII matches for new messages
+			if p.piiScanner != nil && p.piiScanner.IsEnabled() {
+				currentMatches := p.sessionPIIMatches[p.selectedSession]
+				for _, message := range newMessages {
+					matches := p.piiScanner.ScanMessageWithID(message.Content, message.ID)
+					currentMatches = append(currentMatches, matches...)
+				}
+				p.sessionPIIMatches[p.selectedSession] = currentMatches
+			}
+
 			// Mark hit regions dirty for new content (td-ea784b03)
 			p.hitRegionsDirty = true
 			// Don't reset cursors - user may be scrolled
@@ -859,6 +905,16 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 		p.messageOffset = msg.Offset // Sync offset with actual loaded offset (td-39018be2)
 		// hasOlderMsgs: true when there are messages beyond the current window (td-07fc795d)
 		p.hasOlderMsgs = (msg.Offset + len(msg.Messages)) < msg.TotalCount
+
+		// Scan messages for PII if enabled (integration point for inline UI warnings)
+		if p.piiScanner != nil && p.piiScanner.IsEnabled() {
+			var allMatches []security.PIIMatch
+			for _, message := range p.messages {
+				matches := p.piiScanner.ScanMessageWithID(message.Content, message.ID)
+				allMatches = append(allMatches, matches...)
+			}
+			p.sessionPIIMatches[p.selectedSession] = allMatches
+		}
 
 		// Process pending scroll request from content search (td-b74d9f)
 		// Uses message ID (not index) to handle pagination correctly
