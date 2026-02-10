@@ -52,6 +52,7 @@ var (
 	shortVersion   = flag.Bool("v", false, "print version and exit (short)")
 	enableFeature  = flag.String("enable-feature", "", "enable a feature flag (comma-separated)")
 	disableFeature = flag.String("disable-feature", "", "disable a feature flag (comma-separated)")
+	scanPIIFlag    = flag.Bool("scan-pii", false, "scan conversations for PII exposure and exit")
 )
 
 func main() {

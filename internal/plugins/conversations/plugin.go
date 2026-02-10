@@ -18,6 +18,7 @@ import (
 	"github.com/marcus/sidecar/internal/modal"
 	"github.com/marcus/sidecar/internal/mouse"
 	"github.com/marcus/sidecar/internal/plugin"
+	"github.com/marcus/sidecar/internal/security"
 	"github.com/marcus/sidecar/internal/state"
 	"github.com/marcus/sidecar/internal/ui"
 )
@@ -249,6 +250,10 @@ type Plugin struct {
 	// Uses message ID (not index) to handle pagination correctly
 	pendingScrollMsgID  string // Target message ID to scroll to after load ("" = none)
 	pendingScrollActive bool   // True when we have a pending scroll request
+
+	// PII scanning
+	piiScanner        *security.Scanner
+	sessionPIIMatches map[string][]security.PIIMatch // session ID -> PII matches
 }
 
 // msgLineRange tracks which screen lines a message occupies (after scroll).
@@ -428,6 +433,11 @@ func (p *Plugin) resetState() {
 	// Tiered watcher manager (td-dca6fe)
 	// Close existing manager before resetting (handled by closeWatchers in Stop)
 	p.tieredManager = nil
+
+	// PII scanning
+	p.sessionPIIMatches = make(map[string][]security.PIIMatch)
+	// Scanner will be initialized in Init() based on config
+	p.piiScanner = nil
 }
 
 // Init initializes the plugin with context.
@@ -450,6 +460,16 @@ func (p *Plugin) Init(ctx *plugin.Context) error {
 	} else {
 		p.defaultCategoryFilter = []string{adapter.SessionCategoryInteractive}
 	}
+
+	// Initialize PII scanner from config
+	piiConfig := ctx.Config.Plugins.Conversations.PII
+	sensitivity := security.SensitivityMedium
+	if piiConfig.Sensitivity == "low" {
+		sensitivity = security.SensitivityLow
+	} else if piiConfig.Sensitivity == "high" {
+		sensitivity = security.SensitivityHigh
+	}
+	p.piiScanner = security.NewScanner(sensitivity, piiConfig.Enabled)
 
 	p.adapters = make(map[string]adapter.Adapter)
 	for id, a := range ctx.Adapters {

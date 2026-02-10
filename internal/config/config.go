@@ -60,6 +60,18 @@ type ConversationsPluginConfig struct {
 	// Example: ["interactive"] hides cron/system sessions by default.
 	// Empty or omitted means show all sessions (no filter).
 	DefaultCategoryFilter []string `json:"defaultCategoryFilter,omitempty"`
+	// PII scanning configuration
+	PII PIIScannerConfig `json:"pii,omitempty"`
+}
+
+// PIIScannerConfig configures PII detection in conversations.
+type PIIScannerConfig struct {
+	// Enabled enables PII scanning for messages. Default: true.
+	Enabled bool `json:"enabled"`
+	// Sensitivity level for PII detection: "low", "medium", "high". Default: "medium".
+	Sensitivity string `json:"sensitivity,omitempty"`
+	// ShowWarnings shows inline warnings when sensitive PII is detected. Default: true.
+	ShowWarnings bool `json:"showWarnings"`
 }
 
 // WorkspacePluginConfig configures the workspace plugin.
@@ -128,6 +140,11 @@ func Default() *Config {
 			Conversations: ConversationsPluginConfig{
 				Enabled:       true,
 				ClaudeDataDir: "~/.claude",
+				PII: PIIScannerConfig{
+					Enabled:      true,
+					Sensitivity:  "medium",
+					ShowWarnings: true,
+				},
 			},
 			Workspace: WorkspacePluginConfig{
 				DirPrefix:           true,
