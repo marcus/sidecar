@@ -2,6 +2,7 @@ package workspace
 
 import (
 	"fmt"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
@@ -21,6 +22,11 @@ import (
 const (
 	shellSessionPrefix = "sidecar-sh-" // Distinct from worktree prefix "sidecar-ws-"
 )
+
+// launchedInsideTmux is true if sidecar was started from within an existing
+// tmux session (i.e. TMUX env var was set at process start). This is captured
+// at package init time, before main() unsets TMUX for nested session support.
+var launchedInsideTmux = os.Getenv("TMUX") != ""
 
 // tmuxInstalled caches whether tmux is available in PATH.
 // Checked once and cached to avoid repeated exec calls.
@@ -68,6 +74,18 @@ func getTmuxPrefix() string {
 		tmuxPrefixCached = tmuxNotationToHuman(parts[1])
 	})
 	return tmuxPrefixCached
+}
+
+// getTmuxDetachHint returns the key sequence hint for detaching from a nested
+// tmux session. When sidecar was launched inside an existing tmux session, the
+// user needs to press the prefix twice (once to reach the inner session) before
+// pressing d. Otherwise a single prefix + d suffices.
+func getTmuxDetachHint() string {
+	prefix := getTmuxPrefix()
+	if launchedInsideTmux {
+		return prefix + " " + prefix + " d"
+	}
+	return prefix + " d"
 }
 
 // tmuxNotationToHuman converts tmux key notation to human-readable format.
