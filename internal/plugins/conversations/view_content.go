@@ -684,7 +684,7 @@ func (p *Plugin) renderMessageBubble(msg adapter.Message, msgIndex int, maxWidth
 	} else {
 		// For non-selected messages, use colorful styling
 		if msg.Role == "user" {
-			userLabel := "you"
+			var userLabel string
 			if msg.SourceLabel != "" {
 				// Show channel badge dim, user name styled
 				userLabel = renderSourceLabel(msg.SourceLabel)
