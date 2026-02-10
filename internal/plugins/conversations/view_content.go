@@ -626,6 +626,20 @@ func extractToolCommand(toolName, input string, maxLen int) string {
 	return ""
 }
 
+// renderSourceLabel renders a source label with the channel badge dim and the name styled.
+// e.g. "[TG] Marcus Vorwaller" -> dim("[TG]") + styled("Marcus Vorwaller")
+func renderSourceLabel(label string) string {
+	// Split into badge part and name part
+	// Labels are like "[TG] Marcus Vorwaller", "[WA]", "[cron] job-name", "[sys]"
+	if idx := strings.Index(label, "] "); idx != -1 {
+		badge := label[:idx+1]  // "[TG]"
+		name := label[idx+2:]   // "Marcus Vorwaller"
+		return styles.Muted.Render(badge) + " " + styles.StatusInProgress.Render(name)
+	}
+	// No name part, just the badge (e.g. "[WA]", "[sys]")
+	return styles.Muted.Render(label)
+}
+
 // renderMessageBubble renders a single message as a chat bubble with content blocks.
 func (p *Plugin) renderMessageBubble(msg adapter.Message, msgIndex int, maxWidth int) []string {
 	var lines []string
@@ -648,7 +662,11 @@ func (p *Plugin) renderMessageBubble(msg adapter.Message, msgIndex int, maxWidth
 	if selected {
 		// For selected messages, use plain text (no colored backgrounds) for consistent highlighting
 		if msg.Role == "user" {
-			headerLine = fmt.Sprintf("%s[%s] you", cursorPrefix, ts)
+			userLabel := "you"
+			if msg.SourceLabel != "" {
+				userLabel = msg.SourceLabel
+			}
+			headerLine = fmt.Sprintf("%s[%s] %s", cursorPrefix, ts, userLabel)
 		} else {
 			headerLine = fmt.Sprintf("%s[%s] %s", cursorPrefix, ts, agentName)
 			// Add plain model name
@@ -666,7 +684,14 @@ func (p *Plugin) renderMessageBubble(msg adapter.Message, msgIndex int, maxWidth
 	} else {
 		// For non-selected messages, use colorful styling
 		if msg.Role == "user" {
-			headerLine = fmt.Sprintf("%s[%s] %s", cursorPrefix, ts, styles.StatusInProgress.Render("you"))
+			userLabel := "you"
+			if msg.SourceLabel != "" {
+				// Show channel badge dim, user name styled
+				userLabel = renderSourceLabel(msg.SourceLabel)
+			} else {
+				userLabel = styles.StatusInProgress.Render("you")
+			}
+			headerLine = fmt.Sprintf("%s[%s] %s", cursorPrefix, ts, userLabel)
 		} else {
 			headerLine = fmt.Sprintf("%s[%s] %s", cursorPrefix, ts, styles.StatusStaged.Render(agentName))
 

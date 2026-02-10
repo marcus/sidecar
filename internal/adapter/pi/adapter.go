@@ -188,7 +188,7 @@ func (a *Adapter) Sessions(projectRoot string) ([]adapter.Session, error) {
 		if meta.SessionCategory == adapter.SessionCategoryCron && meta.CronJobName != "" {
 			name = meta.CronJobName
 		} else if meta.FirstUserMessage != "" {
-			name = truncateTitle(meta.FirstUserMessage, 120)
+			name = truncateTitle(stripMessagePrefix(meta.FirstUserMessage), 120)
 		}
 		if name == "" {
 			name = shortID(meta.SessionID)
@@ -843,12 +843,21 @@ func (a *Adapter) processMessageLine(line []byte, messages *[]adapter.Message, t
 	switch raw.Message.Role {
 	case "user":
 		content, _, _, contentBlocks := parseContent(raw.Message.Content)
+		sourceLabel := extractSourceLabel(content)
+		content = stripMessagePrefix(content)
+		// Also strip prefixes from text content blocks
+		for i := range contentBlocks {
+			if contentBlocks[i].Type == "text" {
+				contentBlocks[i].Text = stripMessagePrefix(contentBlocks[i].Text)
+			}
+		}
 		msg := adapter.Message{
 			ID:            raw.ID,
 			Role:          "user",
 			Content:       content,
 			Timestamp:     raw.Timestamp,
 			ContentBlocks: contentBlocks,
+			SourceLabel:   sourceLabel,
 		}
 		*messages = append(*messages, msg)
 
@@ -1180,4 +1189,60 @@ func detectSourceChannel(msg string) string {
 		return "whatsapp"
 	}
 	return "direct"
+}
+
+// stripMessagePrefix removes structured channel prefixes from user message content,
+// returning the clean message body. Handles Telegram, cron, and System prefixes.
+func stripMessagePrefix(content string) string {
+	// Strip [Telegram ...] prefix
+	if strings.HasPrefix(content, "[Telegram") {
+		if idx := strings.Index(content, "] "); idx != -1 {
+			return content[idx+2:]
+		}
+	}
+	// Strip [cron:...] prefix
+	if strings.HasPrefix(content, "[cron:") {
+		if idx := strings.Index(content, "] "); idx != -1 {
+			return content[idx+2:]
+		}
+	}
+	// Strip System: [...] prefix
+	if strings.HasPrefix(content, "System: [") {
+		if idx := strings.Index(content, "] "); idx != -1 {
+			return content[idx+2:]
+		}
+	}
+	return content
+}
+
+// extractSourceLabel parses a structured message prefix and returns a display label.
+// Returns e.g. "[TG] Marcus Vorwaller", "[WA]", "[cron] job-name", or "".
+func extractSourceLabel(content string) string {
+	if strings.HasPrefix(content, "[Telegram") {
+		closeBracket := strings.Index(content, "]")
+		if closeBracket < 0 {
+			return "[TG]"
+		}
+		inner := content[len("[Telegram "):closeBracket] // "Marcus Vorwaller (@handle) id:123 +1m 2026-..."
+		// Extract the display name: everything before the first " ("
+		if parenIdx := strings.Index(inner, " ("); parenIdx > 0 {
+			return "[TG] " + inner[:parenIdx]
+		}
+		// Fallback: use everything before " id:"
+		if idIdx := strings.Index(inner, " id:"); idIdx > 0 {
+			return "[TG] " + inner[:idIdx]
+		}
+		return "[TG]"
+	}
+	if strings.HasPrefix(content, "[cron:") {
+		jobName := extractCronJobName(content)
+		if jobName != "" {
+			return "[cron] " + jobName
+		}
+		return "[cron]"
+	}
+	if strings.HasPrefix(content, "System: [") {
+		return "[sys]"
+	}
+	return ""
 }

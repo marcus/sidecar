@@ -165,6 +165,7 @@ type Message struct {
 	ToolUses       []ToolUse
 	ThinkingBlocks []ThinkingBlock
 	ContentBlocks  []ContentBlock // Structured content for rich display
+	SourceLabel    string         // Channel badge, e.g. "[TG] Marcus Vorwaller", "[WA]", "[cron] job-name"
 }
 
 // TokenUsage tracks token counts for a message or session.

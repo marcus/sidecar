@@ -3,6 +3,7 @@ package pi
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -832,6 +833,213 @@ func TestDirectSessionMetadata(t *testing.T) {
 	}
 	if sessions[0].SourceChannel != "direct" {
 		t.Errorf("SourceChannel = %q, want %q", sessions[0].SourceChannel, "direct")
+	}
+}
+
+func TestStripMessagePrefix(t *testing.T) {
+	tests := []struct {
+		name    string
+		input   string
+		want    string
+	}{
+		{
+			"telegram prefix",
+			"[Telegram Marcus Vorwaller (@theinfinitecool) id:6776951004 +1m 2026-02-01 14:03 PST] hello from telegram?",
+			"hello from telegram?",
+		},
+		{
+			"cron prefix",
+			"[cron:9ed048b3-6de7 GitHub Issues Check] Check for new issues",
+			"Check for new issues",
+		},
+		{
+			"system prefix",
+			"System: [2026-02-01 14:02:05 PST] WhatsApp gateway connected.",
+			"WhatsApp gateway connected.",
+		},
+		{
+			"plain message",
+			"Hello, what files are here?",
+			"Hello, what files are here?",
+		},
+		{
+			"empty message",
+			"",
+			"",
+		},
+		{
+			"bracket but not matching prefix",
+			"[Something else] hello",
+			"[Something else] hello",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := stripMessagePrefix(tt.input)
+			if got != tt.want {
+				t.Errorf("stripMessagePrefix(%q) = %q, want %q", tt.input, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestExtractSourceLabel(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{
+			"telegram with full prefix",
+			"[Telegram Marcus Vorwaller (@theinfinitecool) id:6776951004 +1m 2026-02-01 14:03 PST] hello",
+			"[TG] Marcus Vorwaller",
+		},
+		{
+			"telegram without parens",
+			"[Telegram SomeUser id:123] hello",
+			"[TG] SomeUser",
+		},
+		{
+			"cron with job name",
+			"[cron:9ed048b3 GitHub Issues Check] Check for new issues",
+			"[cron] GitHub Issues Check",
+		},
+		{
+			"cron without job name",
+			"[cron:abc123] Run backup",
+			"[cron]",
+		},
+		{
+			"system prefix",
+			"System: [2026-02-01 14:02:05 PST] WhatsApp gateway connected.",
+			"[sys]",
+		},
+		{
+			"plain message",
+			"Hello, what files are here?",
+			"",
+		},
+		{
+			"empty message",
+			"",
+			"",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := extractSourceLabel(tt.input)
+			if got != tt.want {
+				t.Errorf("extractSourceLabel(%q) = %q, want %q", tt.input, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestTelegramMessageStripping(t *testing.T) {
+	a := newTestAdapter(t, "telegram-session.jsonl")
+	populateIndex(t, a, "/test/project")
+
+	messages, err := a.Messages("test-telegram")
+	if err != nil {
+		t.Fatalf("Messages: %v", err)
+	}
+	if len(messages) != 2 {
+		t.Fatalf("expected 2 messages, got %d", len(messages))
+	}
+
+	// User message should have prefix stripped and source label set
+	userMsg := messages[0]
+	if userMsg.Role != "user" {
+		t.Fatalf("msg[0].Role = %q, want user", userMsg.Role)
+	}
+	// Content should have the Telegram prefix stripped
+	if !strings.HasPrefix(userMsg.Content, "hello from telegram?") {
+		t.Errorf("msg[0].Content = %q, want prefix stripped", userMsg.Content)
+	}
+	if strings.Contains(userMsg.Content, "[Telegram") {
+		t.Errorf("msg[0].Content still contains [Telegram prefix: %q", userMsg.Content)
+	}
+	// SourceLabel should be set
+	if userMsg.SourceLabel != "[TG] Marcus Vorwaller" {
+		t.Errorf("msg[0].SourceLabel = %q, want %q", userMsg.SourceLabel, "[TG] Marcus Vorwaller")
+	}
+	// ContentBlocks text should also be stripped
+	for _, cb := range userMsg.ContentBlocks {
+		if cb.Type == "text" && strings.Contains(cb.Text, "[Telegram") {
+			t.Errorf("ContentBlock text still contains prefix: %q", cb.Text)
+		}
+	}
+}
+
+func TestCronMessageStripping(t *testing.T) {
+	a := newTestAdapter(t, "cron-session.jsonl")
+	populateIndex(t, a, "/test/project")
+
+	messages, err := a.Messages("test-cron")
+	if err != nil {
+		t.Fatalf("Messages: %v", err)
+	}
+	if len(messages) < 1 {
+		t.Fatal("expected at least 1 message")
+	}
+
+	userMsg := messages[0]
+	// Content should have the cron prefix stripped
+	if strings.HasPrefix(userMsg.Content, "[cron:") {
+		t.Errorf("msg[0].Content still has cron prefix: %q", userMsg.Content)
+	}
+	if userMsg.Content != "Run the daily backup job" {
+		t.Errorf("msg[0].Content = %q, want %q", userMsg.Content, "Run the daily backup job")
+	}
+	// SourceLabel should be set
+	if userMsg.SourceLabel != "[cron] daily-backup" {
+		t.Errorf("msg[0].SourceLabel = %q, want %q", userMsg.SourceLabel, "[cron] daily-backup")
+	}
+}
+
+func TestSystemMessageStripping(t *testing.T) {
+	a := newTestAdapter(t, "whatsapp-session.jsonl")
+	populateIndex(t, a, "/test/project")
+
+	messages, err := a.Messages("test-whatsapp")
+	if err != nil {
+		t.Fatalf("Messages: %v", err)
+	}
+	if len(messages) < 1 {
+		t.Fatal("expected at least 1 message")
+	}
+
+	userMsg := messages[0]
+	// Content should have the System: [...] prefix stripped
+	if strings.HasPrefix(userMsg.Content, "System: [") {
+		t.Errorf("msg[0].Content still has System prefix: %q", userMsg.Content)
+	}
+	// SourceLabel should be [sys]
+	if userMsg.SourceLabel != "[sys]" {
+		t.Errorf("msg[0].SourceLabel = %q, want %q", userMsg.SourceLabel, "[sys]")
+	}
+}
+
+func TestPlainMessageNoStripping(t *testing.T) {
+	a := newTestAdapter(t, "basic-session.jsonl")
+	populateIndex(t, a, "/test/project")
+
+	messages, err := a.Messages("test-basic")
+	if err != nil {
+		t.Fatalf("Messages: %v", err)
+	}
+	if len(messages) < 1 {
+		t.Fatal("expected at least 1 message")
+	}
+
+	userMsg := messages[0]
+	// Content should be unchanged for plain messages
+	if userMsg.Content != "Hello, what files are here?" {
+		t.Errorf("msg[0].Content = %q, want %q", userMsg.Content, "Hello, what files are here?")
+	}
+	// SourceLabel should be empty for direct messages
+	if userMsg.SourceLabel != "" {
+		t.Errorf("msg[0].SourceLabel = %q, want empty", userMsg.SourceLabel)
 	}
 }
 

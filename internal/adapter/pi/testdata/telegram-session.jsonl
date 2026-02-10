@@ -1,0 +1,4 @@
+{"type":"session","version":3,"id":"test-telegram","timestamp":"2026-02-01T00:00:00Z","cwd":"/test/project"}
+{"type":"model_change","id":"mc1","parentId":null,"timestamp":"2026-02-01T00:00:01Z","provider":"anthropic","modelId":"claude-opus-4-5"}
+{"type":"message","id":"m1","parentId":"mc1","timestamp":"2026-02-01T00:00:02Z","message":{"role":"user","content":[{"type":"text","text":"[Telegram Marcus Vorwaller (@theinfinitecool) id:6776951004 +1m 2026-02-01 14:03 PST] hello from telegram?\n[message_id: 3]"}]}}
+{"type":"message","id":"m2","parentId":"m1","timestamp":"2026-02-01T00:00:03Z","message":{"role":"assistant","content":[{"type":"text","text":"Hey Marcus! Telegram is working."}],"model":"claude-opus-4-5","usage":{"input":500,"output":100,"cacheRead":0,"cacheWrite":0,"totalTokens":600,"cost":{"total":0.01}}}}
