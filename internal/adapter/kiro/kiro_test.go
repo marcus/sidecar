@@ -2,6 +2,10 @@ package kiro
 
 import (
 	"encoding/json"
+	"os"
+	"path/filepath"
+	"runtime"
+	"strings"
 	"testing"
 	"time"
 
@@ -363,6 +367,50 @@ func TestSearchMessages_NonExistentSession(t *testing.T) {
 	_, err := a.SearchMessages("nonexistent-session-xyz", "test", adapter.DefaultSearchOptions())
 	// Don't strictly check error since it depends on local Kiro installation
 	_ = err
+}
+
+func TestKiroDBCandidates(t *testing.T) {
+	home := "/Users/testuser"
+	candidates := kiroDBCandidates(home)
+
+	// Should always include ~/.kiro path first
+	if candidates[0] != filepath.Join(home, ".kiro", "data.sqlite3") {
+		t.Errorf("first candidate should be ~/.kiro, got %s", candidates[0])
+	}
+
+	// Should include platform-specific path
+	if runtime.GOOS == "darwin" {
+		found := false
+		for _, c := range candidates {
+			if strings.Contains(c, "Application Support") {
+				found = true
+			}
+		}
+		if !found {
+			t.Error("macOS candidates should include Application Support path")
+		}
+	}
+
+	// Should always include legacy ~/.amazonq path
+	last := candidates[len(candidates)-1]
+	if !strings.Contains(last, ".amazonq") {
+		t.Errorf("last candidate should be legacy .amazonq path, got %s", last)
+	}
+}
+
+func TestFindKiroDB(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Create a fake DB at the ~/.kiro location
+	kiroDir := filepath.Join(tmpDir, ".kiro")
+	os.MkdirAll(kiroDir, 0755)
+	os.WriteFile(filepath.Join(kiroDir, "data.sqlite3"), []byte("fake"), 0644)
+
+	result := findKiroDB(tmpDir)
+	expected := filepath.Join(kiroDir, "data.sqlite3")
+	if result != expected {
+		t.Errorf("expected %s, got %s", expected, result)
+	}
 }
 
 func TestAdapterInterface(t *testing.T) {
