@@ -221,6 +221,9 @@ type Plugin struct {
 	// Large session warning tracking (td-ee67d8)
 	warnedSessions map[string]bool // session ID -> already warned about size
 
+	// Pi adapter discovery toast (td-697e89)
+	piDiscoveryToastShown bool // true after showing one-time Pi discovery toast
+
 	// Initial load state (td-6cc19f)
 	initialLoadDone bool        // true after sessions settle (no new arrivals for settleDelay)
 	skeleton        ui.Skeleton // shimmer loading animation
@@ -627,6 +630,10 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 			}
 			// Check for large session warnings
 			if cmd := p.checkLargeSessionWarnings(); cmd != nil {
+				cmds = append(cmds, cmd)
+			}
+			// Check for Pi adapter discovery toast (td-697e89)
+			if cmd := p.checkPiDiscoveryToast(); cmd != nil {
 				cmds = append(cmds, cmd)
 			}
 			// Schedule settle check for skeleton hide
@@ -1332,4 +1339,23 @@ func (p *Plugin) checkLargeSessionWarnings() tea.Cmd {
 	}
 	// Only show one warning at a time to avoid toast spam
 	return cmds[0]
+}
+
+// checkPiDiscoveryToast returns a one-time toast when Pi sessions first appear (td-697e89).
+func (p *Plugin) checkPiDiscoveryToast() tea.Cmd {
+	if p.piDiscoveryToastShown {
+		return nil
+	}
+	for _, s := range p.sessions {
+		if s.AdapterID == "pi" {
+			p.piDiscoveryToastShown = true
+			return func() tea.Msg {
+				return app.ToastMsg{
+					Message:  "Pi sessions found — press C to filter by category",
+					Duration: 4 * time.Second,
+				}
+			}
+		}
+	}
+	return nil
 }
