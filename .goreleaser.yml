@@ -35,5 +35,20 @@ changelog:
       - "^ci:"
       - "^chore:"
 
-# Note: Homebrew formula is manually maintained in marcus/homebrew-tap
-# to build from source (avoids Gatekeeper warnings on macOS)
+brews:
+  - repository:
+      owner: marcus
+      name: homebrew-tap
+    directory: Formula
+    homepage: "https://github.com/marcus/sidecar"
+    description: "A TUI dashboard for AI coding agents"
+    license: "MIT"
+    install: |
+      ldflags = "-s -w -X main.Version=#{version}"
+      system "go", "build", *std_go_args(ldflags:), "./cmd/sidecar"
+    test: |
+      assert_match version.to_s, shell_output("#{bin}/sidecar --version")
+    dependencies:
+      - name: go
+        type: build
+    url_template: "https://github.com/marcus/sidecar/archive/refs/tags/{{ .Tag }}.tar.gz"
