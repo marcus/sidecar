@@ -738,6 +738,11 @@ func (p *Plugin) exitInteractiveMode() {
 	p.interactiveState = nil
 	p.selection.Clear()
 	p.viewMode = ViewModeList
+
+	// Refresh toast timer so any pending toast shows now that list view is visible
+	if p.toastMessage != "" {
+		p.toastTime = time.Now()
+	}
 }
 
 // handleInteractiveKeys processes key input in interactive mode.

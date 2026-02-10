@@ -202,8 +202,8 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 			if msg.AgentType != AgentNone && msg.AgentType != "" {
 				cmds = append(cmds, p.StartAgentWithOptions(msg.Worktree, msg.AgentType, msg.SkipPerms, msg.Prompt))
 			} else {
-				// "None" selected - attach to worktree directory
-				cmds = append(cmds, p.AttachToWorktreeDir(msg.Worktree))
+				// "None" selected - create detached session and stay in sidecar
+				cmds = append(cmds, p.CreateDetachedWorktreeSession(msg.Worktree))
 			}
 		}
 
@@ -999,6 +999,11 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 			cmds = append(cmds, p.scheduleAgentPoll(msg.WorkspaceName, 0))
 		}
 		cmds = append(cmds, p.refreshWorktrees())
+
+		// Refresh toast timer so any hook result toast shows now that user returned
+		if p.toastMessage != "" {
+			p.toastTime = time.Now()
+		}
 
 	case ApproveResultMsg:
 		if msg.Err == nil {

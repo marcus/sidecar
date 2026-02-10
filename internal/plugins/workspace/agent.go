@@ -642,6 +642,66 @@ func (p *Plugin) AttachToWorktreeDir(wt *Worktree) tea.Cmd {
 	})
 }
 
+// CreateDetachedWorktreeSession creates a detached tmux session in the worktree
+// directory without attaching. Returns AgentStartedMsg so the existing handler
+// starts polling and the user stays in sidecar's list view.
+func (p *Plugin) CreateDetachedWorktreeSession(wt *Worktree) tea.Cmd {
+	epoch := p.ctx.Epoch
+	return func() tea.Msg {
+		sessionName := tmuxSessionPrefix + sanitizeName(wt.Name)
+
+		// Check if session already exists
+		checkCmd := exec.Command("tmux", "has-session", "-t", sessionName)
+		if checkCmd.Run() == nil {
+			// Session exists - reconnect
+			paneID := getPaneID(sessionName)
+			return AgentStartedMsg{
+				Epoch:         epoch,
+				WorkspaceName: wt.Name,
+				SessionName:   sessionName,
+				PaneID:        paneID,
+				AgentType:     AgentNone,
+				Reconnected:   true,
+			}
+		}
+
+		// Create new detached session
+		args := []string{
+			"new-session",
+			"-d",
+			"-s", sessionName,
+			"-c", wt.Path,
+		}
+		cmd := exec.Command("tmux", args...)
+		if err := cmd.Run(); err != nil {
+			return AgentStartedMsg{Epoch: epoch, Err: fmt.Errorf("create session: %w", err)}
+		}
+
+		// Set history limit
+		_ = exec.Command("tmux", "set-option", "-t", sessionName, "history-limit",
+			strconv.Itoa(tmuxHistoryLimit)).Run()
+
+		// Set TD_SESSION_ID
+		tdEnvCmd := fmt.Sprintf("export TD_SESSION_ID=%s", shellQuote(sessionName))
+		_ = exec.Command("tmux", "send-keys", "-t", sessionName, tdEnvCmd, "Enter").Run()
+
+		// Apply environment isolation
+		envOverrides := BuildEnvOverrides(p.ctx.WorkDir)
+		if envCmd := GenerateSingleEnvCommand(envOverrides); envCmd != "" {
+			_ = exec.Command("tmux", "send-keys", "-t", sessionName, envCmd, "Enter").Run()
+		}
+
+		paneID := getPaneID(sessionName)
+		return AgentStartedMsg{
+			Epoch:         epoch,
+			WorkspaceName: wt.Name,
+			SessionName:   sessionName,
+			PaneID:        paneID,
+			AgentType:     AgentNone,
+		}
+	}
+}
+
 // getTaskContext fetches task title and description for agent context.
 func (p *Plugin) getTaskContext(taskID string) string {
 	// Guard against nil context in tests
