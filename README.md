@@ -108,7 +108,7 @@ View staged, modified, and untracked files with a split-pane interface. The side
 
 ### Conversations
 
-Browse session history from multiple AI coding agents with message content, token usage, and search. Supports Amp Code, Claude Code, Codex, Cursor CLI, Gemini CLI, Kiro, OpenCode, and Warp. [Full documentation →](https://marcus.github.io/sidecar/docs/conversations-plugin)
+Browse session history from multiple AI coding agents with message content, token usage, and search. Supports Amp Code, Claude Code, Codex, Cursor CLI, Gemini CLI, GitHub Copilot CLI, Kiro, OpenCode, and Warp. [Full documentation →](https://marcus.github.io/sidecar/docs/conversations-plugin)
 
 ![Conversations](docs/screenshots/sidecar-conversations.png)
 
