@@ -263,11 +263,13 @@ func (p *Plugin) doCreateWorktree(name, baseBranch, taskID, taskTitle string, ag
 	// When enabled, prefixes directory with repo name (e.g., "myrepo-feature-auth")
 	// This helps conversation adapters discover related worktree conversations
 	// by matching the directory path pattern after worktree deletion
-	dirName := name
+	// Replace slashes with hyphens to create valid filesystem directory names
+	// (e.g., "feat/ui" becomes "feat-ui") while keeping branch name intact for git
+	dirName := strings.ReplaceAll(name, "/", "-")
 	if p.ctx.Config != nil && p.ctx.Config.Plugins.Workspace.DirPrefix {
 		repoName := app.GetRepoName(p.ctx.WorkDir)
 		if repoName != "" {
-			dirName = repoName + "-" + name
+			dirName = repoName + "-" + dirName
 		}
 	}
 
