@@ -517,6 +517,7 @@ func (a *Adapter) parseContent(rawContent json.RawMessage) (string, []adapter.To
 	// Parse as array of content blocks (subsequent messages)
 	var blocks []ContentBlock
 	if err := json.Unmarshal(rawContent, &blocks); err != nil {
+		// Skip malformed messages instead of crashing
 		return "", nil, nil, nil, ""
 	}
 

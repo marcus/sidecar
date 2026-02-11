@@ -3,6 +3,7 @@ package gitstatus
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
@@ -11,6 +12,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // FileStatus represents the git status of a file.
@@ -63,7 +65,10 @@ func NewFileTree(workDir string) *FileTree {
 func (t *FileTree) Refresh() error {
 	// Run git status with porcelain v2 format (null-separated)
 	// Use --untracked-files=all to recursively list all files in untracked folders
-	cmd := exec.Command("git", "status", "--porcelain=v2", "-z", "--untracked-files=all")
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, "git", "status", "--porcelain=v2", "-z", "--untracked-files=all")
 	cmd.Dir = t.workDir
 	output, err := cmd.Output()
 	if err != nil {
