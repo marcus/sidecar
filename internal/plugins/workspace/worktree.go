@@ -263,19 +263,22 @@ func (p *Plugin) doCreateWorktree(name, baseBranch, taskID, taskTitle string, ag
 	// When enabled, prefixes directory with repo name (e.g., "myrepo-feature-auth")
 	// This helps conversation adapters discover related worktree conversations
 	// by matching the directory path pattern after worktree deletion
-	// Replace slashes with hyphens to create valid filesystem directory names
-	// (e.g., "feat/ui" becomes "feat-ui") while keeping branch name intact for git
-	dirName := strings.ReplaceAll(name, "/", "-")
+	dirName := name
 	if p.ctx.Config != nil && p.ctx.Config.Plugins.Workspace.DirPrefix {
 		repoName := app.GetRepoName(p.ctx.WorkDir)
 		if repoName != "" {
-			dirName = repoName + "-" + dirName
+			dirName = repoName + "-" + name
 		}
 	}
 
 	// Determine worktree path (sibling to main repo)
 	parentDir := filepath.Dir(p.ctx.WorkDir)
 	wtPath := filepath.Join(parentDir, dirName)
+
+	// Ensure parent directory exists for paths with slashes (e.g., feat/ui)
+	if err := os.MkdirAll(filepath.Dir(wtPath), 0755); err != nil {
+		return nil, fmt.Errorf("failed to create parent directory: %w", err)
+	}
 
 	// Create worktree with new branch (branch name stays simple, just the user-provided name)
 	args := []string{"worktree", "add", "-b", name, wtPath, baseBranch}

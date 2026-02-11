@@ -25,7 +25,6 @@ const (
 type Adapter struct {
 	storageDir     string
 	projectIndex   map[string]*Project // worktree path -> Project
-	sessionIndex   map[string]string   // sessionID -> project ID
 	projectsLoaded bool                // true after loadProjects populates projectIndex
 	metaCache      map[string]sessionMetaCacheEntry
 	metaMu         sync.RWMutex // guards metaCache
@@ -46,7 +45,6 @@ func New() *Adapter {
 	return &Adapter{
 		storageDir:   storageDir,
 		projectIndex: make(map[string]*Project),
-		sessionIndex: make(map[string]string),
 		metaCache:    make(map[string]sessionMetaCacheEntry),
 	}
 }
@@ -166,7 +164,6 @@ func (a *Adapter) Sessions(projectRoot string) ([]adapter.Session, error) {
 
 	sessions := make([]adapter.Session, 0, len(entries))
 	seenPaths := make(map[string]struct{}, len(entries))
-	a.sessionIndex = make(map[string]string)
 
 	for _, e := range entries {
 		if !strings.HasSuffix(e.Name(), ".json") {
@@ -185,9 +182,6 @@ func (a *Adapter) Sessions(projectRoot string) ([]adapter.Session, error) {
 		if err != nil {
 			continue
 		}
-
-		// Store in index for Messages() lookup
-		a.sessionIndex[meta.SessionID] = projectID
 
 		// Determine name - use title, first user message, or short ID
 		name := meta.Title
