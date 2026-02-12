@@ -10,6 +10,7 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/marcus/sidecar/internal/modal"
 	"github.com/marcus/sidecar/internal/mouse"
 	"github.com/marcus/sidecar/internal/plugins/workspace"
@@ -17,13 +18,13 @@ import (
 )
 
 const (
-	qcNameID       = "qc-name"
-	qcBaseID       = "qc-base"
-	qcPromptListID = "qc-prompt-list"
-	qcAgentListID  = "qc-agent-list"
-	qcSkipPermsID  = "qc-skip-perms"
-	qcCreateID     = "qc-create"
-	qcCancelID     = "qc-cancel"
+	qcNameID      = "qc-name"
+	qcBaseID      = "qc-base"
+	qcPromptID    = "qc-prompt"
+	qcAgentListID = "qc-agent-list"
+	qcSkipPermsID = "qc-skip-perms"
+	qcCreateID    = "qc-create"
+	qcCancelID    = "qc-cancel"
 )
 
 // QuickCreateModel is a modal for creating workspaces directly from the TD tab.
@@ -153,34 +154,6 @@ func (m *QuickCreateModel) ensureModal(width int) {
 	}
 	m.modalWidth = modalW
 
-	// Task info line
-	infoLine := m.taskID
-	if m.taskTitle != "" {
-		title := m.taskTitle
-		runes := []rune(title)
-		maxTitle := modalW - len(m.taskID) - 6
-		if maxTitle > 10 && len(runes) > maxTitle {
-			title = string(runes[:maxTitle-3]) + "..."
-		}
-		if maxTitle > 10 {
-			infoLine = fmt.Sprintf("%s: %s", m.taskID, title)
-		}
-	}
-
-	// Prompt list: (none) + loaded prompts
-	promptItems := make([]modal.ListItem, 0, len(m.prompts)+1)
-	promptItems = append(promptItems, modal.ListItem{ID: "qc-prompt-none", Label: "(none)"})
-	for i, p := range m.prompts {
-		source := "[G]"
-		if p.Source == "project" {
-			source = "[P]"
-		}
-		promptItems = append(promptItems, modal.ListItem{
-			ID:    fmt.Sprintf("qc-prompt-%d", i),
-			Label: fmt.Sprintf("%s  %s", p.Name, styles.Muted.Render(source)),
-		})
-	}
-
 	// Agent list
 	agentItems := make([]modal.ListItem, len(workspace.AgentTypeOrder))
 	for i, at := range workspace.AgentTypeOrder {
@@ -194,8 +167,6 @@ func (m *QuickCreateModel) ensureModal(width int) {
 		modal.WithWidth(modalW),
 		modal.WithHints(false),
 	).
-		AddSection(modal.Text(styles.Muted.Render(infoLine))).
-		AddSection(modal.Spacer()).
 		AddSection(m.nameLabelSection()).
 		AddSection(modal.Input(qcNameID, &m.nameInput, modal.WithSubmitOnEnter(false))).
 		AddSection(m.nameErrorsSection()).
@@ -204,9 +175,7 @@ func (m *QuickCreateModel) ensureModal(width int) {
 		AddSection(modal.Input(qcBaseID, &m.baseBranchInput, modal.WithSubmitOnEnter(false))).
 		AddSection(m.branchDropdownSection()).
 		AddSection(modal.Spacer()).
-		AddSection(modal.Text("Prompt:")).
-		AddSection(modal.List(qcPromptListID, promptItems, &m.promptListIdx, modal.WithMaxVisible(min(len(promptItems), 4)))).
-		AddSection(m.promptPreviewSection()).
+		AddSection(m.promptSection()).
 		AddSection(modal.Spacer()).
 		AddSection(modal.Text("Agent:")).
 		AddSection(modal.List(qcAgentListID, agentItems, &m.agentIdx, modal.WithMaxVisible(len(agentItems)))).
@@ -299,19 +268,70 @@ func (m *QuickCreateModel) branchDropdownSection() modal.Section {
 	}, nil)
 }
 
-func (m *QuickCreateModel) promptPreviewSection() modal.Section {
+func (m *QuickCreateModel) promptSection() modal.Section {
 	return modal.Custom(func(contentWidth int, focusID, hoverID string) modal.RenderedSection {
-		prompt := m.SelectedPrompt()
-		if prompt == nil {
-			return modal.RenderedSection{}
+		lines := make([]string, 0, 4)
+		focusables := make([]modal.FocusableInfo, 0, 1)
+
+		lines = append(lines, "Prompt:")
+
+		selectedPrompt := m.SelectedPrompt()
+		displayText := "(none)"
+		if len(m.prompts) == 0 {
+			displayText = "No prompts configured"
+		} else if selectedPrompt != nil {
+			scopeIndicator := "[G] global"
+			if selectedPrompt.Source == "project" {
+				scopeIndicator = "[P] project"
+			}
+			displayText = fmt.Sprintf("%s  %s", selectedPrompt.Name, styles.Muted.Render(scopeIndicator))
 		}
-		preview := strings.ReplaceAll(prompt.Body, "\n", " ")
-		runes := []rune(preview)
-		if len(runes) > 50 {
-			preview = string(runes[:47]) + "..."
+
+		promptStyle := qcInputStyle()
+		if focusID == qcPromptID {
+			promptStyle = qcInputFocusedStyle()
 		}
-		return modal.RenderedSection{Content: styles.Muted.Render(fmt.Sprintf("  Preview: %s", preview))}
+		rendered := promptStyle.Render(displayText)
+		renderedLines := strings.Split(rendered, "\n")
+		displayStartY := len(lines)
+		lines = append(lines, renderedLines...)
+
+		focusables = append(focusables, modal.FocusableInfo{
+			ID:      qcPromptID,
+			OffsetX: 0,
+			OffsetY: displayStartY,
+			Width:   ansi.StringWidth(rendered),
+			Height:  len(renderedLines),
+		})
+
+		if len(m.prompts) == 0 {
+			lines = append(lines, styles.Muted.Render("  No prompts found"))
+		} else if selectedPrompt == nil {
+			lines = append(lines, styles.Muted.Render("  Press Enter to select a prompt"))
+		} else {
+			preview := strings.ReplaceAll(selectedPrompt.Body, "\n", " ")
+			if runes := []rune(preview); len(runes) > 50 {
+				preview = string(runes[:47]) + "..."
+			}
+			lines = append(lines, styles.Muted.Render(fmt.Sprintf("  Preview: %s", preview)))
+		}
+
+		return modal.RenderedSection{Content: strings.Join(lines, "\n"), Focusables: focusables}
 	}, nil)
+}
+
+func qcInputStyle() lipgloss.Style {
+	return lipgloss.NewStyle().
+		Border(lipgloss.NormalBorder()).
+		BorderForeground(styles.BorderNormal).
+		Padding(0, 1)
+}
+
+func qcInputFocusedStyle() lipgloss.Style {
+	return lipgloss.NewStyle().
+		Border(lipgloss.NormalBorder()).
+		BorderForeground(styles.Primary).
+		Padding(0, 1)
 }
 
 func (m *QuickCreateModel) shouldShowSkipPerms() bool {
@@ -378,6 +398,19 @@ func (m *QuickCreateModel) Update(msg tea.Msg, width int) (string, tea.Cmd) {
 	case tea.KeyMsg:
 		focusID := m.modal.FocusedID()
 		key := msg.String()
+
+		// Handle prompt cycling when prompt field is focused
+		if focusID == qcPromptID && len(m.prompts) > 0 {
+			total := len(m.prompts) + 1 // +1 for "(none)"
+			switch key {
+			case "enter", "right", "l":
+				m.promptListIdx = (m.promptListIdx + 1) % total
+				return "", nil
+			case "left", "h":
+				m.promptListIdx = (m.promptListIdx + total - 1) % total
+				return "", nil
+			}
+		}
 
 		// Handle branch dropdown navigation when base branch is focused
 		if focusID == qcBaseID {
