@@ -1045,7 +1045,7 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 			}
 			p.mergeState.TargetBranches = branches
 			p.mergeState.TargetBranchOption = 0 // Default to resolved base branch
-			p.mergeModal = nil                   // Force modal rebuild
+			p.mergeModal = nil                  // Force modal rebuild
 		}
 
 	case UncommittedChangesCheckMsg:
@@ -1278,6 +1278,40 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 		}
 		// Schedule next validation in 60 seconds
 		return p, p.scheduleSessionValidation(60 * time.Second)
+
+	case QuickCreateWorkspaceMsg:
+		return p, tea.Batch(
+			p.quickCreateWorkspace(msg),
+			func() tea.Msg {
+				return app.ToastMsg{
+					Message:  fmt.Sprintf("Creating workspace: %s...", p.deriveBranchName(msg.TaskID, msg.TaskTitle)),
+					Duration: 3 * time.Second,
+				}
+			},
+		)
+
+	case QuickCreateDoneMsg:
+		if msg.Err != nil {
+			return p, func() tea.Msg {
+				return app.ToastMsg{
+					Message:  fmt.Sprintf("Workspace creation failed: %v", msg.Err),
+					Duration: 5 * time.Second,
+					IsError:  true,
+				}
+			}
+		}
+		// Append worktree without changing view or selection
+		p.worktrees = append(p.worktrees, msg.Worktree)
+		// Start agent if one was selected
+		if msg.AgentType != AgentNone && msg.AgentType != "" {
+			cmds = append(cmds, p.StartAgentWithOptions(msg.Worktree, msg.AgentType, msg.SkipPerms, msg.Prompt))
+		}
+		cmds = append(cmds, func() tea.Msg {
+			return app.ToastMsg{
+				Message:  fmt.Sprintf("Workspace created: %s", msg.Worktree.Name),
+				Duration: 3 * time.Second,
+			}
+		})
 
 	case OpenCreateModalWithTaskMsg:
 		return p, p.openCreateModalWithTask(msg.TaskID, msg.TaskTitle)
