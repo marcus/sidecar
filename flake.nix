@@ -32,10 +32,10 @@
               owner = "marcus";
               repo = "td";
               rev = "v${tdVersion}";
-              sha256 = pkgs.lib.fakeSha256;
+              sha256 = "sha256-gci4B83x/0UMawy+fncArF9zO1aHRE/zXj91e5h6yi8=";
             };
-            vendorHash = pkgs.lib.fakeSha256;
-            subPackages = [ "cmd/td" ];
+            vendorHash = "sha256-Rp0lhnBLJx+exX7VLql3RfthTVk3LLftD6n6SsSWzVY=";
+            subPackages = [ "." ];
           };
           sidecar = pkgs.buildGoModule {
             pname = "sidecar";
