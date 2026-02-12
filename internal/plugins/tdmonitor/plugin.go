@@ -126,8 +126,18 @@ func (p *Plugin) Init(ctx *plugin.Context) error {
 
 	// Register TD bindings with sidecar's keymap (single source of truth)
 	if ctx.Keymap != nil && model.Keymap != nil {
+		textEntryContexts := map[string]bool{
+			"td-search": true, "td-form": true, "td-board-editor": true,
+			"td-confirm": true, "td-close-confirm": true,
+		}
+		registeredN := map[string]bool{}
 		for _, b := range model.Keymap.ExportBindings() {
 			ctx.Keymap.RegisterPluginBinding(b.Key, b.Command, b.Context)
+			// Register N (new workspace from ticket) for non-text-entry TD contexts
+			if !textEntryContexts[b.Context] && !registeredN[b.Context] {
+				ctx.Keymap.RegisterPluginBinding("N", "new-workspace-from-ticket", b.Context)
+				registeredN[b.Context] = true
+			}
 		}
 		// Register sync keybinding
 		ctx.Keymap.RegisterPluginBinding("ctrl+g", "sync", "td-monitor")
