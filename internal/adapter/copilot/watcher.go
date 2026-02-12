@@ -2,7 +2,6 @@ package copilot
 
 import (
 	"io"
-	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -10,7 +9,6 @@ import (
 
 	"github.com/fsnotify/fsnotify"
 	"github.com/marcus/sidecar/internal/adapter"
-	"gopkg.in/yaml.v3"
 )
 
 // Watch watches for changes to Copilot CLI sessions.
@@ -141,18 +139,12 @@ func (a *Adapter) sessionMatchesProject(sessionID, projectRoot string) bool {
 	a.mu.RUnlock()
 
 	if !ok {
-		// Try to find it
 		sessionDir = filepath.Join(a.stateDir, sessionID)
 	}
 
 	workspaceFile := filepath.Join(sessionDir, "workspace.yaml")
-	data, err := os.ReadFile(workspaceFile)
+	ws, err := a.readWorkspaceCached(workspaceFile)
 	if err != nil {
-		return false
-	}
-
-	var ws WorkspaceYAML
-	if err := yaml.Unmarshal(data, &ws); err != nil {
 		return false
 	}
 

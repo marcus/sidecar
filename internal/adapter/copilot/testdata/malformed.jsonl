@@ -1,0 +1,4 @@
+not valid json at all
+{"type":"user.message","id":"msg-001","timestamp":"2025-01-15T10:00:00Z","data":{"content":"Valid message after malformed line"}}
+{broken json here
+{"type":"assistant.message","id":"msg-002","timestamp":"2025-01-15T10:00:05Z","data":{"content":"Response to valid message","model":"claude-sonnet-4-20250514"}}

@@ -1,0 +1,5 @@
+{"type":"user.message","id":"msg-001","timestamp":"2025-01-15T10:00:00Z","data":{"content":"Read /tmp/test.go and /tmp/main.go for me"}}
+{"type":"assistant.message","id":"msg-002","timestamp":"2025-01-15T10:00:05Z","parentId":"msg-001","data":{"content":"I'll read both files.","model":"claude-sonnet-4-20250514","toolRequests":[{"toolCallId":"toolu_read_1","name":"view","type":"function","arguments":{"path":"/tmp/test.go"}},{"toolCallId":"toolu_read_2","name":"view","type":"function","arguments":{"path":"/tmp/main.go"}}]}}
+{"type":"tool.execution_complete","id":"tool-exec-001","timestamp":"2025-01-15T10:00:06Z","data":{"toolCallId":"toolu_read_1","result":{"content":"package test\n\nfunc TestMain() {}"}}}
+{"type":"tool.execution_complete","id":"tool-exec-002","timestamp":"2025-01-15T10:00:07Z","data":{"toolCallId":"toolu_read_2","result":{"content":"package main\n\nfunc main() {}"}}}
+{"type":"assistant.message","id":"msg-003","timestamp":"2025-01-15T10:00:10Z","parentId":"msg-001","data":{"content":"Here are the contents of both files. The test.go has a TestMain function and main.go has the main entry point.","model":"claude-sonnet-4-20250514"}}
