@@ -1280,11 +1280,15 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 		return p, p.scheduleSessionValidation(60 * time.Second)
 
 	case QuickCreateWorkspaceMsg:
+		toastName := msg.Name
+		if toastName == "" {
+			toastName = p.deriveBranchName(msg.TaskID, msg.TaskTitle)
+		}
 		return p, tea.Batch(
 			p.quickCreateWorkspace(msg),
 			func() tea.Msg {
 				return app.ToastMsg{
-					Message:  fmt.Sprintf("Creating workspace: %s...", p.deriveBranchName(msg.TaskID, msg.TaskTitle)),
+					Message:  fmt.Sprintf("Creating workspace: %s...", toastName),
 					Duration: 3 * time.Second,
 				}
 			},

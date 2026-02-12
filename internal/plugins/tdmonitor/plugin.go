@@ -398,7 +398,7 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 
 	// Intercept TD's SendTaskToWorktree message and show quick-create modal on TD tab
 	if sendMsg, ok := msg.(monitor.SendTaskToWorktreeMsg); ok {
-		p.quickCreateModal = NewQuickCreateModel(sendMsg.TaskID, sendMsg.TaskTitle)
+		p.quickCreateModal = NewQuickCreateModel(sendMsg.TaskID, sendMsg.TaskTitle, p.ctx.WorkDir)
 		return p, nil
 	}
 
@@ -411,12 +411,18 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 			case "create":
 				qcm := p.quickCreateModal
 				p.quickCreateModal = nil
+				name := qcm.nameInput.Value()
+				baseBranch := qcm.baseBranchInput.Value()
+				prompt := qcm.SelectedPrompt()
 				return p, tea.Batch(cmd, func() tea.Msg {
 					return workspace.QuickCreateWorkspaceMsg{
-						TaskID:    qcm.taskID,
-						TaskTitle: qcm.taskTitle,
-						AgentType: qcm.SelectedAgentType(),
-						SkipPerms: qcm.skipPerms,
+						TaskID:     qcm.taskID,
+						TaskTitle:  qcm.taskTitle,
+						Name:       name,
+						BaseBranch: baseBranch,
+						AgentType:  qcm.SelectedAgentType(),
+						SkipPerms:  qcm.skipPerms,
+						Prompt:     prompt,
 					}
 				})
 			case "cancel":

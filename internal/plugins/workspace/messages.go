@@ -272,10 +272,13 @@ type InteractivePasteResultMsg struct {
 // QuickCreateWorkspaceMsg requests workspace creation without switching focus.
 // Sent from td-monitor plugin when user confirms the quick-create modal.
 type QuickCreateWorkspaceMsg struct {
-	TaskID    string
-	TaskTitle string
-	AgentType AgentType
-	SkipPerms bool
+	TaskID     string
+	TaskTitle  string
+	Name       string     // Branch/worktree name (derived from task if empty)
+	BaseBranch string     // Base branch (defaults to HEAD if empty)
+	AgentType  AgentType
+	SkipPerms  bool
+	Prompt     *Prompt    // Selected prompt template (nil if none)
 }
 
 // QuickCreateDoneMsg signals background workspace creation completed.

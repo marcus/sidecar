@@ -257,28 +257,22 @@ func (p *Plugin) createWorktree() tea.Cmd {
 // quickCreateWorkspace creates a workspace in the background without switching focus.
 // Used by the TD tab's quick-create modal.
 func (p *Plugin) quickCreateWorkspace(msg QuickCreateWorkspaceMsg) tea.Cmd {
-	name := p.deriveBranchName(msg.TaskID, msg.TaskTitle)
+	name := msg.Name
+	if name == "" {
+		name = p.deriveBranchName(msg.TaskID, msg.TaskTitle)
+	}
+	baseBranch := msg.BaseBranch
+	if baseBranch == "" {
+		baseBranch = "HEAD"
+	}
 	taskID := msg.TaskID
 	taskTitle := msg.TaskTitle
 	agentType := msg.AgentType
 	skipPerms := msg.SkipPerms
-
-	// Pick the first prompt with a ticket mode (task-aware prompt)
-	var prompt *Prompt
-	home, err := os.UserHomeDir()
-	if err == nil {
-		configDir := filepath.Join(home, ".config", "sidecar")
-		prompts := LoadPrompts(configDir, p.ctx.WorkDir)
-		for i := range prompts {
-			if prompts[i].TicketMode != TicketNone {
-				prompt = &prompts[i]
-				break
-			}
-		}
-	}
+	prompt := msg.Prompt
 
 	return func() tea.Msg {
-		wt, createErr := p.doCreateWorktree(name, "HEAD", taskID, taskTitle, agentType)
+		wt, createErr := p.doCreateWorktree(name, baseBranch, taskID, taskTitle, agentType)
 		return QuickCreateDoneMsg{
 			Worktree:  wt,
 			AgentType: agentType,
