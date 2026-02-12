@@ -97,7 +97,7 @@ func NewHandler() *Handler {
 
 // ClickResult represents the result of processing a click event.
 type ClickResult struct {
-	Region       *Region
+	Region        *Region
 	IsDoubleClick bool
 }
 

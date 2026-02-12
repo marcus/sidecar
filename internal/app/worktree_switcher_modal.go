@@ -410,7 +410,6 @@ func (m *Model) switchWorktree(worktreePath string) tea.Cmd {
 	return m.switchProject(worktreePath)
 }
 
-
 // refreshWorktreeCache calls GetWorktrees and caches the result for the current WorkDir.
 func (m *Model) refreshWorktreeCache() {
 	worktrees := GetWorktrees(m.ui.WorkDir)

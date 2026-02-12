@@ -142,74 +142,74 @@ func TestWorktreeStatePersistence(t *testing.T) {
 	// This tests the core decision logic without needing a full Model
 
 	tests := []struct {
-		name              string
-		oldWorkDir        string
-		projectPath       string
-		mainRepoPath      string // What GetMainWorktreePath would return
-		savedWorktree     string // Previously saved worktree for this repo
+		name                string
+		oldWorkDir          string
+		projectPath         string
+		mainRepoPath        string // What GetMainWorktreePath would return
+		savedWorktree       string // Previously saved worktree for this repo
 		savedWorktreeExists bool
-		expectedTarget    string
-		description       string
+		expectedTarget      string
+		description         string
 	}{
 		{
-			name:              "switch from worktree to main - should go to main",
-			oldWorkDir:        "/repo/worktrees/feature-a",
-			projectPath:       "/repo/main",
-			mainRepoPath:      "/repo/main",
-			savedWorktree:     "/repo/worktrees/feature-a", // Same as oldWorkDir
+			name:                "switch from worktree to main - should go to main",
+			oldWorkDir:          "/repo/worktrees/feature-a",
+			projectPath:         "/repo/main",
+			mainRepoPath:        "/repo/main",
+			savedWorktree:       "/repo/worktrees/feature-a", // Same as oldWorkDir
 			savedWorktreeExists: true,
-			expectedTarget:    "/repo/main", // Should NOT restore back to feature-a
-			description:       "When leaving a worktree to go to main, don't restore back to that worktree",
+			expectedTarget:      "/repo/main", // Should NOT restore back to feature-a
+			description:         "When leaving a worktree to go to main, don't restore back to that worktree",
 		},
 		{
-			name:              "switch from different project - should restore saved worktree",
-			oldWorkDir:        "/other-project",
-			projectPath:       "/repo/main",
-			mainRepoPath:      "/repo/main",
-			savedWorktree:     "/repo/worktrees/feature-b",
+			name:                "switch from different project - should restore saved worktree",
+			oldWorkDir:          "/other-project",
+			projectPath:         "/repo/main",
+			mainRepoPath:        "/repo/main",
+			savedWorktree:       "/repo/worktrees/feature-b",
 			savedWorktreeExists: true,
-			expectedTarget:    "/repo/worktrees/feature-b", // Should restore
-			description:       "When coming from a different project, restore the last worktree",
+			expectedTarget:      "/repo/worktrees/feature-b", // Should restore
+			description:         "When coming from a different project, restore the last worktree",
 		},
 		{
-			name:              "switch to main with no saved worktree",
-			oldWorkDir:        "/other-project",
-			projectPath:       "/repo/main",
-			mainRepoPath:      "/repo/main",
-			savedWorktree:     "",
+			name:                "switch to main with no saved worktree",
+			oldWorkDir:          "/other-project",
+			projectPath:         "/repo/main",
+			mainRepoPath:        "/repo/main",
+			savedWorktree:       "",
 			savedWorktreeExists: false,
-			expectedTarget:    "/repo/main",
-			description:       "No saved worktree means stay on main",
+			expectedTarget:      "/repo/main",
+			description:         "No saved worktree means stay on main",
 		},
 		{
-			name:              "switch to main with stale saved worktree",
-			oldWorkDir:        "/other-project",
-			projectPath:       "/repo/main",
-			mainRepoPath:      "/repo/main",
-			savedWorktree:     "/repo/worktrees/deleted-feature",
+			name:                "switch to main with stale saved worktree",
+			oldWorkDir:          "/other-project",
+			projectPath:         "/repo/main",
+			mainRepoPath:        "/repo/main",
+			savedWorktree:       "/repo/worktrees/deleted-feature",
 			savedWorktreeExists: false, // Worktree was deleted
-			expectedTarget:    "/repo/main",
-			description:       "Stale worktree entry should be ignored",
+			expectedTarget:      "/repo/main",
+			description:         "Stale worktree entry should be ignored",
 		},
 		{
-			name:              "explicit worktree selection - should not restore",
-			oldWorkDir:        "/repo/main",
-			projectPath:       "/repo/worktrees/feature-c", // User explicitly chose this
-			mainRepoPath:      "/repo/main",
-			savedWorktree:     "/repo/worktrees/feature-d", // Different saved worktree
+			name:                "explicit worktree selection - should not restore",
+			oldWorkDir:          "/repo/main",
+			projectPath:         "/repo/worktrees/feature-c", // User explicitly chose this
+			mainRepoPath:        "/repo/main",
+			savedWorktree:       "/repo/worktrees/feature-d", // Different saved worktree
 			savedWorktreeExists: true,
-			expectedTarget:    "/repo/worktrees/feature-c", // User's explicit choice
-			description:       "When user explicitly selects a worktree, don't redirect to saved one",
+			expectedTarget:      "/repo/worktrees/feature-c", // User's explicit choice
+			description:         "When user explicitly selects a worktree, don't redirect to saved one",
 		},
 		{
-			name:              "switch between worktrees in same repo",
-			oldWorkDir:        "/repo/worktrees/feature-a",
-			projectPath:       "/repo/worktrees/feature-b", // User explicitly chose this
-			mainRepoPath:      "/repo/main",
-			savedWorktree:     "/repo/worktrees/feature-a",
+			name:                "switch between worktrees in same repo",
+			oldWorkDir:          "/repo/worktrees/feature-a",
+			projectPath:         "/repo/worktrees/feature-b", // User explicitly chose this
+			mainRepoPath:        "/repo/main",
+			savedWorktree:       "/repo/worktrees/feature-a",
 			savedWorktreeExists: true,
-			expectedTarget:    "/repo/worktrees/feature-b", // User's explicit choice
-			description:       "Switching between worktrees should respect explicit selection",
+			expectedTarget:      "/repo/worktrees/feature-b", // User's explicit choice
+			description:         "Switching between worktrees should respect explicit selection",
 		},
 	}
 

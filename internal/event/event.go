@@ -15,9 +15,9 @@ type Type string
 
 const (
 	// File change events
-	TypeFileChanged   Type = "file_changed"
-	TypeGitChanged    Type = "git_changed"
-	TypeSessionFile   Type = "session_file"
+	TypeFileChanged Type = "file_changed"
+	TypeGitChanged  Type = "git_changed"
+	TypeSessionFile Type = "session_file"
 
 	// Data update events
 	TypeTDUpdate      Type = "td_update"

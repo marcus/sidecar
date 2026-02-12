@@ -204,10 +204,10 @@ func TestIsDefaultShellName(t *testing.T) {
 		{"Shell 123", true},
 		{"Backend", false},
 		{"Frontend", false},
-		{"shell 1", false},  // case sensitive
-		{"Shell1", false},   // no space
-		{"Shell", false},    // no number
-		{"Shell X", false},  // not a digit
+		{"shell 1", false}, // case sensitive
+		{"Shell1", false},  // no space
+		{"Shell", false},   // no number
+		{"Shell X", false}, // not a digit
 		{"My Shell 1", false},
 		{"", false},
 	}

@@ -53,7 +53,6 @@ func TestUpdateCommand(t *testing.T) {
 	}
 }
 
-
 func TestCheck_DevelopmentVersion(t *testing.T) {
 	// Development versions should return empty result without making HTTP calls
 	devVersions := []string{"", "unknown", "devel", "devel+abc123"}

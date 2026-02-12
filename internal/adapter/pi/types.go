@@ -8,11 +8,11 @@ import (
 // RawLine represents any JSONL line from a Pi session file.
 // Fields are a superset; only relevant fields are populated per line type.
 type RawLine struct {
-	Type      string          `json:"type"`                // "session", "message", "model_change", "thinking_level_change", "custom"
-	ID        string          `json:"id"`                  // line identifier
-	ParentID  *string         `json:"parentId"`            // parent line reference (nullable)
-	Timestamp time.Time       `json:"timestamp"`           // line timestamp
-	Message   *MessageContent `json:"message,omitempty"`   // populated for type="message"
+	Type      string          `json:"type"`              // "session", "message", "model_change", "thinking_level_change", "custom"
+	ID        string          `json:"id"`                // line identifier
+	ParentID  *string         `json:"parentId"`          // parent line reference (nullable)
+	Timestamp time.Time       `json:"timestamp"`         // line timestamp
+	Message   *MessageContent `json:"message,omitempty"` // populated for type="message"
 
 	// Session header fields (type="session")
 	Version int    `json:"version,omitempty"` // session format version
@@ -32,16 +32,16 @@ type RawLine struct {
 
 // MessageContent holds the message payload for type="message" lines.
 type MessageContent struct {
-	Role       string          `json:"role"`                  // "user", "assistant", "toolResult"
-	Content    json.RawMessage `json:"content"`               // array of ContentBlock
-	Model      string          `json:"model,omitempty"`       // model ID for assistant messages
-	Provider   string          `json:"provider,omitempty"`    // e.g. "anthropic"
-	API        string          `json:"api,omitempty"`         // e.g. "anthropic-messages"
-	Usage      *Usage          `json:"usage,omitempty"`       // token usage for assistant messages
-	StopReason string          `json:"stopReason,omitempty"`  // e.g. "end_turn"
-	ToolCallID string          `json:"toolCallId,omitempty"`  // for toolResult: links to toolCall block ID
-	ToolName   string          `json:"toolName,omitempty"`    // for toolResult: name of the tool
-	Details    *Details        `json:"details,omitempty"`     // for toolResult: extra info (e.g. diff)
+	Role       string          `json:"role"`                 // "user", "assistant", "toolResult"
+	Content    json.RawMessage `json:"content"`              // array of ContentBlock
+	Model      string          `json:"model,omitempty"`      // model ID for assistant messages
+	Provider   string          `json:"provider,omitempty"`   // e.g. "anthropic"
+	API        string          `json:"api,omitempty"`        // e.g. "anthropic-messages"
+	Usage      *Usage          `json:"usage,omitempty"`      // token usage for assistant messages
+	StopReason string          `json:"stopReason,omitempty"` // e.g. "end_turn"
+	ToolCallID string          `json:"toolCallId,omitempty"` // for toolResult: links to toolCall block ID
+	ToolName   string          `json:"toolName,omitempty"`   // for toolResult: name of the tool
+	Details    *Details        `json:"details,omitempty"`    // for toolResult: extra info (e.g. diff)
 }
 
 // Usage tracks token counts and cost for an assistant message.

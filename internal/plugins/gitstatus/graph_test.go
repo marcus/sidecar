@@ -183,12 +183,12 @@ func TestComputeGraph_MergeShowsBranch(t *testing.T) {
 	//
 	// Linear commits -> merge -> two branches
 	commits := []*Commit{
-		{Hash: "c1", ParentHashes: []string{"c2"}},                      // linear
-		{Hash: "c2", ParentHashes: []string{"merge"}},                   // linear
+		{Hash: "c1", ParentHashes: []string{"c2"}},                         // linear
+		{Hash: "c2", ParentHashes: []string{"merge"}},                      // linear
 		{Hash: "merge", ParentHashes: []string{"p1", "p2"}, IsMerge: true}, // merge with 2 parents
-		{Hash: "p1", ParentHashes: []string{"base"}},                    // first parent branch
-		{Hash: "p2", ParentHashes: []string{"base"}},                    // second parent branch
-		{Hash: "base", ParentHashes: []string{}},                        // root
+		{Hash: "p1", ParentHashes: []string{"base"}},                       // first parent branch
+		{Hash: "p2", ParentHashes: []string{"base"}},                       // second parent branch
+		{Hash: "base", ParentHashes: []string{}},                           // root
 	}
 
 	lines := ComputeGraphForCommits(commits)

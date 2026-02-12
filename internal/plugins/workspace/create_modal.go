@@ -12,17 +12,17 @@ import (
 )
 
 const (
-	createNameFieldID           = "create-name"
-	createBaseFieldID           = "create-base"
-	createPromptFieldID         = "create-prompt"
-	createTaskFieldID           = "create-task"
-	createAgentListID           = "create-agent-list"
-	createSkipPermissionsID     = "create-skip-permissions"
-	createSubmitID              = "create-submit"
-	createCancelID              = "create-cancel"
-	createBranchItemPrefix      = "create-branch-"
-	createTaskItemPrefix        = "create-task-item-"
-	createAgentItemPrefix       = "create-agent-"
+	createNameFieldID       = "create-name"
+	createBaseFieldID       = "create-base"
+	createPromptFieldID     = "create-prompt"
+	createTaskFieldID       = "create-task"
+	createAgentListID       = "create-agent-list"
+	createSkipPermissionsID = "create-skip-permissions"
+	createSubmitID          = "create-submit"
+	createCancelID          = "create-cancel"
+	createBranchItemPrefix  = "create-branch-"
+	createTaskItemPrefix    = "create-task-item-"
+	createAgentItemPrefix   = "create-agent-"
 )
 
 func createIndexedID(prefix string, idx int) string {

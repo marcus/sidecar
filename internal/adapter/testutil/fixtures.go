@@ -9,20 +9,20 @@ import (
 
 // ClaudeCodeMessage represents a JSONL message in Claude Code format.
 type ClaudeCodeMessage struct {
-	Type      string                 `json:"type"`
-	UUID      string                 `json:"uuid"`
-	SessionID string                 `json:"sessionId"`
-	Timestamp time.Time              `json:"timestamp"`
-	Message   *ClaudeCodeMsgContent  `json:"message,omitempty"`
-	CWD       string                 `json:"cwd,omitempty"`
-	Version   string                 `json:"version,omitempty"`
+	Type      string                `json:"type"`
+	UUID      string                `json:"uuid"`
+	SessionID string                `json:"sessionId"`
+	Timestamp time.Time             `json:"timestamp"`
+	Message   *ClaudeCodeMsgContent `json:"message,omitempty"`
+	CWD       string                `json:"cwd,omitempty"`
+	Version   string                `json:"version,omitempty"`
 }
 
 // ClaudeCodeMsgContent holds the actual message content.
 type ClaudeCodeMsgContent struct {
-	Role    string          `json:"role"`
-	Content json.RawMessage `json:"content"`
-	Model   string          `json:"model,omitempty"`
+	Role    string           `json:"role"`
+	Content json.RawMessage  `json:"content"`
+	Model   string           `json:"model,omitempty"`
 	Usage   *ClaudeCodeUsage `json:"usage,omitempty"`
 }
 

@@ -263,12 +263,12 @@ func TestEventCoalescer_DynamicWindow(t *testing.T) {
 			expected time.Duration
 		}{
 			{"0 bytes", 0, 250 * time.Millisecond},
-			{"50MB", 50 * 1024 * 1024, 250 * time.Millisecond},               // below 100MB threshold
-			{"100MB", 100 * 1024 * 1024, 750 * time.Millisecond},             // 250 + 500
-			{"200MB", 200 * 1024 * 1024, 1250 * time.Millisecond},            // 250 + 1000
-			{"500MB", 500 * 1024 * 1024, 2750 * time.Millisecond},            // 250 + 2500
-			{"1GB", 1024 * 1024 * 1024, 5 * time.Second},                     // capped at max
-			{"2GB", 2 * 1024 * 1024 * 1024, 5 * time.Second},                 // capped at max
+			{"50MB", 50 * 1024 * 1024, 250 * time.Millisecond},    // below 100MB threshold
+			{"100MB", 100 * 1024 * 1024, 750 * time.Millisecond},  // 250 + 500
+			{"200MB", 200 * 1024 * 1024, 1250 * time.Millisecond}, // 250 + 1000
+			{"500MB", 500 * 1024 * 1024, 2750 * time.Millisecond}, // 250 + 2500
+			{"1GB", 1024 * 1024 * 1024, 5 * time.Second},          // capped at max
+			{"2GB", 2 * 1024 * 1024 * 1024, 5 * time.Second},      // capped at max
 		}
 
 		for _, tc := range testCases {
@@ -287,9 +287,9 @@ func TestEventCoalescer_DynamicWindow(t *testing.T) {
 		c := NewEventCoalescer(250*time.Millisecond, nil)
 
 		// Mix of session sizes
-		c.UpdateSessionSize("small", 10*1024*1024)    // 0 scale
-		c.UpdateSessionSize("medium", 150*1024*1024)  // 1x scale = +500ms
-		c.UpdateSessionSize("large", 350*1024*1024)   // 3x scale = +1500ms
+		c.UpdateSessionSize("small", 10*1024*1024)   // 0 scale
+		c.UpdateSessionSize("medium", 150*1024*1024) // 1x scale = +500ms
+		c.UpdateSessionSize("large", 350*1024*1024)  // 3x scale = +1500ms
 
 		c.pendingIDs["small"] = struct{}{}
 		c.pendingIDs["medium"] = struct{}{}

@@ -27,9 +27,9 @@ type Binding struct {
 
 // Registry manages key bindings and command dispatch.
 type Registry struct {
-	commands      map[string]Command  // ID -> Command
+	commands      map[string]Command   // ID -> Command
 	bindings      map[string][]Binding // context -> bindings
-	userOverrides map[string]string   // key -> command ID
+	userOverrides map[string]string    // key -> command ID
 	pendingKey    string
 	pendingTime   time.Time
 	mu            sync.RWMutex

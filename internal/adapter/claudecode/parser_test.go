@@ -929,4 +929,3 @@ func TestTwoPassToolLinking_InterleavedTextAndTools(t *testing.T) {
 		t.Error("blocks[2].ToolOutput should be non-empty")
 	}
 }
-

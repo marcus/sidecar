@@ -72,13 +72,13 @@ func NewIntroModel(repoName string) IntroModel {
 
 	// Use theme colors for the varied start colors
 	startColors := []string{
-		theme.Colors.Error,     // Red
-		theme.Colors.Secondary, // Blue/Cyan
-		theme.Colors.Success,   // Green
-		theme.Colors.Primary,   // Purple
+		theme.Colors.Error,       // Red
+		theme.Colors.Secondary,   // Blue/Cyan
+		theme.Colors.Success,     // Green
+		theme.Colors.Primary,     // Purple
 		theme.Colors.ButtonHover, // Pink
-		theme.Colors.Info,      // Cyan/Blue
-		theme.Colors.Accent,    // Orange/Amber
+		theme.Colors.Info,        // Cyan/Blue
+		theme.Colors.Accent,      // Orange/Amber
 	}
 
 	for i, char := range text {
@@ -138,8 +138,8 @@ func (m *IntroModel) Update(dt time.Duration) {
 		if !l.ReachedTarget {
 			target = l.OvershootMax
 			speed = 30.0
-			
-			if l.CurrentX >= l.OvershootMax - 0.1 {
+
+			if l.CurrentX >= l.OvershootMax-0.1 {
 				l.ReachedTarget = true
 			}
 		} else {
@@ -154,7 +154,7 @@ func (m *IntroModel) Update(dt time.Duration) {
 		if math.Abs(move) > math.Abs(dist) {
 			move = dist
 		}
-		
+
 		// Ensure minimum movement if far away
 		minMove := speed * dt.Seconds()
 		if math.Abs(dist) > 0.1 && math.Abs(move) < minMove {
@@ -175,9 +175,9 @@ func (m *IntroModel) Update(dt time.Duration) {
 		l.CurrentColor.B += (l.EndColor.B - l.CurrentColor.B) * colorSpeed
 
 		// Check if settled
-		if l.ReachedTarget && 
-		   math.Abs(l.TargetX-l.CurrentX) < 0.1 &&
-		   math.Abs(l.EndColor.R-l.CurrentColor.R) < 1.0 {
+		if l.ReachedTarget &&
+			math.Abs(l.TargetX-l.CurrentX) < 0.1 &&
+			math.Abs(l.EndColor.R-l.CurrentColor.R) < 1.0 {
 			// Settled
 		} else {
 			allSettled = false

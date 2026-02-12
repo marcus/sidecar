@@ -138,7 +138,7 @@ func Default() *Config {
 			Overrides: make(map[string]string),
 		},
 		UI: UIConfig{
-			ShowClock:  true,
+			ShowClock: true,
 			Theme: ThemeConfig{
 				Name:      "default",
 				Overrides: make(map[string]interface{}),

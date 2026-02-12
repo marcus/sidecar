@@ -47,7 +47,6 @@ func (p *Plugin) selectedCommitIndex() int {
 	return p.cursor - len(entries)
 }
 
-
 // autoLoadDiff triggers loading the diff for the currently selected file or folder.
 func (p *Plugin) autoLoadDiff() tea.Cmd {
 	entries := p.tree.AllEntries()

@@ -101,21 +101,21 @@ type Model struct {
 	activeContext string
 
 	// UI state
-	width, height    int
-	showHelp         bool
-	helpModal        *modal.Modal
-	helpModalWidth   int
-	helpMouseHandler *mouse.Handler
+	width, height           int
+	showHelp                bool
+	helpModal               *modal.Modal
+	helpModalWidth          int
+	helpMouseHandler        *mouse.Handler
 	showDiagnostics         bool
 	diagnosticsModal        *modal.Modal
 	diagnosticsModalWidth   int
 	diagnosticsMouseHandler *mouse.Handler
 	showClock               bool
-	showPalette      bool
-	showQuitConfirm  bool
-	quitModal        *modal.Modal
-	quitMouseHandler *mouse.Handler
-	palette          palette.Model
+	showPalette             bool
+	showQuitConfirm         bool
+	quitModal               *modal.Modal
+	quitMouseHandler        *mouse.Handler
+	palette                 palette.Model
 
 	// Project switcher modal
 	showProjectSwitcher         bool
@@ -161,15 +161,15 @@ type Model struct {
 	cachedWorktreeInfo *WorktreeInfo
 
 	// Theme switcher modal
-	showThemeSwitcher          bool
-	themeSwitcherModal         *modal.Modal
-	themeSwitcherModalWidth    int
-	themeSwitcherMouseHandler  *mouse.Handler
-	themeSwitcherSelectedIdx   int
-	themeSwitcherInput         textinput.Model
-	themeSwitcherFiltered      []themeEntry
-	themeSwitcherOriginal      themeEntry // original theme to restore on cancel
-	themeSwitcherScope         string     // "global" or "project"
+	showThemeSwitcher         bool
+	themeSwitcherModal        *modal.Modal
+	themeSwitcherModalWidth   int
+	themeSwitcherMouseHandler *mouse.Handler
+	themeSwitcherSelectedIdx  int
+	themeSwitcherInput        textinput.Model
+	themeSwitcherFiltered     []themeEntry
+	themeSwitcherOriginal     themeEntry // original theme to restore on cancel
+	themeSwitcherScope        string     // "global" or "project"
 
 	// Issue preview - input phase
 	showIssueInput         bool
@@ -179,11 +179,11 @@ type Model struct {
 	issueInputMouseHandler *mouse.Handler
 
 	// Issue input auto-complete
-	issueSearchResults      []IssueSearchResult
-	issueSearchQuery        string // last query sent to td search
-	issueSearchLoading      bool
-	issueSearchCursor       int  // selected result index (-1 = none/input focused)
-	issueSearchScrollOffset int  // viewport scroll offset for search results
+	issueSearchResults       []IssueSearchResult
+	issueSearchQuery         string // last query sent to td search
+	issueSearchLoading       bool
+	issueSearchCursor        int  // selected result index (-1 = none/input focused)
+	issueSearchScrollOffset  int  // viewport scroll offset for search results
 	issueSearchIncludeClosed bool // whether to include closed issues in search
 
 	// Issue preview - preview phase
@@ -233,20 +233,20 @@ type Model struct {
 	changelogScrollState  *changelogViewState // Shared state for modal closure
 
 	// Update modal (declarative)
-	updatePreviewModal        *modal.Modal
-	updatePreviewModalWidth   int
-	updatePreviewMouseHandler *mouse.Handler
-	updateCompleteModal       *modal.Modal
-	updateCompleteModalWidth  int
+	updatePreviewModal         *modal.Modal
+	updatePreviewModalWidth    int
+	updatePreviewMouseHandler  *mouse.Handler
+	updateCompleteModal        *modal.Modal
+	updateCompleteModalWidth   int
 	updateCompleteMouseHandler *mouse.Handler
-	updateErrorModal          *modal.Modal
-	updateErrorModalWidth     int
-	updateErrorMouseHandler   *mouse.Handler
-	changelogModal            *modal.Modal
-	changelogModalWidth       int
-	changelogMouseHandler     *mouse.Handler
-	changelogRenderedLines    []string // Cached rendered changelog lines
-	changelogMaxVisibleLines  int      // Max lines visible in viewport
+	updateErrorModal           *modal.Modal
+	updateErrorModalWidth      int
+	updateErrorMouseHandler    *mouse.Handler
+	changelogModal             *modal.Modal
+	changelogModalWidth        int
+	changelogMouseHandler      *mouse.Handler
+	changelogRenderedLines     []string // Cached rendered changelog lines
+	changelogMaxVisibleLines   int      // Max lines visible in viewport
 
 	// Intro animation
 	intro IntroModel
@@ -272,16 +272,16 @@ func New(reg *plugin.Registry, km *keymap.Registry, cfg *config.Config, currentV
 	}
 
 	return Model{
-		cfg:                   cfg,
-		registry:              reg,
-		keymap:                km,
-		activePlugin:          activeIdx,
-		activeContext:         "global",
-		showClock:             cfg.UI.ShowClock,
-		palette:               palette.New(),
-		ui:                    ui,
-		ready:                 false,
-		intro:                 NewIntroModel(repoName),
+		cfg:               cfg,
+		registry:          reg,
+		keymap:            km,
+		activePlugin:      activeIdx,
+		activeContext:     "global",
+		showClock:         cfg.UI.ShowClock,
+		palette:           palette.New(),
+		ui:                ui,
+		ready:             false,
+		intro:             NewIntroModel(repoName),
 		currentVersion:    currentVersion,
 		updatePhaseStatus: make(map[UpdatePhase]string),
 	}
