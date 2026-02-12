@@ -1429,8 +1429,12 @@ func (p *Plugin) reconnectAgents() tea.Cmd {
 
 			// Create agent record
 			paneID := getPaneID(session)
+			agentType := wt.ChosenAgentType
+			if agentType == "" || agentType == AgentNone {
+				agentType = AgentClaude // Fallback if no .sidecar-agent file
+			}
 			agent := &Agent{
-				Type:        AgentClaude, // Default, will be detected from output
+				Type:        agentType,
 				TmuxSession: session,
 				TmuxPane:    paneID,     // Capture pane ID for interactive mode
 				StartedAt:   time.Now(), // Unknown actual start
