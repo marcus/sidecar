@@ -7,11 +7,12 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/marcus/td/pkg/monitor"
 	"github.com/marcus/sidecar/internal/app"
 	"github.com/marcus/sidecar/internal/plugin"
 	"github.com/marcus/sidecar/internal/plugins/workspace"
 	"github.com/marcus/sidecar/internal/styles"
+	"github.com/marcus/sidecar/internal/ui"
+	"github.com/marcus/td/pkg/monitor"
 )
 
 const (
@@ -36,6 +37,9 @@ type Plugin struct {
 
 	// Setup modal (shown when td is on PATH but project not initialized)
 	setupModal *SetupModel
+
+	// Quick-create workspace modal (overlays on TD tab)
+	quickCreateModal *QuickCreateModel
 
 	// tdOnPath tracks whether td binary is available on the system
 	tdOnPath bool
@@ -73,6 +77,7 @@ func (p *Plugin) Init(ctx *plugin.Context) error {
 	p.model = nil
 	p.notInstalled = nil
 	p.setupModal = nil
+	p.quickCreateModal = nil
 	p.started = false
 
 	// Check if td binary is available on PATH
@@ -195,17 +200,52 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 		return p, nil
 	}
 
-	// Intercept TD's SendTaskToWorktree message and route to workspace plugin
+	// Intercept TD's SendTaskToWorktree message and show quick-create modal on TD tab
 	if sendMsg, ok := msg.(monitor.SendTaskToWorktreeMsg); ok {
-		return p, tea.Batch(
-			app.FocusPlugin("workspace-manager"),
-			func() tea.Msg {
-				return workspace.OpenCreateModalWithTaskMsg{
-					TaskID:    sendMsg.TaskID,
-					TaskTitle: sendMsg.TaskTitle,
-				}
-			},
-		)
+		p.quickCreateModal = NewQuickCreateModel(sendMsg.TaskID, sendMsg.TaskTitle)
+		return p, nil
+	}
+
+	// Route input to quick-create modal when active
+	if p.quickCreateModal != nil {
+		switch msg.(type) {
+		case tea.KeyMsg, tea.MouseMsg:
+			action, cmd := p.quickCreateModal.Update(msg, p.width)
+			switch action {
+			case "create":
+				qcm := p.quickCreateModal
+				p.quickCreateModal = nil
+				return p, tea.Batch(cmd, func() tea.Msg {
+					return workspace.QuickCreateWorkspaceMsg{
+						TaskID:    qcm.taskID,
+						TaskTitle: qcm.taskTitle,
+						AgentType: qcm.SelectedAgentType(),
+						SkipPerms: qcm.skipPerms,
+					}
+				})
+			case "cancel":
+				p.quickCreateModal = nil
+				return p, cmd
+			}
+			return p, cmd
+		}
+	}
+
+	// Handle N key to open quick-create workspace modal for the selected TD task.
+	// Forwards as W to the td model which emits SendTaskToWorktreeMsg (intercepted above).
+	if keyMsg, ok := msg.(tea.KeyMsg); ok && keyMsg.String() == "N" && p.quickCreateModal == nil {
+		// Skip in text-entry contexts where N should be typed as input
+		switch p.model.CurrentContextString() {
+		case "td-search", "td-form", "td-board-editor", "td-confirm", "td-close-confirm":
+			// Fall through to normal model delegation below
+		default:
+			wKey := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'W'}}
+			newModel, cmd := p.model.Update(wKey)
+			if m, ok := newModel.(monitor.Model); ok {
+				p.model = &m
+			}
+			return p, cmd
+		}
 	}
 
 	// Handle issue preview "Open in TD" request
@@ -304,7 +344,15 @@ func (p *Plugin) View(width, height int) string {
 
 	// Constrain output to allocated height to prevent header scrolling off-screen.
 	// MaxHeight truncates content that exceeds the allocated space.
-	return lipgloss.NewStyle().Width(width).Height(height).MaxHeight(height).Render(content)
+	rendered := lipgloss.NewStyle().Width(width).Height(height).MaxHeight(height).Render(content)
+
+	// Overlay quick-create modal when active
+	if p.quickCreateModal != nil {
+		modalView := p.quickCreateModal.View(width, height)
+		return ui.OverlayModal(rendered, modalView, width, height)
+	}
+
+	return rendered
 }
 
 // IsFocused returns whether the plugin is focused.
@@ -372,6 +420,9 @@ func (p *Plugin) FocusContext() string {
 
 // ConsumesTextInput reports whether TD monitor is in a text-entry context.
 func (p *Plugin) ConsumesTextInput() bool {
+	if p.quickCreateModal != nil {
+		return true
+	}
 	if p.model == nil {
 		return false
 	}
