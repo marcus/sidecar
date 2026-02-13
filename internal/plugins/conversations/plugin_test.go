@@ -398,8 +398,8 @@ func TestDiagnosticsWatcherOn(t *testing.T) {
 		t.Fatalf("expected 2 diagnostics, got %d", len(diags))
 	}
 
-	if diags[1].Status != "on" {
-		t.Errorf("expected watcher status 'on', got %q", diags[1].Status)
+	if diags[1].Status != "ok" {
+		t.Errorf("expected watcher status 'ok', got %q", diags[1].Status)
 	}
 }
 
