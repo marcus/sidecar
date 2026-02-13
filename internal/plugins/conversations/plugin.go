@@ -1233,9 +1233,9 @@ func (p *Plugin) Diagnostics() []plugin.Diagnostic {
 	}
 
 	// Add watcher status
-	watchStatus := "off"
+	watchStatus := "error"
 	if p.watchChan != nil {
-		watchStatus = "on"
+		watchStatus = "ok"
 	}
 
 	return []plugin.Diagnostic{
