@@ -108,7 +108,7 @@ View staged, modified, and untracked files with a split-pane interface. The side
 
 ### Conversations
 
-Browse session history from multiple AI coding agents with message content, token usage, and search. Supports Amp Code, Claude Code, Codex, Cursor CLI, Gemini CLI, Kiro, OpenCode, and Warp. [Full documentation →](https://marcus.github.io/sidecar/docs/conversations-plugin)
+Browse session history from multiple AI coding agents with message content, token usage, and search. Supports Amp Code, Claude Code, Codex, Cursor CLI, Gemini CLI, Kiro, OpenCode, Pi Agent, and Warp. [Full documentation →](https://marcus.github.io/sidecar/docs/conversations-plugin)
 
 ![Conversations](docs/screenshots/sidecar-conversations.png)
 
@@ -157,7 +157,7 @@ Manage workspaces for parallel development with integrated agent support. Create
 
 - Create and delete workspaces with `n`/`D`
 - Link TD tasks to workspaces for context tracking
-- Launch Claude Code, Cursor, or OpenRouter agents with `a`
+- Launch coding agents (Claude, Codex, Gemini, Cursor, OpenCode, Pi) with `a`
 - Merge workflow: commit, push, create PR, and cleanup with `m`
 - Auto-adds sidecar state files to .gitignore
 - Preview diffs and task details in split-pane view

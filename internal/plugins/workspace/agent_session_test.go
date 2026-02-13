@@ -315,6 +315,103 @@ func TestDetectAgentSessionStatus(t *testing.T) {
 	}
 }
 
+// setupPiTestDir creates a temp HOME with Pi Agent project directory structure.
+// Pi stores sessions in ~/.pi/agent/sessions/--{path-encoded}--/
+func setupPiTestDir(t *testing.T, worktreePath string) (tmpHome, projectDir string) {
+	t.Helper()
+	tmpHome = t.TempDir()
+	t.Setenv("HOME", tmpHome)
+
+	// Pi encodes paths: strip leading slash, replace slashes with dashes, wrap in --
+	path := worktreePath[1:] // strip leading /
+	encoded := ""
+	for _, c := range path {
+		if c == '/' {
+			encoded += "-"
+		} else {
+			encoded += string(c)
+		}
+	}
+	projectDir = filepath.Join(tmpHome, ".pi", "agent", "sessions", "--"+encoded+"--")
+	if err := os.MkdirAll(projectDir, 0755); err != nil {
+		t.Fatalf("failed to create project dir: %v", err)
+	}
+	return
+}
+
+func TestDetectPiSessionStatus_MtimeActive(t *testing.T) {
+	worktreePath := "/test/project/path"
+	_, projectDir := setupPiTestDir(t, worktreePath)
+
+	// Session file just written (mtime is now) → should be active
+	writeSessionFile(t, projectDir, "2026-01-01T00-00-00Z_test-session.jsonl",
+		`{"type":"message","message":{"role":"assistant","content":"Done!"}}`, 0)
+
+	status, ok := detectPiSessionStatus(worktreePath)
+	if !ok {
+		t.Fatal("expected ok=true")
+	}
+	if status != StatusActive {
+		t.Errorf("got %v, want StatusActive (file just written)", status)
+	}
+}
+
+func TestDetectPiSessionStatus_MtimeStaleAssistant(t *testing.T) {
+	worktreePath := "/test/project/path"
+	_, projectDir := setupPiTestDir(t, worktreePath)
+
+	// Session file old + last entry assistant → waiting (JSONL fallback)
+	writeSessionFile(t, projectDir, "2026-01-01T00-00-00Z_test-session.jsonl",
+		`{"type":"message","message":{"role":"user","content":"hello"}}
+{"type":"message","message":{"role":"assistant","content":"Done!"}}`,
+		2*time.Minute)
+
+	status, ok := detectPiSessionStatus(worktreePath)
+	if !ok {
+		t.Fatal("expected ok=true")
+	}
+	if status != StatusWaiting {
+		t.Errorf("got %v, want StatusWaiting (stale file, last entry assistant)", status)
+	}
+}
+
+func TestDetectPiSessionStatus_MtimeStaleUser(t *testing.T) {
+	worktreePath := "/test/project/path"
+	_, projectDir := setupPiTestDir(t, worktreePath)
+
+	// Session file old + last entry user → active (agent is thinking, JSONL fallback)
+	writeSessionFile(t, projectDir, "2026-01-01T00-00-00Z_test-session.jsonl",
+		`{"type":"message","message":{"role":"assistant","content":"Hi"}}
+{"type":"message","message":{"role":"user","content":"do something"}}`,
+		2*time.Minute)
+
+	status, ok := detectPiSessionStatus(worktreePath)
+	if !ok {
+		t.Fatal("expected ok=true")
+	}
+	if status != StatusActive {
+		t.Errorf("got %v, want StatusActive (stale file, last entry user = thinking)", status)
+	}
+}
+
+func TestDetectPiSessionStatus_NoSession(t *testing.T) {
+	worktreePath := "/test/project/path"
+	setupPiTestDir(t, worktreePath)
+	// No session file created
+
+	_, ok := detectPiSessionStatus(worktreePath)
+	if ok {
+		t.Error("expected ok=false when no session files exist")
+	}
+}
+
+func TestDetectPiSessionStatus_NonexistentPath(t *testing.T) {
+	_, ok := detectPiSessionStatus("/nonexistent/path")
+	if ok {
+		t.Error("expected ok=false for nonexistent path")
+	}
+}
+
 func TestIsFileRecentlyModified(t *testing.T) {
 	tmpDir := t.TempDir()
 

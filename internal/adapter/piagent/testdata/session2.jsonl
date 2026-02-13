@@ -1,0 +1,4 @@
+{"type":"session","version":3,"id":"test-session-2","timestamp":"2026-02-02T10:00:00Z","cwd":"/test/project"}
+{"type":"model_change","id":"mc1","parentId":null,"timestamp":"2026-02-02T10:00:01Z","provider":"anthropic","modelId":"claude-opus-4-5"}
+{"type":"message","id":"m1","parentId":"mc1","timestamp":"2026-02-02T10:00:02Z","message":{"role":"user","content":[{"type":"text","text":"Can you refactor this code?"}]}}
+{"type":"message","id":"m2","parentId":"m1","timestamp":"2026-02-02T10:00:03Z","message":{"role":"assistant","content":[{"type":"text","text":"I'd be happy to help refactor the code. Could you show me the code you'd like me to refactor?"}],"model":"claude-opus-4-5","usage":{"input":200,"output":30,"cacheRead":100,"cacheWrite":50,"totalTokens":230,"cost":{"total":0.008}}}}
