@@ -13,6 +13,7 @@ import (
 	"github.com/atotto/clipboard"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/marcus/sidecar/internal/community"
+	"github.com/marcus/sidecar/internal/tty"
 	"github.com/marcus/sidecar/internal/config"
 	"github.com/marcus/sidecar/internal/mouse"
 	"github.com/marcus/sidecar/internal/palette"
@@ -22,23 +23,6 @@ import (
 	"github.com/marcus/sidecar/internal/theme"
 	"github.com/marcus/sidecar/internal/version"
 )
-
-// isMouseEscapeSequence returns true if the key message appears to be
-// an unparsed mouse escape sequence (SGR format: [<...M or [<...m)
-func isMouseEscapeSequence(msg tea.KeyMsg) bool {
-	s := msg.String()
-	// SGR mouse sequences contain [< and end with M or m
-	if strings.Contains(s, "[<") && (strings.HasSuffix(s, "M") || strings.HasSuffix(s, "m")) {
-		return true
-	}
-	// Check for semicolon-separated coordinate patterns typical of mouse sequences
-	if strings.Contains(s, ";") && strings.ContainsAny(s, "0123456789") {
-		if strings.HasSuffix(s, "M") || strings.HasSuffix(s, "m") {
-			return true
-		}
-	}
-	return false
-}
 
 // Update handles all messages and returns the updated model and commands.
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -80,6 +64,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tea.Batch(cmds...)
 
 	case tea.MouseMsg:
+		m.recentMouseEvent = true
 		// Route mouse events to active modal (priority order)
 		switch m.activeModal() {
 		case ModalPalette:
@@ -514,6 +499,25 @@ func (m *Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 	}
 
+	// Universal mouse fragment filter (Linux SGR sequence splitting).
+	// On Linux, terminals split mouse escape sequences across reads, causing
+	// Bubble Tea to deliver fragments like "[<67;78;9M" as KeyMsg.
+	// Fast path checks runes directly to avoid string allocation on every keystroke.
+	if msg.Type == tea.KeyRunes && len(msg.Runes) > 0 {
+		// Fast path: single "[" after a mouse event is a CSI fragment
+		if len(msg.Runes) == 1 && msg.Runes[0] == '[' && m.recentMouseEvent {
+			m.recentMouseEvent = false
+			return m, nil
+		}
+		// Multi-char fragments: only allocate string when first rune suggests mouse data
+		if r := msg.Runes[0]; len(msg.Runes) > 1 && (r == '[' || r == '<' || r == ';' || (r >= '0' && r <= '9') || r == 'M' || r == 'm') {
+			if tty.LooksLikeMouseFragment(string(msg.Runes)) {
+				return m, nil
+			}
+		}
+	}
+	m.recentMouseEvent = false
+
 	if m.showQuitConfirm {
 		action, cmd := m.quitModal.HandleKey(msg)
 		switch action {
@@ -700,11 +704,6 @@ func (m *Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 
-		// Filter out unparsed mouse escape sequences
-		if isMouseEscapeSequence(msg) {
-			return m, nil
-		}
-
 		// Forward other keys to text input for filtering
 		var cmd tea.Cmd
 		m.worktreeSwitcherInput, cmd = m.worktreeSwitcherInput.Update(msg)
@@ -814,11 +813,6 @@ func (m *Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			// Close modal
 			m.resetProjectSwitcher()
 			m.updateContext()
-			return m, nil
-		}
-
-		// Filter out unparsed mouse escape sequences
-		if isMouseEscapeSequence(msg) {
 			return m, nil
 		}
 
@@ -947,11 +941,6 @@ func (m *Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 
-		// Filter out unparsed mouse escape sequences
-		if isMouseEscapeSequence(msg) {
-			return m, nil
-		}
-
 		// Forward other keys to text input for filtering
 		var cmd tea.Cmd
 		m.themeSwitcherInput, cmd = m.themeSwitcherInput.Update(msg)
@@ -1030,10 +1019,6 @@ func (m *Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.issueInputModalWidth = 0
 			}
 			// Tab is consumed (fill-in or no-op) — don't forward to textinput
-			return m, nil
-		}
-
-		if isMouseEscapeSequence(msg) {
 			return m, nil
 		}
 
@@ -1847,11 +1832,6 @@ func (m *Model) handleProjectAddThemePickerKeys(msg tea.KeyMsg) (tea.Model, tea.
 		// Restore theme
 		resolved := theme.ResolveTheme(m.cfg, m.ui.WorkDir)
 		theme.ApplyResolved(resolved)
-		return m, nil
-	}
-
-	// Filter out unparsed mouse escape sequences
-	if isMouseEscapeSequence(msg) {
 		return m, nil
 	}
 
