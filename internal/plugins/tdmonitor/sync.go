@@ -221,5 +221,31 @@ func (m *SyncModel) View(background string, width, height int) string {
 	return monitor.OverlayModal(background, modalContent, width, height)
 }
 
+// SyncPushOneDoneMsg is sent when a single-issue push completes.
+type SyncPushOneDoneMsg struct {
+	IssueID string
+	Result  *integration.SyncResult
+	Err     error
+}
+
+// doPushOne pushes a single td issue to GitHub.
+func (m *SyncModel) doPushOne(issueID string) tea.Cmd {
+	workDir := m.workDir
+	todosDir := m.todosDir
+	return func() tea.Msg {
+		provider := integration.NewGitHubProvider()
+
+		if ok, err := provider.Available(workDir); !ok {
+			return SyncPushOneDoneMsg{IssueID: issueID, Err: err}
+		}
+
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+
+		result, err := integration.PushOne(ctx, provider, workDir, todosDir, issueID)
+		return SyncPushOneDoneMsg{IssueID: issueID, Result: result, Err: err}
+	}
+}
+
 // SyncDismissMsg is sent when the sync modal should be dismissed.
 type SyncDismissMsg struct{}

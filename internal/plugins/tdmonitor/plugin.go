@@ -116,6 +116,8 @@ func (p *Plugin) Init(ctx *plugin.Context) error {
 		}
 		// Register GitHub sync keybinding
 		ctx.Keymap.RegisterPluginBinding("ctrl+g", "gh-sync", "td-monitor")
+		// Register push-one keybinding for modal context
+		ctx.Keymap.RegisterPluginBinding("ctrl+g", "gh-push-issue", "td-modal")
 	}
 
 	return nil
@@ -208,12 +210,52 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 		return p, nil
 	}
 
+	// Handle single-issue push completion (no modal involved)
+	if doneMsg, ok := msg.(SyncPushOneDoneMsg); ok {
+		if doneMsg.Err != nil {
+			return p, func() tea.Msg {
+				return app.ToastMsg{
+					Message:  fmt.Sprintf("Push %s failed: %v", doneMsg.IssueID, doneMsg.Err),
+					Duration: 3 * time.Second,
+					IsError:  true,
+				}
+			}
+		}
+		return p, func() tea.Msg {
+			message := fmt.Sprintf("Pushed %s to GitHub", doneMsg.IssueID)
+			if len(doneMsg.Result.Errors) > 0 {
+				message += fmt.Sprintf(" (%d errors)", len(doneMsg.Result.Errors))
+			}
+			return app.ToastMsg{
+				Message:  message,
+				Duration: 3 * time.Second,
+			}
+		}
+	}
+
 	// Route sync completion messages to the sync modal
 	if p.syncModal != nil {
 		switch msg.(type) {
 		case SyncPullDoneMsg, SyncPushDoneMsg:
 			cmd := p.syncModal.Update(msg)
 			return p, cmd
+		}
+	}
+
+	// Handle ctrl+g in modal context — push current issue to GitHub
+	if keyMsg, ok := msg.(tea.KeyMsg); ok && keyMsg.String() == "ctrl+g" && p.model != nil && p.syncModal == nil && p.model.ModalOpen() {
+		if modal := p.model.CurrentModal(); modal != nil && modal.IssueID != "" {
+			issueID := modal.IssueID
+			syncModel := NewSyncModel(p.ctx.WorkDir)
+			return p, tea.Batch(
+				func() tea.Msg {
+					return app.ToastMsg{
+						Message:  fmt.Sprintf("Pushing %s to GitHub...", issueID),
+						Duration: 2 * time.Second,
+					}
+				},
+				syncModel.doPushOne(issueID),
+			)
 		}
 	}
 
@@ -385,6 +427,16 @@ func (p *Plugin) Commands() []plugin.Command {
 		Name:        "Sync",
 		Description: "Sync issues with GitHub",
 		Context:     "td-monitor",
+		Priority:    50,
+		Category:    plugin.CategoryActions,
+	})
+
+	// Add push-one command for modal context
+	commands = append(commands, plugin.Command{
+		ID:          "gh-push-issue",
+		Name:        "Push",
+		Description: "Push issue to GitHub",
+		Context:     "td-modal",
 		Priority:    50,
 		Category:    plugin.CategoryActions,
 	})

@@ -176,6 +176,101 @@ func Push(ctx context.Context, provider Provider, workDir, todosDir string) (*Sy
 	return result, nil
 }
 
+// PushOne sends a single td issue to the external provider.
+func PushOne(ctx context.Context, provider Provider, workDir, todosDir, tdIssueID string) (*SyncResult, error) {
+	result := &SyncResult{}
+
+	// Get the single td issue
+	td, err := getTDIssue(workDir, tdIssueID)
+	if err != nil {
+		return nil, fmt.Errorf("get td issue %s: %w", tdIssueID, err)
+	}
+
+	// Load sync state
+	state, err := LoadState(todosDir)
+	if err != nil {
+		return nil, fmt.Errorf("load sync state: %w", err)
+	}
+
+	entry := state.FindByTDID(td.ID)
+	ext := TDToExternal(td)
+
+	if entry != nil {
+		// Already mapped — update on GH
+		ghID := strconv.Itoa(entry.GHNumber)
+		if err := provider.Update(ctx, workDir, ghID, ext); err != nil {
+			return nil, fmt.Errorf("update GH #%d: %w", entry.GHNumber, err)
+		}
+		// Handle state changes (close/reopen)
+		if ext.State == ghStateClosed {
+			if err := provider.Close(ctx, workDir, ghID); err != nil {
+				result.Errors = append(result.Errors, fmt.Sprintf("close GH #%d: %v", entry.GHNumber, err))
+			}
+		} else {
+			if err := provider.Reopen(ctx, workDir, ghID); err != nil {
+				_ = err
+			}
+		}
+		state.Issues[td.ID] = SyncStateEntry{
+			GHNumber:    entry.GHNumber,
+			TDUpdatedAt: td.UpdatedAt,
+			GHUpdatedAt: time.Now(),
+		}
+		result.Pushed++
+	} else {
+		// New issue — create on GH
+		newID, err := provider.Create(ctx, workDir, ext)
+		if err != nil {
+			return nil, fmt.Errorf("create GH for %s: %w", td.ID, err)
+		}
+		ghNumber, _ := strconv.Atoi(newID)
+
+		if ext.State == ghStateClosed {
+			if err := provider.Close(ctx, workDir, newID); err != nil {
+				result.Errors = append(result.Errors, fmt.Sprintf("close GH #%s: %v", newID, err))
+			}
+		}
+
+		state.Issues[td.ID] = SyncStateEntry{
+			GHNumber:    ghNumber,
+			TDUpdatedAt: td.UpdatedAt,
+			GHUpdatedAt: time.Now(),
+		}
+		result.Pushed++
+	}
+
+	// Save sync state
+	if err := SaveState(todosDir, state); err != nil {
+		return result, fmt.Errorf("save sync state: %w", err)
+	}
+
+	return result, nil
+}
+
+// getTDIssue runs td show <id> -f json and returns a single parsed issue.
+func getTDIssue(workDir, tdID string) (TDIssue, error) {
+	cmd := exec.Command("td", "show", tdID, "-f", "json")
+	cmd.Dir = workDir
+
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	output, err := cmd.Output()
+	if err != nil {
+		errMsg := strings.TrimSpace(stderr.String())
+		if errMsg == "" {
+			errMsg = err.Error()
+		}
+		return TDIssue{}, fmt.Errorf("td show %s: %s", tdID, errMsg)
+	}
+
+	var issue TDIssue
+	if err := json.Unmarshal(output, &issue); err != nil {
+		return TDIssue{}, fmt.Errorf("parse td issue %s: %w", tdID, err)
+	}
+
+	return issue, nil
+}
+
 // listTDIssues runs td list --json and returns parsed issues.
 func listTDIssues(workDir string) ([]TDIssue, error) {
 	cmd := exec.Command("td", "list", "--json")
