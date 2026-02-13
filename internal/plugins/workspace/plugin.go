@@ -75,6 +75,7 @@ const (
 	mergeTargetActionID    = "merge-target-action"
 	mergeCleanUpButtonID   = "merge-cleanup-btn"
 	mergeSkipButtonID      = "merge-skip-btn"
+	mergePRURLID           = "merge-pr-url"
 
 	// Prompt Picker modal regions
 	regionPromptItem   = "prompt-item"
