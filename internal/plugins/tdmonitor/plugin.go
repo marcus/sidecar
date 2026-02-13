@@ -2,16 +2,21 @@ package tdmonitor
 
 import (
 	"fmt"
+	"os"
 	"os/exec"
+	"path/filepath"
+	"strings"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/marcus/td/pkg/monitor"
 	"github.com/marcus/sidecar/internal/app"
+	"github.com/marcus/sidecar/internal/event"
 	"github.com/marcus/sidecar/internal/plugin"
 	"github.com/marcus/sidecar/internal/plugins/workspace"
 	"github.com/marcus/sidecar/internal/styles"
+	"github.com/marcus/sidecar/internal/trifectaindex"
+	"github.com/marcus/td/pkg/monitor"
 )
 
 const (
@@ -49,6 +54,14 @@ type Plugin struct {
 
 	// started tracks whether Init() has been called to prevent duplicate poll chains (td-023577)
 	started bool
+
+	// Trifecta WO overlay (middleware read-only)
+	woIndex      *trifectaindex.WOIndex
+	woIndexMTime time.Time
+	woStateCode  trifectaindex.LoadErrorCode
+	woStateErr   string
+	woActive     *trifectaindex.WorkOrder
+	woExtra      int
 }
 
 // New creates a new TD Monitor plugin.
@@ -74,6 +87,12 @@ func (p *Plugin) Init(ctx *plugin.Context) error {
 	p.notInstalled = nil
 	p.setupModal = nil
 	p.started = false
+	p.woIndex = nil
+	p.woIndexMTime = time.Time{}
+	p.woStateCode = ""
+	p.woStateErr = ""
+	p.woActive = nil
+	p.woExtra = 0
 
 	// Check if td binary is available on PATH
 	_, err := exec.LookPath("td")
@@ -296,15 +315,161 @@ func (p *Plugin) View(width, height int) string {
 			content = "No td database found.\nRun 'td init' to initialize."
 		}
 	} else {
+		p.refreshWOOverlay()
 		// Set dimensions on model before rendering
 		p.model.Width = width
 		p.model.Height = height
 		content = p.model.View()
+		content = p.injectWOInCurrentWork(content)
+		overlay := p.renderWOOverlay(width)
+		if overlay != "" {
+			content = overlay + "\n" + content
+		}
 	}
 
 	// Constrain output to allocated height to prevent header scrolling off-screen.
 	// MaxHeight truncates content that exceeds the allocated space.
 	return lipgloss.NewStyle().Width(width).Height(height).MaxHeight(height).Render(content)
+}
+
+func (p *Plugin) trifectaIndexPath() string {
+	return filepath.Join(p.ctx.WorkDir, "_ctx", "index", trifectaindex.IndexFilename)
+}
+
+func (p *Plugin) refreshWOOverlay() {
+	if p.ctx == nil {
+		return
+	}
+	indexPath := p.trifectaIndexPath()
+	info, err := os.Stat(indexPath)
+	if err != nil {
+		p.woStateCode = trifectaindex.LoadErrorIndexMissing
+		p.woStateErr = err.Error()
+		p.woActive = nil
+		p.woExtra = 0
+		p.publishWOEvent("td.trifecta_index.load.error", map[string]any{
+			"code":  p.woStateCode,
+			"error": p.woStateErr,
+		})
+		return
+	}
+	if p.woIndex != nil && info.ModTime().Equal(p.woIndexMTime) {
+		return
+	}
+
+	idx, err := trifectaindex.LoadAndValidate(indexPath, p.ctx.WorkDir)
+	if err != nil {
+		p.woStateErr = err.Error()
+		p.woActive = nil
+		p.woExtra = 0
+		p.woIndex = nil
+		p.woIndexMTime = time.Time{}
+		p.woStateCode = ""
+		if loadErr, ok := err.(*trifectaindex.LoadError); ok {
+			p.woStateCode = loadErr.Code
+			if loadErr.Code == trifectaindex.LoadErrorSchemaUnsupported {
+				p.publishWOEvent("td.trifecta_index.schema_mismatch", map[string]any{
+					"error": p.woStateErr,
+				})
+			} else {
+				p.publishWOEvent("td.trifecta_index.load.error", map[string]any{
+					"code":  p.woStateCode,
+					"error": p.woStateErr,
+				})
+			}
+		} else {
+			p.publishWOEvent("td.trifecta_index.load.error", map[string]any{
+				"code":  "UNKNOWN",
+				"error": p.woStateErr,
+			})
+		}
+		return
+	}
+
+	p.woIndex = idx
+	p.woIndexMTime = info.ModTime()
+	p.woStateCode = ""
+	p.woStateErr = ""
+	sel := trifectaindex.SelectActiveWorkOrder(idx.WorkOrders)
+	p.woActive = sel.ActiveWO
+	p.woExtra = sel.ExtraRunningCount
+	p.publishWOEvent("td.trifecta_index.load.ok", map[string]any{
+		"work_orders": len(idx.WorkOrders),
+		"repo_root":   idx.RepoRoot,
+	})
+	if p.woActive != nil {
+		p.publishWOEvent("td.trifecta_index.active_wo.selected", map[string]any{
+			"wo_id":               p.woActive.ID,
+			"extra_running_count": p.woExtra,
+		})
+	}
+}
+
+func (p *Plugin) publishWOEvent(name string, data map[string]any) {
+	if p.ctx != nil && p.ctx.Logger != nil {
+		p.ctx.Logger.Info(name, "data", data)
+	}
+	if p.ctx != nil && p.ctx.EventBus != nil {
+		p.ctx.EventBus.Publish("td.trifecta_index", event.NewEvent(event.TypeTDUpdate, name, data))
+	}
+}
+
+func (p *Plugin) renderWOOverlay(width int) string {
+	labelStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("86"))
+	mutedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
+
+	var line string
+	if p.woStateCode != "" {
+		line = fmt.Sprintf("WO Overlay: %s", p.woStateCode)
+		if p.woStateErr != "" {
+			line += fmt.Sprintf(" (%s)", p.woStateErr)
+		}
+		return lipgloss.NewStyle().Width(width).Render(mutedStyle.Render(line))
+	}
+	if p.woActive == nil {
+		return lipgloss.NewStyle().Width(width).Render(mutedStyle.Render("WO Overlay: no running WOs"))
+	}
+
+	var sb strings.Builder
+	sb.WriteString(labelStyle.Render("WO"))
+	sb.WriteString(fmt.Sprintf(" [%s]", p.woActive.ID))
+	if p.woExtra > 0 {
+		sb.WriteString(fmt.Sprintf(" (+%d)", p.woExtra))
+	}
+	sb.WriteString(fmt.Sprintf("  status=%s priority=%s", p.woActive.Status, p.woActive.Priority))
+	if strings.TrimSpace(p.woActive.Owner) != "" {
+		sb.WriteString(fmt.Sprintf(" owner=%s", p.woActive.Owner))
+	}
+	if strings.TrimSpace(p.woActive.WorktreePath) != "" {
+		sb.WriteString(fmt.Sprintf(" worktree=%s", p.woActive.WorktreePath))
+	}
+	return lipgloss.NewStyle().Width(width).Render(sb.String())
+}
+
+func (p *Plugin) injectWOInCurrentWork(content string) string {
+	if p.woActive == nil {
+		return content
+	}
+	if !strings.Contains(content, "CURRENT WORK") || !strings.Contains(content, "No current work") {
+		return content
+	}
+
+	var sb strings.Builder
+	sb.WriteString("WO [")
+	sb.WriteString(p.woActive.ID)
+	sb.WriteString("]")
+	if p.woExtra > 0 {
+		sb.WriteString(fmt.Sprintf(" (+%d)", p.woExtra))
+	}
+	sb.WriteString(fmt.Sprintf("  status=%s priority=%s", p.woActive.Status, p.woActive.Priority))
+	if strings.TrimSpace(p.woActive.Owner) != "" {
+		sb.WriteString(fmt.Sprintf(" owner=%s", p.woActive.Owner))
+	}
+	if strings.TrimSpace(p.woActive.WorktreePath) != "" {
+		sb.WriteString(fmt.Sprintf(" worktree=%s", p.woActive.WorktreePath))
+	}
+
+	return strings.Replace(content, "No current work", sb.String(), 1)
 }
 
 // IsFocused returns whether the plugin is focused.

@@ -34,6 +34,7 @@ import (
 	"github.com/marcus/sidecar/internal/plugins/gitstatus"
 	"github.com/marcus/sidecar/internal/plugins/notes"
 	"github.com/marcus/sidecar/internal/plugins/tdmonitor"
+	"github.com/marcus/sidecar/internal/plugins/trifecta"
 	"github.com/marcus/sidecar/internal/plugins/workspace"
 	"github.com/marcus/sidecar/internal/state"
 	"github.com/marcus/sidecar/internal/styles"
@@ -188,6 +189,10 @@ func main() {
 		if err := registry.Register(notes.New()); err != nil {
 			logger.Warn("failed to register notes plugin", "err", err)
 		}
+	}
+	// Register Trifecta plugin
+	if err := registry.Register(trifecta.New()); err != nil {
+		logger.Warn("failed to register trifecta plugin", "err", err)
 	}
 
 	// Apply user keymap overrides
