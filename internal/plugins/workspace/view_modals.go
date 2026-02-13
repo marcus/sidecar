@@ -865,11 +865,22 @@ func (p *Plugin) mergeWaitingSection() modal.Section {
 		}
 		sb.WriteString("\n\n")
 
+		var focusables []modal.FocusableInfo
+		urlLineY := 2 // header (line 0), blank (line 1), URL (line 2)
+
 		if p.mergeState.PRURL != "" {
 			styledURL := styles.Link.Render(p.mergeState.PRURL)
 			clickableURL := ansi.SetHyperlink(p.mergeState.PRURL) + styledURL + ansi.ResetHyperlink()
 			sb.WriteString(fmt.Sprintf("URL: %s", clickableURL))
 			sb.WriteString("\n")
+
+			focusables = append(focusables, modal.FocusableInfo{
+				ID:      mergePRURLID,
+				OffsetX: 5, // after "URL: "
+				OffsetY: urlLineY,
+				Width:   ansi.StringWidth(p.mergeState.PRURL),
+				Height:  1,
+			})
 		}
 
 		sb.WriteString("\n")
@@ -896,7 +907,7 @@ func (p *Plugin) mergeWaitingSection() modal.Section {
 		sb.WriteString("\n\n")
 		sb.WriteString(dimText(" (This takes effect only once the PR is merged)"))
 
-		return modal.RenderedSection{Content: sb.String()}
+		return modal.RenderedSection{Content: sb.String(), Focusables: focusables}
 	}, nil)
 }
 
