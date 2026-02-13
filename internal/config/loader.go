@@ -30,11 +30,23 @@ func ResetTestConfigPath() {
 
 // rawConfig is the JSON-unmarshaling intermediary.
 type rawConfig struct {
-	Projects rawProjectsConfig `json:"projects"`
-	Plugins  rawPluginsConfig  `json:"plugins"`
-	Keymap   KeymapConfig      `json:"keymap"`
-	UI       rawUIConfig       `json:"ui"`
-	Features FeaturesConfig    `json:"features"`
+	Projects     rawProjectsConfig     `json:"projects"`
+	Plugins      rawPluginsConfig      `json:"plugins"`
+	Keymap       KeymapConfig          `json:"keymap"`
+	UI           rawUIConfig           `json:"ui"`
+	Features     FeaturesConfig        `json:"features"`
+	Integrations rawIntegrationsConfig `json:"integrations"`
+}
+
+type rawIntegrationsConfig struct {
+	GitHub rawGitHubIntegrationConfig `json:"github"`
+}
+
+type rawGitHubIntegrationConfig struct {
+	Enabled       *bool    `json:"enabled"`
+	SyncDirection string   `json:"syncDirection"`
+	LabelFilter   []string `json:"labelFilter"`
+	PushLabels    []string `json:"pushLabels"`
 }
 
 type rawUIConfig struct {
@@ -248,6 +260,20 @@ func mergeConfig(cfg *Config, raw *rawConfig) {
 		for k, v := range raw.Features.Flags {
 			cfg.Features.Flags[k] = v
 		}
+	}
+
+	// Integrations
+	if raw.Integrations.GitHub.Enabled != nil {
+		cfg.Integrations.GitHub.Enabled = *raw.Integrations.GitHub.Enabled
+	}
+	if raw.Integrations.GitHub.SyncDirection != "" {
+		cfg.Integrations.GitHub.SyncDirection = raw.Integrations.GitHub.SyncDirection
+	}
+	if raw.Integrations.GitHub.LabelFilter != nil {
+		cfg.Integrations.GitHub.LabelFilter = raw.Integrations.GitHub.LabelFilter
+	}
+	if raw.Integrations.GitHub.PushLabels != nil {
+		cfg.Integrations.GitHub.PushLabels = raw.Integrations.GitHub.PushLabels
 	}
 }
 

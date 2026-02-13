@@ -10,11 +10,23 @@ import (
 
 // saveConfig is the JSON-marshaling intermediary that uses string durations.
 type saveConfig struct {
-	Projects saveProjectsConfig `json:"projects"`
-	Plugins  savePluginsConfig  `json:"plugins"`
-	Keymap   KeymapConfig       `json:"keymap"`
-	UI       UIConfig           `json:"ui"`
-	Features FeaturesConfig     `json:"features,omitempty"`
+	Projects     saveProjectsConfig     `json:"projects"`
+	Plugins      savePluginsConfig      `json:"plugins"`
+	Keymap       KeymapConfig           `json:"keymap"`
+	UI           UIConfig               `json:"ui"`
+	Features     FeaturesConfig         `json:"features,omitempty"`
+	Integrations saveIntegrationsConfig `json:"integrations,omitempty"`
+}
+
+type saveIntegrationsConfig struct {
+	GitHub saveGitHubIntegrationConfig `json:"github,omitempty"`
+}
+
+type saveGitHubIntegrationConfig struct {
+	Enabled       *bool    `json:"enabled,omitempty"`
+	SyncDirection string   `json:"syncDirection,omitempty"`
+	LabelFilter   []string `json:"labelFilter,omitempty"`
+	PushLabels    []string `json:"pushLabels,omitempty"`
 }
 
 type saveProjectsConfig struct {
@@ -89,6 +101,14 @@ func toSaveConfig(cfg *Config) saveConfig {
 		Keymap:   cfg.Keymap,
 		UI:       cfg.UI,
 		Features: cfg.Features,
+		Integrations: saveIntegrationsConfig{
+			GitHub: saveGitHubIntegrationConfig{
+				Enabled:       &cfg.Integrations.GitHub.Enabled,
+				SyncDirection: cfg.Integrations.GitHub.SyncDirection,
+				LabelFilter:   cfg.Integrations.GitHub.LabelFilter,
+				PushLabels:    cfg.Integrations.GitHub.PushLabels,
+			},
+		},
 	}
 }
 
@@ -124,6 +144,7 @@ func Save(cfg *Config) error {
 	if len(sc.Features.Flags) > 0 {
 		fields["features"] = sc.Features
 	}
+	fields["integrations"] = sc.Integrations
 	for key, val := range fields {
 		b, err := json.Marshal(val)
 		if err != nil {

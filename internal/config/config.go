@@ -4,11 +4,25 @@ import "time"
 
 // Config is the root configuration structure.
 type Config struct {
-	Projects ProjectsConfig `json:"projects"`
-	Plugins  PluginsConfig  `json:"plugins"`
-	Keymap   KeymapConfig   `json:"keymap"`
-	UI       UIConfig       `json:"ui"`
-	Features FeaturesConfig `json:"features"`
+	Projects     ProjectsConfig     `json:"projects"`
+	Plugins      PluginsConfig      `json:"plugins"`
+	Keymap       KeymapConfig       `json:"keymap"`
+	UI           UIConfig           `json:"ui"`
+	Features     FeaturesConfig     `json:"features"`
+	Integrations IntegrationsConfig `json:"integrations"`
+}
+
+// IntegrationsConfig holds external integration settings.
+type IntegrationsConfig struct {
+	GitHub GitHubIntegrationConfig `json:"github"`
+}
+
+// GitHubIntegrationConfig configures GitHub Issues integration.
+type GitHubIntegrationConfig struct {
+	Enabled       bool     `json:"enabled"`
+	SyncDirection string   `json:"syncDirection"` // "bidirectional", "pull-only", "push-only"
+	LabelFilter   []string `json:"labelFilter"`   // Only sync issues matching these labels (empty = all)
+	PushLabels    []string `json:"pushLabels"`     // Extra labels to add when pushing
 }
 
 // FeaturesConfig holds feature flag settings.
@@ -146,6 +160,12 @@ func Default() *Config {
 		},
 		Features: FeaturesConfig{
 			Flags: make(map[string]bool),
+		},
+		Integrations: IntegrationsConfig{
+			GitHub: GitHubIntegrationConfig{
+				Enabled:       true,
+				SyncDirection: "bidirectional",
+			},
 		},
 	}
 }

@@ -37,6 +37,9 @@ type Plugin struct {
 	// Setup modal (shown when td is on PATH but project not initialized)
 	setupModal *SetupModel
 
+	// GitHub sync modal
+	syncModal *SyncModel
+
 	// tdOnPath tracks whether td binary is available on the system
 	tdOnPath bool
 
@@ -73,6 +76,7 @@ func (p *Plugin) Init(ctx *plugin.Context) error {
 	p.model = nil
 	p.notInstalled = nil
 	p.setupModal = nil
+	p.syncModal = nil
 	p.started = false
 
 	// Check if td binary is available on PATH
@@ -110,6 +114,8 @@ func (p *Plugin) Init(ctx *plugin.Context) error {
 		for _, b := range model.Keymap.ExportBindings() {
 			ctx.Keymap.RegisterPluginBinding(b.Key, b.Command, b.Context)
 		}
+		// Register GitHub sync keybinding
+		ctx.Keymap.RegisterPluginBinding("ctrl+g", "gh-sync", "td-monitor")
 	}
 
 	return nil
@@ -142,6 +148,7 @@ func (p *Plugin) Stop() {
 	}
 	p.notInstalled = nil
 	p.setupModal = nil
+	p.syncModal = nil
 	p.started = false
 }
 
@@ -193,6 +200,39 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 	// concurrent adapter.Sessions() calls that accumulated file descriptors.
 	if _, ok := msg.(app.PluginFocusedMsg); ok {
 		return p, nil
+	}
+
+	// Handle sync modal dismiss
+	if _, ok := msg.(SyncDismissMsg); ok {
+		p.syncModal = nil
+		return p, nil
+	}
+
+	// Route sync completion messages to the sync modal
+	if p.syncModal != nil {
+		switch msg.(type) {
+		case SyncPullDoneMsg, SyncPushDoneMsg:
+			cmd := p.syncModal.Update(msg)
+			return p, cmd
+		}
+	}
+
+	// Handle ctrl+g to open sync modal (only when td is initialized and no modal is active)
+	if keyMsg, ok := msg.(tea.KeyMsg); ok && keyMsg.String() == "ctrl+g" && p.model != nil && p.syncModal == nil {
+		p.syncModal = NewSyncModel(p.ctx.WorkDir)
+		return p, nil
+	}
+
+	// If sync modal is active, route all input to it
+	if p.syncModal != nil {
+		if _, ok := msg.(tea.KeyMsg); ok {
+			cmd := p.syncModal.Update(msg)
+			return p, cmd
+		}
+		if _, ok := msg.(tea.MouseMsg); ok {
+			cmd := p.syncModal.Update(msg)
+			return p, cmd
+		}
 	}
 
 	// Intercept TD's SendTaskToWorktree message and route to workspace plugin
@@ -302,6 +342,11 @@ func (p *Plugin) View(width, height int) string {
 		content = p.model.View()
 	}
 
+	// Render sync modal overlay if active
+	if p.syncModal != nil {
+		content = p.syncModal.View(content, width, height)
+	}
+
 	// Constrain output to allocated height to prevent header scrolling off-screen.
 	// MaxHeight truncates content that exceeds the allocated space.
 	return lipgloss.NewStyle().Width(width).Height(height).MaxHeight(height).Render(content)
@@ -333,6 +378,16 @@ func (p *Plugin) Commands() []plugin.Command {
 			Category:    categorizeCommand(cmd.ID),
 		})
 	}
+
+	// Add GitHub sync command
+	commands = append(commands, plugin.Command{
+		ID:          "gh-sync",
+		Name:        "Sync",
+		Description: "Sync issues with GitHub",
+		Context:     "td-monitor",
+		Priority:    50,
+		Category:    plugin.CategoryActions,
+	})
 
 	return commands
 }
