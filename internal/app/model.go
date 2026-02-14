@@ -250,6 +250,9 @@ type Model struct {
 
 	// Intro animation
 	intro IntroModel
+
+	// Mouse fragment suppression (Linux SGR sequence splitting)
+	recentMouseEvent bool
 }
 
 // New creates a new application model.
