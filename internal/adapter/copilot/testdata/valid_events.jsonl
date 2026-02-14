@@ -1,0 +1,4 @@
+{"type":"user.message","id":"msg-001","timestamp":"2025-01-15T10:00:00Z","data":{"content":"Hello, can you help me with this project?"}}
+{"type":"assistant.message","id":"msg-002","timestamp":"2025-01-15T10:00:05Z","parentId":"msg-001","data":{"content":"Of course! I'd be happy to help you with your project. What do you need?","model":"claude-sonnet-4-20250514"}}
+{"type":"user.message","id":"msg-003","timestamp":"2025-01-15T10:01:00Z","data":{"content":"Can you read the main.go file?"}}
+{"type":"assistant.message","id":"msg-004","timestamp":"2025-01-15T10:01:05Z","parentId":"msg-003","data":{"content":"I'll read that file for you.","model":"claude-sonnet-4-20250514","toolRequests":[{"toolCallId":"tool-001","name":"view","type":"function","arguments":{"path":"/home/user/project/main.go"}}]}}

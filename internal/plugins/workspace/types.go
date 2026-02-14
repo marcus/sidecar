@@ -124,6 +124,7 @@ const (
 	AgentNone     AgentType = ""         // No agent (attach only)
 	AgentClaude   AgentType = "claude"   // Claude Code
 	AgentCodex    AgentType = "codex"    // Codex CLI
+	AgentCopilot  AgentType = "copilot"  // GitHub Copilot CLI
 	AgentAider    AgentType = "aider"    // Aider
 	AgentGemini   AgentType = "gemini"   // Gemini CLI
 	AgentCursor   AgentType = "cursor"   // Cursor Agent
@@ -136,6 +137,7 @@ const (
 var SkipPermissionsFlags = map[AgentType]string{
 	AgentClaude:   "--dangerously-skip-permissions",
 	AgentCodex:    "--dangerously-bypass-approvals-and-sandbox",
+	AgentCopilot:  "", // No known flag
 	AgentAider:    "--yes",
 	AgentGemini:   "--yolo",
 	AgentCursor:   "-f",
@@ -147,6 +149,7 @@ var AgentDisplayNames = map[AgentType]string{
 	AgentNone:     "None (attach only)",
 	AgentClaude:   "Claude Code",
 	AgentCodex:    "Codex CLI",
+	AgentCopilot:  "GitHub Copilot CLI",
 	AgentGemini:   "Gemini CLI",
 	AgentCursor:   "Cursor Agent",
 	AgentOpenCode: "OpenCode",
@@ -158,6 +161,7 @@ var AgentDisplayNames = map[AgentType]string{
 var shellAgentAbbreviations = map[AgentType]string{
 	AgentClaude:   "Claude",
 	AgentCodex:    "Codex",
+	AgentCopilot:  "Copilot",
 	AgentGemini:   "Gemini",
 	AgentCursor:   "Cursor",
 	AgentOpenCode: "OpenCode",
@@ -167,6 +171,7 @@ var shellAgentAbbreviations = map[AgentType]string{
 var AgentCommands = map[AgentType]string{
 	AgentClaude:   "claude",
 	AgentCodex:    "codex",
+	AgentCopilot:  "copilot",
 	AgentAider:    "aider", // Not in UI, but supported for backward compat
 	AgentGemini:   "gemini",
 	AgentCursor:   "cursor-agent",
@@ -177,6 +182,7 @@ var AgentCommands = map[AgentType]string{
 var AgentTypeOrder = []AgentType{
 	AgentClaude,
 	AgentCodex,
+	AgentCopilot,
 	AgentGemini,
 	AgentCursor,
 	AgentOpenCode,
@@ -189,6 +195,7 @@ var ShellAgentOrder = []AgentType{
 	AgentNone,
 	AgentClaude,
 	AgentCodex,
+	AgentCopilot,
 	AgentGemini,
 	AgentCursor,
 	AgentOpenCode,
