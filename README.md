@@ -287,6 +287,10 @@ make lint-all     # Lint entire codebase (includes legacy debt)
 - Enforcement: CI runs tests and blocks new lint issues on PRs (`.github/workflows/go-ci.yml`)
 - Debt tracking: run `make lint-all` to measure and burn down legacy lint debt
 
+## Privacy
+
+Sidecar runs locally and makes no telemetry, analytics, or tracking requests. The only network calls are GitHub API version checks on startup (cached for 3 hours) and user-initiated changelog fetches. See [PRIVACY.md](PRIVACY.md) for full details on data access, file reads/writes, and network behavior.
+
 ## License
 
 MIT
