@@ -1339,6 +1339,12 @@ func (p *Plugin) handleMergeKeys(msg tea.KeyMsg) tea.Cmd {
 			return openInBrowser(p.mergeState.PRURL)
 		}
 
+	case "y":
+		// Copy PR URL to clipboard (only during WaitingMerge step with a PR URL)
+		if p.mergeState.Step == MergeStepWaitingMerge && p.mergeState.PRURL != "" {
+			return p.yankPRURLToClipboard()
+		}
+
 	case "d":
 		// Toggle error details in Done step
 		if p.mergeState.Step == MergeStepDone &&
