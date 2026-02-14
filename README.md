@@ -261,6 +261,10 @@ Config file: `~/.config/sidecar/config.json`
 }
 ```
 
+## Privacy
+
+Sidecar is local-first. It makes no telemetry, analytics, or tracking calls. The only network requests are GitHub API version checks (cached for 3 hours) and an optional changelog fetch. See [PRIVACY.md](PRIVACY.md) for the full details on data access and network behavior.
+
 ## Contributing
 
 - **Bug reports**: [Open an issue](https://github.com/marcus/sidecar/issues)
