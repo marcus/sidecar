@@ -25,9 +25,9 @@ func createTabTestPlugin(t *testing.T, tmpDir string) *Plugin {
 	files := map[string]string{
 		"main.go":          "package main",
 		"README.md":        "# Test",
-		"src/main.go":      "package src",    // duplicate filename
+		"src/main.go":      "package src", // duplicate filename
 		"src/helper.go":    "package src",
-		"lib/helper.go":    "package lib",    // duplicate filename
+		"lib/helper.go":    "package lib", // duplicate filename
 		"pkg/util/util.go": "package util",
 	}
 	for path, content := range files {

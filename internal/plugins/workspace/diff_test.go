@@ -11,9 +11,9 @@ import (
 func TestMergeBaseHashValidation(t *testing.T) {
 	// Test the hash validation logic used in getDiffFromBase
 	tests := []struct {
-		name       string
-		mbOutput   string
-		shouldUse  bool // Should use merge-base hash
+		name      string
+		mbOutput  string
+		shouldUse bool // Should use merge-base hash
 	}{
 		{
 			name:      "valid sha",
@@ -89,7 +89,7 @@ func TestGetUnpushedCommits_InvalidRemote(t *testing.T) {
 	tmpDir := t.TempDir()
 	exec.Command("git", "init").Dir = tmpDir
 	_ = exec.Command("git", "init").Run()
-	
+
 	result := getUnpushedCommits(tmpDir, "nonexistent/branch")
 	if result != nil {
 		t.Errorf("expected nil for invalid remote, got %v", result)
@@ -98,7 +98,7 @@ func TestGetUnpushedCommits_InvalidRemote(t *testing.T) {
 
 func TestGetUnpushedCommits_Integration(t *testing.T) {
 	tmpDir := t.TempDir()
-	
+
 	// Initialize git repo
 	run := func(args ...string) {
 		cmd := exec.Command("git", args...)
@@ -107,11 +107,11 @@ func TestGetUnpushedCommits_Integration(t *testing.T) {
 			t.Fatalf("git %v failed: %v", args, err)
 		}
 	}
-	
+
 	run("init")
 	run("config", "user.email", "test@test.com")
 	run("config", "user.name", "Test")
-	
+
 	// Create initial commit
 	testFile := filepath.Join(tmpDir, "test.txt")
 	if err := os.WriteFile(testFile, []byte("initial"), 0644); err != nil {
@@ -119,10 +119,10 @@ func TestGetUnpushedCommits_Integration(t *testing.T) {
 	}
 	run("add", "test.txt")
 	run("commit", "-m", "initial")
-	
+
 	// Create a "remote" branch pointing to current commit
 	run("branch", "origin/main")
-	
+
 	// Create unpushed commits
 	for i := 1; i <= 3; i++ {
 		content := []byte(strings.Repeat("x", i))
@@ -132,7 +132,7 @@ func TestGetUnpushedCommits_Integration(t *testing.T) {
 		run("add", "test.txt")
 		run("commit", "-m", "commit")
 	}
-	
+
 	// Get unpushed commits
 	unpushed := getUnpushedCommits(tmpDir, "origin/main")
 	if unpushed == nil {
@@ -145,25 +145,25 @@ func TestGetUnpushedCommits_Integration(t *testing.T) {
 
 func TestGetUnpushedCommits_AllPushed(t *testing.T) {
 	tmpDir := t.TempDir()
-	
+
 	run := func(args ...string) {
 		cmd := exec.Command("git", args...)
 		cmd.Dir = tmpDir
 		_ = cmd.Run()
 	}
-	
+
 	run("init")
 	run("config", "user.email", "test@test.com")
 	run("config", "user.name", "Test")
-	
+
 	testFile := filepath.Join(tmpDir, "test.txt")
 	_ = os.WriteFile(testFile, []byte("content"), 0644)
 	run("add", "test.txt")
 	run("commit", "-m", "commit")
-	
+
 	// Remote branch points to HEAD (all pushed)
 	run("branch", "origin/main")
-	
+
 	unpushed := getUnpushedCommits(tmpDir, "origin/main")
 	if unpushed == nil {
 		t.Fatal("expected empty map, got nil")
@@ -175,7 +175,7 @@ func TestGetUnpushedCommits_AllPushed(t *testing.T) {
 
 func TestGetWorktreeCommits_Integration(t *testing.T) {
 	tmpDir := t.TempDir()
-	
+
 	run := func(args ...string) error {
 		cmd := exec.Command("git", args...)
 		cmd.Dir = tmpDir
@@ -202,17 +202,17 @@ func TestGetWorktreeCommits_Integration(t *testing.T) {
 		_ = run("add", "test.txt")
 		_ = run("commit", "-m", "feature commit")
 	}
-	
+
 	// Test: get commits comparing to main
 	commits, err := getWorktreeCommits(tmpDir, "main")
 	if err != nil {
 		t.Fatalf("getWorktreeCommits failed: %v", err)
 	}
-	
+
 	if len(commits) != 2 {
 		t.Errorf("expected 2 commits, got %d", len(commits))
 	}
-	
+
 	// All commits should be marked as not pushed (no remote tracking)
 	for _, c := range commits {
 		if c.Pushed {
@@ -223,17 +223,17 @@ func TestGetWorktreeCommits_Integration(t *testing.T) {
 
 func TestGetWorktreeCommits_WithRemoteTracking(t *testing.T) {
 	tmpDir := t.TempDir()
-	
+
 	run := func(args ...string) {
 		cmd := exec.Command("git", args...)
 		cmd.Dir = tmpDir
 		_ = cmd.Run()
 	}
-	
+
 	run("init")
 	run("config", "user.email", "test@test.com")
 	run("config", "user.name", "Test")
-	
+
 	testFile := filepath.Join(tmpDir, "test.txt")
 	_ = os.WriteFile(testFile, []byte("initial"), 0644)
 	run("add", "test.txt")
@@ -241,7 +241,7 @@ func TestGetWorktreeCommits_WithRemoteTracking(t *testing.T) {
 	run("branch", "-M", "main")
 
 	run("checkout", "-b", "feature")
-	
+
 	// Create commits
 	_ = os.WriteFile(testFile, []byte("x"), 0644)
 	run("add", "test.txt")
@@ -250,16 +250,16 @@ func TestGetWorktreeCommits_WithRemoteTracking(t *testing.T) {
 	_ = os.WriteFile(testFile, []byte("xx"), 0644)
 	run("add", "test.txt")
 	run("commit", "-m", "commit2")
-	
+
 	commits, err := getWorktreeCommits(tmpDir, "main")
 	if err != nil {
 		t.Fatalf("getWorktreeCommits failed: %v", err)
 	}
-	
+
 	if len(commits) != 2 {
 		t.Errorf("expected 2 commits, got %d", len(commits))
 	}
-	
+
 	// Without remote tracking, all commits should be marked as not pushed
 	for _, c := range commits {
 		if c.Pushed {

@@ -8,7 +8,6 @@ import (
 	"github.com/marcus/sidecar/internal/ui"
 )
 
-
 // renderDiffModal renders the diff modal with panel border.
 func (p *Plugin) renderDiffModal() string {
 	// Calculate dimensions accounting for panel border (2) + padding (2)

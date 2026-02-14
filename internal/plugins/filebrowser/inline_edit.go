@@ -740,4 +740,3 @@ func (p *Plugin) enterInlineEditModeAtCurrentLine(path string) tea.Cmd {
 	lineNo := p.getCurrentPreviewLine()
 	return p.enterInlineEditMode(path, lineNo)
 }
-

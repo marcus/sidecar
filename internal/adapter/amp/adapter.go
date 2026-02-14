@@ -28,7 +28,7 @@ const (
 type Adapter struct {
 	threadsDir   string
 	sessionIndex map[string]string // threadID -> file path
-	mu           sync.RWMutex     // guards sessionIndex
+	mu           sync.RWMutex      // guards sessionIndex
 	metaCache    map[string]metaCacheEntry
 	metaMu       sync.RWMutex // guards metaCache
 	msgCache     *cache.Cache[msgCacheEntry]

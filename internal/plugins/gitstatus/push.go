@@ -10,13 +10,13 @@ import (
 
 // PushStatus represents the push state of the current branch.
 type PushStatus struct {
-	HasUpstream    bool   // Whether an upstream branch is configured
-	UpstreamBranch string // Name of upstream branch (e.g., "origin/main")
-	Ahead          int    // Commits ahead of upstream
-	Behind         int    // Commits behind upstream
+	HasUpstream    bool     // Whether an upstream branch is configured
+	UpstreamBranch string   // Name of upstream branch (e.g., "origin/main")
+	Ahead          int      // Commits ahead of upstream
+	Behind         int      // Commits behind upstream
 	UnpushedHashes []string // Hashes of unpushed commits
-	DetachedHead   bool   // Whether HEAD is detached
-	CurrentBranch  string // Current branch name (empty if detached)
+	DetachedHead   bool     // Whether HEAD is detached
+	CurrentBranch  string   // Current branch name (empty if detached)
 }
 
 // GetPushStatus retrieves the push status for the current branch.

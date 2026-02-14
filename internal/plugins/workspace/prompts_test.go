@@ -337,11 +337,11 @@ func TestDefaultPrompts(t *testing.T) {
 
 	// Verify expected prompt names exist
 	expectedNames := map[string]bool{
-		"Begin Work on Ticket":    false,
-		"Code Review Ticket":      false,
-		"Plan to Epic (No Impl)":  false,
+		"Begin Work on Ticket":     false,
+		"Code Review Ticket":       false,
+		"Plan to Epic (No Impl)":   false,
 		"Plan to Epic + Implement": false,
-		"TD Review Session":       false,
+		"TD Review Session":        false,
 	}
 
 	for _, p := range prompts {

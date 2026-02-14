@@ -80,7 +80,6 @@ func (p *Plugin) loadMoreCommits() tea.Cmd {
 	}
 }
 
-
 // loadFilteredCommits fetches commits with current filter options.
 func (p *Plugin) loadFilteredCommits() tea.Cmd {
 	epoch := p.ctx.Epoch
@@ -144,7 +143,6 @@ func (p *Plugin) loadCommitFileDiff(hash, path, parentHash string) tea.Cmd {
 		return DiffLoadedMsg{Epoch: epoch, Content: rawDiff, Raw: rawDiff}
 	}
 }
-
 
 // loadCommitDetailForPreview loads commit detail for inline preview.
 func (p *Plugin) loadCommitDetailForPreview(hash string) tea.Cmd {

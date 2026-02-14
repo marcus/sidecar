@@ -632,8 +632,8 @@ func renderSourceLabel(label string) string {
 	// Split into badge part and name part
 	// Labels are like "[TG] Marcus Vorwaller", "[WA]", "[cron] job-name", "[sys]"
 	if idx := strings.Index(label, "] "); idx != -1 {
-		badge := label[:idx+1]  // "[TG]"
-		name := label[idx+2:]   // "Marcus Vorwaller"
+		badge := label[:idx+1] // "[TG]"
+		name := label[idx+2:]  // "Marcus Vorwaller"
 		return styles.Muted.Render(badge) + " " + styles.StatusInProgress.Render(name)
 	}
 	// No name part, just the badge (e.g. "[WA]", "[sys]")

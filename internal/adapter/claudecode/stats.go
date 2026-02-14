@@ -12,16 +12,16 @@ import (
 
 // StatsCache represents the aggregated usage stats from stats-cache.json.
 type StatsCache struct {
-	Version          int                    `json:"version"`
-	LastComputedDate string                 `json:"lastComputedDate"`
-	TotalSessions    int                    `json:"totalSessions"`
-	TotalMessages    int                    `json:"totalMessages"`
-	FirstSessionDate time.Time              `json:"firstSessionDate"`
-	DailyActivity    []DailyActivity        `json:"dailyActivity"`
-	DailyModelTokens []DailyModelTokens     `json:"dailyModelTokens"`
-	ModelUsage       map[string]ModelUsage  `json:"modelUsage"`
-	HourCounts       map[string]int         `json:"hourCounts"`
-	LongestSession   LongestSession         `json:"longestSession"`
+	Version          int                   `json:"version"`
+	LastComputedDate string                `json:"lastComputedDate"`
+	TotalSessions    int                   `json:"totalSessions"`
+	TotalMessages    int                   `json:"totalMessages"`
+	FirstSessionDate time.Time             `json:"firstSessionDate"`
+	DailyActivity    []DailyActivity       `json:"dailyActivity"`
+	DailyModelTokens []DailyModelTokens    `json:"dailyModelTokens"`
+	ModelUsage       map[string]ModelUsage `json:"modelUsage"`
+	HourCounts       map[string]int        `json:"hourCounts"`
+	LongestSession   LongestSession        `json:"longestSession"`
 }
 
 // DailyActivity tracks activity for a single day.

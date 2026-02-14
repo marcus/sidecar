@@ -235,9 +235,9 @@ const (
 
 	// Runaway detection thresholds (td-018f25)
 	// Detect sessions producing continuous output and throttle them to reduce CPU usage.
-	runawayPollCount    = 20               // Number of polls to track
-	runawayTimeWindow   = 3 * time.Second  // If 20 polls happen within this window = runaway
-	runawayResetCount   = 3                // Consecutive unchanged polls to reset throttle
+	runawayPollCount  = 20              // Number of polls to track
+	runawayTimeWindow = 3 * time.Second // If 20 polls happen within this window = runaway
+	runawayResetCount = 3               // Consecutive unchanged polls to reset throttle
 )
 
 // AgentStartedMsg signals an agent has been started in a worktree.
@@ -257,27 +257,27 @@ func (m AgentStartedMsg) GetEpoch() uint64 { return m.Epoch }
 // ApproveResultMsg signals the result of an approve action.
 type ApproveResultMsg struct {
 	WorkspaceName string
-	Err          error
+	Err           error
 }
 
 // RejectResultMsg signals the result of a reject action.
 type RejectResultMsg struct {
 	WorkspaceName string
-	Err          error
+	Err           error
 }
 
 // SendTextResultMsg signals the result of sending text to an agent.
 type SendTextResultMsg struct {
 	WorkspaceName string
-	Text         string
-	Err          error
+	Text          string
+	Err           error
 }
 
 // pollAgentMsg triggers output polling for a worktree's agent.
 // Includes generation for timer leak prevention (td-83dc22).
 type pollAgentMsg struct {
 	WorkspaceName string
-	Generation   int // Generation at time of scheduling; ignore if stale
+	Generation    int // Generation at time of scheduling; ignore if stale
 }
 
 // reconnectedAgentsMsg delivers reconnected agents from startup.
@@ -743,7 +743,7 @@ func (p *Plugin) scheduleInteractivePoll(worktreeName string, delay time.Duratio
 
 // AgentPollUnchangedMsg signals content unchanged, schedule next poll.
 type AgentPollUnchangedMsg struct {
-	WorkspaceName  string
+	WorkspaceName string
 	CurrentStatus WorktreeStatus // Status including session file re-check
 	WaitingFor    string         // Prompt text if waiting
 	// Cursor position captured atomically (even when content unchanged)
@@ -887,7 +887,7 @@ func (p *Plugin) handlePollAgent(worktreeName string) tea.Cmd {
 
 		if !outputChanged {
 			return AgentPollUnchangedMsg{
-				WorkspaceName:  worktreeName,
+				WorkspaceName: worktreeName,
 				CurrentStatus: status,
 				WaitingFor:    waitingFor,
 				CursorRow:     cursorRow,
@@ -900,7 +900,7 @@ func (p *Plugin) handlePollAgent(worktreeName string) tea.Cmd {
 		}
 
 		return AgentOutputMsg{
-			WorkspaceName:  worktreeName,
+			WorkspaceName: worktreeName,
 			Output:        output,
 			Status:        status,
 			WaitingFor:    waitingFor,
@@ -1250,7 +1250,7 @@ func (p *Plugin) Approve(wt *Worktree) tea.Cmd {
 
 		return ApproveResultMsg{
 			WorkspaceName: wt.Name,
-			Err:          err,
+			Err:           err,
 		}
 	}
 }
@@ -1267,7 +1267,7 @@ func (p *Plugin) Reject(wt *Worktree) tea.Cmd {
 
 		return RejectResultMsg{
 			WorkspaceName: wt.Name,
-			Err:          err,
+			Err:           err,
 		}
 	}
 }
@@ -1307,8 +1307,8 @@ func (p *Plugin) SendText(wt *Worktree, text string) tea.Cmd {
 
 		return SendTextResultMsg{
 			WorkspaceName: wt.Name,
-			Text:         text,
-			Err:          err,
+			Text:          text,
+			Err:           err,
 		}
 	}
 }

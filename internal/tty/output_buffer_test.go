@@ -131,11 +131,11 @@ func TestPartialMouseSeqRegex(t *testing.T) {
 		input string
 		match bool
 	}{
-		{"[<65;83;33M", true},   // scroll down
-		{"[<64;10;5M", true},    // scroll up
-		{"[<0;50;20m", true},    // release
-		{"hello", false},        // normal text
-		{"[notmouse]", false},   // not a mouse sequence
+		{"[<65;83;33M", true},     // scroll down
+		{"[<64;10;5M", true},      // scroll up
+		{"[<0;50;20m", true},      // release
+		{"hello", false},          // normal text
+		{"[notmouse]", false},     // not a mouse sequence
 		{"[<abc;def;ghiM", false}, // invalid format
 	}
 

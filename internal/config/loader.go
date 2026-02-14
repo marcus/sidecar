@@ -59,7 +59,7 @@ type rawPluginsConfig struct {
 	GitStatus     rawGitStatusConfig     `json:"git-status"`
 	TDMonitor     rawTDMonitorConfig     `json:"td-monitor"`
 	Conversations rawConversationsConfig `json:"conversations"`
-	Workspace     rawWorkspaceConfig      `json:"workspace"`
+	Workspace     rawWorkspaceConfig     `json:"workspace"`
 }
 
 type rawWorkspaceConfig struct {

@@ -59,7 +59,6 @@ func getDiff(workdir string) (content, raw string, err error) {
 	return content, raw, nil
 }
 
-
 // getDiffStatFromBase returns the --stat output compared to the base branch.
 func getDiffStatFromBase(workdir, baseBranch string) (string, error) {
 	if baseBranch == "" {
@@ -92,7 +91,6 @@ func getDiffStatFromBase(workdir, baseBranch string) (string, error) {
 
 	return strings.TrimSpace(string(output)), nil
 }
-
 
 // splitLines splits a string into lines, handling various line endings.
 func splitLines(s string) []string {
@@ -270,4 +268,3 @@ func getUnpushedCommits(workdir, remoteBranch string) map[string]bool {
 	}
 	return result
 }
-

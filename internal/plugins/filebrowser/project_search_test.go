@@ -100,16 +100,16 @@ func TestProjectSearchState_FlatItem(t *testing.T) {
 	}
 
 	tests := []struct {
-		idx         int
-		wantFileIdx int
+		idx          int
+		wantFileIdx  int
 		wantMatchIdx int
-		wantIsFile  bool
+		wantIsFile   bool
 	}{
-		{idx: 0, wantFileIdx: 0, wantMatchIdx: -1, wantIsFile: true},  // a.go header
-		{idx: 1, wantFileIdx: 0, wantMatchIdx: 0, wantIsFile: false},  // a.go match 1
-		{idx: 2, wantFileIdx: 0, wantMatchIdx: 1, wantIsFile: false},  // a.go match 2
-		{idx: 3, wantFileIdx: 1, wantMatchIdx: -1, wantIsFile: true},  // b.go header
-		{idx: 4, wantFileIdx: 1, wantMatchIdx: 0, wantIsFile: false},  // b.go match 1
+		{idx: 0, wantFileIdx: 0, wantMatchIdx: -1, wantIsFile: true}, // a.go header
+		{idx: 1, wantFileIdx: 0, wantMatchIdx: 0, wantIsFile: false}, // a.go match 1
+		{idx: 2, wantFileIdx: 0, wantMatchIdx: 1, wantIsFile: false}, // a.go match 2
+		{idx: 3, wantFileIdx: 1, wantMatchIdx: -1, wantIsFile: true}, // b.go header
+		{idx: 4, wantFileIdx: 1, wantMatchIdx: 0, wantIsFile: false}, // b.go match 1
 	}
 
 	for _, tc := range tests {
@@ -167,11 +167,11 @@ func TestProjectSearchState_GetSelectedFile(t *testing.T) {
 		wantPath string
 		wantLine int
 	}{
-		{cursor: 0, wantPath: "a.go", wantLine: 0},   // file header
-		{cursor: 1, wantPath: "a.go", wantLine: 10},  // first match
-		{cursor: 2, wantPath: "a.go", wantLine: 20},  // second match
-		{cursor: 3, wantPath: "b.go", wantLine: 0},   // file header
-		{cursor: 4, wantPath: "b.go", wantLine: 5},   // match
+		{cursor: 0, wantPath: "a.go", wantLine: 0},  // file header
+		{cursor: 1, wantPath: "a.go", wantLine: 10}, // first match
+		{cursor: 2, wantPath: "a.go", wantLine: 20}, // second match
+		{cursor: 3, wantPath: "b.go", wantLine: 0},  // file header
+		{cursor: 4, wantPath: "b.go", wantLine: 5},  // match
 	}
 
 	for _, tc := range tests {

@@ -177,13 +177,13 @@ func (p *Plugin) Commands() []plugin.Command {
 			if shell == nil || shell.Agent == nil {
 				cmds = append(cmds,
 					plugin.Command{ID: "attach-shell", Name: "Attach", Description: "Create and attach to shell", Context: "workspace-list", Priority: 10},
-				plugin.Command{ID: "rename-shell", Name: "Rename", Description: "Rename shell", Context: "workspace-list", Priority: 11},
+					plugin.Command{ID: "rename-shell", Name: "Rename", Description: "Rename shell", Context: "workspace-list", Priority: 11},
 				)
 			} else {
 				cmds = append(cmds,
 					plugin.Command{ID: "attach-shell", Name: "Attach", Description: "Attach to shell", Context: "workspace-list", Priority: 10},
 					plugin.Command{ID: "kill-shell", Name: "Kill", Description: "Kill shell session", Context: "workspace-list", Priority: 11},
-				plugin.Command{ID: "rename-shell", Name: "Rename", Description: "Rename shell", Context: "workspace-list", Priority: 12},
+					plugin.Command{ID: "rename-shell", Name: "Rename", Description: "Rename shell", Context: "workspace-list", Priority: 12},
 				)
 			}
 			return cmds

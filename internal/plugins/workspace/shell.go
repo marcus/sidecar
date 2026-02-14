@@ -462,6 +462,7 @@ func (p *Plugin) restoreShellDisplayNames() {
 		_ = state.SetWorkspaceState(p.ctx.ProjectRoot, wtState)
 	}
 }
+
 // nextShellIndex returns the next available shell index based on existing sessions.
 func (p *Plugin) nextShellIndex() int {
 	projectName := filepath.Base(p.ctx.WorkDir)

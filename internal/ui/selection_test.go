@@ -61,10 +61,10 @@ func newTestState() *SelectionState {
 
 func TestSelectionState_Clear(t *testing.T) {
 	s := &SelectionState{
-		Active: true,
-		Start:  SelectionPoint{3, 5},
-		End:    SelectionPoint{6, 10},
-		Anchor: SelectionPoint{3, 5},
+		Active:   true,
+		Start:    SelectionPoint{3, 5},
+		End:      SelectionPoint{6, 10},
+		Anchor:   SelectionPoint{3, 5},
 		ViewRect: mouse.Rect{X: 1, Y: 2, W: 80, H: 24},
 	}
 	s.Clear()

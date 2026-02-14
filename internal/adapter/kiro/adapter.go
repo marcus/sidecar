@@ -594,4 +594,3 @@ func truncateOutput(s string, maxLen int) string {
 	}
 	return s[:maxLen-3] + "..."
 }
-

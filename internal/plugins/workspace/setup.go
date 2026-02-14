@@ -32,18 +32,18 @@ var (
 
 // SetupConfig holds worktree setup configuration.
 type SetupConfig struct {
-	CopyEnv       bool     // Whether to copy env files (default: true)
-	EnvFiles      []string // List of env files to copy
-	SymlinkDirs   []string // Directories to symlink (default: empty, opt-in)
-	RunSetupScript bool    // Whether to run .worktree-setup.sh (default: true)
+	CopyEnv        bool     // Whether to copy env files (default: true)
+	EnvFiles       []string // List of env files to copy
+	SymlinkDirs    []string // Directories to symlink (default: empty, opt-in)
+	RunSetupScript bool     // Whether to run .worktree-setup.sh (default: true)
 }
 
 // DefaultSetupConfig returns the default setup configuration.
 func DefaultSetupConfig() *SetupConfig {
 	return &SetupConfig{
-		CopyEnv:       true,
-		EnvFiles:      defaultEnvFiles,
-		SymlinkDirs:   nil, // Opt-in, not enabled by default
+		CopyEnv:        true,
+		EnvFiles:       defaultEnvFiles,
+		SymlinkDirs:    nil, // Opt-in, not enabled by default
 		RunSetupScript: true,
 	}
 }
