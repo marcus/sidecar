@@ -142,6 +142,13 @@ var SkipPermissionsFlags = map[AgentType]string{
 	AgentOpenCode: "", // No known flag
 }
 
+// PrintModeFlags maps agent types to their non-interactive/print mode CLI flags.
+// Agents with print mode can generate output to stdout without an interactive session.
+// Only agents that support true non-interactive one-shot output are included.
+var PrintModeFlags = map[AgentType]string{
+	AgentClaude: "-p",
+}
+
 // AgentDisplayNames provides human-readable names for agent types.
 var AgentDisplayNames = map[AgentType]string{
 	AgentNone:     "None (attach only)",

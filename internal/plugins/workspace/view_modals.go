@@ -654,6 +654,17 @@ func (p *Plugin) ensureMergeModal() {
 	case MergeStepPush:
 		m.AddSection(modal.Text("Pushing branch to remote..."))
 
+	case MergeStepGeneratePR:
+		agentName := AgentDisplayNames[p.mergeState.Worktree.ChosenAgentType]
+		if agentName == "" {
+			agentName = "Agent"
+		}
+		dots := strings.Repeat(".", p.mergeState.PRGenerationDots)
+		padding := strings.Repeat(" ", 3-p.mergeState.PRGenerationDots)
+		m.AddSection(modal.Text(fmt.Sprintf("%s is generating PR description%s%s", agentName, dots, padding)))
+		m.AddSection(modal.Spacer())
+		m.AddSection(modal.Text(dimText("Analyzing commits and code changes...")))
+
 	case MergeStepCreatePR:
 		m.AddSection(modal.Text("Creating pull request..."))
 
@@ -750,6 +761,7 @@ func (p *Plugin) mergeProgressSection() modal.Section {
 				MergeStepTargetBranch,
 				MergeStepMergeMethod,
 				MergeStepPush,
+				MergeStepGeneratePR,
 				MergeStepCreatePR,
 				MergeStepWaitingMerge,
 				MergeStepPostMergeConfirmation,
