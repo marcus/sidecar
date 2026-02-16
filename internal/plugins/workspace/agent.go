@@ -221,6 +221,7 @@ const (
 	pollIntervalVisibleUnfocused = 500 * time.Millisecond // Output visible but plugin not focused
 	pollIntervalUnfocused        = 20 * time.Second       // Plugin not focused, output not visible
 	pollIntervalThrottled        = 20 * time.Second       // Runaway session throttled (td-018f25)
+	pollIntervalMainWorktree     = 5 * time.Second        // Session-file poll for main worktree (td-9233a4)
 
 	// Poll staggering to prevent simultaneous subprocess spawns
 	pollStaggerMax = 400 * time.Millisecond // Max stagger offset based on worktree name hash
@@ -235,9 +236,9 @@ const (
 
 	// Runaway detection thresholds (td-018f25)
 	// Detect sessions producing continuous output and throttle them to reduce CPU usage.
-	runawayPollCount    = 20               // Number of polls to track
-	runawayTimeWindow   = 3 * time.Second  // If 20 polls happen within this window = runaway
-	runawayResetCount   = 3                // Consecutive unchanged polls to reset throttle
+	runawayPollCount  = 20              // Number of polls to track
+	runawayTimeWindow = 3 * time.Second // If 20 polls happen within this window = runaway
+	runawayResetCount = 3               // Consecutive unchanged polls to reset throttle
 )
 
 // AgentStartedMsg signals an agent has been started in a worktree.
@@ -257,27 +258,27 @@ func (m AgentStartedMsg) GetEpoch() uint64 { return m.Epoch }
 // ApproveResultMsg signals the result of an approve action.
 type ApproveResultMsg struct {
 	WorkspaceName string
-	Err          error
+	Err           error
 }
 
 // RejectResultMsg signals the result of a reject action.
 type RejectResultMsg struct {
 	WorkspaceName string
-	Err          error
+	Err           error
 }
 
 // SendTextResultMsg signals the result of sending text to an agent.
 type SendTextResultMsg struct {
 	WorkspaceName string
-	Text         string
-	Err          error
+	Text          string
+	Err           error
 }
 
 // pollAgentMsg triggers output polling for a worktree's agent.
 // Includes generation for timer leak prevention (td-83dc22).
 type pollAgentMsg struct {
 	WorkspaceName string
-	Generation   int // Generation at time of scheduling; ignore if stale
+	Generation    int // Generation at time of scheduling; ignore if stale
 }
 
 // reconnectedAgentsMsg delivers reconnected agents from startup.
@@ -743,7 +744,7 @@ func (p *Plugin) scheduleInteractivePoll(worktreeName string, delay time.Duratio
 
 // AgentPollUnchangedMsg signals content unchanged, schedule next poll.
 type AgentPollUnchangedMsg struct {
-	WorkspaceName  string
+	WorkspaceName string
 	CurrentStatus WorktreeStatus // Status including session file re-check
 	WaitingFor    string         // Prompt text if waiting
 	// Cursor position captured atomically (even when content unchanged)
@@ -887,7 +888,7 @@ func (p *Plugin) handlePollAgent(worktreeName string) tea.Cmd {
 
 		if !outputChanged {
 			return AgentPollUnchangedMsg{
-				WorkspaceName:  worktreeName,
+				WorkspaceName: worktreeName,
 				CurrentStatus: status,
 				WaitingFor:    waitingFor,
 				CursorRow:     cursorRow,
@@ -900,7 +901,7 @@ func (p *Plugin) handlePollAgent(worktreeName string) tea.Cmd {
 		}
 
 		return AgentOutputMsg{
-			WorkspaceName:  worktreeName,
+			WorkspaceName: worktreeName,
 			Output:        output,
 			Status:        status,
 			WaitingFor:    waitingFor,
@@ -1250,7 +1251,7 @@ func (p *Plugin) Approve(wt *Worktree) tea.Cmd {
 
 		return ApproveResultMsg{
 			WorkspaceName: wt.Name,
-			Err:          err,
+			Err:           err,
 		}
 	}
 }
@@ -1267,7 +1268,7 @@ func (p *Plugin) Reject(wt *Worktree) tea.Cmd {
 
 		return RejectResultMsg{
 			WorkspaceName: wt.Name,
-			Err:          err,
+			Err:           err,
 		}
 	}
 }
@@ -1307,8 +1308,8 @@ func (p *Plugin) SendText(wt *Worktree, text string) tea.Cmd {
 
 		return SendTextResultMsg{
 			WorkspaceName: wt.Name,
-			Text:         text,
-			Err:          err,
+			Text:          text,
+			Err:           err,
 		}
 	}
 }
@@ -1366,13 +1367,13 @@ func sessionExists(name string) bool {
 // agent type but no running tmux session.
 func (p *Plugin) detectOrphanedWorktrees() {
 	for _, wt := range p.worktrees {
-		// Skip main worktree - can't attach agents to it anyway
+		// Skip main worktree - sidecar doesn't manage agents there.
+		// Still remove stale .sidecar-agent file, but don't clear ChosenAgentType
+		// since it's now set dynamically by the main worktree polling cycle (td-f8131f).
 		if wt.IsMain {
 			wt.IsOrphaned = false
-			// Clean up any stale .sidecar-agent file from main worktree
 			if wt.ChosenAgentType != "" && wt.ChosenAgentType != AgentNone {
 				_ = os.Remove(filepath.Join(wt.Path, sidecarAgentFile))
-				wt.ChosenAgentType = ""
 			}
 			continue
 		}
@@ -1390,6 +1391,45 @@ func (p *Plugin) detectOrphanedWorktrees() {
 		sessionName := tmuxSessionPrefix + sanitizeName(wt.Name)
 		wt.IsOrphaned = !sessionExists(sessionName)
 	}
+}
+
+// pollMainWorktreeStatus checks session files for the main worktree to detect
+// externally started agents (e.g., user ran `claude` directly). Returns a
+// mainWorktreeStatusMsg with the detected status and agent type (td-9233a4).
+func (p *Plugin) pollMainWorktreeStatus() tea.Cmd {
+	// Find main worktree path
+	var mainPath string
+	for _, wt := range p.worktrees {
+		if wt.IsMain {
+			mainPath = wt.Path
+			break
+		}
+	}
+	if mainPath == "" {
+		return nil
+	}
+	return func() tea.Msg {
+		status, agentType, detected := detectAnyAgentSessionStatus(mainPath)
+		return mainWorktreeStatusMsg{
+			Status:    status,
+			AgentType: agentType,
+			Detected:  detected,
+		}
+	}
+}
+
+// scheduleMainWorktreePoll schedules a delayed poll for the main worktree (td-9233a4).
+// Increments the generation counter so any previously scheduled poll is invalidated,
+// preventing duplicate poll loops when pollAllAgentStatusesNow fires mid-cycle.
+func (p *Plugin) scheduleMainWorktreePoll(delay time.Duration) tea.Cmd {
+	p.mainWorktreePollGen++
+	gen := p.mainWorktreePollGen
+	if delay == 0 {
+		return func() tea.Msg { return pollMainWorktreeMsg{Generation: gen} }
+	}
+	return tea.Tick(delay, func(t time.Time) tea.Msg {
+		return pollMainWorktreeMsg{Generation: gen}
+	})
 }
 
 // reconnectAgents finds and reconnects to existing tmux sessions on startup.

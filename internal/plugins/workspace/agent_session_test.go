@@ -500,3 +500,36 @@ func TestDetectCodexSessionStatus_StaleUser(t *testing.T) {
 		t.Errorf("got %v, want StatusActive (stale mtime, last entry user = thinking)", status)
 	}
 }
+
+func TestDetectAnyAgentSessionStatus_ClaudeMatch(t *testing.T) {
+	worktreePath := "/test/project/any-agent"
+	_, projectDir := setupClaudeTestDir(t, worktreePath)
+
+	// Create a Claude session file (stale mtime, last entry assistant → waiting)
+	writeSessionFile(t, projectDir, "test-session.jsonl",
+		`{"type":"user","message":{"role":"user","content":"hello"}}
+{"type":"assistant","message":{"role":"assistant","content":"Done!"}}`,
+		2*time.Minute)
+
+	status, agentType, ok := detectAnyAgentSessionStatus(worktreePath)
+	if !ok {
+		t.Fatal("expected ok=true, detectAnyAgentSessionStatus should find Claude session")
+	}
+	if agentType != AgentClaude {
+		t.Errorf("got agentType=%v, want AgentClaude", agentType)
+	}
+	if status != StatusWaiting {
+		t.Errorf("got status=%v, want StatusWaiting", status)
+	}
+}
+
+func TestDetectAnyAgentSessionStatus_NoMatch(t *testing.T) {
+	tmpHome := t.TempDir()
+	t.Setenv("HOME", tmpHome)
+
+	// No session files for any agent type
+	_, _, ok := detectAnyAgentSessionStatus("/nonexistent/project/path")
+	if ok {
+		t.Error("expected ok=false when no agent session files exist")
+	}
+}

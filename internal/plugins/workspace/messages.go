@@ -29,9 +29,9 @@ type WatcherErrorMsg struct {
 // AgentOutputMsg delivers new agent output.
 type AgentOutputMsg struct {
 	WorkspaceName string
-	Output       string
-	Status       WorktreeStatus
-	WaitingFor   string
+	Output        string
+	Status        WorktreeStatus
+	WaitingFor    string
 	// Cursor position captured atomically with output (only set in interactive mode)
 	CursorRow     int
 	CursorCol     int
@@ -44,13 +44,13 @@ type AgentOutputMsg struct {
 // AgentStoppedMsg signals an agent has stopped.
 type AgentStoppedMsg struct {
 	WorkspaceName string
-	Err          error
+	Err           error
 }
 
 // TmuxAttachFinishedMsg signals return from tmux attach.
 type TmuxAttachFinishedMsg struct {
 	WorkspaceName string
-	Err          error
+	Err           error
 }
 
 // DiffLoadedMsg delivers diff content for a worktree.
@@ -67,7 +67,7 @@ func (m DiffLoadedMsg) GetEpoch() uint64 { return m.Epoch }
 // DiffErrorMsg signals diff loading failed.
 type DiffErrorMsg struct {
 	WorkspaceName string
-	Err          error
+	Err           error
 }
 
 // StatsLoadedMsg delivers git stats for a worktree.
@@ -83,7 +83,7 @@ func (m StatsLoadedMsg) GetEpoch() uint64 { return m.Epoch }
 // StatsErrorMsg signals stats loading failed.
 type StatsErrorMsg struct {
 	WorkspaceName string
-	Err          error
+	Err           error
 }
 
 // CreateWorktreeMsg requests worktree creation.
@@ -118,21 +118,21 @@ type DeleteDoneMsg struct {
 // RemoteCheckDoneMsg signals remote branch existence check completed.
 type RemoteCheckDoneMsg struct {
 	WorkspaceName string
-	Branch       string
-	Exists       bool
+	Branch        string
+	Exists        bool
 }
 
 // PushMsg requests pushing a worktree branch.
 type PushMsg struct {
 	WorkspaceName string
-	Force        bool
-	SetUpstream  bool
+	Force         bool
+	SetUpstream   bool
 }
 
 // PushDoneMsg signals push operation completed.
 type PushDoneMsg struct {
 	WorkspaceName string
-	Err          error
+	Err           error
 }
 
 // TaskSearchResultsMsg delivers task search results.
@@ -150,8 +150,8 @@ type BranchListMsg struct {
 // TaskLinkedMsg signals a task was linked to a worktree.
 type TaskLinkedMsg struct {
 	WorkspaceName string
-	TaskID       string
-	Err          error
+	TaskID        string
+	Err           error
 }
 
 // Task represents a TD task for linking.
@@ -248,13 +248,13 @@ type FetchPRDoneMsg struct {
 
 // PRListItem represents an open pull request for the fetch modal.
 type PRListItem struct {
-	Number    int       `json:"number"`
-	Title     string    `json:"title"`
-	Branch    string    `json:"headRefName"`
-	Author    prAuthor  `json:"author"`
-	URL       string    `json:"url"`
-	CreatedAt string    `json:"createdAt"`
-	IsDraft   bool      `json:"isDraft"`
+	Number    int      `json:"number"`
+	Title     string   `json:"title"`
+	Branch    string   `json:"headRefName"`
+	Author    prAuthor `json:"author"`
+	URL       string   `json:"url"`
+	CreatedAt string   `json:"createdAt"`
+	IsDraft   bool     `json:"isDraft"`
 }
 
 // prAuthor represents the author field from gh pr list --json.
@@ -267,4 +267,17 @@ type InteractivePasteResultMsg struct {
 	Err         error
 	Empty       bool
 	SessionDead bool
+}
+
+// pollMainWorktreeMsg triggers a session-file poll for the main worktree (td-9233a4).
+// Includes generation for poll loop dedup — only the most recently scheduled loop survives.
+type pollMainWorktreeMsg struct {
+	Generation int
+}
+
+// mainWorktreeStatusMsg delivers the result of a main worktree session-file poll.
+type mainWorktreeStatusMsg struct {
+	Status    WorktreeStatus
+	AgentType AgentType
+	Detected  bool
 }

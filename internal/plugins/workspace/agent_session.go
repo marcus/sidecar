@@ -86,6 +86,21 @@ func anyFileRecentlyModified(dir, suffix string, threshold time.Duration) bool {
 	return false
 }
 
+// detectAnyAgentSessionStatus tries all known agent types against a worktree path,
+// returning the status and agent type for the first match. Used for detecting externally
+// started agents (e.g., in the main worktree) where the agent type isn't known in advance.
+// Each per-agent detection function short-circuits quickly when session files don't exist.
+func detectAnyAgentSessionStatus(worktreePath string) (WorktreeStatus, AgentType, bool) {
+	// Order: most common agents first for fast short-circuit
+	candidates := []AgentType{AgentClaude, AgentCodex, AgentGemini, AgentOpenCode, AgentPi}
+	for _, agent := range candidates {
+		if status, ok := detectAgentSessionStatus(agent, worktreePath); ok {
+			return status, agent, true
+		}
+	}
+	return 0, "", false
+}
+
 // detectAgentSessionStatus checks agent session files to determine if an agent
 // is waiting for user input or actively processing.
 // Returns StatusWaiting if last message is from assistant (agent finished, waiting for user).
@@ -849,4 +864,3 @@ func getOpenCodeLastMessageStatus(storageDir, sessionID string) (WorktreeStatus,
 		return 0, false
 	}
 }
-

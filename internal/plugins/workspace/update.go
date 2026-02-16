@@ -123,6 +123,8 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 			if !p.initialReconnectDone {
 				p.initialReconnectDone = true
 				cmds = append(cmds, p.reconnectAgents())
+				// Start polling main worktree for externally started agents (td-9233a4)
+				cmds = append(cmds, p.scheduleMainWorktreePoll(0))
 			}
 		}
 
@@ -513,6 +515,32 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 			}
 		}
 		cmds = append(cmds, p.scheduleAgentPoll(msg.WorkspaceName, interval))
+		return p, tea.Batch(cmds...)
+
+	// Main worktree session-file polling (td-9233a4)
+	case pollMainWorktreeMsg:
+		// Generation guard: drop stale ticks from superseded poll loops
+		if msg.Generation != p.mainWorktreePollGen {
+			return p, nil
+		}
+		return p, p.pollMainWorktreeStatus()
+
+	case mainWorktreeStatusMsg:
+		for _, wt := range p.worktrees {
+			if !wt.IsMain {
+				continue
+			}
+			if msg.Detected {
+				wt.Status = msg.Status
+				wt.ChosenAgentType = msg.AgentType
+			} else if wt.Agent == nil {
+				// No external agent detected and no managed agent — reset to paused
+				wt.Status = StatusPaused
+				wt.ChosenAgentType = ""
+			}
+			break
+		}
+		cmds = append(cmds, p.scheduleMainWorktreePoll(pollIntervalMainWorktree))
 		return p, tea.Batch(cmds...)
 
 	// Shell session messages

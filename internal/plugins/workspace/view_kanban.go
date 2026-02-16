@@ -57,7 +57,7 @@ func (p *Plugin) renderKanbanView(width, height int) string {
 	}
 	columnColors := map[WorktreeStatus]lipgloss.Color{
 		StatusActive:   styles.StatusCompleted.GetForeground().(lipgloss.Color), // Green
-		StatusThinking: styles.Primary,                                            // Purple
+		StatusThinking: styles.Primary,                                          // Purple
 		StatusWaiting:  styles.StatusModified.GetForeground().(lipgloss.Color),  // Yellow
 		StatusDone:     styles.Secondary,                                        // Cyan/Blue
 		StatusPaused:   styles.TextMuted,                                        // Gray
@@ -195,8 +195,26 @@ func (p *Plugin) renderKanbanShellCardLine(shell *ShellSession, lineIdx, width i
 
 	switch lineIdx {
 	case 0:
+		// Agent-aware status icon matching list view logic (td-693fc7)
 		statusIcon := "○"
-		if shell.Agent != nil {
+		if shell.IsOrphaned {
+			statusIcon = "◌"
+		} else if shell.ChosenAgent != AgentNone && shell.ChosenAgent != "" {
+			if shell.Agent != nil {
+				switch shell.Agent.Status {
+				case AgentStatusRunning:
+					statusIcon = "●"
+				case AgentStatusWaiting:
+					statusIcon = "○"
+				case AgentStatusDone:
+					statusIcon = "✓"
+				case AgentStatusError:
+					statusIcon = "✗"
+				default:
+					statusIcon = "○"
+				}
+			}
+		} else if shell.Agent != nil {
 			statusIcon = "●"
 		}
 		name := shell.Name
@@ -206,9 +224,32 @@ func (p *Plugin) renderKanbanShellCardLine(shell *ShellSession, lineIdx, width i
 		}
 		content = fmt.Sprintf(" %s %s", statusIcon, name)
 	case 1:
-		statusText := "  shell · no session"
-		if shell.Agent != nil {
+		// Agent-aware status text matching list view logic (td-693fc7)
+		var statusText string
+		if shell.IsOrphaned {
+			if shell.ChosenAgent != AgentNone && shell.ChosenAgent != "" {
+				agentAbbrev := shellAgentAbbreviations[shell.ChosenAgent]
+				if agentAbbrev == "" {
+					agentAbbrev = string(shell.ChosenAgent)
+				}
+				statusText = fmt.Sprintf("  %s · offline", agentAbbrev)
+			} else {
+				statusText = "  shell · offline"
+			}
+		} else if shell.ChosenAgent != AgentNone && shell.ChosenAgent != "" {
+			agentAbbrev := shellAgentAbbreviations[shell.ChosenAgent]
+			if agentAbbrev == "" {
+				agentAbbrev = string(shell.ChosenAgent)
+			}
+			if shell.Agent != nil {
+				statusText = fmt.Sprintf("  %s · running", agentAbbrev)
+			} else {
+				statusText = fmt.Sprintf("  %s · stopped", agentAbbrev)
+			}
+		} else if shell.Agent != nil {
 			statusText = "  shell · running"
+		} else {
+			statusText = "  shell · no session"
 		}
 		content = statusText
 	}
