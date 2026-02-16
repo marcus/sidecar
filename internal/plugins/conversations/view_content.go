@@ -343,6 +343,8 @@ func resumeCommand(session *adapter.Session) string {
 		return fmt.Sprintf("cursor-agent --resume %s", session.ID)
 	case "amp":
 		return fmt.Sprintf("amp --resume %s", session.ID)
+	case "pi-agent", "pi":
+		return fmt.Sprintf("pi --session %s", session.ID)
 	default:
 		return ""
 	}
@@ -632,8 +634,8 @@ func renderSourceLabel(label string) string {
 	// Split into badge part and name part
 	// Labels are like "[TG] Marcus Vorwaller", "[WA]", "[cron] job-name", "[sys]"
 	if idx := strings.Index(label, "] "); idx != -1 {
-		badge := label[:idx+1]  // "[TG]"
-		name := label[idx+2:]   // "Marcus Vorwaller"
+		badge := label[:idx+1] // "[TG]"
+		name := label[idx+2:]  // "Marcus Vorwaller"
 		return styles.Muted.Render(badge) + " " + styles.StatusInProgress.Render(name)
 	}
 	// No name part, just the badge (e.g. "[WA]", "[sys]")
