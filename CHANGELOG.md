@@ -2,6 +2,12 @@
 
 All notable changes to sidecar are documented here.
 
+## [v0.73.1] - 2026-02-15
+
+### Bug Fixes
+
+- Shift+Enter and semicolon key fix for Ghostty terminal (PR #171 by @boozedog)
+
 ## [v0.73.0] - 2026-02-15
 
 ### Features
