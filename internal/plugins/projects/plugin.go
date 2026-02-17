@@ -132,10 +132,6 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 }
 
 func (p *Plugin) handleKey(msg tea.KeyMsg) (plugin.Plugin, tea.Cmd) {
-	if !p.focused {
-		return p, nil
-	}
-
 	// Handle scan results modal
 	if p.showScan {
 		return p.handleScanKey(msg)
@@ -630,37 +626,53 @@ func (p *Plugin) addScanResults() tea.Cmd {
 }
 
 func (p *Plugin) removeProject(entry ProjectEntry) tea.Cmd {
-	return func() tea.Msg {
-		cfg, err := config.Load()
-		if err != nil {
+	return tea.Batch(
+		func() tea.Msg {
+			cfg, err := config.Load()
+			if err != nil {
+				return app.ToastMsg{
+					Message:  "Failed to load config: " + err.Error(),
+					Duration: 3 * time.Second,
+					IsError:  true,
+				}
+			}
+
+			// Check if this project is in the config (vs auto-discovered)
+			found := false
+			newList := make([]config.ProjectConfig, 0, len(cfg.Projects.List))
+			for _, proj := range cfg.Projects.List {
+				absPath, _ := filepath.Abs(config.ExpandPath(proj.Path))
+				if absPath == entry.Path {
+					found = true
+				} else {
+					newList = append(newList, proj)
+				}
+			}
+
+			if !found {
+				return app.ToastMsg{
+					Message:  fmt.Sprintf("%s is auto-discovered and can't be removed", entry.Name),
+					Duration: 3 * time.Second,
+				}
+			}
+
+			cfg.Projects.List = newList
+
+			if err := config.Save(cfg); err != nil {
+				return app.ToastMsg{
+					Message:  "Failed to save config: " + err.Error(),
+					Duration: 3 * time.Second,
+					IsError:  true,
+				}
+			}
+
 			return app.ToastMsg{
-				Message:  "Failed to load config: " + err.Error(),
+				Message:  fmt.Sprintf("Removed project: %s", entry.Name),
 				Duration: 3 * time.Second,
-				IsError:  true,
 			}
-		}
-
-		newList := make([]config.ProjectConfig, 0, len(cfg.Projects.List))
-		for _, proj := range cfg.Projects.List {
-			if proj.Path != entry.Path {
-				newList = append(newList, proj)
-			}
-		}
-		cfg.Projects.List = newList
-
-		if err := config.Save(cfg); err != nil {
-			return app.ToastMsg{
-				Message:  "Failed to save config: " + err.Error(),
-				Duration: 3 * time.Second,
-				IsError:  true,
-			}
-		}
-
-		return app.ToastMsg{
-			Message:  fmt.Sprintf("Removed project: %s", entry.Name),
-			Duration: 3 * time.Second,
-		}
-	}
+		},
+		p.fetchProjects(),
+	)
 }
 
 // IsFocused returns whether the plugin is focused.
