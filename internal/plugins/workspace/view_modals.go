@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/marcus/sidecar/internal/modal"
 	"github.com/marcus/sidecar/internal/styles"
 	"github.com/marcus/sidecar/internal/ui"
@@ -660,7 +661,7 @@ func (p *Plugin) ensureMergeModal() {
 	case MergeStepWaitingMerge:
 		m.AddSection(p.mergeWaitingSection())
 		m.AddSection(modal.Spacer())
-		m.AddSection(modal.Text(dimText("Enter: check now   o: open PR   Esc: exit   ↑/↓: change option")))
+		m.AddSection(modal.Text(dimText("Enter: check now   o: open PR   y: copy URL   Esc: exit   ↑/↓: change option")))
 
 	case MergeStepPostMergeConfirmation:
 		m.AddSection(p.mergePostMergeHeaderSection())
@@ -864,9 +865,22 @@ func (p *Plugin) mergeWaitingSection() modal.Section {
 		}
 		sb.WriteString("\n\n")
 
+		var focusables []modal.FocusableInfo
+		urlLineY := 2 // header (line 0), blank (line 1), URL (line 2)
+
 		if p.mergeState.PRURL != "" {
-			sb.WriteString(fmt.Sprintf("URL: %s", p.mergeState.PRURL))
+			styledURL := styles.Link.Render(p.mergeState.PRURL)
+			clickableURL := ansi.SetHyperlink(p.mergeState.PRURL) + styledURL + ansi.ResetHyperlink()
+			sb.WriteString(fmt.Sprintf("URL: %s", clickableURL))
 			sb.WriteString("\n")
+
+			focusables = append(focusables, modal.FocusableInfo{
+				ID:      mergePRURLID,
+				OffsetX: 5, // after "URL: "
+				OffsetY: urlLineY,
+				Width:   ansi.StringWidth(p.mergeState.PRURL),
+				Height:  1,
+			})
 		}
 
 		sb.WriteString("\n")
@@ -893,7 +907,7 @@ func (p *Plugin) mergeWaitingSection() modal.Section {
 		sb.WriteString("\n\n")
 		sb.WriteString(dimText(" (This takes effect only once the PR is merged)"))
 
-		return modal.RenderedSection{Content: sb.String()}
+		return modal.RenderedSection{Content: sb.String(), Focusables: focusables}
 	}, nil)
 }
 
