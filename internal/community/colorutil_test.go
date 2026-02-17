@@ -7,19 +7,19 @@ import (
 
 func TestHexToHSL(t *testing.T) {
 	tests := []struct {
-		hex        string
-		wantH      float64
-		wantS      float64
-		wantL      float64
-		tolerance  float64
+		hex       string
+		wantH     float64
+		wantS     float64
+		wantL     float64
+		tolerance float64
 	}{
-		{"#ff0000", 0, 1.0, 0.5, 1.0},    // pure red
-		{"#00ff00", 120, 1.0, 0.5, 1.0},   // pure green
-		{"#0000ff", 240, 1.0, 0.5, 1.0},   // pure blue
-		{"#ffffff", 0, 0, 1.0, 0.01},       // white
-		{"#000000", 0, 0, 0, 0.01},         // black
-		{"#808080", 0, 0, 0.502, 0.01},     // gray
-		{"#ff8000", 30, 1.0, 0.5, 1.0},     // orange
+		{"#ff0000", 0, 1.0, 0.5, 1.0},   // pure red
+		{"#00ff00", 120, 1.0, 0.5, 1.0}, // pure green
+		{"#0000ff", 240, 1.0, 0.5, 1.0}, // pure blue
+		{"#ffffff", 0, 0, 1.0, 0.01},    // white
+		{"#000000", 0, 0, 0, 0.01},      // black
+		{"#808080", 0, 0, 0.502, 0.01},  // gray
+		{"#ff8000", 30, 1.0, 0.5, 1.0},  // orange
 	}
 
 	for _, tt := range tests {
@@ -41,11 +41,11 @@ func TestHSLToHex(t *testing.T) {
 		h, s, l float64
 		want    string
 	}{
-		{0, 1.0, 0.5, "#ff0000"},     // red
-		{120, 1.0, 0.5, "#00ff00"},   // green
-		{240, 1.0, 0.5, "#0000ff"},   // blue
-		{0, 0, 1.0, "#ffffff"},       // white
-		{0, 0, 0, "#000000"},         // black
+		{0, 1.0, 0.5, "#ff0000"},   // red
+		{120, 1.0, 0.5, "#00ff00"}, // green
+		{240, 1.0, 0.5, "#0000ff"}, // blue
+		{0, 0, 1.0, "#ffffff"},     // white
+		{0, 0, 0, "#000000"},       // black
 	}
 
 	for _, tt := range tests {

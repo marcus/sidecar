@@ -12,17 +12,18 @@ import (
 )
 
 const (
-	createNameFieldID           = "create-name"
-	createBaseFieldID           = "create-base"
-	createPromptFieldID         = "create-prompt"
-	createTaskFieldID           = "create-task"
-	createAgentListID           = "create-agent-list"
-	createSkipPermissionsID     = "create-skip-permissions"
-	createSubmitID              = "create-submit"
-	createCancelID              = "create-cancel"
-	createBranchItemPrefix      = "create-branch-"
-	createTaskItemPrefix        = "create-task-item-"
-	createAgentItemPrefix       = "create-agent-"
+	createNameFieldID       = "create-name"
+	createBaseFieldID       = "create-base"
+	createPromptFieldID     = "create-prompt"
+	createTaskFieldID       = "create-task"
+	createAgentListID       = "create-agent-list"
+	createSkipPermissionsID = "create-skip-permissions"
+	createPlanModeID        = "create-plan-mode"
+	createSubmitID          = "create-submit"
+	createCancelID          = "create-cancel"
+	createBranchItemPrefix  = "create-branch-"
+	createTaskItemPrefix    = "create-task-item-"
+	createAgentItemPrefix   = "create-agent-"
 )
 
 func createIndexedID(prefix string, idx int) string {
@@ -86,6 +87,9 @@ func (p *Plugin) ensureCreateModal() {
 		AddSection(modal.When(p.shouldShowSkipPermissions, modal.Checkbox(createSkipPermissionsID, "Auto-approve all actions", &p.createSkipPermissions))).
 		AddSection(p.createSkipPermissionsHintSection()).
 		AddSection(modal.Spacer()).
+		AddSection(modal.When(p.shouldShowPlanMode, modal.Checkbox(createPlanModeID, "Start in plan mode", &p.createPlanMode))).
+		AddSection(p.createPlanModeHintSection()).
+		AddSection(modal.When(p.shouldShowPlanMode, modal.Spacer())).
 		AddSection(p.createErrorSection()).
 		AddSection(modal.When(func() bool { return p.createError != "" }, modal.Spacer())).
 		AddSection(modal.Buttons(
@@ -116,6 +120,9 @@ func (p *Plugin) normalizeCreateFocus() {
 	if p.createFocus == 5 && !p.shouldShowSkipPermissions() {
 		p.createFocus = 6
 	}
+	if p.createFocus == 6 && !p.shouldShowPlanMode() {
+		p.createFocus = 7
+	}
 }
 
 func (p *Plugin) syncCreateAgentIdx() {
@@ -143,8 +150,10 @@ func (p *Plugin) createFocusID() string {
 	case 5:
 		return createSkipPermissionsID
 	case 6:
-		return createSubmitID
+		return createPlanModeID
 	case 7:
+		return createSubmitID
+	case 8:
 		return createCancelID
 	default:
 		return ""
@@ -481,6 +490,15 @@ func (p *Plugin) createSkipPermissionsHintSection() modal.Section {
 			return modal.RenderedSection{Content: dimText(fmt.Sprintf("      (Adds %s)", flag))}
 		}
 		return modal.RenderedSection{Content: dimText("  Skip permissions not available for this agent")}
+	}, nil)
+}
+
+func (p *Plugin) createPlanModeHintSection() modal.Section {
+	return modal.Custom(func(contentWidth int, focusID, hoverID string) modal.RenderedSection {
+		if !p.shouldShowPlanMode() {
+			return modal.RenderedSection{}
+		}
+		return modal.RenderedSection{Content: dimText("      (Adds --permission-mode plan)")}
 	}, nil)
 }
 

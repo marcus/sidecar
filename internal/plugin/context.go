@@ -19,10 +19,10 @@ type Context struct {
 	WorkDir     string // Actual working directory (worktree path for linked worktrees)
 	ProjectRoot string // Main repo root for shared state (same as WorkDir for non-worktrees)
 	ConfigDir   string
-	Config    *config.Config
-	Adapters  map[string]adapter.Adapter
-	EventBus  *event.Dispatcher
-	Logger    *slog.Logger
-	Keymap    BindingRegistrar // For plugins to register dynamic bindings
-	Epoch     uint64           // Incremented on project switch to invalidate stale async messages
+	Config      *config.Config
+	Adapters    map[string]adapter.Adapter
+	EventBus    *event.Dispatcher
+	Logger      *slog.Logger
+	Keymap      BindingRegistrar // For plugins to register dynamic bindings
+	Epoch       uint64           // Incremented on project switch to invalidate stale async messages
 }

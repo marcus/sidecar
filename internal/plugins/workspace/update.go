@@ -194,7 +194,7 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 
 			// Start agent or attach based on selection
 			if msg.AgentType != AgentNone && msg.AgentType != "" {
-				cmds = append(cmds, p.StartAgentWithOptions(msg.Worktree, msg.AgentType, msg.SkipPerms, msg.Prompt))
+				cmds = append(cmds, p.StartAgentWithOptions(msg.Worktree, msg.AgentType, msg.SkipPerms, msg.PlanMode, msg.Prompt))
 			} else {
 				// "None" selected - attach to worktree directory
 				cmds = append(cmds, p.AttachToWorktreeDir(msg.Worktree))
@@ -1278,6 +1278,44 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 		}
 		// Schedule next validation in 60 seconds
 		return p, p.scheduleSessionValidation(60 * time.Second)
+
+	case QuickCreateWorkspaceMsg:
+		toastName := msg.Name
+		if toastName == "" {
+			toastName = p.deriveBranchName(msg.TaskID, msg.TaskTitle)
+		}
+		return p, tea.Batch(
+			p.quickCreateWorkspace(msg),
+			func() tea.Msg {
+				return app.ToastMsg{
+					Message:  fmt.Sprintf("Creating workspace: %s...", toastName),
+					Duration: 3 * time.Second,
+				}
+			},
+		)
+
+	case QuickCreateDoneMsg:
+		if msg.Err != nil {
+			return p, func() tea.Msg {
+				return app.ToastMsg{
+					Message:  fmt.Sprintf("Workspace creation failed: %v", msg.Err),
+					Duration: 5 * time.Second,
+					IsError:  true,
+				}
+			}
+		}
+		// Append worktree without changing view or selection
+		p.worktrees = append(p.worktrees, msg.Worktree)
+		// Start agent if one was selected
+		if msg.AgentType != AgentNone && msg.AgentType != "" {
+			cmds = append(cmds, p.StartAgentWithOptions(msg.Worktree, msg.AgentType, msg.SkipPerms, msg.PlanMode, msg.Prompt))
+		}
+		cmds = append(cmds, func() tea.Msg {
+			return app.ToastMsg{
+				Message:  fmt.Sprintf("Workspace created: %s", msg.Worktree.Name),
+				Duration: 3 * time.Second,
+			}
+		})
 
 	case OpenCreateModalWithTaskMsg:
 		return p, p.openCreateModalWithTask(msg.TaskID, msg.TaskTitle)

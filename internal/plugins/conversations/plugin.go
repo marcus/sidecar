@@ -173,10 +173,10 @@ type Plugin struct {
 	searchResults []adapter.Session
 
 	// Filter state
-	filterMode             bool
-	filters                SearchFilters
-	filterActive           bool     // true when any filter is active
-	defaultCategoryFilter  []string // from config, used by C toggle to restore
+	filterMode            bool
+	filters               SearchFilters
+	filterActive          bool     // true when any filter is active
+	defaultCategoryFilter []string // from config, used by C toggle to restore
 
 	// Markdown rendering
 	contentRenderer *GlamourRenderer

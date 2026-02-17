@@ -94,12 +94,12 @@ func TestSanitizeBranchName(t *testing.T) {
 
 func TestParseWorktreeList(t *testing.T) {
 	tests := []struct {
-		name        string
-		output      string
-		mainWorkdir string
-		wantCount   int
-		wantNames   []string
-		wantBranch  []string
+		name          string
+		output        string
+		mainWorkdir   string
+		wantCount     int
+		wantNames     []string
+		wantBranch    []string
 		wantIsMain    []bool // Track which worktrees should be marked as main
 		wantIsMissing []bool // Track which worktrees should be marked as missing
 	}{
@@ -372,4 +372,3 @@ func TestFilterTasks(t *testing.T) {
 		}
 	})
 }
-

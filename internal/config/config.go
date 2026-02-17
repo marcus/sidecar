@@ -79,6 +79,8 @@ type WorkspacePluginConfig struct {
 	InteractiveCopyKey string `json:"interactiveCopyKey,omitempty"`
 	// InteractivePasteKey is the keybinding to paste clipboard in interactive mode. Default: "alt+v".
 	InteractivePasteKey string `json:"interactivePasteKey,omitempty"`
+	// DefaultPlanMode enables plan mode by default when creating new workspaces. Default: true.
+	DefaultPlanMode *bool `json:"defaultPlanMode,omitempty"`
 }
 
 // NotesPluginConfig configures the notes plugin.
@@ -138,7 +140,7 @@ func Default() *Config {
 			Overrides: make(map[string]string),
 		},
 		UI: UIConfig{
-			ShowClock:  true,
+			ShowClock: true,
 			Theme: ThemeConfig{
 				Name:      "default",
 				Overrides: make(map[string]interface{}),

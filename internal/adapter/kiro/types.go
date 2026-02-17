@@ -29,8 +29,8 @@ type HistoryEntry struct {
 
 // UserMessage is the user side of a history entry.
 type UserMessage struct {
-	Content    json.RawMessage `json:"content"`    // Prompt or ToolUseResults, discriminated
-	Timestamp  string          `json:"timestamp"`  // RFC3339 format
+	Content    json.RawMessage `json:"content"`   // Prompt or ToolUseResults, discriminated
+	Timestamp  string          `json:"timestamp"` // RFC3339 format
 	EnvContext *EnvContext     `json:"env_context"`
 }
 
@@ -67,9 +67,9 @@ type ToolUseResultsData struct {
 
 // ToolUseResult is a single tool result.
 type ToolUseResult struct {
-	ToolUseID string             `json:"tool_use_id"`
+	ToolUseID string              `json:"tool_use_id"`
 	Content   []ToolResultContent `json:"content"`
-	Status    string             `json:"status"`
+	Status    string              `json:"status"`
 }
 
 // ToolResultContent is a content block in a tool result.
@@ -102,9 +102,9 @@ type AssistantToolUse struct {
 
 // ToolUseData contains the tool use info.
 type ToolUseData struct {
-	MessageID string          `json:"message_id"`
-	Content   string          `json:"content"`
-	ToolUses  []ToolUseEntry  `json:"tool_uses"`
+	MessageID string         `json:"message_id"`
+	Content   string         `json:"content"`
+	ToolUses  []ToolUseEntry `json:"tool_uses"`
 }
 
 // ToolUseEntry is a single tool invocation.
@@ -116,9 +116,9 @@ type ToolUseEntry struct {
 
 // RequestMetadata holds timing and context info for a request.
 type RequestMetadata struct {
-	ContextUsagePercentage   float64 `json:"context_usage_percentage"`
-	RequestStartTimestampMs  int64   `json:"request_start_timestamp_ms"`
-	StreamEndTimestampMs     int64   `json:"stream_end_timestamp_ms"`
+	ContextUsagePercentage  float64 `json:"context_usage_percentage"`
+	RequestStartTimestampMs int64   `json:"request_start_timestamp_ms"`
+	StreamEndTimestampMs    int64   `json:"stream_end_timestamp_ms"`
 }
 
 // ModelInfo holds model configuration.

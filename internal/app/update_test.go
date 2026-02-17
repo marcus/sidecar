@@ -21,9 +21,9 @@ func TestIsGlobalRefreshContext(t *testing.T) {
 
 		// Contexts where 'r' should be forwarded to plugin
 		// (text input or plugin-specific 'r' binding)
-		{"td-monitor", false},           // 'r' for mark-review
-		{"file-browser-tree", false},    // 'r' for rename
-		{"file-browser-search", false},  // text input
+		{"td-monitor", false},                  // 'r' for mark-review
+		{"file-browser-tree", false},           // 'r' for rename
+		{"file-browser-search", false},         // text input
 		{"file-browser-content-search", false}, // text input
 		{"file-browser-quick-open", false},     // text input
 		{"file-browser-file-op", false},        // text input

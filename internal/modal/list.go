@@ -240,4 +240,3 @@ func (s *listSection) Update(msg tea.Msg, focusID string) (string, tea.Cmd) {
 
 	return "", nil
 }
-

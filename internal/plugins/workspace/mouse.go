@@ -142,6 +142,11 @@ func (p *Plugin) handleCreateModalMouse(msg tea.MouseMsg) tea.Cmd {
 		p.createSkipPermissions = !p.createSkipPermissions
 		p.syncCreateModalFocus()
 		return nil
+	case createPlanModeID:
+		p.createFocus = 6
+		p.createPlanMode = !p.createPlanMode
+		p.syncCreateModalFocus()
+		return nil
 	}
 
 	if idx, ok := parseIndexedID(createBranchItemPrefix, action); ok && idx < len(p.branchFiltered) {
@@ -523,7 +528,7 @@ func (p *Plugin) handleMouseClick(action mouse.MouseAction) tea.Cmd {
 						p.previewOffset = 0
 						p.autoScrollOutput = true
 						p.resetScrollBaseLineCount() // td-f7c8be: clear snapshot for new selection
-						p.taskLoading = false // Reset task loading on selection change (td-3668584f)
+						p.taskLoading = false        // Reset task loading on selection change (td-3668584f)
 						// Exit interactive mode when switching selection (td-fc758e88)
 						p.exitInteractiveMode()
 						p.saveSelectionState()
@@ -539,7 +544,7 @@ func (p *Plugin) handleMouseClick(action mouse.MouseAction) tea.Cmd {
 					p.previewOffset = 0
 					p.autoScrollOutput = true
 					p.resetScrollBaseLineCount() // td-f7c8be: clear snapshot for new selection
-					p.taskLoading = false // Reset task loading on selection change (td-3668584f)
+					p.taskLoading = false        // Reset task loading on selection change (td-3668584f)
 					// Exit interactive mode when switching selection (td-fc758e88)
 					p.exitInteractiveMode()
 					p.saveSelectionState()
@@ -870,7 +875,7 @@ func (p *Plugin) scrollPreview(delta int) tea.Cmd {
 			if p.previewOffset > 0 {
 				p.previewOffset--
 				if p.previewOffset == 0 {
-					p.autoScrollOutput = true // Resume auto-scroll when at bottom
+					p.autoScrollOutput = true    // Resume auto-scroll when at bottom
 					p.resetScrollBaseLineCount() // td-f7c8be: clear snapshot
 				}
 			}

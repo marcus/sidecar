@@ -211,4 +211,3 @@ func (r *Renderer) CacheStats() (entries int, maxEntries int) {
 func SupportedTerminals() string {
 	return "all terminals with Unicode and true color support"
 }
-

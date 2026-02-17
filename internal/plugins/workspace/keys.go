@@ -493,7 +493,7 @@ func (p *Plugin) handleListKeys(msg tea.KeyMsg) tea.Cmd {
 		if p.previewOffset > 0 {
 			p.previewOffset--
 			if p.previewOffset == 0 {
-				p.autoScrollOutput = true // Resume auto-scroll when at bottom
+				p.autoScrollOutput = true    // Resume auto-scroll when at bottom
 				p.resetScrollBaseLineCount() // td-f7c8be: clear snapshot
 			}
 		}
@@ -538,7 +538,7 @@ func (p *Plugin) handleListKeys(msg tea.KeyMsg) tea.Cmd {
 		// Go to top (oldest content) - pause auto-scroll
 		p.autoScrollOutput = false
 		p.captureScrollBaseLineCount() // td-f7c8be: prevent bounce on poll
-		p.previewOffset = math.MaxInt // Will be clamped in render
+		p.previewOffset = math.MaxInt  // Will be clamped in render
 	case "G":
 		if p.viewMode == ViewModeKanban {
 			// Kanban mode: jump cursor to bottom of current column
@@ -576,8 +576,8 @@ func (p *Plugin) handleListKeys(msg tea.KeyMsg) tea.Cmd {
 		p.typeSelectorNameInput.Prompt = ""
 		p.typeSelectorNameInput.Width = 30
 		p.typeSelectorNameInput.CharLimit = 50
-		p.typeSelectorModal = nil      // Force rebuild
-		p.typeSelectorModalWidth = 0   // Force rebuild
+		p.typeSelectorModal = nil    // Force rebuild
+		p.typeSelectorModalWidth = 0 // Force rebuild
 		return nil
 	case "D":
 		// Check if deleting a shell session
@@ -920,7 +920,7 @@ func (p *Plugin) handleListKeys(msg tea.KeyMsg) tea.Cmd {
 }
 
 // handleCreateKeys handles keys in create modal.
-// createFocus: 0=name, 1=base, 2=prompt, 3=task, 4=agent, 5=skipPerms, 6=create button, 7=cancel button
+// createFocus: 0=name, 1=base, 2=prompt, 3=task, 4=agent, 5=skipPerms, 6=planMode, 7=create button, 8=cancel button
 func (p *Plugin) handleCreateKeys(msg tea.KeyMsg) tea.Cmd {
 	p.ensureCreateModal()
 	if p.createModal == nil {
@@ -936,14 +936,14 @@ func (p *Plugin) handleCreateKeys(msg tea.KeyMsg) tea.Cmd {
 		return nil
 	case "tab":
 		p.blurCreateInputs()
-		p.createFocus = (p.createFocus + 1) % 8
+		p.createFocus = (p.createFocus + 1) % 9
 		p.normalizeCreateFocus()
 		p.focusCreateInput()
 		p.syncCreateModalFocus()
 		return nil
 	case "shift+tab":
 		p.blurCreateInputs()
-		p.createFocus = (p.createFocus + 7) % 8
+		p.createFocus = (p.createFocus + 8) % 9
 		p.normalizeCreateFocus()
 		p.focusCreateInput()
 		p.syncCreateModalFocus()
@@ -962,6 +962,10 @@ func (p *Plugin) handleCreateKeys(msg tea.KeyMsg) tea.Cmd {
 	case " ":
 		if p.createFocus == 5 {
 			p.createSkipPermissions = !p.createSkipPermissions
+			return nil
+		}
+		if p.createFocus == 6 {
+			p.createPlanMode = !p.createPlanMode
 			return nil
 		}
 	case "up":
@@ -1043,10 +1047,10 @@ func (p *Plugin) handleCreateKeys(msg tea.KeyMsg) tea.Cmd {
 			p.syncCreateModalFocus()
 			return nil
 		}
-		if p.createFocus == 6 {
+		if p.createFocus == 7 {
 			return p.validateAndCreateWorktree()
 		}
-		if p.createFocus == 7 {
+		if p.createFocus == 8 {
 			p.viewMode = ViewModeList
 			p.clearCreateModal()
 			return nil
@@ -1117,6 +1121,12 @@ func (p *Plugin) shouldShowSkipPermissions() bool {
 	return flag != ""
 }
 
+// shouldShowPlanMode returns true if the current agent type supports plan mode.
+func (p *Plugin) shouldShowPlanMode() bool {
+	_, has := PlanModeFlags[p.createAgentType]
+	return has
+}
+
 // shouldShowShellSkipPerms returns true if the selected shell agent supports skip permissions.
 // td-a902fe: Used in type selector modal when Shell is selected with an agent.
 func (p *Plugin) shouldShowShellSkipPerms() bool {
@@ -1143,7 +1153,7 @@ func (p *Plugin) blurCreateInputs() {
 }
 
 // focusCreateInput focuses the appropriate textinput based on createFocus.
-// createFocus: 0=name, 1=base, 2=prompt (no textinput), 3=task, 4+=non-inputs
+// createFocus: 0=name, 1=base, 2=prompt (no textinput), 3=task, 4+=non-inputs (agent, skipPerms, planMode, submit, cancel)
 func (p *Plugin) focusCreateInput() {
 	switch p.createFocus {
 	case 0:

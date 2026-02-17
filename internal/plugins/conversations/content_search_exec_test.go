@@ -21,14 +21,14 @@ type mockSearchAdapter struct {
 	err     error
 }
 
-func (m *mockSearchAdapter) ID() string                                  { return m.id }
-func (m *mockSearchAdapter) Name() string                                { return "Mock" }
-func (m *mockSearchAdapter) Icon() string                                { return "M" }
-func (m *mockSearchAdapter) Detect(string) (bool, error)                 { return true, nil }
-func (m *mockSearchAdapter) Capabilities() adapter.CapabilitySet         { return nil }
-func (m *mockSearchAdapter) Sessions(string) ([]adapter.Session, error)  { return nil, nil }
-func (m *mockSearchAdapter) Messages(string) ([]adapter.Message, error)  { return nil, nil }
-func (m *mockSearchAdapter) Usage(string) (*adapter.UsageStats, error)   { return nil, nil }
+func (m *mockSearchAdapter) ID() string                                 { return m.id }
+func (m *mockSearchAdapter) Name() string                               { return "Mock" }
+func (m *mockSearchAdapter) Icon() string                               { return "M" }
+func (m *mockSearchAdapter) Detect(string) (bool, error)                { return true, nil }
+func (m *mockSearchAdapter) Capabilities() adapter.CapabilitySet        { return nil }
+func (m *mockSearchAdapter) Sessions(string) ([]adapter.Session, error) { return nil, nil }
+func (m *mockSearchAdapter) Messages(string) ([]adapter.Message, error) { return nil, nil }
+func (m *mockSearchAdapter) Usage(string) (*adapter.UsageStats, error)  { return nil, nil }
 func (m *mockSearchAdapter) Watch(string) (<-chan adapter.Event, io.Closer, error) {
 	return nil, nopCloser{}, nil
 }
@@ -48,14 +48,14 @@ type mockNonSearchAdapter struct {
 	id string
 }
 
-func (m *mockNonSearchAdapter) ID() string                                  { return m.id }
-func (m *mockNonSearchAdapter) Name() string                                { return "NonSearch" }
-func (m *mockNonSearchAdapter) Icon() string                                { return "N" }
-func (m *mockNonSearchAdapter) Detect(string) (bool, error)                 { return true, nil }
-func (m *mockNonSearchAdapter) Capabilities() adapter.CapabilitySet         { return nil }
-func (m *mockNonSearchAdapter) Sessions(string) ([]adapter.Session, error)  { return nil, nil }
-func (m *mockNonSearchAdapter) Messages(string) ([]adapter.Message, error)  { return nil, nil }
-func (m *mockNonSearchAdapter) Usage(string) (*adapter.UsageStats, error)   { return nil, nil }
+func (m *mockNonSearchAdapter) ID() string                                 { return m.id }
+func (m *mockNonSearchAdapter) Name() string                               { return "NonSearch" }
+func (m *mockNonSearchAdapter) Icon() string                               { return "N" }
+func (m *mockNonSearchAdapter) Detect(string) (bool, error)                { return true, nil }
+func (m *mockNonSearchAdapter) Capabilities() adapter.CapabilitySet        { return nil }
+func (m *mockNonSearchAdapter) Sessions(string) ([]adapter.Session, error) { return nil, nil }
+func (m *mockNonSearchAdapter) Messages(string) ([]adapter.Message, error) { return nil, nil }
+func (m *mockNonSearchAdapter) Usage(string) (*adapter.UsageStats, error)  { return nil, nil }
 func (m *mockNonSearchAdapter) Watch(string) (<-chan adapter.Event, io.Closer, error) {
 	return nil, nopCloser{}, nil
 }

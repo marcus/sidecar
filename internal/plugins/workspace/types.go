@@ -23,21 +23,21 @@ var partialMouseEscapeRegex = regexp.MustCompile(`\[<\d+;\d+;\d+[Mm]?`)
 type ViewMode int
 
 const (
-	ViewModeList           ViewMode = iota // List view (default)
-	ViewModeKanban                         // Kanban board view
-	ViewModeCreate                         // New worktree modal
-	ViewModeTaskLink                       // Task link modal (for existing worktrees)
-	ViewModeMerge                          // Merge workflow modal
-	ViewModeAgentChoice                    // Agent action choice modal (attach/restart)
-	ViewModeConfirmDelete                  // Delete confirmation modal
-	ViewModeConfirmDeleteShell             // Shell delete confirmation modal
-	ViewModeCommitForMerge                 // Commit modal before merge workflow
-	ViewModePromptPicker                   // Prompt template picker modal
-	ViewModeTypeSelector                   // Type selector modal (shell vs worktree)
-	ViewModeRenameShell                    // Rename shell modal
-	ViewModeFilePicker                     // Diff file picker modal
-	ViewModeInteractive                    // Interactive mode (tmux input passthrough)
-	ViewModeFetchPR                        // Fetch remote PR modal
+	ViewModeList               ViewMode = iota // List view (default)
+	ViewModeKanban                             // Kanban board view
+	ViewModeCreate                             // New worktree modal
+	ViewModeTaskLink                           // Task link modal (for existing worktrees)
+	ViewModeMerge                              // Merge workflow modal
+	ViewModeAgentChoice                        // Agent action choice modal (attach/restart)
+	ViewModeConfirmDelete                      // Delete confirmation modal
+	ViewModeConfirmDeleteShell                 // Shell delete confirmation modal
+	ViewModeCommitForMerge                     // Commit modal before merge workflow
+	ViewModePromptPicker                       // Prompt template picker modal
+	ViewModeTypeSelector                       // Type selector modal (shell vs worktree)
+	ViewModeRenameShell                        // Rename shell modal
+	ViewModeFilePicker                         // Diff file picker modal
+	ViewModeInteractive                        // Interactive mode (tmux input passthrough)
+	ViewModeFetchPR                            // Fetch remote PR modal
 )
 
 // FocusPane represents which pane is active in the split view.
@@ -144,6 +144,11 @@ var SkipPermissionsFlags = map[AgentType]string{
 	AgentPi:       "", // No known flag
 }
 
+// PlanModeFlags maps agent types to their plan mode CLI flags.
+var PlanModeFlags = map[AgentType]string{
+	AgentClaude: "--permission-mode plan",
+}
+
 // AgentDisplayNames provides human-readable names for agent types.
 var AgentDisplayNames = map[AgentType]string{
 	AgentNone:     "None (attach only)",
@@ -235,9 +240,9 @@ type Worktree struct {
 
 // ShellSession represents a tmux shell session (not tied to a git worktree).
 type ShellSession struct {
-	Name        string    // Display name (e.g., "Shell 1")
-	TmuxName    string    // tmux session name (e.g., "sidecar-sh-project-1")
-	Agent       *Agent    // Reuses Agent struct for tmux state
+	Name        string // Display name (e.g., "Shell 1")
+	TmuxName    string // tmux session name (e.g., "sidecar-sh-project-1")
+	Agent       *Agent // Reuses Agent struct for tmux state
 	CreatedAt   time.Time
 	ChosenAgent AgentType // td-317b64: Agent type selected at creation (AgentNone for plain shell)
 	SkipPerms   bool      // td-317b64: Whether skip permissions was enabled
@@ -516,9 +521,9 @@ type validateManagedSessionsResultMsg struct {
 // Used to avoid blocking the UI thread on tmux subprocess calls (td-c2961e).
 type AsyncCaptureResultMsg struct {
 	WorkspaceName string // Worktree this capture is for
-	SessionName  string // tmux session name
-	Output       string // Captured output (empty on error)
-	Err          error  // Non-nil if capture failed
+	SessionName   string // tmux session name
+	Output        string // Captured output (empty on error)
+	Err           error  // Non-nil if capture failed
 }
 
 // AsyncShellCaptureResultMsg delivers async shell capture results.
@@ -569,4 +574,3 @@ func (c *paneIDCache) set(sessionName, paneID string) {
 		cachedAt: time.Now(),
 	}
 }
-
