@@ -2,6 +2,7 @@ package projects
 
 import (
 	"fmt"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -490,29 +491,80 @@ func (p *Plugin) ensureCursorVisible() {
 }
 
 // fetchProjects loads project data asynchronously.
+// It merges projects from config.json with auto-discovered td-initialized
+// repos found by scanning configured scanDirs (or the working directory's
+// parent if none configured).
 func (p *Plugin) fetchProjects() tea.Cmd {
 	cfg := p.ctx.Config
+	workDir := p.ctx.WorkDir
 	return func() tea.Msg {
+		// Collect unique projects keyed by absolute path
+		seen := make(map[string]bool)
 		var entries []ProjectEntry
-		for i, proj := range cfg.Projects.List {
+
+		// 1. Add projects from config.json
+		for _, proj := range cfg.Projects.List {
+			absPath, err := filepath.Abs(config.ExpandPath(proj.Path))
+			if err != nil {
+				absPath = proj.Path
+			}
+			if seen[absPath] {
+				continue
+			}
+			seen[absPath] = true
+
 			entry := ProjectEntry{
-				Name:  proj.Name,
-				Path:  proj.Path,
-				Index: i + 1,
+				Name: proj.Name,
+				Path: absPath,
 			}
 
-			// Try to open td database and fetch stats
-			db, err := monitor.OpenDB(proj.Path)
+			db, err := monitor.OpenDB(absPath)
 			if err != nil {
 				entry.HasTD = false
 			} else {
 				entry.HasTD = true
 				entry.Summary = monitor.FetchProjectSummary(db)
-				_ = monitor.CloseDB(proj.Path)
+				_ = monitor.CloseDB(absPath)
 			}
 
 			entries = append(entries, entry)
 		}
+
+		// 2. Auto-discover td-initialized repos from scan directories
+		scanDirs := cfg.Plugins.Projects.ScanDirs
+		if len(scanDirs) == 0 {
+			// Default: scan parent of working directory
+			scanDirs = []string{filepath.Dir(workDir)}
+		}
+		discovered := ScanForProjects(scanDirs, nil) // pass nil — we dedup via seen map
+		for _, d := range discovered {
+			if seen[d.Path] {
+				continue
+			}
+			seen[d.Path] = true
+
+			entry := ProjectEntry{
+				Name: d.Name,
+				Path: d.Path,
+			}
+
+			db, err := monitor.OpenDB(d.Path)
+			if err != nil {
+				entry.HasTD = false
+			} else {
+				entry.HasTD = true
+				entry.Summary = monitor.FetchProjectSummary(db)
+				_ = monitor.CloseDB(d.Path)
+			}
+
+			entries = append(entries, entry)
+		}
+
+		// Assign 1-based indices after merging
+		for i := range entries {
+			entries[i].Index = i + 1
+		}
+
 		return refreshDataMsg{entries: entries}
 	}
 }
