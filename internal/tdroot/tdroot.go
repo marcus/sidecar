@@ -1,5 +1,3 @@
-// Package tdroot provides utilities for resolving td's root directory and database paths.
-// It handles the .td-root file mechanism used to share a td database across git worktrees.
 package tdroot
 
 import (
