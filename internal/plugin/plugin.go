@@ -25,6 +25,17 @@ type TextInputConsumer interface {
 	ConsumesTextInput() bool
 }
 
+// WorkspaceContextProvider is an optional capability for plugins that manage
+// workspace/worktree selection. When the user navigates away from such a plugin,
+// the app layer checks if the selected workspace differs from the current WorkDir
+// and switches context accordingly. This ensures that other plugins (e.g., git status)
+// show the state of the workspace the user was just looking at.
+type WorkspaceContextProvider interface {
+	// SelectedWorkDir returns the absolute path of the currently selected workspace,
+	// or empty string if no workspace is selected or the selection matches the current context.
+	SelectedWorkDir() string
+}
+
 // Category represents a logical grouping of commands for the command palette.
 type Category string
 
