@@ -297,6 +297,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Switch to requested plugin
 		return m, m.FocusPluginByID(msg.PluginID)
 
+	case SwitchProjectMsg:
+		// Switch to the requested project (from projects dashboard plugin)
+		return m, m.switchProject(msg.ProjectPath)
+
 	case SwitchWorktreeMsg:
 		// Switch to the requested worktree
 		return m, m.switchWorktree(msg.WorktreePath)

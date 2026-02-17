@@ -71,3 +71,5 @@ require (
 	modernc.org/mathutil v1.7.1 // indirect
 	modernc.org/memory v1.11.0 // indirect
 )
+
+replace github.com/marcus/td => github.com/croakingtoad/td v0.37.1-0.20260217213404-d67f9e55ea2a

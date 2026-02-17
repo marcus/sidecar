@@ -212,6 +212,19 @@ func updateSpinnerTick() tea.Cmd {
 	})
 }
 
+// SwitchProjectMsg requests switching to a different project by path.
+// Used by the projects dashboard plugin for cross-plugin project switching.
+type SwitchProjectMsg struct {
+	ProjectPath string
+}
+
+// SwitchProject returns a command that requests switching to a project by path.
+func SwitchProject(path string) tea.Cmd {
+	return func() tea.Msg {
+		return SwitchProjectMsg{ProjectPath: path}
+	}
+}
+
 // SwitchToMainWorktreeMsg requests switching to the main worktree.
 // Sent when the current WorkDir (a worktree) has been deleted and sidecar
 // should gracefully switch to the main repository.

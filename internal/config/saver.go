@@ -27,7 +27,14 @@ type savePluginsConfig struct {
 	GitStatus     saveGitStatusConfig     `json:"git-status,omitempty"`
 	TDMonitor     saveTDMonitorConfig     `json:"td-monitor,omitempty"`
 	Conversations saveConversationsConfig `json:"conversations,omitempty"`
-	Workspace     saveWorkspaceConfig      `json:"workspace,omitempty"`
+	Workspace     saveWorkspaceConfig     `json:"workspace,omitempty"`
+	Projects      saveProjectsPluginConfig `json:"projects-dashboard,omitempty"`
+}
+
+type saveProjectsPluginConfig struct {
+	Enabled         *bool    `json:"enabled,omitempty"`
+	RefreshInterval string   `json:"refreshInterval,omitempty"`
+	ScanDirs        []string `json:"scanDirs,omitempty"`
 }
 
 type saveGitStatusConfig struct {
@@ -84,6 +91,11 @@ func toSaveConfig(cfg *Config) saveConfig {
 				InteractiveAttachKey: cfg.Plugins.Workspace.InteractiveAttachKey,
 				InteractiveCopyKey:   cfg.Plugins.Workspace.InteractiveCopyKey,
 				InteractivePasteKey:  cfg.Plugins.Workspace.InteractivePasteKey,
+			},
+			Projects: saveProjectsPluginConfig{
+				Enabled:         &cfg.Plugins.Projects.Enabled,
+				RefreshInterval: cfg.Plugins.Projects.RefreshInterval.String(),
+				ScanDirs:        cfg.Plugins.Projects.ScanDirs,
 			},
 		},
 		Keymap:   cfg.Keymap,
