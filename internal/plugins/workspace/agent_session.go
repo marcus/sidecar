@@ -105,6 +105,8 @@ func detectAgentSessionStatus(agentType AgentType, worktreePath string) (Worktre
 		return detectCursorSessionStatus(worktreePath)
 	case AgentPi:
 		return detectPiSessionStatus(worktreePath)
+	case AgentAmp:
+		return detectAmpSessionStatus(worktreePath)
 	default:
 		return 0, false
 	}
@@ -365,6 +367,199 @@ func getPiLastMessageStatus(path string) (WorktreeStatus, bool) {
 			if role == "user" || role == "assistant" {
 				lastRole = role
 			}
+		}
+	}
+
+	switch lastRole {
+	case "user":
+		return StatusActive, true // Agent is processing user message
+	case "assistant":
+		return StatusWaiting, true // Agent finished, waiting for input
+	default:
+		return 0, false
+	}
+}
+
+// detectAmpSessionStatus checks Amp thread files using mtime + JSON fallback.
+// Amp stores threads in ~/.local/share/amp/threads/T-{uuid}.json
+// Each thread has an Env.Initial.Trees[] field with file:// URIs to match worktree path.
+func detectAmpSessionStatus(worktreePath string) (WorktreeStatus, bool) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return 0, false
+	}
+
+	absPath, err := filepath.Abs(worktreePath)
+	if err != nil {
+		return 0, false
+	}
+
+	threadsDir := filepath.Join(home, ".local", "share", "amp", "threads")
+
+	// Find thread files matching the worktree path
+	threadFile, err := findAmpThreadForPath(threadsDir, absPath)
+	if err != nil || threadFile == "" {
+		return 0, false
+	}
+
+	// Fast path: recently modified file means agent is active
+	if isFileRecentlyModified(threadFile, sessionActivityThreshold) {
+		slog.Debug("amp session: active (mtime)", "file", filepath.Base(threadFile))
+		return StatusActive, true
+	}
+
+	// Slow path: parse JSON to check last message role
+	return getAmpLastMessageStatus(threadFile)
+}
+
+// findAmpThreadForPath finds the most recent Amp thread file matching the worktree path.
+// Amp threads contain Env.Initial.Trees[].URI as file:// URIs.
+// Performance: checks mtime first, then uses limited JSON reads to avoid loading large files.
+func findAmpThreadForPath(threadsDir, worktreePath string) (string, error) {
+	entries, err := os.ReadDir(threadsDir)
+	if err != nil {
+		return "", err
+	}
+
+	type candidate struct {
+		path    string
+		modTime int64
+	}
+	var candidates []candidate
+
+	// First pass: collect T-*.json files with their mtimes (no file reads yet)
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasPrefix(e.Name(), "T-") || !strings.HasSuffix(e.Name(), ".json") {
+			continue
+		}
+
+		info, err := e.Info()
+		if err != nil {
+			continue
+		}
+
+		candidates = append(candidates, candidate{
+			path:    filepath.Join(threadsDir, e.Name()),
+			modTime: info.ModTime().UnixNano(),
+		})
+	}
+
+	// Sort by mtime descending (most recent first)
+	sort.Slice(candidates, func(i, j int) bool {
+		return candidates[i].modTime > candidates[j].modTime
+	})
+
+	// Second pass: check path match starting from most recent
+	// This minimizes file reads - usually the most recent file is the one we want
+	for _, c := range candidates {
+		if ampThreadMatchesPath(c.path, worktreePath) {
+			return c.path, nil
+		}
+	}
+
+	return "", nil
+}
+
+// ampThreadMatchesPath checks if an Amp thread file references the given worktree path.
+// Reads the tail of the file where the env field resides (env is after messages in Amp JSON).
+func ampThreadMatchesPath(threadPath, worktreePath string) bool {
+	file, err := os.Open(threadPath)
+	if err != nil {
+		return false
+	}
+	defer func() { _ = file.Close() }()
+
+	info, err := file.Stat()
+	if err != nil {
+		return false
+	}
+
+	// Env field is at the end of Amp thread files (after messages array)
+	// Read last 8KB which should contain the env section
+	const tailBytes = 8 * 1024
+	start := int64(0)
+	if info.Size() > tailBytes {
+		start = info.Size() - tailBytes
+	}
+	if _, err := file.Seek(start, io.SeekStart); err != nil {
+		return false
+	}
+
+	data, err := io.ReadAll(file)
+	if err != nil {
+		return false
+	}
+
+	var thread struct {
+		Env *struct {
+			Initial *struct {
+				Trees []struct {
+					URI string `json:"uri"`
+				} `json:"trees"`
+			} `json:"initial"`
+		} `json:"env"`
+	}
+	if err := json.Unmarshal(data, &thread); err != nil {
+		return false
+	}
+
+	if thread.Env == nil || thread.Env.Initial == nil {
+		return false
+	}
+
+	for _, tree := range thread.Env.Initial.Trees {
+		// URI is file:// format, strip the prefix to get path
+		treePath := strings.TrimPrefix(tree.URI, "file://")
+		if cwdMatches(treePath, worktreePath) {
+			return true
+		}
+	}
+	return false
+}
+
+// getAmpLastMessageStatus parses an Amp thread JSON file to determine status from last message role.
+// Only reads the tail of the file since we only need the last messages array entries.
+func getAmpLastMessageStatus(path string) (WorktreeStatus, bool) {
+	file, err := os.Open(path)
+	if err != nil {
+		return 0, false
+	}
+	defer func() { _ = file.Close() }()
+
+	info, err := file.Stat()
+	if err != nil {
+		return 0, false
+	}
+
+	// Read only last 32KB where the end of messages array typically resides
+	const tailBytes = 32 * 1024
+	start := int64(0)
+	if info.Size() > tailBytes {
+		start = info.Size() - tailBytes
+	}
+	if _, err := file.Seek(start, io.SeekStart); err != nil {
+		return 0, false
+	}
+
+	data, err := io.ReadAll(file)
+	if err != nil {
+		return 0, false
+	}
+
+	var thread struct {
+		Messages []struct {
+			Role string `json:"role"`
+		} `json:"messages"`
+	}
+	if err := json.Unmarshal(data, &thread); err != nil {
+		return 0, false
+	}
+
+	// Find last user/assistant message
+	var lastRole string
+	for _, msg := range thread.Messages {
+		if msg.Role == "user" || msg.Role == "assistant" {
+			lastRole = msg.Role
 		}
 	}
 

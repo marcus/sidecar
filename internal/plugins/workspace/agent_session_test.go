@@ -597,3 +597,162 @@ func TestDetectCodexSessionStatus_StaleUser(t *testing.T) {
 		t.Errorf("got %v, want StatusActive (stale mtime, last entry user = thinking)", status)
 	}
 }
+
+// setupAmpTestDir creates a temp HOME with Amp threads directory structure.
+// Amp stores threads in ~/.local/share/amp/threads/T-{uuid}.json
+func setupAmpTestDir(t *testing.T) (tmpHome, threadsDir string) {
+	t.Helper()
+	tmpHome = t.TempDir()
+	t.Setenv("HOME", tmpHome)
+
+	threadsDir = filepath.Join(tmpHome, ".local", "share", "amp", "threads")
+	if err := os.MkdirAll(threadsDir, 0755); err != nil {
+		t.Fatalf("failed to create threads dir: %v", err)
+	}
+	return
+}
+
+// writeAmpThread writes an Amp thread JSON file with the given worktree URI and messages.
+func writeAmpThread(t *testing.T, threadsDir, filename, worktreeURI string, messages string, age time.Duration) string {
+	t.Helper()
+	content := `{"v":1,"id":"T-test","created":1700000000000,"messages":[` + messages + `],"env":{"initial":{"trees":[{"displayName":"project","uri":"` + worktreeURI + `"}]}}}`
+	return writeSessionFile(t, threadsDir, filename, content, age)
+}
+
+func TestDetectAmpSessionStatus_MtimeActive(t *testing.T) {
+	_, threadsDir := setupAmpTestDir(t)
+
+	// Thread file just written (mtime is now) → should be active
+	writeAmpThread(t, threadsDir, "T-abc123.json",
+		"file:///test/project",
+		`{"role":"assistant","messageId":1,"content":[{"type":"text","text":"Done!"}]}`,
+		0)
+
+	status, ok := detectAmpSessionStatus("/test/project")
+	if !ok {
+		t.Fatal("expected ok=true")
+	}
+	if status != StatusActive {
+		t.Errorf("got %v, want StatusActive (file just written)", status)
+	}
+}
+
+func TestDetectAmpSessionStatus_MtimeStaleAssistant(t *testing.T) {
+	_, threadsDir := setupAmpTestDir(t)
+
+	// Thread file old + last message assistant → waiting
+	writeAmpThread(t, threadsDir, "T-abc123.json",
+		"file:///test/project",
+		`{"role":"user","messageId":0,"content":[{"type":"text","text":"hello"}]},{"role":"assistant","messageId":1,"content":[{"type":"text","text":"Done!"}]}`,
+		2*time.Minute)
+
+	status, ok := detectAmpSessionStatus("/test/project")
+	if !ok {
+		t.Fatal("expected ok=true")
+	}
+	if status != StatusWaiting {
+		t.Errorf("got %v, want StatusWaiting (stale file, last message assistant)", status)
+	}
+}
+
+func TestDetectAmpSessionStatus_MtimeStaleUser(t *testing.T) {
+	_, threadsDir := setupAmpTestDir(t)
+
+	// Thread file old + last message user → active (agent is thinking)
+	writeAmpThread(t, threadsDir, "T-abc123.json",
+		"file:///test/project",
+		`{"role":"assistant","messageId":0,"content":[{"type":"text","text":"Hi"}]},{"role":"user","messageId":1,"content":[{"type":"text","text":"do something"}]}`,
+		2*time.Minute)
+
+	status, ok := detectAmpSessionStatus("/test/project")
+	if !ok {
+		t.Fatal("expected ok=true")
+	}
+	if status != StatusActive {
+		t.Errorf("got %v, want StatusActive (stale file, last message user = thinking)", status)
+	}
+}
+
+func TestDetectAmpSessionStatus_NoThread(t *testing.T) {
+	setupAmpTestDir(t)
+	// No thread files created
+
+	_, ok := detectAmpSessionStatus("/test/project")
+	if ok {
+		t.Error("expected ok=false when no thread files exist")
+	}
+}
+
+func TestDetectAmpSessionStatus_NonexistentPath(t *testing.T) {
+	_, ok := detectAmpSessionStatus("/nonexistent/path")
+	if ok {
+		t.Error("expected ok=false for nonexistent path")
+	}
+}
+
+func TestDetectAmpSessionStatus_NoMatchingTree(t *testing.T) {
+	_, threadsDir := setupAmpTestDir(t)
+
+	// Thread with different worktree path
+	writeAmpThread(t, threadsDir, "T-abc123.json",
+		"file:///other/project",
+		`{"role":"assistant","messageId":0,"content":[{"type":"text","text":"Done!"}]}`,
+		0)
+
+	_, ok := detectAmpSessionStatus("/test/project")
+	if ok {
+		t.Error("expected ok=false when no thread matches worktree path")
+	}
+}
+
+func TestDetectAmpSessionStatus_MostRecentThread(t *testing.T) {
+	_, threadsDir := setupAmpTestDir(t)
+
+	// Older thread: last message user → would be active
+	writeAmpThread(t, threadsDir, "T-old.json",
+		"file:///test/project",
+		`{"role":"user","messageId":0,"content":[{"type":"text","text":"do it"}]}`,
+		5*time.Minute)
+
+	// Newer thread: last message assistant → should be waiting (this one wins)
+	writeAmpThread(t, threadsDir, "T-new.json",
+		"file:///test/project",
+		`{"role":"user","messageId":0,"content":[{"type":"text","text":"hello"}]},{"role":"assistant","messageId":1,"content":[{"type":"text","text":"Done!"}]}`,
+		2*time.Minute)
+
+	status, ok := detectAmpSessionStatus("/test/project")
+	if !ok {
+		t.Fatal("expected ok=true")
+	}
+	if status != StatusWaiting {
+		t.Errorf("got %v, want StatusWaiting (most recent thread has last message assistant)", status)
+	}
+}
+
+func TestAmpThreadMatchesPath(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Thread with matching path
+	content := `{"v":1,"id":"T-test","messages":[],"env":{"initial":{"trees":[{"uri":"file:///test/project"}]}}}`
+	path := filepath.Join(tmpDir, "T-test.json")
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	if !ampThreadMatchesPath(path, "/test/project") {
+		t.Error("expected match for exact path")
+	}
+	if ampThreadMatchesPath(path, "/other/project") {
+		t.Error("expected no match for different path")
+	}
+
+	// Thread with no env
+	noEnvContent := `{"v":1,"id":"T-noenv","messages":[]}`
+	noEnvPath := filepath.Join(tmpDir, "T-noenv.json")
+	if err := os.WriteFile(noEnvPath, []byte(noEnvContent), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if ampThreadMatchesPath(noEnvPath, "/test/project") {
+		t.Error("expected no match for thread without env")
+	}
+}

@@ -506,6 +506,15 @@ SIDECAR_PROMPT_EOF
 )"
 rm -f %q
 `, shellSetup, baseCmd, prompt, launcherFile)
+	case AgentAmp:
+		// amp requires piping via stdin, does not accept positional args
+		script = fmt.Sprintf(`#!/bin/bash
+%s
+cat <<'SIDECAR_PROMPT_EOF' | %s
+%s
+SIDECAR_PROMPT_EOF
+rm -f %q
+`, shellSetup, baseCmd, prompt, launcherFile)
 	default:
 		// Most agents (claude, codex, gemini, cursor) take prompt as positional argument
 		script = fmt.Sprintf(`#!/bin/bash

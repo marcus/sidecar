@@ -129,6 +129,7 @@ const (
 	AgentCursor   AgentType = "cursor"   // Cursor Agent
 	AgentOpenCode AgentType = "opencode" // OpenCode
 	AgentPi       AgentType = "pi"       // Pi Agent
+	AgentAmp      AgentType = "amp"      // Amp
 	AgentCustom   AgentType = "custom"   // Custom command
 	AgentShell    AgentType = "shell"    // Project shell (not an AI agent)
 )
@@ -142,6 +143,7 @@ var SkipPermissionsFlags = map[AgentType]string{
 	AgentCursor:   "-f",
 	AgentOpenCode: "", // No known flag
 	AgentPi:       "", // No known flag
+	AgentAmp:      "--dangerously-allow-all",
 }
 
 // AgentDisplayNames provides human-readable names for agent types.
@@ -153,6 +155,7 @@ var AgentDisplayNames = map[AgentType]string{
 	AgentCursor:   "Cursor Agent",
 	AgentOpenCode: "OpenCode",
 	AgentPi:       "Pi Agent",
+	AgentAmp:      "Amp",
 	AgentShell:    "Project Shell",
 }
 
@@ -165,6 +168,7 @@ var shellAgentAbbreviations = map[AgentType]string{
 	AgentCursor:   "Cursor",
 	AgentOpenCode: "OpenCode",
 	AgentPi:       "Pi",
+	AgentAmp:      "Amp",
 }
 
 // AgentCommands maps agent types to their CLI commands.
@@ -176,6 +180,7 @@ var AgentCommands = map[AgentType]string{
 	AgentCursor:   "cursor-agent",
 	AgentOpenCode: "opencode",
 	AgentPi:       "pi",
+	AgentAmp:      "amp",
 }
 
 // AgentTypeOrder defines the order of agents in selection UI.
@@ -186,6 +191,7 @@ var AgentTypeOrder = []AgentType{
 	AgentCursor,
 	AgentOpenCode,
 	AgentPi,
+	AgentAmp,
 	AgentNone,
 }
 
@@ -199,6 +205,7 @@ var ShellAgentOrder = []AgentType{
 	AgentCursor,
 	AgentOpenCode,
 	AgentPi,
+	AgentAmp,
 }
 
 // kanbanCardData stores column and row for Kanban card hit regions.
