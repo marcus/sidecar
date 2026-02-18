@@ -396,9 +396,9 @@ func detectAmpSessionStatus(worktreePath string) (WorktreeStatus, bool) {
 
 	threadsDir := filepath.Join(home, ".local", "share", "amp", "threads")
 
-	// Find thread files matching the worktree path
-	threadFile, err := findAmpThreadForPath(threadsDir, absPath)
-	if err != nil || threadFile == "" {
+	// Find thread files matching the worktree path and get last message status
+	threadFile, status, ok := findAmpThreadForPath(threadsDir, absPath)
+	if !ok || threadFile == "" {
 		return 0, false
 	}
 
@@ -408,17 +408,18 @@ func detectAmpSessionStatus(worktreePath string) (WorktreeStatus, bool) {
 		return StatusActive, true
 	}
 
-	// Slow path: parse JSON to check last message role
-	return getAmpLastMessageStatus(threadFile)
+	// Slow path: return the status we already parsed from JSON
+	return status, true
 }
 
 // findAmpThreadForPath finds the most recent Amp thread file matching the worktree path.
 // Amp threads contain Env.Initial.Trees[].URI as file:// URIs.
-// Performance: checks mtime first, then uses limited JSON reads to avoid loading large files.
-func findAmpThreadForPath(threadsDir, worktreePath string) (string, error) {
+// Returns the thread file path, the parsed status, and true if found.
+// This combines path matching and status extraction to avoid reading files twice.
+func findAmpThreadForPath(threadsDir, worktreePath string) (string, WorktreeStatus, bool) {
 	entries, err := os.ReadDir(threadsDir)
 	if err != nil {
-		return "", err
+		return "", 0, false
 	}
 
 	type candidate struct {
@@ -449,23 +450,24 @@ func findAmpThreadForPath(threadsDir, worktreePath string) (string, error) {
 		return candidates[i].modTime > candidates[j].modTime
 	})
 
-	// Second pass: check path match starting from most recent
+	// Second pass: check path match and extract status starting from most recent
 	// This minimizes file reads - usually the most recent file is the one we want
 	for _, c := range candidates {
-		if ampThreadMatchesPath(c.path, worktreePath) {
-			return c.path, nil
+		if status, ok := getAmpThreadStatus(c.path, worktreePath); ok {
+			return c.path, status, true
 		}
 	}
 
-	return "", nil
+	return "", 0, false
 }
 
-// ampThreadMatchesPath checks if an Amp thread file references the given worktree path.
-// Reads the full file to parse the JSON.
-func ampThreadMatchesPath(threadPath, worktreePath string) bool {
+// getAmpThreadStatus checks if an Amp thread file matches the worktree path and returns
+// the status from the last message. This combines path matching and status extraction
+// into a single file read to avoid reading the file twice.
+func getAmpThreadStatus(threadPath, worktreePath string) (WorktreeStatus, bool) {
 	data, err := os.ReadFile(threadPath)
 	if err != nil {
-		return false
+		return 0, false
 	}
 
 	var thread struct {
@@ -476,39 +478,29 @@ func ampThreadMatchesPath(threadPath, worktreePath string) bool {
 				} `json:"trees"`
 			} `json:"initial"`
 		} `json:"env"`
-	}
-	if err := json.Unmarshal(data, &thread); err != nil {
-		return false
-	}
-
-	if thread.Env == nil || thread.Env.Initial == nil {
-		return false
-	}
-
-	for _, tree := range thread.Env.Initial.Trees {
-		// URI is file:// format, strip the prefix to get path
-		treePath := strings.TrimPrefix(tree.URI, "file://")
-		if cwdMatches(treePath, worktreePath) {
-			return true
-		}
-	}
-	return false
-}
-
-// getAmpLastMessageStatus parses an Amp thread JSON file to determine status from last message role.
-// Reads the full file to parse the JSON.
-func getAmpLastMessageStatus(path string) (WorktreeStatus, bool) {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return 0, false
-	}
-
-	var thread struct {
 		Messages []struct {
 			Role string `json:"role"`
 		} `json:"messages"`
 	}
 	if err := json.Unmarshal(data, &thread); err != nil {
+		return 0, false
+	}
+
+	// Check if worktree path matches
+	if thread.Env == nil || thread.Env.Initial == nil {
+		return 0, false
+	}
+
+	pathMatches := false
+	for _, tree := range thread.Env.Initial.Trees {
+		treePath := strings.TrimPrefix(tree.URI, "file://")
+		if cwdMatches(treePath, worktreePath) {
+			pathMatches = true
+			break
+		}
+	}
+
+	if !pathMatches {
 		return 0, false
 	}
 
@@ -522,11 +514,12 @@ func getAmpLastMessageStatus(path string) (WorktreeStatus, bool) {
 
 	switch lastRole {
 	case "user":
-		return StatusActive, true // Agent is processing user message
+		return StatusActive, true
 	case "assistant":
-		return StatusWaiting, true // Agent finished, waiting for input
+		return StatusWaiting, true
 	default:
-		return 0, false
+		// Path matches but no messages yet - still a valid thread
+		return 0, true
 	}
 }
 

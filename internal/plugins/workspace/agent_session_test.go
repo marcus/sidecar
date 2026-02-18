@@ -739,10 +739,12 @@ func TestAmpThreadMatchesPath(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if !ampThreadMatchesPath(path, "/test/project") {
+	_, ok := getAmpThreadStatus(path, "/test/project")
+	if !ok {
 		t.Error("expected match for exact path")
 	}
-	if ampThreadMatchesPath(path, "/other/project") {
+	_, ok = getAmpThreadStatus(path, "/other/project")
+	if ok {
 		t.Error("expected no match for different path")
 	}
 
@@ -752,7 +754,8 @@ func TestAmpThreadMatchesPath(t *testing.T) {
 	if err := os.WriteFile(noEnvPath, []byte(noEnvContent), 0644); err != nil {
 		t.Fatal(err)
 	}
-	if ampThreadMatchesPath(noEnvPath, "/test/project") {
+	_, ok = getAmpThreadStatus(noEnvPath, "/test/project")
+	if ok {
 		t.Error("expected no match for thread without env")
 	}
 }
