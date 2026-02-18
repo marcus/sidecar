@@ -61,6 +61,7 @@ type PluginsConfig struct {
 	Conversations ConversationsPluginConfig `json:"conversations"`
 	Workspace     WorkspacePluginConfig     `json:"workspace"`
 	Notes         NotesPluginConfig         `json:"notes"`
+	Run           RunPluginConfig           `json:"run"`
 }
 
 // GitStatusPluginConfig configures the git status plugin.
@@ -113,6 +114,18 @@ type NotesPluginConfig struct {
 	// Values: "builtin" (default), "vim", "nvim", or any $EDITOR value.
 	// When set to "vim"/"nvim", Enter opens the note in inline vim instead of built-in editor.
 	DefaultEditor string `json:"defaultEditor,omitempty"`
+}
+
+// RunPluginConfig configures the run plugin.
+type RunPluginConfig struct {
+	Commands []RunCommandConfig `json:"commands,omitempty"` // Manual commands
+}
+
+// RunCommandConfig represents a manually configured run command.
+type RunCommandConfig struct {
+	Name    string `json:"name"`            // Display name
+	Command string `json:"command"`         // Shell command to execute
+	Group   string `json:"group,omitempty"` // Optional grouping (e.g., "docker", "npm")
 }
 
 // KeymapConfig holds key binding overrides.
