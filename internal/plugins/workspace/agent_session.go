@@ -461,31 +461,9 @@ func findAmpThreadForPath(threadsDir, worktreePath string) (string, error) {
 }
 
 // ampThreadMatchesPath checks if an Amp thread file references the given worktree path.
-// Reads the tail of the file where the env field resides (env is after messages in Amp JSON).
+// Reads the full file to parse the JSON.
 func ampThreadMatchesPath(threadPath, worktreePath string) bool {
-	file, err := os.Open(threadPath)
-	if err != nil {
-		return false
-	}
-	defer func() { _ = file.Close() }()
-
-	info, err := file.Stat()
-	if err != nil {
-		return false
-	}
-
-	// Env field is at the end of Amp thread files (after messages array)
-	// Read last 8KB which should contain the env section
-	const tailBytes = 8 * 1024
-	start := int64(0)
-	if info.Size() > tailBytes {
-		start = info.Size() - tailBytes
-	}
-	if _, err := file.Seek(start, io.SeekStart); err != nil {
-		return false
-	}
-
-	data, err := io.ReadAll(file)
+	data, err := os.ReadFile(threadPath)
 	if err != nil {
 		return false
 	}
@@ -518,30 +496,9 @@ func ampThreadMatchesPath(threadPath, worktreePath string) bool {
 }
 
 // getAmpLastMessageStatus parses an Amp thread JSON file to determine status from last message role.
-// Only reads the tail of the file since we only need the last messages array entries.
+// Reads the full file to parse the JSON.
 func getAmpLastMessageStatus(path string) (WorktreeStatus, bool) {
-	file, err := os.Open(path)
-	if err != nil {
-		return 0, false
-	}
-	defer func() { _ = file.Close() }()
-
-	info, err := file.Stat()
-	if err != nil {
-		return 0, false
-	}
-
-	// Read only last 32KB where the end of messages array typically resides
-	const tailBytes = 32 * 1024
-	start := int64(0)
-	if info.Size() > tailBytes {
-		start = info.Size() - tailBytes
-	}
-	if _, err := file.Seek(start, io.SeekStart); err != nil {
-		return 0, false
-	}
-
-	data, err := io.ReadAll(file)
+	data, err := os.ReadFile(path)
 	if err != nil {
 		return 0, false
 	}
