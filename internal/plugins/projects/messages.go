@@ -30,4 +30,9 @@ type ProjectEntry struct {
 	Summary monitor.ProjectSummary
 	HasTD   bool
 	Index   int // 1-based display number
+
+	// AI session stats (from conversation adapters)
+	SessionCount int
+	TotalTokens  int
+	EstCost      float64
 }

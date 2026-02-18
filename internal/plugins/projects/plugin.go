@@ -8,8 +8,10 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/marcus/sidecar/internal/adapter"
 	"github.com/marcus/sidecar/internal/app"
 	"github.com/marcus/sidecar/internal/config"
+	"github.com/marcus/sidecar/internal/mouse"
 	"github.com/marcus/sidecar/internal/plugin"
 	"github.com/marcus/sidecar/internal/styles"
 	"github.com/marcus/td/pkg/monitor"
@@ -21,6 +23,9 @@ const (
 	pluginIcon = "P"
 
 	pollInterval = 5 * time.Second
+
+	// Mouse hit region IDs
+	regionProjectRow = "project-row"
 )
 
 // Plugin displays a dashboard of all configured projects with their td stats.
@@ -45,11 +50,16 @@ type Plugin struct {
 	scanResults []ScanResult
 	showScan    bool
 	scanCursor  int
+
+	// Mouse handling
+	mouseHandler *mouse.Handler
 }
 
 // New creates a new Projects Dashboard plugin.
 func New() *Plugin {
-	return &Plugin{}
+	return &Plugin{
+		mouseHandler: mouse.NewHandler(),
+	}
 }
 
 // ID returns the plugin identifier.
@@ -126,6 +136,9 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 
 	case tea.KeyMsg:
 		return p.handleKey(msg)
+
+	case tea.MouseMsg:
+		return p.handleMouse(msg)
 	}
 
 	return p, nil
@@ -234,6 +247,68 @@ func (p *Plugin) handleScanKey(msg tea.KeyMsg) (plugin.Plugin, tea.Cmd) {
 	return p, nil
 }
 
+func (p *Plugin) handleMouse(msg tea.MouseMsg) (plugin.Plugin, tea.Cmd) {
+	if p.showDetail || p.showScan {
+		return p, nil
+	}
+
+	action := p.mouseHandler.HandleMouse(msg)
+	switch action.Type {
+	case mouse.ActionClick:
+		if action.Region != nil && action.Region.ID == regionProjectRow {
+			if idx, ok := action.Region.Data.(int); ok && idx >= 0 && idx < len(p.projects) {
+				p.cursor = idx
+				p.ensureCursorVisible()
+			}
+		}
+	case mouse.ActionDoubleClick:
+		if action.Region != nil && action.Region.ID == regionProjectRow {
+			if idx, ok := action.Region.Data.(int); ok && idx >= 0 && idx < len(p.projects) {
+				p.cursor = idx
+				path := p.projects[idx].Path
+				return p, app.SwitchProject(path)
+			}
+		}
+	case mouse.ActionScrollUp:
+		if p.cursor > 0 {
+			p.cursor--
+			p.ensureCursorVisible()
+		}
+	case mouse.ActionScrollDown:
+		if p.cursor < len(p.projects)-1 {
+			p.cursor++
+			p.ensureCursorVisible()
+		}
+	}
+	return p, nil
+}
+
+func (p *Plugin) registerMouseRegions() {
+	p.mouseHandler.Clear()
+	if p.width == 0 || p.height == 0 || p.showDetail || p.showScan {
+		return
+	}
+
+	visibleRows := p.height - 4
+	if visibleRows < 1 {
+		visibleRows = 1
+	}
+
+	// Header (2 lines: header + separator), then rows start at y=2
+	yOffset := 2
+	for i := p.scroll; i < len(p.projects) && i < p.scroll+visibleRows; i++ {
+		row := i - p.scroll
+		p.mouseHandler.HitMap.AddRect(
+			regionProjectRow,
+			0,
+			yOffset+row,
+			p.width,
+			1,
+			i, // data = project index
+		)
+	}
+}
+
 // View renders the plugin.
 func (p *Plugin) View(width, height int) string {
 	p.width = width
@@ -243,6 +318,9 @@ func (p *Plugin) View(width, height int) string {
 		content := p.renderEmpty()
 		return lipgloss.NewStyle().Width(width).Height(height).MaxHeight(height).Render(content)
 	}
+
+	// Register mouse hit regions for list view
+	p.registerMouseRegions()
 
 	var content string
 	if p.showScan {
@@ -276,13 +354,13 @@ func (p *Plugin) renderList() string {
 
 	// Header row
 	headerStyle := lipgloss.NewStyle().Foreground(styles.TextMuted).Bold(true)
-	sb.WriteString(headerStyle.Render(fmt.Sprintf("  %2s  %-20s  %-8s  %4s  %4s  %4s  %4s  %s",
-		"#", "Project", "Status", "Open", "WIP", "Blkd", "Rev", "Last Activity")))
+	sb.WriteString(headerStyle.Render(fmt.Sprintf("  %2s  %-20s  %-8s  %4s  %4s  %4s  %4s  %-13s  %8s  %8s",
+		"#", "Project", "Status", "Open", "WIP", "Blkd", "Rev", "Last Activity", "Tokens", "Cost")))
 	sb.WriteString("\n")
 
 	// Separator
 	sepStyle := lipgloss.NewStyle().Foreground(styles.TextMuted)
-	sep := strings.Repeat("─", min(p.width-2, 90))
+	sep := strings.Repeat("─", min(p.width-2, 110))
 	sb.WriteString(sepStyle.Render("  " + sep))
 	sb.WriteString("\n")
 
@@ -302,7 +380,11 @@ func (p *Plugin) renderList() string {
 		// Format last activity
 		lastActivity := p.formatLastActivity(entry.Summary.LastActivity)
 
-		line := fmt.Sprintf("  %2d  %-20s  %s %-6s  %4d  %4d  %4d  %4d  %s",
+		// Format tokens and cost
+		tokens := formatTokens(entry.TotalTokens)
+		cost := formatCost(entry.EstCost)
+
+		line := fmt.Sprintf("  %2d  %-20s  %s %-6s  %4d  %4d  %4d  %4d  %-13s  %8s  %8s",
 			entry.Index,
 			truncate(entry.Name, 20),
 			lipgloss.NewStyle().Foreground(statusColor).Render("●"),
@@ -312,16 +394,20 @@ func (p *Plugin) renderList() string {
 			entry.Summary.BlockedCount,
 			entry.Summary.ReviewableCount,
 			lastActivity,
+			tokens,
+			cost,
 		)
 
 		if !entry.HasTD {
-			line = fmt.Sprintf("  %2d  %-20s  %s %-6s  %4s  %4s  %4s  %4s  %s",
+			line = fmt.Sprintf("  %2d  %-20s  %s %-6s  %4s  %4s  %4s  %4s  %-13s  %8s  %8s",
 				entry.Index,
 				truncate(entry.Name, 20),
 				lipgloss.NewStyle().Foreground(styles.TextMuted).Render("○"),
 				"no td",
 				"-", "-", "-", "-",
 				"-",
+				tokens,
+				cost,
 			)
 		}
 
@@ -393,6 +479,16 @@ func (p *Plugin) renderDetail() string {
 		}
 
 		sb.WriteString("  " + labelStyle.Render("Last Activity:") + valueStyle.Render(p.formatLastActivity(s.LastActivity)) + "\n")
+	}
+
+	// AI session stats
+	if entry.SessionCount > 0 {
+		sb.WriteString("\n")
+		labelStyle := lipgloss.NewStyle().Foreground(styles.TextMuted).Width(16)
+		valueStyle := lipgloss.NewStyle().Foreground(styles.TextPrimary)
+		sb.WriteString("  " + labelStyle.Render("Sessions:") + valueStyle.Render(fmt.Sprintf("%d", entry.SessionCount)) + "\n")
+		sb.WriteString("  " + labelStyle.Render("Tokens:") + valueStyle.Render(formatTokens(entry.TotalTokens)) + "\n")
+		sb.WriteString("  " + labelStyle.Render("Est. Cost:") + valueStyle.Render(formatCost(entry.EstCost)) + "\n")
 	}
 
 	sb.WriteString("\n")
@@ -493,6 +589,7 @@ func (p *Plugin) ensureCursorVisible() {
 func (p *Plugin) fetchProjects() tea.Cmd {
 	cfg := p.ctx.Config
 	workDir := p.ctx.WorkDir
+	adapters := p.ctx.Adapters
 	return func() tea.Msg {
 		// Collect unique projects keyed by absolute path
 		seen := make(map[string]bool)
@@ -523,6 +620,9 @@ func (p *Plugin) fetchProjects() tea.Cmd {
 				_ = monitor.CloseDB(absPath)
 			}
 
+			// Aggregate session tokens/cost from all adapters
+			aggregateSessionStats(&entry, adapters)
+
 			entries = append(entries, entry)
 		}
 
@@ -552,6 +652,9 @@ func (p *Plugin) fetchProjects() tea.Cmd {
 				entry.Summary = monitor.FetchProjectSummary(db)
 				_ = monitor.CloseDB(d.Path)
 			}
+
+			// Aggregate session tokens/cost from all adapters
+			aggregateSessionStats(&entry, adapters)
 
 			entries = append(entries, entry)
 		}
@@ -673,6 +776,44 @@ func (p *Plugin) removeProject(entry ProjectEntry) tea.Cmd {
 		},
 		p.fetchProjects(),
 	)
+}
+
+// aggregateSessionStats collects token/cost data from all adapters for a project.
+func aggregateSessionStats(entry *ProjectEntry, adapters map[string]adapter.Adapter) {
+	for _, a := range adapters {
+		sessions, err := a.Sessions(entry.Path)
+		if err != nil {
+			continue
+		}
+		for _, s := range sessions {
+			entry.SessionCount++
+			entry.TotalTokens += s.TotalTokens
+			entry.EstCost += s.EstCost
+		}
+	}
+}
+
+func formatTokens(tokens int) string {
+	if tokens == 0 {
+		return "-"
+	}
+	if tokens < 1000 {
+		return fmt.Sprintf("%d", tokens)
+	}
+	if tokens < 1_000_000 {
+		return fmt.Sprintf("%.1fK", float64(tokens)/1000)
+	}
+	return fmt.Sprintf("%.1fM", float64(tokens)/1_000_000)
+}
+
+func formatCost(cost float64) string {
+	if cost == 0 {
+		return "-"
+	}
+	if cost < 1.0 {
+		return fmt.Sprintf("$%.2f", cost)
+	}
+	return fmt.Sprintf("$%.0f", cost)
 }
 
 // IsFocused returns whether the plugin is focused.
