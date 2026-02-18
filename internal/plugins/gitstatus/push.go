@@ -27,7 +27,7 @@ func GetPushStatus(workDir string) *PushStatus {
 	status := &PushStatus{}
 
 	// Check if HEAD is detached
-	branchCmd := exec.Command("git", "branch", "--show-current")
+	branchCmd := gitReadOnly("branch", "--show-current")
 	branchCmd.Dir = workDir
 	branchOutput, err := branchCmd.Output()
 	if err != nil {
@@ -41,7 +41,7 @@ func GetPushStatus(workDir string) *PushStatus {
 	}
 
 	// Get upstream branch name
-	upstreamCmd := exec.Command("git", "rev-parse", "--abbrev-ref", "@{upstream}")
+	upstreamCmd := gitReadOnly("rev-parse", "--abbrev-ref", "@{upstream}")
 	upstreamCmd.Dir = workDir
 	upstreamOutput, err := upstreamCmd.Output()
 	if err != nil {
@@ -55,7 +55,7 @@ func GetPushStatus(workDir string) *PushStatus {
 
 	// Get ahead/behind counts
 	// Format: "X\tY" where X is behind, Y is ahead
-	countCmd := exec.Command("git", "rev-list", "--count", "--left-right", "@{upstream}...HEAD")
+	countCmd := gitReadOnly("rev-list", "--count", "--left-right", "@{upstream}...HEAD")
 	countCmd.Dir = workDir
 	countOutput, err := countCmd.Output()
 	if err == nil {
@@ -69,7 +69,7 @@ func GetPushStatus(workDir string) *PushStatus {
 	// Get unpushed commit hashes if we're ahead
 	if status.Ahead > 0 {
 		// Use upstream..HEAD to get commits that are in HEAD but not in upstream
-		logCmd := exec.Command("git", "log", "@{upstream}..HEAD", "--format=%H")
+		logCmd := gitReadOnly("log", "@{upstream}..HEAD", "--format=%H")
 		logCmd.Dir = workDir
 		logOutput, err := logCmd.Output()
 		if err == nil {
@@ -151,7 +151,7 @@ func isPushRejectedError(err error) bool {
 // GetRemoteName returns the primary remote name (usually "origin").
 // Returns empty string if no remotes are configured.
 func GetRemoteName(workDir string) string {
-	cmd := exec.Command("git", "remote")
+	cmd := gitReadOnly("remote")
 	cmd.Dir = workDir
 	output, err := cmd.Output()
 	if err != nil {
