@@ -353,14 +353,15 @@ func (p *Plugin) renderList() string {
 	var sb strings.Builder
 
 	// Header row
+	nameCol := 35
 	headerStyle := lipgloss.NewStyle().Foreground(styles.TextMuted).Bold(true)
-	sb.WriteString(headerStyle.Render(fmt.Sprintf("  %2s  %-20s  %-8s  %4s  %4s  %4s  %4s  %-13s  %8s  %8s",
-		"#", "Project", "Status", "Open", "WIP", "Blkd", "Rev", "Last Activity", "Tokens", "Cost")))
+	sb.WriteString(headerStyle.Render(fmt.Sprintf("  %2s  %-*s  %-8s  %4s  %4s  %4s  %4s  %-13s  %8s  %8s",
+		"#", nameCol, "Project", "Status", "Open", "WIP", "Blkd", "Rev", "Last Activity", "Tokens", "Cost")))
 	sb.WriteString("\n")
 
 	// Separator
 	sepStyle := lipgloss.NewStyle().Foreground(styles.TextMuted)
-	sep := strings.Repeat("─", min(p.width-2, 110))
+	sep := strings.Repeat("─", min(p.width-2, 125))
 	sb.WriteString(sepStyle.Render("  " + sep))
 	sb.WriteString("\n")
 
@@ -374,6 +375,9 @@ func (p *Plugin) renderList() string {
 		entry := p.projects[i]
 		isSelected := i == p.cursor
 
+		// Build display name: show directory in parentheses if it differs from name
+		displayName := p.projectDisplayName(entry)
+
 		// Status indicator
 		status, statusColor := p.projectStatus(entry)
 
@@ -384,9 +388,10 @@ func (p *Plugin) renderList() string {
 		tokens := formatTokens(entry.TotalTokens)
 		cost := formatCost(entry.EstCost)
 
-		line := fmt.Sprintf("  %2d  %-20s  %s %-6s  %4d  %4d  %4d  %4d  %-13s  %8s  %8s",
+		line := fmt.Sprintf("  %2d  %-*s  %s %-6s  %4d  %4d  %4d  %4d  %-13s  %8s  %8s",
 			entry.Index,
-			truncate(entry.Name, 20),
+			nameCol,
+			truncate(displayName, nameCol),
 			lipgloss.NewStyle().Foreground(statusColor).Render("●"),
 			status,
 			entry.Summary.OpenCount,
@@ -399,9 +404,10 @@ func (p *Plugin) renderList() string {
 		)
 
 		if !entry.HasTD {
-			line = fmt.Sprintf("  %2d  %-20s  %s %-6s  %4s  %4s  %4s  %4s  %-13s  %8s  %8s",
+			line = fmt.Sprintf("  %2d  %-*s  %s %-6s  %4s  %4s  %4s  %4s  %-13s  %8s  %8s",
 				entry.Index,
-				truncate(entry.Name, 20),
+				nameCol,
+				truncate(displayName, nameCol),
 				lipgloss.NewStyle().Foreground(styles.TextMuted).Render("○"),
 				"no td",
 				"-", "-", "-", "-",
@@ -427,6 +433,16 @@ func (p *Plugin) renderList() string {
 	return sb.String()
 }
 
+// projectDisplayName returns the project name, appending the directory basename
+// in parentheses when it differs from the configured name.
+func (p *Plugin) projectDisplayName(entry ProjectEntry) string {
+	dirName := filepath.Base(entry.Path)
+	if dirName == entry.Name {
+		return entry.Name
+	}
+	return fmt.Sprintf("%s (/%s/)", entry.Name, dirName)
+}
+
 func (p *Plugin) renderDetail() string {
 	entry := p.detailProject
 	if entry == nil {
@@ -440,7 +456,7 @@ func (p *Plugin) renderDetail() string {
 		Bold(true).
 		Foreground(styles.Primary).
 		Padding(1, 2)
-	sb.WriteString(titleStyle.Render(entry.Name))
+	sb.WriteString(titleStyle.Render(p.projectDisplayName(*entry)))
 	sb.WriteString("\n")
 
 	// Path
