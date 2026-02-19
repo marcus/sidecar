@@ -7,6 +7,8 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+
+	"github.com/marcus/sidecar/internal/projectdir"
 )
 
 // TicketMode defines how the task field behaves with a prompt.
@@ -39,8 +41,11 @@ func LoadPrompts(globalConfigDir, projectDir string) []Prompt {
 	// Load from global config
 	globalPrompts := loadPromptsFromDir(globalConfigDir, "global")
 
-	// Load from project config (.sidecar/ directory)
-	projectConfigDir := filepath.Join(projectDir, ".sidecar")
+	// Load from project config (centralized project directory)
+	projectConfigDir, err := projectdir.Resolve(projectDir)
+	if err != nil {
+		projectConfigDir = "" // fallback: skip project prompts
+	}
 	projectPrompts := loadPromptsFromDir(projectConfigDir, "project")
 
 	// If no prompts found, try to create defaults

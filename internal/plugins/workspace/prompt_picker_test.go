@@ -6,6 +6,8 @@ import (
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/marcus/sidecar/internal/config"
+	"github.com/marcus/sidecar/internal/projectdir"
 )
 
 func TestPromptPickerDKeyEmptyPrompts(t *testing.T) {
@@ -115,19 +117,26 @@ func TestInstallDefaultsRoundTrip(t *testing.T) {
 func TestInstallDefaultsPreservesProjectPrompts(t *testing.T) {
 	// Verify that after installing defaults, project prompts still override
 	configDir := t.TempDir()
-	projectDir := t.TempDir()
+	projectRoot := t.TempDir()
 
-	// Create project config with an override
-	sidecarDir := filepath.Join(projectDir, ".sidecar")
-	_ = os.MkdirAll(sidecarDir, 0755)
+	// Set up config path so projectdir resolves to our temp dir
+	configBase := t.TempDir()
+	config.SetTestConfigPath(filepath.Join(configBase, "config.json"))
+	t.Cleanup(config.ResetTestConfigPath)
+
+	// Resolve project dir and create project config with an override
+	projDir, err := projectdir.Resolve(projectRoot)
+	if err != nil {
+		t.Fatalf("Failed to resolve project dir: %v", err)
+	}
 	projectConfig := `{"prompts": [{"name": "Begin Work on Ticket", "body": "Custom project override"}]}`
-	_ = os.WriteFile(filepath.Join(sidecarDir, "config.json"), []byte(projectConfig), 0644)
+	_ = os.WriteFile(filepath.Join(projDir, "config.json"), []byte(projectConfig), 0644)
 
 	// Install defaults to global
 	WriteDefaultPromptsToConfig(configDir)
 
 	// Load merged prompts
-	prompts := LoadPrompts(configDir, projectDir)
+	prompts := LoadPrompts(configDir, projectRoot)
 
 	// Find "Begin Work on Ticket" - should have project body
 	for _, p := range prompts {

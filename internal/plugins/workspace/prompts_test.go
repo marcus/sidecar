@@ -5,6 +5,9 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/marcus/sidecar/internal/config"
+	"github.com/marcus/sidecar/internal/projectdir"
 )
 
 func TestExtractFallback(t *testing.T) {
@@ -142,7 +145,12 @@ func TestHasTicketPlaceholder(t *testing.T) {
 func TestLoadPrompts(t *testing.T) {
 	// Create temp directories for global and project configs
 	globalDir := t.TempDir()
-	projectDir := t.TempDir()
+	projectRoot := t.TempDir()
+
+	// Set up config path so projectdir resolves to our temp dir
+	configBase := t.TempDir()
+	config.SetTestConfigPath(filepath.Join(configBase, "config.json"))
+	t.Cleanup(config.ResetTestConfigPath)
 
 	// Create global config with prompts
 	globalConfig := `{
@@ -164,10 +172,10 @@ func TestLoadPrompts(t *testing.T) {
 		t.Fatalf("Failed to write global config: %v", err)
 	}
 
-	// Create project config (.sidecar/config.json) with prompts
-	sidecarDir := filepath.Join(projectDir, ".sidecar")
-	if err := os.MkdirAll(sidecarDir, 0755); err != nil {
-		t.Fatalf("Failed to create .sidecar dir: %v", err)
+	// Resolve project dir so we know where to write project config
+	projDir, err := projectdir.Resolve(projectRoot)
+	if err != nil {
+		t.Fatalf("Failed to resolve project dir: %v", err)
 	}
 	projectConfig := `{
   "prompts": [
@@ -183,13 +191,13 @@ func TestLoadPrompts(t *testing.T) {
     }
   ]
 }`
-	err = os.WriteFile(filepath.Join(sidecarDir, "config.json"), []byte(projectConfig), 0644)
+	err = os.WriteFile(filepath.Join(projDir, "config.json"), []byte(projectConfig), 0644)
 	if err != nil {
 		t.Fatalf("Failed to write project config: %v", err)
 	}
 
 	// Load prompts
-	prompts := LoadPrompts(globalDir, projectDir)
+	prompts := LoadPrompts(globalDir, projectRoot)
 
 	// Verify count (3 unique prompts: global-prompt, project-prompt, shared-prompt)
 	if len(prompts) != 3 {

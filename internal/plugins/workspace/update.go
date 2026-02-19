@@ -241,7 +241,7 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 		}
 		configDir := filepath.Join(home, ".config", "sidecar")
 		if WriteDefaultPromptsToConfig(configDir) {
-			p.createPrompts = LoadPrompts(configDir, p.ctx.WorkDir)
+			p.createPrompts = LoadPrompts(configDir, p.ctx.ProjectRoot)
 			p.promptPicker = NewPromptPicker(p.createPrompts, p.width, p.height)
 			p.clearPromptPickerModal()
 		} else {

@@ -13,6 +13,7 @@ import (
 	"github.com/marcus/sidecar/internal/modal"
 	"github.com/marcus/sidecar/internal/mouse"
 	"github.com/marcus/sidecar/internal/plugin"
+	"github.com/marcus/sidecar/internal/projectdir"
 	"github.com/marcus/sidecar/internal/ui"
 	"github.com/marcus/sidecar/internal/plugins/gitstatus"
 	"github.com/marcus/sidecar/internal/state"
@@ -398,8 +399,13 @@ func (p *Plugin) Init(ctx *plugin.Context) error {
 	p.stateRestored = false
 
 	// Load shell manifest for persistence (td-f88fdd)
-	manifestPath := filepath.Join(ctx.WorkDir, ".sidecar", "shells.json")
-	p.shellManifest, _ = LoadShellManifest(manifestPath)
+	projDir, err := projectdir.Resolve(ctx.ProjectRoot)
+	if err != nil {
+		p.ctx.Logger.Warn("failed to resolve project dir for manifest", "error", err)
+	} else {
+		manifestPath := filepath.Join(projDir, "shells.json")
+		p.shellManifest, _ = LoadShellManifest(manifestPath)
+	}
 
 	// Stop any previous watcher (important for project switching)
 	if p.shellWatcher != nil {
@@ -780,7 +786,7 @@ func (p *Plugin) initCreateModalBase() {
 	// Load prompts from global and project config
 	home, _ := os.UserHomeDir()
 	configDir := filepath.Join(home, ".config", "sidecar")
-	p.createPrompts = LoadPrompts(configDir, p.ctx.WorkDir)
+	p.createPrompts = LoadPrompts(configDir, p.ctx.ProjectRoot)
 	p.createPromptIdx = -1
 	p.promptPicker = nil
 	p.clearPromptPickerModal()
