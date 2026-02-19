@@ -54,6 +54,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if !m.ready {
 			// Prime worktree cache before first render
 			m.refreshWorktreeCache()
+			// Focus the initial plugin and set its context
+			if p := m.ActivePlugin(); p != nil {
+				p.SetFocused(true)
+				m.activeContext = p.FocusContext()
+			}
 		}
 		m.ready = true
 		// Reset diagnostics modal on resize (will be rebuilt on next render)
@@ -296,6 +301,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case FocusPluginByIDMsg:
 		// Switch to requested plugin
 		return m, m.FocusPluginByID(msg.PluginID)
+
+	case SwitchProjectMsg:
+		// Switch to the requested project (from projects dashboard plugin)
+		return m, m.switchProject(msg.ProjectPath)
 
 	case SwitchWorktreeMsg:
 		// Switch to the requested worktree
@@ -1175,6 +1184,10 @@ func (m *Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.consumesTextInput() {
 			break
 		}
+		// In projects-dashboard context, numbers switch projects, not tabs
+		if m.activeContext == "projects-dashboard" {
+			break
+		}
 		idx := int(msg.Runes[0] - '1')
 		return m, m.SetActivePlugin(idx)
 	}
@@ -1210,6 +1223,10 @@ func (m *Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.updateContext()
 		return m, nil
 	case "@":
+		// In projects-dashboard/detail context, let the plugin handle @
+		if m.activeContext == "projects-dashboard" || m.activeContext == "projects-detail" {
+			break
+		}
 		// Toggle project switcher modal
 		m.showProjectSwitcher = !m.showProjectSwitcher
 		if m.showProjectSwitcher {
@@ -1325,6 +1342,8 @@ func isRootContext(ctx string) bool {
 	case "td-monitor", "td-board":
 		return true
 	case "notes-list":
+		return true
+	case "projects-dashboard":
 		return true
 	default:
 		return false

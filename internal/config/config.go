@@ -37,6 +37,14 @@ type PluginsConfig struct {
 	Conversations ConversationsPluginConfig `json:"conversations"`
 	Workspace     WorkspacePluginConfig     `json:"workspace"`
 	Notes         NotesPluginConfig         `json:"notes"`
+	Projects      ProjectsPluginConfig      `json:"projects-dashboard"`
+}
+
+// ProjectsPluginConfig configures the projects dashboard plugin.
+type ProjectsPluginConfig struct {
+	Enabled         bool          `json:"enabled"`
+	RefreshInterval time.Duration `json:"refreshInterval"`
+	ScanDirs        []string      `json:"scanDirs,omitempty"` // directories to scan for td-initialized projects
 }
 
 // GitStatusPluginConfig configures the git status plugin.
@@ -132,6 +140,10 @@ func Default() *Config {
 			Workspace: WorkspacePluginConfig{
 				DirPrefix:           true,
 				TmuxCaptureMaxBytes: 2 * 1024 * 1024,
+			},
+			Projects: ProjectsPluginConfig{
+				Enabled:         true,
+				RefreshInterval: 5 * time.Second,
 			},
 		},
 		Keymap: KeymapConfig{

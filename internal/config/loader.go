@@ -56,10 +56,17 @@ type rawProjectConfig struct {
 }
 
 type rawPluginsConfig struct {
-	GitStatus     rawGitStatusConfig     `json:"git-status"`
-	TDMonitor     rawTDMonitorConfig     `json:"td-monitor"`
-	Conversations rawConversationsConfig `json:"conversations"`
-	Workspace     rawWorkspaceConfig      `json:"workspace"`
+	GitStatus     rawGitStatusConfig       `json:"git-status"`
+	TDMonitor     rawTDMonitorConfig       `json:"td-monitor"`
+	Conversations rawConversationsConfig   `json:"conversations"`
+	Workspace     rawWorkspaceConfig       `json:"workspace"`
+	Projects      rawProjectsPluginConfig  `json:"projects-dashboard"`
+}
+
+type rawProjectsPluginConfig struct {
+	Enabled         *bool    `json:"enabled"`
+	RefreshInterval string   `json:"refreshInterval"`
+	ScanDirs        []string `json:"scanDirs"`
 }
 
 type rawWorkspaceConfig struct {
@@ -205,6 +212,19 @@ func mergeConfig(cfg *Config, raw *rawConfig) {
 	}
 	if raw.Plugins.Workspace.InteractivePasteKey != "" {
 		cfg.Plugins.Workspace.InteractivePasteKey = raw.Plugins.Workspace.InteractivePasteKey
+	}
+
+	// Projects Dashboard
+	if raw.Plugins.Projects.Enabled != nil {
+		cfg.Plugins.Projects.Enabled = *raw.Plugins.Projects.Enabled
+	}
+	if raw.Plugins.Projects.RefreshInterval != "" {
+		if d, err := time.ParseDuration(raw.Plugins.Projects.RefreshInterval); err == nil {
+			cfg.Plugins.Projects.RefreshInterval = d
+		}
+	}
+	if len(raw.Plugins.Projects.ScanDirs) > 0 {
+		cfg.Plugins.Projects.ScanDirs = raw.Plugins.Projects.ScanDirs
 	}
 
 	// Keymap

@@ -460,6 +460,33 @@ func DefaultBindings() []Binding {
 		{Key: "esc", Command: "cancel", Context: "notes-task-modal"},
 		{Key: "tab", Command: "next-field", Context: "notes-task-modal"},
 		{Key: "shift+tab", Command: "prev-field", Context: "notes-task-modal"},
+
+		// Projects dashboard context
+		{Key: "enter", Command: "open-details", Context: "projects-dashboard"},
+		{Key: "@", Command: "switch-to-project", Context: "projects-dashboard"},
+		{Key: "s", Command: "scan-projects", Context: "projects-dashboard"},
+		{Key: "a", Command: "add-project", Context: "projects-dashboard"},
+		{Key: "d", Command: "remove-project", Context: "projects-dashboard"},
+		{Key: "r", Command: "refresh", Context: "projects-dashboard"},
+		{Key: "j", Command: "cursor-down", Context: "projects-dashboard"},
+		{Key: "k", Command: "cursor-up", Context: "projects-dashboard"},
+		{Key: "down", Command: "cursor-down", Context: "projects-dashboard"},
+		{Key: "up", Command: "cursor-up", Context: "projects-dashboard"},
+		{Key: "g g", Command: "cursor-top", Context: "projects-dashboard"},
+		{Key: "G", Command: "cursor-bottom", Context: "projects-dashboard"},
+		{Key: "1", Command: "switch-project-1", Context: "projects-dashboard"},
+		{Key: "2", Command: "switch-project-2", Context: "projects-dashboard"},
+		{Key: "3", Command: "switch-project-3", Context: "projects-dashboard"},
+		{Key: "4", Command: "switch-project-4", Context: "projects-dashboard"},
+		{Key: "5", Command: "switch-project-5", Context: "projects-dashboard"},
+		{Key: "6", Command: "switch-project-6", Context: "projects-dashboard"},
+		{Key: "7", Command: "switch-project-7", Context: "projects-dashboard"},
+		{Key: "8", Command: "switch-project-8", Context: "projects-dashboard"},
+		{Key: "9", Command: "switch-project-9", Context: "projects-dashboard"},
+
+		// Projects detail modal context
+		{Key: "esc", Command: "close", Context: "projects-detail"},
+		{Key: "@", Command: "switch-to-project", Context: "projects-detail"},
 	}
 }
 
