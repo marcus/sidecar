@@ -7,6 +7,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+
+	"github.com/marcus/sidecar/internal/projectdir"
 )
 
 const (
@@ -43,6 +45,19 @@ func gitMainWorktree(dir string) string {
 // ResolveTDRoot reads .td-root file and returns the resolved root path.
 // Returns workDir if no .td-root exists or it's empty.
 func ResolveTDRoot(workDir string) string {
+	// Check centralized location first
+	projDir, err := projectdir.Resolve(workDir)
+	if err == nil {
+		tdRootPath := filepath.Join(projDir, "td-root")
+		if data, err := os.ReadFile(tdRootPath); err == nil {
+			rootDir := strings.TrimSpace(string(data))
+			if rootDir != "" {
+				return filepath.Clean(rootDir)
+			}
+		}
+	}
+
+	// Fallback to legacy .td-root file in project dir
 	linkPath := filepath.Join(workDir, TDRootFile)
 	data, err := os.ReadFile(linkPath)
 	if err != nil {
@@ -78,9 +93,13 @@ func ResolveDBPath(workDir string) string {
 	return filepath.Join(root, TodosDir, DBFile)
 }
 
-// CreateTDRoot writes a .td-root file pointing to targetRoot.
+// CreateTDRoot writes a td-root file to the centralized project directory pointing to targetRoot.
 // Used when creating worktrees to share the td database.
-func CreateTDRoot(worktreePath, targetRoot string) error {
-	tdRootPath := filepath.Join(worktreePath, TDRootFile)
+func CreateTDRoot(projectRoot, worktreePath, targetRoot string) error {
+	projDir, err := projectdir.Resolve(projectRoot)
+	if err != nil {
+		return err
+	}
+	tdRootPath := filepath.Join(projDir, "td-root")
 	return os.WriteFile(tdRootPath, []byte(targetRoot+"\n"), 0644)
 }

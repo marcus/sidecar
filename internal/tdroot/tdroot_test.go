@@ -6,15 +6,24 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/marcus/sidecar/internal/config"
 )
 
+// setupTestConfig sets up an isolated config path for testing so that
+// projectdir.Resolve does not pollute the real config directory.
+func setupTestConfig(t *testing.T) {
+	t.Helper()
+	configDir := t.TempDir()
+	config.SetTestConfigPath(filepath.Join(configDir, "config.json"))
+	t.Cleanup(config.ResetTestConfigPath)
+}
+
 func TestResolveTDRoot_NoFile(t *testing.T) {
+	setupTestConfig(t)
+
 	// Create temp directory without .td-root
-	tmpDir, err := os.MkdirTemp("", "tdroot-test-*")
-	if err != nil {
-		t.Fatalf("failed to create temp dir: %v", err)
-	}
-	defer func() { _ = os.RemoveAll(tmpDir) }()
+	tmpDir := t.TempDir()
 
 	result := ResolveTDRoot(tmpDir)
 	if result != tmpDir {
@@ -23,12 +32,10 @@ func TestResolveTDRoot_NoFile(t *testing.T) {
 }
 
 func TestResolveTDRoot_ValidFile(t *testing.T) {
-	// Create temp directory with .td-root pointing to another path
-	tmpDir, err := os.MkdirTemp("", "tdroot-test-*")
-	if err != nil {
-		t.Fatalf("failed to create temp dir: %v", err)
-	}
-	defer func() { _ = os.RemoveAll(tmpDir) }()
+	setupTestConfig(t)
+
+	// Create temp directory with legacy .td-root pointing to another path
+	tmpDir := t.TempDir()
 
 	targetRoot := "/path/to/main/repo"
 	tdRootPath := filepath.Join(tmpDir, TDRootFile)
@@ -43,11 +50,9 @@ func TestResolveTDRoot_ValidFile(t *testing.T) {
 }
 
 func TestResolveTDRoot_EmptyFile(t *testing.T) {
-	tmpDir, err := os.MkdirTemp("", "tdroot-test-*")
-	if err != nil {
-		t.Fatalf("failed to create temp dir: %v", err)
-	}
-	defer func() { _ = os.RemoveAll(tmpDir) }()
+	setupTestConfig(t)
+
+	tmpDir := t.TempDir()
 
 	// Write empty .td-root file
 	tdRootPath := filepath.Join(tmpDir, TDRootFile)
@@ -62,11 +67,9 @@ func TestResolveTDRoot_EmptyFile(t *testing.T) {
 }
 
 func TestResolveTDRoot_WhitespaceHandling(t *testing.T) {
-	tmpDir, err := os.MkdirTemp("", "tdroot-test-*")
-	if err != nil {
-		t.Fatalf("failed to create temp dir: %v", err)
-	}
-	defer func() { _ = os.RemoveAll(tmpDir) }()
+	setupTestConfig(t)
+
+	tmpDir := t.TempDir()
 
 	targetRoot := "/path/to/main/repo"
 	tdRootPath := filepath.Join(tmpDir, TDRootFile)
@@ -81,12 +84,52 @@ func TestResolveTDRoot_WhitespaceHandling(t *testing.T) {
 	}
 }
 
-func TestResolveDBPath_NoTDRoot(t *testing.T) {
-	tmpDir, err := os.MkdirTemp("", "tdroot-test-*")
-	if err != nil {
-		t.Fatalf("failed to create temp dir: %v", err)
+func TestResolveTDRoot_CentralizedFile(t *testing.T) {
+	setupTestConfig(t)
+
+	projectRoot := t.TempDir()
+	targetRoot := "/path/to/shared/root"
+
+	// Write td-root via CreateTDRoot (centralized)
+	if err := CreateTDRoot(projectRoot, projectRoot, targetRoot); err != nil {
+		t.Fatalf("CreateTDRoot failed: %v", err)
 	}
-	defer func() { _ = os.RemoveAll(tmpDir) }()
+
+	result := ResolveTDRoot(projectRoot)
+	if result != targetRoot {
+		t.Errorf("expected %q, got %q", targetRoot, result)
+	}
+}
+
+func TestResolveTDRoot_CentralizedTakesPrecedenceOverLegacy(t *testing.T) {
+	setupTestConfig(t)
+
+	projectRoot := t.TempDir()
+	centralizedTarget := "/centralized/target"
+	legacyTarget := "/legacy/target"
+
+	// Write centralized td-root
+	if err := CreateTDRoot(projectRoot, projectRoot, centralizedTarget); err != nil {
+		t.Fatalf("CreateTDRoot failed: %v", err)
+	}
+
+	// Also write legacy .td-root file
+	tdRootPath := filepath.Join(projectRoot, TDRootFile)
+	if err := os.WriteFile(tdRootPath, []byte(legacyTarget+"\n"), 0644); err != nil {
+		t.Fatalf("failed to write .td-root: %v", err)
+	}
+
+	// Centralized should take precedence
+	result := ResolveTDRoot(projectRoot)
+	if result != centralizedTarget {
+		t.Errorf("expected centralized %q, got %q", centralizedTarget, result)
+	}
+}
+
+func TestResolveDBPath_NoTDRoot(t *testing.T) {
+	setupTestConfig(t)
+
+	tmpDir := t.TempDir()
 
 	expected := filepath.Join(tmpDir, TodosDir, DBFile)
 	result := ResolveDBPath(tmpDir)
@@ -96,11 +139,9 @@ func TestResolveDBPath_NoTDRoot(t *testing.T) {
 }
 
 func TestResolveDBPath_WithTDRoot(t *testing.T) {
-	tmpDir, err := os.MkdirTemp("", "tdroot-test-*")
-	if err != nil {
-		t.Fatalf("failed to create temp dir: %v", err)
-	}
-	defer func() { _ = os.RemoveAll(tmpDir) }()
+	setupTestConfig(t)
+
+	tmpDir := t.TempDir()
 
 	targetRoot := "/path/to/main/repo"
 	tdRootPath := filepath.Join(tmpDir, TDRootFile)
@@ -116,50 +157,43 @@ func TestResolveDBPath_WithTDRoot(t *testing.T) {
 }
 
 func TestCreateTDRoot(t *testing.T) {
-	tmpDir, err := os.MkdirTemp("", "tdroot-test-*")
-	if err != nil {
-		t.Fatalf("failed to create temp dir: %v", err)
-	}
-	defer func() { _ = os.RemoveAll(tmpDir) }()
+	setupTestConfig(t)
 
+	projectRoot := t.TempDir()
+	worktreePath := t.TempDir()
 	targetRoot := "/path/to/main/repo"
-	if err := CreateTDRoot(tmpDir, targetRoot); err != nil {
+
+	if err := CreateTDRoot(projectRoot, worktreePath, targetRoot); err != nil {
 		t.Fatalf("CreateTDRoot failed: %v", err)
 	}
 
-	// Verify file was created with correct content
-	tdRootPath := filepath.Join(tmpDir, TDRootFile)
-	data, err := os.ReadFile(tdRootPath)
-	if err != nil {
-		t.Fatalf("failed to read .td-root: %v", err)
-	}
-
-	expected := targetRoot + "\n"
-	if string(data) != expected {
-		t.Errorf("expected content %q, got %q", expected, string(data))
+	// Verify file was created in centralized location with correct content
+	// Use ResolveTDRoot to confirm the td-root is readable
+	result := ResolveTDRoot(projectRoot)
+	if result != targetRoot {
+		t.Errorf("expected %q, got %q", targetRoot, result)
 	}
 }
 
 func TestCreateTDRoot_Overwrite(t *testing.T) {
-	tmpDir, err := os.MkdirTemp("", "tdroot-test-*")
-	if err != nil {
-		t.Fatalf("failed to create temp dir: %v", err)
-	}
-	defer func() { _ = os.RemoveAll(tmpDir) }()
+	setupTestConfig(t)
+
+	projectRoot := t.TempDir()
+	worktreePath := t.TempDir()
 
 	// Create initial file
-	if err := CreateTDRoot(tmpDir, "/old/path"); err != nil {
+	if err := CreateTDRoot(projectRoot, worktreePath, "/old/path"); err != nil {
 		t.Fatalf("first CreateTDRoot failed: %v", err)
 	}
 
 	// Overwrite with new path
 	newTarget := "/new/path/to/repo"
-	if err := CreateTDRoot(tmpDir, newTarget); err != nil {
+	if err := CreateTDRoot(projectRoot, worktreePath, newTarget); err != nil {
 		t.Fatalf("second CreateTDRoot failed: %v", err)
 	}
 
-	// Verify new content
-	result := ResolveTDRoot(tmpDir)
+	// Verify new content via ResolveTDRoot
+	result := ResolveTDRoot(projectRoot)
 	if result != newTarget {
 		t.Errorf("expected %q, got %q", newTarget, result)
 	}
@@ -217,6 +251,8 @@ func assertSamePath(t *testing.T, want, got string) {
 // --- worktree tests ---
 
 func TestResolveTDRoot_ExternalWorktreeFindsMainTodos(t *testing.T) {
+	setupTestConfig(t)
+
 	mainRepo := initGitRepo(t)
 
 	// Create .todos dir in main repo
@@ -234,17 +270,21 @@ func TestResolveTDRoot_ExternalWorktreeFindsMainTodos(t *testing.T) {
 }
 
 func TestResolveTDRoot_ExternalWorktreeFollowsMainTdRoot(t *testing.T) {
+	setupTestConfig(t)
+
 	mainRepo := initGitRepo(t)
 
-	// Create a shared root dir and write .td-root in main repo pointing to it
+	// Create a shared root dir and write legacy .td-root in main repo pointing to it
 	sharedRoot, err := os.MkdirTemp("", "tdroot-shared-*")
 	if err != nil {
 		t.Fatalf("MkdirTemp shared: %v", err)
 	}
 	t.Cleanup(func() { _ = os.RemoveAll(sharedRoot) })
 
-	if err := CreateTDRoot(mainRepo, sharedRoot); err != nil {
-		t.Fatalf("CreateTDRoot: %v", err)
+	// Write legacy .td-root file directly (not via CreateTDRoot which writes centralized)
+	tdRootPath := filepath.Join(mainRepo, TDRootFile)
+	if err := os.WriteFile(tdRootPath, []byte(sharedRoot+"\n"), 0644); err != nil {
+		t.Fatalf("failed to write .td-root: %v", err)
 	}
 
 	// Create linked worktree
@@ -257,6 +297,8 @@ func TestResolveTDRoot_ExternalWorktreeFollowsMainTdRoot(t *testing.T) {
 }
 
 func TestResolveDBPath_ExternalWorktree(t *testing.T) {
+	setupTestConfig(t)
+
 	mainRepo := initGitRepo(t)
 
 	// Create .todos dir in main repo

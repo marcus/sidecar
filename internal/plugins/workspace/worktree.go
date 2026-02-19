@@ -553,7 +553,7 @@ func (p *Plugin) setupTDRoot(worktreePath string) error {
 	if mainPath == "" {
 		mainPath = p.ctx.WorkDir
 	}
-	return tdroot.CreateTDRoot(worktreePath, mainPath)
+	return tdroot.CreateTDRoot(p.ctx.ProjectRoot, worktreePath, mainPath)
 }
 
 const sidecarTaskFile = "task"
