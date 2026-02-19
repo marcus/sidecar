@@ -398,6 +398,15 @@ func (p *Plugin) Init(ctx *plugin.Context) error {
 	// Reset state restoration flag for project switching
 	p.stateRestored = false
 
+	// Migrate legacy project files to centralized storage (must run before shell manifest load)
+	var wtPaths []string
+	for _, wt := range p.worktrees {
+		wtPaths = append(wtPaths, wt.Path)
+	}
+	if err := projectdir.Migrate(ctx.ProjectRoot, wtPaths); err != nil {
+		p.ctx.Logger.Warn("failed to migrate legacy project files", "error", err)
+	}
+
 	// Load shell manifest for persistence (td-f88fdd)
 	projDir, err := projectdir.Resolve(ctx.ProjectRoot)
 	if err != nil {
