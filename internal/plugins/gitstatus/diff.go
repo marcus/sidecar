@@ -16,7 +16,7 @@ func GetDiff(workDir, path string, staged bool) (string, error) {
 	}
 	args = append(args, "--", path)
 
-	cmd := exec.Command("git", args...)
+	cmd := gitReadOnly(args...)
 	cmd.Dir = workDir
 	output, err := cmd.Output()
 	if err != nil {
@@ -39,7 +39,7 @@ func GetFullDiff(workDir string, staged bool) (string, error) {
 		args = append(args, "--cached")
 	}
 
-	cmd := exec.Command("git", args...)
+	cmd := gitReadOnly(args...)
 	cmd.Dir = workDir
 	output, err := cmd.Output()
 	if err != nil {
@@ -62,7 +62,7 @@ func GetFileDiffStats(workDir, path string, staged bool) (int, int, error) {
 	}
 	args = append(args, "--", path)
 
-	cmd := exec.Command("git", args...)
+	cmd := gitReadOnly(args...)
 	cmd.Dir = workDir
 	output, err := cmd.Output()
 	if err != nil {

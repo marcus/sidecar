@@ -3,7 +3,6 @@ package gitstatus
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -244,7 +243,7 @@ func (p *Plugin) Icon() string { return pluginIcon }
 // resolveGitRoot returns the top-level directory of the git repository
 // containing dir, or an error if dir is not inside a git repo.
 func resolveGitRoot(dir string) (string, error) {
-	cmd := exec.Command("git", "rev-parse", "--show-toplevel")
+	cmd := gitReadOnly("rev-parse", "--show-toplevel")
 	cmd.Dir = dir
 	out, err := cmd.Output()
 	if err != nil {

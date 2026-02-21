@@ -63,7 +63,7 @@ func ExecutePullAutostash(workDir string) (string, error) {
 
 // GetConflictedFiles returns a list of files with merge conflicts.
 func GetConflictedFiles(workDir string) []string {
-	cmd := exec.Command("git", "diff", "--name-only", "--diff-filter=U")
+	cmd := gitReadOnly("diff", "--name-only", "--diff-filter=U")
 	cmd.Dir = workDir
 	output, err := cmd.Output()
 	if err != nil {
@@ -109,7 +109,7 @@ func AbortRebase(workDir string) error {
 
 // IsRebaseInProgress checks if a rebase is currently in progress.
 func IsRebaseInProgress(workDir string) bool {
-	cmd := exec.Command("git", "rev-parse", "--git-path", "rebase-merge")
+	cmd := gitReadOnly("rev-parse", "--git-path", "rebase-merge")
 	cmd.Dir = workDir
 	output, err := cmd.Output()
 	if err != nil {
@@ -119,7 +119,7 @@ func IsRebaseInProgress(workDir string) bool {
 	if _, err := os.Stat(path); err == nil {
 		return true
 	}
-	cmd = exec.Command("git", "rev-parse", "--git-path", "rebase-apply")
+	cmd = gitReadOnly("rev-parse", "--git-path", "rebase-apply")
 	cmd.Dir = workDir
 	output, err = cmd.Output()
 	if err != nil {

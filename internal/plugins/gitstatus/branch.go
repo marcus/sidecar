@@ -24,7 +24,7 @@ type Branch struct {
 func GetBranches(workDir string) ([]*Branch, error) {
 	// Use git branch with format to get detailed info
 	// Format: refname:short, HEAD, upstream:short, upstream:track
-	cmd := exec.Command("git", "branch",
+	cmd := gitReadOnly("branch",
 		"--format=%(refname:short)|%(HEAD)|%(upstream:short)|%(upstream:track)")
 	cmd.Dir = workDir
 	output, err := cmd.Output()

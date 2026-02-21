@@ -67,3 +67,6 @@ screenshots/
 
 # Sidecar worktree state files
 .sidecar-base
+
+# Benchmarks
+.benchmarks/

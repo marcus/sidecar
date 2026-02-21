@@ -63,7 +63,7 @@ func NewFileTree(workDir string) *FileTree {
 func (t *FileTree) Refresh() error {
 	// Run git status with porcelain v2 format (null-separated)
 	// Use --untracked-files=all to recursively list all files in untracked folders
-	cmd := exec.Command("git", "status", "--porcelain=v2", "-z", "--untracked-files=all")
+	cmd := gitReadOnly("status", "--porcelain=v2", "-z", "--untracked-files=all")
 	cmd.Dir = t.workDir
 	output, err := cmd.Output()
 	if err != nil {
@@ -265,7 +265,7 @@ func (t *FileTree) loadDiffStatsFor(staged bool) error {
 		args = append(args, "--cached")
 	}
 
-	cmd := exec.Command("git", args...)
+	cmd := gitReadOnly(args...)
 	cmd.Dir = t.workDir
 	output, err := cmd.Output()
 	if err != nil {
@@ -509,7 +509,7 @@ func ExecuteAmend(workDir, message string) (string, error) {
 
 // getLastCommitMessage returns the message of the most recent commit.
 func getLastCommitMessage(workDir string) string {
-	cmd := exec.Command("git", "log", "-1", "--format=%B")
+	cmd := gitReadOnly("log", "-1", "--format=%B")
 	cmd.Dir = workDir
 	output, err := cmd.Output()
 	if err != nil {

@@ -60,8 +60,10 @@ Every session from `Sessions()` must set:
 ### Path and Watch Strategy
 
 Set `Session.Path` only when Sidecar should use tiered file watching for that adapter:
-- **File-based append-only** (JSONL/log): set `Path` to absolute file path
-- **DB/WAL adapters** (Cursor): prefer adapter-specific `Watch()` with WAL-aware invalidation; do not set `Path` unless tiered watching covers your write surface
+- **File-based append-only** (JSONL/log): set `Path` to absolute file path — this opts into TieredWatcher with HOT/COLD/FROZEN tiers
+- **DB/WAL adapters** (Cursor, Warp, Kiro): prefer adapter-specific `Watch()` with WAL-aware invalidation; do not set `Path` unless tiered watching covers your write surface
+
+**FROZEN tier**: File-based sessions with `Path` set automatically benefit from the FROZEN tier. Sessions unchanged for 24 hours (`FrozenThreshold`) are excluded from cold polling entirely — zero syscalls. They unfreeze when promoted to HOT (e.g., user selects the session). This is critical for adapters with thousands of session files; without it, `pollColdSessions()` does one `os.Stat()` per file every 30 seconds.
 
 ## Performance Standards
 
@@ -127,7 +129,10 @@ Watch events should include session ID for targeted refresh (avoids full reloads
 - Use buffered channels
 - Non-blocking sends: `select { case ch <- evt: default: }`
 
-### 5) Ensure cleanup
+### 5) Leverage FROZEN tier for file-based adapters
+File-based adapters that set `Session.Path` get TieredWatcher's three-tier system (HOT → COLD → FROZEN). Sessions unchanged for 24h are frozen and cost zero polling overhead. This is the primary defense against CPU spikes with thousands of session files. If your adapter has file-based sessions, always set `Path` — the FROZEN tier scales automatically.
+
+### 6) Ensure cleanup
 All watcher paths must close cleanly on plugin stop. No goroutine or FD leaks.
 
 ## Message and Content Rendering

@@ -23,7 +23,7 @@ type StashList struct {
 
 // GetStashList retrieves the list of stashes.
 func GetStashList(workDir string) (*StashList, error) {
-	cmd := exec.Command("git", "stash", "list", "--format=%gd|%gs")
+	cmd := gitReadOnly("stash", "list", "--format=%gd|%gs")
 	cmd.Dir = workDir
 	output, err := cmd.Output()
 	if err != nil {

@@ -5,19 +5,19 @@ title: Workspaces Plugin
 
 # Workspaces Plugin
 
-Parallel development environments with integrated AI agents. Create isolated workspaces, launch Claude Code or Cursor, stream real-time output, and merge when ready—all from one terminal interface.
+Parallel development environments with integrated AI agents. Create isolated workspaces, launch coding agents (Claude, Codex, Gemini, Cursor, OpenCode, Pi), stream real-time output, and merge when ready—all from one terminal interface.
 
 ![Workspaces Plugin](/img/sidecar-workspaces.png)
 
 ## What is this?
 
-The Workspaces plugin turns git worktrees into managed development environments. Each workspace gets its own directory, branch, and optional AI agent (Claude Code, Codex, Gemini, Cursor, or OpenCode). You work on multiple features in parallel, watch agent output in real-time, review diffs, and merge via PR—all without leaving sidecar.
+The Workspaces plugin turns git worktrees into managed development environments. Each workspace gets its own directory, branch, and optional AI agent (Claude Code, Codex, Gemini, Cursor, OpenCode, or Pi Agent). You work on multiple features in parallel, watch agent output in real-time, review diffs, and merge via PR—all without leaving sidecar.
 
 **Key capabilities:**
 
 - **Create workspaces** with one command: branch + task + agent + prompt
 - **Launch AI agents** into isolated environments with reusable prompt templates
-- **Stream real-time output** from Claude Code, Cursor, or any supported agent
+- **Stream real-time output** from any supported agent (Claude, Codex, Gemini, Cursor, OpenCode, Pi)
 - **Monitor multiple agents** via Kanban board or list view with live status
 - **Review & merge** with built-in diff viewer and GitHub PR workflow
 - **Automatic cleanup** of local/remote branches after merge
@@ -56,6 +56,7 @@ You're working on a feature when a critical bug report arrives. Press `n`, creat
 - `codex` CLI (for Codex agent)
 - `gemini` CLI (for Gemini agent)
 - `opencode` CLI (for OpenCode agent)
+- `pi` CLI (for Pi Agent)
 - `td` CLI (for task linking)
 
 Install agents as needed. The plugin gracefully handles missing CLIs—only installed agents appear in the picker.

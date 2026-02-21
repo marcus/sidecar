@@ -810,7 +810,7 @@ func (p *Plugin) handleListKeys(msg tea.KeyMsg) tea.Cmd {
 		}
 		if wt.Agent == nil {
 			// No agent running - start new one
-			return p.StartAgent(wt, AgentClaude)
+			return p.StartAgent(wt, wt.ChosenAgentType)
 		}
 		// Agent exists - show choice modal (attach or restart)
 		p.agentChoiceWorktree = wt

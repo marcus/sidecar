@@ -88,7 +88,31 @@ Pushing the tag triggers GitHub Actions GoReleaser, which:
 - Creates the GitHub Release with changelog
 - Builds and attaches binaries for darwin/linux (amd64/arm64)
 - Generates checksums
-- Updates the Homebrew tap (`marcus/tap/sidecar`)
+
+**⚠️ GoReleaser does NOT update the Homebrew tap automatically.**
+The tap uses source-build formulas (to avoid macOS Gatekeeper warnings on pre-built binaries), which GoReleaser doesn't support. You MUST manually update the tap.
+
+### 7b. Update Homebrew Tap (REQUIRED — Manual Step)
+
+The Homebrew tap at `marcus/homebrew-tap` must be updated for every release.
+If you skip this, users will see "update available" but `brew upgrade` won't find it (see [#122](https://github.com/marcus/sidecar/issues/122)).
+
+```bash
+# Get the source tarball SHA256
+curl -sL "https://github.com/marcus/sidecar/archive/refs/tags/vX.Y.Z.tar.gz" | shasum -a 256
+
+# Edit the formula (local tap is at /opt/homebrew/Library/Taps/marcus/homebrew-tap/)
+# Update: url (tag version) and sha256
+cd /opt/homebrew/Library/Taps/marcus/homebrew-tap
+# Edit Formula/sidecar.rb — update version in URL and sha256
+
+# Commit and push
+git add Formula/sidecar.rb
+git commit -m "sidecar: bump to vX.Y.Z"
+git push
+```
+
+**Also bump td and nightshift formulas if releasing those.**
 
 ### 8. Verify
 
@@ -158,6 +182,6 @@ On startup, sidecar checks `https://api.github.com/repos/marcus/sidecar/releases
 - [ ] Tag created and pushed
 - [ ] GitHub Actions workflow completed
 - [ ] Binaries attached to release
-- [ ] Homebrew tap updated
+- [ ] Homebrew tap updated (MANUAL — see step 7b, GoReleaser does NOT do this)
 - [ ] Installation verified (`GOWORK=off go install ...@vX.Y.Z`)
 - [ ] Update notification verified

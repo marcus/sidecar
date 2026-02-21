@@ -108,7 +108,7 @@ View staged, modified, and untracked files with a split-pane interface. The side
 
 ### Conversations
 
-Browse session history from multiple AI coding agents with message content, token usage, and search. Supports Amp Code, Claude Code, Codex, Cursor CLI, Gemini CLI, Kiro, OpenCode, and Warp. [Full documentation →](https://marcus.github.io/sidecar/docs/conversations-plugin)
+Browse session history from multiple AI coding agents with message content, token usage, and search. Supports Amp Code, Claude Code, Codex, Cursor CLI, Gemini CLI, Kiro, OpenCode, Pi Agent, and Warp. [Full documentation →](https://marcus.github.io/sidecar/docs/conversations-plugin)
 
 ![Conversations](docs/screenshots/sidecar-conversations.png)
 
@@ -157,7 +157,7 @@ Manage workspaces for parallel development with integrated agent support. Create
 
 - Create and delete workspaces with `n`/`D`
 - Link TD tasks to workspaces for context tracking
-- Launch Claude Code, Cursor, or OpenRouter agents with `a`
+- Launch coding agents (Claude, Codex, Gemini, Cursor, OpenCode, Pi) with `a`
 - Merge workflow: commit, push, create PR, and cleanup with `m`
 - Auto-adds sidecar state files to .gitignore
 - Preview diffs and task details in split-pane view
@@ -286,6 +286,10 @@ make lint-all     # Lint entire codebase (includes legacy debt)
 - Correctness lint: `errcheck`, `govet`, `ineffassign`, `staticcheck`, `unused`
 - Enforcement: CI runs tests and blocks new lint issues on PRs (`.github/workflows/go-ci.yml`)
 - Debt tracking: run `make lint-all` to measure and burn down legacy lint debt
+
+## Privacy
+
+Sidecar runs locally and makes no telemetry, analytics, or tracking requests. The only network calls are GitHub API version checks on startup (cached for 3 hours) and user-initiated changelog fetches. See [PRIVACY.md](PRIVACY.md) for full details on data access, file reads/writes, and network behavior.
 
 ## License
 

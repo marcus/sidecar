@@ -103,6 +103,8 @@ func detectAgentSessionStatus(agentType AgentType, worktreePath string) (Worktre
 		return detectOpenCodeSessionStatus(worktreePath)
 	case AgentCursor:
 		return detectCursorSessionStatus(worktreePath)
+	case AgentPi:
+		return detectPiSessionStatus(worktreePath)
 	default:
 		return 0, false
 	}
@@ -284,6 +286,96 @@ func detectCursorSessionStatus(worktreePath string) (WorktreeStatus, bool) {
 	// For now, skip Cursor session detection to avoid adding dependencies.
 	// Tmux pattern detection should still work for Cursor.
 	return 0, false
+}
+
+// detectPiSessionStatus checks Pi Agent session files using mtime + JSONL fallback.
+// Pi stores sessions in ~/.pi/agent/sessions/--{path-encoded}--/*.jsonl
+// Path encoding: /home/user/project → --home-user-project--
+func detectPiSessionStatus(worktreePath string) (WorktreeStatus, bool) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return 0, false
+	}
+
+	absPath, err := filepath.Abs(worktreePath)
+	if err != nil {
+		return 0, false
+	}
+
+	// Pi Agent encodes paths: strip leading slash, replace remaining slashes with dashes, wrap in --
+	path := strings.TrimPrefix(absPath, "/")
+	encoded := strings.ReplaceAll(path, "/", "-")
+	projectDir := filepath.Join(home, ".pi", "agent", "sessions", "--"+encoded+"--")
+
+	// Find most recent session file
+	sessionFiles, err := findRecentJSONLFiles(projectDir, "")
+	if err != nil || len(sessionFiles) == 0 {
+		return 0, false
+	}
+
+	sessionFile := sessionFiles[0]
+
+	// Fast path: recently modified file means agent is active
+	if isFileRecentlyModified(sessionFile, sessionActivityThreshold) {
+		return StatusActive, true
+	}
+
+	// Slow path: fall back to JSONL content parsing
+	// Pi uses "message" type entries with nested message.role field
+	return getPiLastMessageStatus(sessionFile)
+}
+
+// getPiLastMessageStatus parses a Pi session JSONL file to determine status from last message role.
+func getPiLastMessageStatus(path string) (WorktreeStatus, bool) {
+	file, err := os.Open(path)
+	if err != nil {
+		return 0, false
+	}
+	defer func() { _ = file.Close() }()
+
+	// Seek to end - tail bytes for efficiency
+	info, err := file.Stat()
+	if err != nil {
+		return 0, false
+	}
+	if info.Size() > sessionStatusTailBytes {
+		if _, err := file.Seek(-sessionStatusTailBytes, io.SeekEnd); err != nil {
+			return 0, false
+		}
+	}
+
+	var lastRole string
+	scanner := bufio.NewScanner(file)
+	buf := make([]byte, 256*1024)
+	scanner.Buffer(buf, 10*1024*1024)
+
+	for scanner.Scan() {
+		line := scanner.Bytes()
+		var entry struct {
+			Type    string `json:"type"`
+			Message *struct {
+				Role string `json:"role"`
+			} `json:"message"`
+		}
+		if err := json.Unmarshal(line, &entry); err != nil {
+			continue
+		}
+		if entry.Type == "message" && entry.Message != nil {
+			role := entry.Message.Role
+			if role == "user" || role == "assistant" {
+				lastRole = role
+			}
+		}
+	}
+
+	switch lastRole {
+	case "user":
+		return StatusActive, true // Agent is processing user message
+	case "assistant":
+		return StatusWaiting, true // Agent finished, waiting for input
+	default:
+		return 0, false
+	}
 }
 
 func codexSessionCacheKey(sessionsDir, worktreePath string) string {

@@ -22,6 +22,7 @@ import (
 	_ "github.com/marcus/sidecar/internal/adapter/kiro"
 	_ "github.com/marcus/sidecar/internal/adapter/opencode"
 	_ "github.com/marcus/sidecar/internal/adapter/pi"
+	_ "github.com/marcus/sidecar/internal/adapter/piagent"
 	_ "github.com/marcus/sidecar/internal/adapter/warp"
 	"github.com/marcus/sidecar/internal/app"
 	"github.com/marcus/sidecar/internal/config"

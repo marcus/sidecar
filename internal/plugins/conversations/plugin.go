@@ -737,6 +737,37 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 		}
 		return p, nil
 
+	case SessionsRefreshedMsg:
+		if plugin.IsStale(p.ctx, msg) {
+			return p, nil
+		}
+		// Merge refreshed sessions into current list (not a stale snapshot).
+		// This avoids overwriting sessions added concurrently by loadSessions.
+		refreshMap := make(map[string]*adapter.Session, len(msg.Refreshed))
+		for i := range msg.Refreshed {
+			refreshMap[msg.Refreshed[i].ID] = &msg.Refreshed[i]
+		}
+		for i := range p.sessions {
+			if refreshed, ok := refreshMap[p.sessions[i].ID]; ok {
+				// Preserve worktree fields from existing session
+				refreshed.WorktreeName = p.sessions[i].WorktreeName
+				refreshed.WorktreePath = p.sessions[i].WorktreePath
+				p.sessions[i] = *refreshed
+				delete(refreshMap, refreshed.ID)
+			}
+		}
+		// Append any truly new sessions not already in the list
+		for _, s := range refreshMap {
+			p.sessions = append(p.sessions, *s)
+		}
+		// Re-sort by UpdatedAt descending
+		sort.Slice(p.sessions, func(i, j int) bool {
+			return p.sessions[i].UpdatedAt.After(p.sessions[j].UpdatedAt)
+		})
+		p.hasMoreSessions = len(p.sessions) > p.displayedCount
+		p.updateTieredHotTargets()
+		return p, nil
+
 	case LoadSettledMsg:
 		// Only settle if token matches (no new sessions arrived) (td-6cc19f)
 		if msg.Token == p.loadSettleToken && !p.initialLoadDone {
@@ -1253,6 +1284,17 @@ type SessionsLoadedMsg struct {
 
 // GetEpoch implements plugin.EpochMessage.
 func (m SessionsLoadedMsg) GetEpoch() uint64 { return m.Epoch }
+
+// SessionsRefreshedMsg carries only refreshed sessions as a delta update.
+// Unlike SessionsLoadedMsg which replaces the entire session list, this merges
+// into the current list to avoid overwriting concurrent updates from loadSessions.
+type SessionsRefreshedMsg struct {
+	Epoch     uint64
+	Refreshed []adapter.Session // Only the sessions that were successfully refreshed
+}
+
+// GetEpoch implements plugin.EpochMessage.
+func (m SessionsRefreshedMsg) GetEpoch() uint64 { return m.Epoch }
 
 // LoadSettledMsg signals that session loading has settled (no new arrivals).
 type LoadSettledMsg struct {

@@ -47,6 +47,7 @@ func (p *Plugin) setSelectedSession(sessionID string) {
 		if s := p.findSelectedSession(); s != nil {
 			adapterID = s.AdapterID
 		}
+		// PromoteToHot already clears Frozen flag
 		p.tieredManager.PromoteSession(adapterID, sessionID)
 	}
 	p.updateTieredHotTargets()

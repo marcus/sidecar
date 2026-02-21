@@ -171,6 +171,16 @@ func sendKeyToTmux(sessionName, key string) error {
 // sendLiteralToTmux sends literal text to a tmux pane using send-keys -l.
 // This prevents tmux from interpreting special key names.
 func sendLiteralToTmux(sessionName, text string) error {
+	// tmux treats bare ; in argv as a command separator, so a literal
+	// semicolon never reaches send-keys. Fall back to hex encoding (-H)
+	// which bypasses tmux's command parser entirely.
+	if strings.Contains(text, ";") {
+		args := []string{"send-keys", "-t", sessionName, "-H"}
+		for _, b := range []byte(text) {
+			args = append(args, fmt.Sprintf("%02x", b))
+		}
+		return exec.Command("tmux", args...).Run()
+	}
 	cmd := exec.Command("tmux", "send-keys", "-l", "-t", sessionName, text)
 	return cmd.Run()
 }
@@ -952,6 +962,32 @@ func (p *Plugin) handleInteractiveKeys(msg tea.KeyMsg) tea.Cmd {
 	// Schedule debounced poll to batch rapid keystrokes (td-8a0978)
 	cmds = append(cmds, p.scheduleDebouncedPoll(keystrokeDebounce))
 	return tea.Batch(cmds...)
+}
+
+// handleUnknownSequence forwards unrecognized CSI sequences to tmux in
+// interactive mode. BubbleTea v1 doesn't parse CSI u (kitty keyboard protocol)
+// or modifyOtherKeys sequences, so modified keys like shift+enter arrive as
+// unknownCSISequenceMsg. We normalize them to CSI u format and forward to tmux.
+func (p *Plugin) handleUnknownSequence(msg tea.Msg) tea.Cmd {
+	if p.viewMode != ViewModeInteractive {
+		return nil
+	}
+	if p.interactiveState == nil || !p.interactiveState.Active {
+		return nil
+	}
+
+	raw := tty.ExtractUnknownCSIBytes(msg)
+	if raw == nil {
+		return nil
+	}
+
+	csiu := tty.NormalizeToCSIu(raw)
+	if csiu == "" {
+		return nil
+	}
+
+	sessionName := p.interactiveState.TargetSession
+	return sendInteractiveKeysCmd(sessionName, keySpec{csiu, true})
 }
 
 // handleEscapeTimer processes the escape delay timer firing.

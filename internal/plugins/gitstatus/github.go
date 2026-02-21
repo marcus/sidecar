@@ -20,7 +20,7 @@ type GitHubInfo struct {
 
 // GetRemoteURL returns the URL for the primary remote (origin).
 func GetRemoteURL(workDir string) string {
-	cmd := exec.Command("git", "remote", "get-url", "origin")
+	cmd := gitReadOnly("remote", "get-url", "origin")
 	cmd.Dir = workDir
 	output, err := cmd.Output()
 	if err != nil {

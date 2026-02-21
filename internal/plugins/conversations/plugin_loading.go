@@ -7,7 +7,6 @@ import (
 	"math"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -201,7 +200,8 @@ func (p *Plugin) loadSessions() tea.Cmd {
 }
 
 // refreshSessions updates only specific sessions in-place (td-2b8ebe).
-// Falls back to full loadSessions() if adapters don't support targeted refresh.
+// Returns only the refreshed sessions as a delta to avoid overwriting concurrent
+// session list updates from loadSessions/AdapterBatchMsg.
 func (p *Plugin) refreshSessions(sessionIDs []string) tea.Cmd {
 	// Capture epoch for stale detection on project switch
 	var epoch uint64
@@ -210,63 +210,32 @@ func (p *Plugin) refreshSessions(sessionIDs []string) tea.Cmd {
 	}
 
 	adapters := p.adapters
-	currentSessions := p.sessions
 
 	return func() tea.Msg {
 		if len(adapters) == 0 {
-			return SessionsLoadedMsg{Epoch: epoch}
+			return nil
 		}
 
-		// Build lookup of current sessions by ID for in-place update
-		sessionMap := make(map[string]int, len(currentSessions))
-		for i, s := range currentSessions {
-			sessionMap[s.ID] = i
-		}
-
-		updated := make([]adapter.Session, len(currentSessions))
-		copy(updated, currentSessions)
-		changed := false
+		var refreshed []adapter.Session
 
 		for _, sessionID := range sessionIDs {
-			var refreshed *adapter.Session
-
 			// Try each adapter's TargetedRefresher interface
 			for _, a := range adapters {
 				if tr, ok := a.(adapter.TargetedRefresher); ok {
 					s, err := tr.SessionByID(sessionID)
 					if err == nil && s != nil {
-						refreshed = s
+						refreshed = append(refreshed, *s)
 						break
 					}
 				}
 			}
-
-			if refreshed == nil {
-				continue
-			}
-
-			if idx, exists := sessionMap[sessionID]; exists {
-				// Preserve worktree fields from existing session
-				refreshed.WorktreeName = updated[idx].WorktreeName
-				refreshed.WorktreePath = updated[idx].WorktreePath
-				updated[idx] = *refreshed
-			} else {
-				// New session - append
-				updated = append(updated, *refreshed)
-			}
-			changed = true
 		}
 
-		if !changed {
-			return SessionsLoadedMsg{Epoch: epoch, Sessions: updated}
+		if len(refreshed) == 0 {
+			return nil // No changes; avoid overwriting concurrent session list updates
 		}
 
-		// Re-sort by UpdatedAt descending
-		sort.Slice(updated, func(i, j int) bool {
-			return updated[i].UpdatedAt.After(updated[j].UpdatedAt)
-		})
-
-		return SessionsLoadedMsg{Epoch: epoch, Sessions: updated}
+		return SessionsRefreshedMsg{Epoch: epoch, Refreshed: refreshed}
 	}
 }
 

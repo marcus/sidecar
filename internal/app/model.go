@@ -482,13 +482,23 @@ func (m *Model) runInstallPhase() tea.Cmd {
 		var sidecarUpdated, tdUpdated bool
 		var newSidecarVersion, newTdVersion string
 
+		// Refresh Homebrew tap so brew knows about new versions
+		if method == version.InstallMethodHomebrew {
+			_ = exec.Command("brew", "update").Run() // best-effort
+		}
+
 		// Update sidecar
 		if sidecarUpdate != nil {
 			switch method {
 			case version.InstallMethodHomebrew:
 				cmd := exec.Command("brew", "upgrade", "sidecar")
-				if output, err := cmd.CombinedOutput(); err != nil {
+				output, err := cmd.CombinedOutput()
+				if err != nil {
 					return UpdateErrorMsg{Step: "sidecar", Err: fmt.Errorf("%v: %s", err, output)}
+				}
+				outLower := strings.ToLower(string(output))
+				if strings.Contains(outLower, "already installed") || strings.Contains(outLower, "already up-to-date") {
+					return UpdateErrorMsg{Step: "sidecar", Err: fmt.Errorf("brew reports sidecar is already at latest version — tap may be out of date. Try: brew update && brew upgrade sidecar")}
 				}
 				sidecarUpdated = true
 				newSidecarVersion = sidecarUpdate.LatestVersion
@@ -515,8 +525,13 @@ func (m *Model) runInstallPhase() tea.Cmd {
 			switch method {
 			case version.InstallMethodHomebrew:
 				cmd := exec.Command("brew", "upgrade", "td")
-				if output, err := cmd.CombinedOutput(); err != nil {
+				output, err := cmd.CombinedOutput()
+				if err != nil {
 					return UpdateErrorMsg{Step: "td", Err: fmt.Errorf("%v: %s", err, output)}
+				}
+				outLower := strings.ToLower(string(output))
+				if strings.Contains(outLower, "already installed") || strings.Contains(outLower, "already up-to-date") {
+					return UpdateErrorMsg{Step: "td", Err: fmt.Errorf("brew reports td is already at latest version — tap may be out of date. Try: brew update && brew upgrade td")}
 				}
 			default: // Go install (binary users of td still use go install)
 				cmd := exec.Command("go", "install",
@@ -549,8 +564,19 @@ func (m *Model) runVerifyPhase(installResult UpdateInstallDoneMsg) tea.Cmd {
 			}
 			// Verify the binary is executable by running --version
 			cmd := exec.Command(sidecarPath, "--version")
-			if err := cmd.Run(); err != nil {
+			output, err := cmd.Output()
+			if err != nil {
 				return UpdateErrorMsg{Step: "verify", Err: fmt.Errorf("sidecar binary not executable: %v", err)}
+			}
+			// Compare installed version against expected version
+			if installResult.NewSidecarVersion != "" {
+				got := strings.TrimSpace(string(output))
+				expected := strings.TrimPrefix(installResult.NewSidecarVersion, "v")
+				if !strings.Contains(got, expected) {
+					return UpdateErrorMsg{Step: "verify", Err: fmt.Errorf(
+						"version mismatch after update: expected %s, got %s — the update may not have taken effect, try updating manually",
+						installResult.NewSidecarVersion, got)}
+				}
 			}
 		}
 

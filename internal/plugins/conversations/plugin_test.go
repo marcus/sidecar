@@ -3508,3 +3508,168 @@ func TestInitDoesNotApplyCategoryFilter(t *testing.T) {
 		t.Error("filterActive should be false after Init without applied filters")
 	}
 }
+
+// mockTargetedAdapter implements both adapter.Adapter and adapter.TargetedRefresher.
+type mockTargetedAdapter struct {
+	mockAdapter
+	sessions map[string]*adapter.Session
+}
+
+func (m *mockTargetedAdapter) SessionByID(sessionID string) (*adapter.Session, error) {
+	if s, ok := m.sessions[sessionID]; ok {
+		return s, nil
+	}
+	return nil, fmt.Errorf("session %s not found", sessionID)
+}
+
+// TestRefreshSessionsNoOverwrite verifies that refreshSessions returns nil when
+// no adapter can refresh the requested sessions, preventing stale snapshot overwrites.
+func TestRefreshSessionsNoOverwrite(t *testing.T) {
+	p := New()
+	// Use a basic adapter without TargetedRefresher
+	p.adapters = map[string]adapter.Adapter{"mock": &mockAdapter{}}
+
+	now := time.Now()
+	p.sessions = []adapter.Session{
+		{ID: "claude-1", Name: "Claude session", UpdatedAt: now},
+		{ID: "gemini-1", Name: "Gemini session", UpdatedAt: now.Add(-24 * time.Hour)},
+	}
+
+	cmd := p.refreshSessions([]string{"gemini-1"})
+	if cmd == nil {
+		t.Fatal("expected non-nil command")
+	}
+	msg := cmd()
+	if msg != nil {
+		t.Errorf("expected nil message when no adapter supports TargetedRefresher, got %T", msg)
+	}
+}
+
+// TestRefreshSessionsReturnsDelta verifies that refreshSessions returns a
+// SessionsRefreshedMsg (not SessionsLoadedMsg) with only the refreshed sessions.
+func TestRefreshSessionsReturnsDelta(t *testing.T) {
+	now := time.Now()
+	refreshedSession := &adapter.Session{
+		ID:        "s1",
+		Name:      "Refreshed",
+		UpdatedAt: now,
+	}
+	ta := &mockTargetedAdapter{
+		sessions: map[string]*adapter.Session{"s1": refreshedSession},
+	}
+
+	p := New()
+	p.adapters = map[string]adapter.Adapter{"targeted": ta}
+	p.sessions = []adapter.Session{
+		{ID: "s1", Name: "Old", UpdatedAt: now.Add(-1 * time.Hour)},
+		{ID: "s2", Name: "Other", UpdatedAt: now.Add(-2 * time.Hour)},
+	}
+
+	cmd := p.refreshSessions([]string{"s1"})
+	if cmd == nil {
+		t.Fatal("expected non-nil command")
+	}
+	msg := cmd()
+	refreshMsg, ok := msg.(SessionsRefreshedMsg)
+	if !ok {
+		t.Fatalf("expected SessionsRefreshedMsg, got %T", msg)
+	}
+	if len(refreshMsg.Refreshed) != 1 {
+		t.Fatalf("expected 1 refreshed session, got %d", len(refreshMsg.Refreshed))
+	}
+	if refreshMsg.Refreshed[0].ID != "s1" {
+		t.Errorf("expected refreshed session ID s1, got %s", refreshMsg.Refreshed[0].ID)
+	}
+	if refreshMsg.Refreshed[0].Name != "Refreshed" {
+		t.Errorf("expected refreshed name, got %s", refreshMsg.Refreshed[0].Name)
+	}
+}
+
+// TestSessionsRefreshedMsgMergesIntoCurrentList verifies that the
+// SessionsRefreshedMsg handler merges delta updates into the current session list
+// (not a stale snapshot), preserving sessions added concurrently.
+func TestSessionsRefreshedMsgMergesIntoCurrentList(t *testing.T) {
+	now := time.Now()
+	p := New()
+	p.adapters = map[string]adapter.Adapter{"mock": &mockAdapter{}}
+	p.displayedCount = 100
+
+	// Simulate the state AFTER loadSessions has populated both adapters' sessions.
+	// This is the "current" list that refreshSessions should merge into.
+	p.sessions = []adapter.Session{
+		{ID: "claude-1", Name: "Claude 1", UpdatedAt: now},
+		{ID: "claude-2", Name: "Claude 2", UpdatedAt: now.Add(-1 * time.Hour)},
+		{ID: "gemini-1", Name: "Gemini old", UpdatedAt: now.Add(-48 * time.Hour), WorktreeName: "main"},
+	}
+
+	// Simulate a SessionsRefreshedMsg arriving with updated gemini session.
+	// In the real scenario, this was computed from a stale snapshot that only had
+	// gemini sessions. But with our fix, it only carries the delta.
+	msg := SessionsRefreshedMsg{
+		Refreshed: []adapter.Session{
+			{ID: "gemini-1", Name: "Gemini refreshed", UpdatedAt: now.Add(-47 * time.Hour)},
+		},
+	}
+
+	p.Update(msg)
+
+	// Verify ALL sessions are preserved (not just the refreshed ones)
+	if len(p.sessions) != 3 {
+		t.Fatalf("expected 3 sessions after merge, got %d", len(p.sessions))
+	}
+
+	// Verify the refreshed session was updated
+	var foundGemini bool
+	for _, s := range p.sessions {
+		if s.ID == "gemini-1" {
+			foundGemini = true
+			if s.Name != "Gemini refreshed" {
+				t.Errorf("expected refreshed name, got %s", s.Name)
+			}
+			if s.WorktreeName != "main" {
+				t.Errorf("expected worktree name preserved, got %q", s.WorktreeName)
+			}
+		}
+	}
+	if !foundGemini {
+		t.Error("gemini session not found after merge")
+	}
+
+	// Verify sessions are sorted by UpdatedAt descending
+	for i := 1; i < len(p.sessions); i++ {
+		if p.sessions[i].UpdatedAt.After(p.sessions[i-1].UpdatedAt) {
+			t.Errorf("sessions not sorted: %s (%v) after %s (%v)",
+				p.sessions[i].ID, p.sessions[i].UpdatedAt,
+				p.sessions[i-1].ID, p.sessions[i-1].UpdatedAt)
+		}
+	}
+}
+
+// TestSessionsRefreshedMsgAddsNewSession verifies that a new session (not in
+// current list) is appended when received via SessionsRefreshedMsg.
+func TestSessionsRefreshedMsgAddsNewSession(t *testing.T) {
+	now := time.Now()
+	p := New()
+	p.adapters = map[string]adapter.Adapter{"mock": &mockAdapter{}}
+	p.displayedCount = 100
+
+	p.sessions = []adapter.Session{
+		{ID: "s1", Name: "Existing", UpdatedAt: now.Add(-1 * time.Hour)},
+	}
+
+	msg := SessionsRefreshedMsg{
+		Refreshed: []adapter.Session{
+			{ID: "s2", Name: "Brand new", UpdatedAt: now},
+		},
+	}
+
+	p.Update(msg)
+
+	if len(p.sessions) != 2 {
+		t.Fatalf("expected 2 sessions, got %d", len(p.sessions))
+	}
+	// New session should be first (most recent)
+	if p.sessions[0].ID != "s2" {
+		t.Errorf("expected new session at top, got %s", p.sessions[0].ID)
+	}
+}

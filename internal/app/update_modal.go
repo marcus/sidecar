@@ -428,14 +428,53 @@ func (m *Model) ensureUpdateErrorModal() {
 		errorMsg = "An unknown error occurred."
 	}
 
+	// Detect install method and version for actionable info
+	method := m.updateInstallMethod
+	if method == "" {
+		method = version.DetectInstallMethod()
+	}
+
+	currentV := m.currentVersion
+	if currentV == "" {
+		currentV = "unknown"
+	}
+
+	var methodName string
+	var manualFix string
+	switch method {
+	case version.InstallMethodHomebrew:
+		methodName = "Homebrew"
+		manualFix = "brew update && brew upgrade sidecar"
+	case version.InstallMethodGo:
+		methodName = "go install"
+		manualFix = "go install github.com/marcus/sidecar/cmd/sidecar@latest"
+	default:
+		methodName = "binary"
+		manualFix = "github.com/marcus/sidecar/releases"
+	}
+
+	infoLine := styles.Muted.Render(fmt.Sprintf(
+		"Version: %s  Method: %s", currentV, methodName))
+
+	// Render error prominently (not muted)
+	errorStyle := lipgloss.NewStyle().Foreground(styles.Error)
+	errorText := errorStyle.Render("  " + errorMsg)
+
+	fixHint := styles.Muted.Render("Manual fix: " + manualFix)
+	reportHint := styles.Muted.Render("Report: github.com/marcus/sidecar/issues")
+
 	m.updateErrorModal = modal.New("Update Failed",
 		modal.WithWidth(modalW),
 		modal.WithVariant(modal.VariantDanger),
 		modal.WithPrimaryAction("retry"),
 	).
 		AddSection(modal.Text(errorLine)).
+		AddSection(modal.Text(infoLine)).
 		AddSection(modal.Spacer()).
-		AddSection(modal.Text(styles.Muted.Render("  "+errorMsg))).
+		AddSection(modal.Text(errorText)).
+		AddSection(modal.Spacer()).
+		AddSection(modal.Text(fixHint)).
+		AddSection(modal.Text(reportHint)).
 		AddSection(modal.Spacer()).
 		AddSection(modal.Buttons(
 			modal.Btn(" Retry ", "retry"),

@@ -30,3 +30,49 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+
+  update-homebrew-tap:
+    needs: goreleaser
+    runs-on: ubuntu-latest
+    steps:
+      - name: Extract version
+        id: version
+        run: echo "version=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
+
+      - name: Get source tarball SHA256
+        id: sha
+        run: |
+          SHA=$(curl -sL "https://github.com/${{ github.repository }}/archive/refs/tags/${{ steps.version.outputs.version }}.tar.gz" | sha256sum | cut -d' ' -f1)
+          echo "sha256=$SHA" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout Homebrew tap
+        uses: actions/checkout@v4
+        with:
+          repository: marcus/homebrew-tap
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          path: homebrew-tap
+
+      - name: Update formula
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          SHA="${{ steps.sha.outputs.sha256 }}"
+          FORMULA="homebrew-tap/Formula/sidecar.rb"
+
+          # Update URL (version in tag)
+          sed -i "s|archive/refs/tags/v[0-9]*\.[0-9]*\.[0-9]*\.tar\.gz|archive/refs/tags/${VERSION}.tar.gz|" "$FORMULA"
+
+          # Update SHA256
+          sed -i "s|sha256 \"[a-f0-9]*\"|sha256 \"${SHA}\"|" "$FORMULA"
+
+          echo "Updated $FORMULA to ${VERSION} (sha256: ${SHA})"
+          cat "$FORMULA"
+
+      - name: Commit and push
+        run: |
+          cd homebrew-tap
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Formula/sidecar.rb
+          git diff --cached --quiet && echo "No changes" && exit 0
+          git commit -m "sidecar: bump to ${{ steps.version.outputs.version }}"
+          git push
