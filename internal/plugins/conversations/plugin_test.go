@@ -3072,6 +3072,11 @@ func TestResumeCommand(t *testing.T) {
 			expected: "cursor-agent --resume ses_abc123",
 		},
 		{
+			name:     "amp adapter",
+			session:  &adapter.Session{ID: "T-a38f981d-52da-47b1-818c-fbaa9ab56e0c", AdapterID: "amp"},
+			expected: "amp threads continue T-a38f981d-52da-47b1-818c-fbaa9ab56e0c",
+		},
+		{
 			name:     "unknown adapter",
 			session:  &adapter.Session{ID: "ses_abc123", AdapterID: "unknown"},
 			expected: "",
