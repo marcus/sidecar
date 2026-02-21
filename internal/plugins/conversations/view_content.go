@@ -342,7 +342,7 @@ func resumeCommand(session *adapter.Session) string {
 	case "cursor-cli":
 		return fmt.Sprintf("cursor-agent --resume %s", session.ID)
 	case "amp":
-		return fmt.Sprintf("amp --resume %s", session.ID)
+		return fmt.Sprintf("amp threads continue %s", session.ID)
 	case "pi-agent", "pi":
 		return fmt.Sprintf("pi --session %s", session.ID)
 	default:

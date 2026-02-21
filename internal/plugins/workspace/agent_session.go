@@ -105,6 +105,8 @@ func detectAgentSessionStatus(agentType AgentType, worktreePath string) (Worktre
 		return detectCursorSessionStatus(worktreePath)
 	case AgentPi:
 		return detectPiSessionStatus(worktreePath)
+	case AgentAmp:
+		return detectAmpSessionStatus(worktreePath)
 	default:
 		return 0, false
 	}
@@ -375,6 +377,149 @@ func getPiLastMessageStatus(path string) (WorktreeStatus, bool) {
 		return StatusWaiting, true // Agent finished, waiting for input
 	default:
 		return 0, false
+	}
+}
+
+// detectAmpSessionStatus checks Amp thread files using mtime + JSON fallback.
+// Amp stores threads in ~/.local/share/amp/threads/T-{uuid}.json
+// Each thread has an Env.Initial.Trees[] field with file:// URIs to match worktree path.
+func detectAmpSessionStatus(worktreePath string) (WorktreeStatus, bool) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return 0, false
+	}
+
+	absPath, err := filepath.Abs(worktreePath)
+	if err != nil {
+		return 0, false
+	}
+
+	threadsDir := filepath.Join(home, ".local", "share", "amp", "threads")
+
+	// Find thread files matching the worktree path and get last message status
+	threadFile, status, ok := findAmpThreadForPath(threadsDir, absPath)
+	if !ok || threadFile == "" {
+		return 0, false
+	}
+
+	// Fast path: recently modified file means agent is active
+	if isFileRecentlyModified(threadFile, sessionActivityThreshold) {
+		slog.Debug("amp session: active (mtime)", "file", filepath.Base(threadFile))
+		return StatusActive, true
+	}
+
+	// Slow path: return the status we already parsed from JSON
+	return status, true
+}
+
+// findAmpThreadForPath finds the most recent Amp thread file matching the worktree path.
+// Amp threads contain Env.Initial.Trees[].URI as file:// URIs.
+// Returns the thread file path, the parsed status, and true if found.
+// This combines path matching and status extraction to avoid reading files twice.
+func findAmpThreadForPath(threadsDir, worktreePath string) (string, WorktreeStatus, bool) {
+	entries, err := os.ReadDir(threadsDir)
+	if err != nil {
+		return "", 0, false
+	}
+
+	type candidate struct {
+		path    string
+		modTime int64
+	}
+	var candidates []candidate
+
+	// First pass: collect T-*.json files with their mtimes (no file reads yet)
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasPrefix(e.Name(), "T-") || !strings.HasSuffix(e.Name(), ".json") {
+			continue
+		}
+
+		info, err := e.Info()
+		if err != nil {
+			continue
+		}
+
+		candidates = append(candidates, candidate{
+			path:    filepath.Join(threadsDir, e.Name()),
+			modTime: info.ModTime().UnixNano(),
+		})
+	}
+
+	// Sort by mtime descending (most recent first)
+	sort.Slice(candidates, func(i, j int) bool {
+		return candidates[i].modTime > candidates[j].modTime
+	})
+
+	// Second pass: check path match and extract status starting from most recent
+	// This minimizes file reads - usually the most recent file is the one we want
+	for _, c := range candidates {
+		if status, ok := getAmpThreadStatus(c.path, worktreePath); ok {
+			return c.path, status, true
+		}
+	}
+
+	return "", 0, false
+}
+
+// getAmpThreadStatus checks if an Amp thread file matches the worktree path and returns
+// the status from the last message. This combines path matching and status extraction
+// into a single file read to avoid reading the file twice.
+func getAmpThreadStatus(threadPath, worktreePath string) (WorktreeStatus, bool) {
+	data, err := os.ReadFile(threadPath)
+	if err != nil {
+		return 0, false
+	}
+
+	var thread struct {
+		Env *struct {
+			Initial *struct {
+				Trees []struct {
+					URI string `json:"uri"`
+				} `json:"trees"`
+			} `json:"initial"`
+		} `json:"env"`
+		Messages []struct {
+			Role string `json:"role"`
+		} `json:"messages"`
+	}
+	if err := json.Unmarshal(data, &thread); err != nil {
+		return 0, false
+	}
+
+	// Check if worktree path matches
+	if thread.Env == nil || thread.Env.Initial == nil {
+		return 0, false
+	}
+
+	pathMatches := false
+	for _, tree := range thread.Env.Initial.Trees {
+		treePath := strings.TrimPrefix(tree.URI, "file://")
+		if cwdMatches(treePath, worktreePath) {
+			pathMatches = true
+			break
+		}
+	}
+
+	if !pathMatches {
+		return 0, false
+	}
+
+	// Find last user/assistant message
+	var lastRole string
+	for _, msg := range thread.Messages {
+		if msg.Role == "user" || msg.Role == "assistant" {
+			lastRole = msg.Role
+		}
+	}
+
+	switch lastRole {
+	case "user":
+		return StatusActive, true
+	case "assistant":
+		return StatusWaiting, true
+	default:
+		// Path matches but no messages yet - still a valid thread
+		return 0, true
 	}
 }
 
