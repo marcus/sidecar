@@ -457,8 +457,8 @@ func (p *Plugin) generatePRDescription(wt *Worktree, targetBranch string) tea.Cm
 		diff := getDiffForPR(wtPath, targetBranch)
 
 		// Check if agent supports print mode
-		printFlag, supported := PrintModeFlags[agentType]
-		if !supported || printFlag == "" {
+		printArgs, supported := PrintModeArgs[agentType]
+		if !supported || len(printArgs) == 0 {
 			// Fall back to commit-based description
 			title, body := buildFallbackPRDescription(branch, commitLog, diffStat)
 			return PRGenerationDoneMsg{
@@ -486,7 +486,7 @@ func (p *Plugin) generatePRDescription(wt *Worktree, targetBranch string) tea.Cm
 		// Pipe prompt via stdin to avoid OS argument length limits on large diffs.
 		// Capture stdout and stderr separately so agent warnings don't pollute output.
 
-		cmd := exec.CommandContext(ctx, agentCmd, printFlag)
+		cmd := exec.CommandContext(ctx, agentCmd, printArgs...)
 		cmd.Dir = wtPath
 		cmd.Stdin = strings.NewReader(prompt)
 		var stdout, stderr bytes.Buffer
