@@ -9,6 +9,7 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	app "github.com/marcus/sidecar/internal/app"
+	appmsg "github.com/marcus/sidecar/internal/msg"
 	"github.com/marcus/sidecar/internal/plugin"
 	"github.com/marcus/sidecar/internal/plugins/gitstatus"
 )
@@ -1124,6 +1125,34 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 					p.mergeState.Step = MergeStepDone
 				}
 			}
+		}
+
+	case PRGenerationDoneMsg:
+		if p.mergeState != nil && p.mergeState.Worktree.Name == msg.WorkspaceName {
+			// Store generated title and body, then advance to CreatePR.
+			// Even if the agent failed (msg.Err != nil), we still have a fallback
+			// title/body from commit messages, so we proceed with a toast notification.
+			p.mergeState.PRTitle = msg.Title
+			p.mergeState.PRBody = msg.Body
+			p.clearMergeModal()
+			advanceCmd := p.advanceMergeStep()
+			if msg.Err != nil {
+				cmds = append(cmds,
+					advanceCmd,
+					appmsg.ShowToast("Agent failed, using commit summary", 3*time.Second),
+				)
+			} else {
+				cmds = append(cmds, advanceCmd)
+			}
+		}
+
+	case prGenerationTickMsg:
+		if p.mergeState != nil && p.mergeState.Worktree.Name == msg.WorkspaceName &&
+			p.mergeState.Step == MergeStepGeneratePR {
+			// Advance animation dots (0 -> 1 -> 2 -> 3 -> 0)
+			p.mergeState.PRGenerationDots = (p.mergeState.PRGenerationDots + 1) % 4
+			p.clearMergeModal() // Force modal rebuild for animation
+			cmds = append(cmds, p.schedulePRGenerationTick(msg.WorkspaceName))
 		}
 
 	case CheckPRMergedMsg:

@@ -1,6 +1,8 @@
 package workspace
 
 import (
+	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"os/exec"
@@ -22,6 +24,7 @@ const (
 	MergeStepTargetBranch                  // Choose target branch for merge/PR
 	MergeStepMergeMethod                   // Choose: PR workflow or direct merge
 	MergeStepPush
+	MergeStepGeneratePR                    // Agent generates PR title/body
 	MergeStepCreatePR
 	MergeStepWaitingMerge
 	MergeStepDirectMerge                  // Performing direct merge (no PR)
@@ -42,6 +45,8 @@ func (s MergeWorkflowStep) String() string {
 		return "Merge Method"
 	case MergeStepPush:
 		return "Push Branch"
+	case MergeStepGeneratePR:
+		return "Generate PR"
 	case MergeStepCreatePR:
 		return "Create PR"
 	case MergeStepWaitingMerge:
@@ -94,6 +99,10 @@ type MergeWorkflowState struct {
 	CurrentBranch       string // Branch user was on before merge (for pull)
 	ConfirmationFocus   int  // 0-3=checkboxes, 4=confirm btn, 5=skip btn
 	ConfirmationHover   int  // Mouse hover state
+
+	// PR generation state
+	PRGenerationDots   int            // Animation counter for progress dots (0-3)
+	PRGenerationCancel context.CancelFunc // Cancel func for in-flight agent process
 
 	// Cleanup results for summary display
 	CleanupResults     *CleanupResults
@@ -149,6 +158,19 @@ type MergeCommitDoneMsg struct {
 	WorkspaceName string
 	CommitHash   string
 	Err          error
+}
+
+// PRGenerationDoneMsg signals that agent-powered PR description generation completed.
+type PRGenerationDoneMsg struct {
+	WorkspaceName string
+	Title         string
+	Body          string
+	Err           error
+}
+
+// prGenerationTickMsg triggers an animation tick during PR generation.
+type prGenerationTickMsg struct {
+	WorkspaceName string
 }
 
 // MergeCommitState holds state for the commit-before-merge modal.
@@ -407,6 +429,290 @@ func (p *Plugin) createPR(wt *Worktree, title, body, targetBranch string) tea.Cm
 			Data:         prURL,
 		}
 	}
+}
+
+// generatePRDescription uses the worktree's chosen agent to generate a PR title and body.
+// Runs the agent CLI in print/non-interactive mode with git context piped via stdin.
+// Falls back to a basic commit-based description if the agent doesn't support print mode
+// or if generation fails.
+func (p *Plugin) generatePRDescription(wt *Worktree, targetBranch string) tea.Cmd {
+	agentType := wt.ChosenAgentType
+	wtName := wt.Name
+	wtPath := wt.Path
+	branch := wt.Branch
+
+	// Create context with cancel outside the closure so we can store the cancel func
+	// in mergeState. This allows cancelMergeWorkflow to kill the agent subprocess.
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	if p.mergeState != nil {
+		p.mergeState.PRGenerationCancel = cancel
+	}
+
+	return func() tea.Msg {
+		defer cancel()
+
+		// Gather git context
+		commitLog := getCommitLogForPR(wtPath, targetBranch)
+		diffStat := getDiffStatForPR(wtPath, targetBranch)
+		diff := getDiffForPR(wtPath, targetBranch)
+
+		// Check if agent supports print mode
+		printArgs, supported := PrintModeArgs[agentType]
+		if !supported || len(printArgs) == 0 {
+			// Fall back to commit-based description
+			title, body := buildFallbackPRDescription(branch, commitLog, diffStat)
+			return PRGenerationDoneMsg{
+				WorkspaceName: wtName,
+				Title:         title,
+				Body:          body,
+			}
+		}
+
+		// Build the prompt for the agent
+		prompt := buildPRPrompt(branch, targetBranch, commitLog, diffStat, diff)
+
+		// Get the agent command
+		agentCmd := AgentCommands[agentType]
+		if agentCmd == "" {
+			title, body := buildFallbackPRDescription(branch, commitLog, diffStat)
+			return PRGenerationDoneMsg{
+				WorkspaceName: wtName,
+				Title:         title,
+				Body:          body,
+			}
+		}
+
+		// Run agent in print mode with a timeout.
+		// Pipe prompt via stdin to avoid OS argument length limits on large diffs.
+		// Capture stdout and stderr separately so agent warnings don't pollute output.
+
+		cmd := exec.CommandContext(ctx, agentCmd, printArgs...)
+		cmd.Dir = wtPath
+		cmd.Stdin = strings.NewReader(prompt)
+		var stdout, stderr bytes.Buffer
+		cmd.Stdout = &stdout
+		cmd.Stderr = &stderr
+
+		err := cmd.Run()
+		if err != nil {
+			// Agent failed — fall back to commit-based description
+			title, body := buildFallbackPRDescription(branch, commitLog, diffStat)
+			return PRGenerationDoneMsg{
+				WorkspaceName: wtName,
+				Title:         title,
+				Body:          body,
+				Err:           fmt.Errorf("agent %s failed: %w", agentCmd, err),
+			}
+		}
+
+		// Parse the agent output for PR title and body
+		title, body := parsePRGenerationOutput(stdout.String())
+		if title == "" {
+			title = branch
+		}
+		if body == "" {
+			_, body = buildFallbackPRDescription(branch, commitLog, diffStat)
+		}
+
+		return PRGenerationDoneMsg{
+			WorkspaceName: wtName,
+			Title:         title,
+			Body:          body,
+		}
+	}
+}
+
+// buildPRPrompt constructs the prompt sent to the agent for PR description generation.
+func buildPRPrompt(branch, targetBranch, commitLog, diffStat, diff string) string {
+	// Truncate diff if too large to avoid token limits
+	const maxDiffLen = 30000
+	truncatedDiff := diff
+	if len(truncatedDiff) > maxDiffLen {
+		truncatedDiff = truncatedDiff[:maxDiffLen] + "\n\n... (diff truncated)"
+	}
+
+	var sb strings.Builder
+	sb.WriteString("Generate a pull request title and description for the following code changes. ")
+	sb.WriteString("The PR merges branch '")
+	sb.WriteString(branch)
+	sb.WriteString("' into '")
+	sb.WriteString(targetBranch)
+	sb.WriteString("'.\n\n")
+
+	sb.WriteString("## Commits\n")
+	if commitLog != "" {
+		sb.WriteString(commitLog)
+	} else {
+		sb.WriteString("(no commits)")
+	}
+	sb.WriteString("\n\n")
+
+	sb.WriteString("## Files Changed\n")
+	if diffStat != "" {
+		sb.WriteString(diffStat)
+	} else {
+		sb.WriteString("(no file changes)")
+	}
+	sb.WriteString("\n\n")
+
+	sb.WriteString("## Diff\n")
+	if truncatedDiff != "" {
+		sb.WriteString(truncatedDiff)
+	} else {
+		sb.WriteString("(no diff)")
+	}
+	sb.WriteString("\n\n")
+
+	sb.WriteString("---\n")
+	sb.WriteString("Output EXACTLY in this format with no extra text before it:\n\n")
+	sb.WriteString("PR_TITLE: <concise one-line title describing the changes>\n")
+	sb.WriteString("PR_BODY:\n")
+	sb.WriteString("<markdown body with a Summary section and Key Changes section>\n")
+
+	return sb.String()
+}
+
+// parsePRGenerationOutput extracts PR title and body from the agent's output.
+// Expects format:
+//
+//	PR_TITLE: <title>
+//	PR_BODY:
+//	<body>
+//
+// Returns empty strings if the expected markers are not found.
+func parsePRGenerationOutput(output string) (title, body string) {
+	output = strings.TrimSpace(output)
+	if output == "" {
+		return "", ""
+	}
+
+	// Find PR_TITLE line — agents may include preamble text before it
+	titleIdx := strings.Index(output, "PR_TITLE:")
+	if titleIdx == -1 {
+		// Markers not found — return empty so caller uses fallback
+		return "", ""
+	}
+
+	// Extract title
+	afterTitle := output[titleIdx+len("PR_TITLE:"):]
+	titleEnd := strings.Index(afterTitle, "\n")
+	if titleEnd == -1 {
+		title = strings.TrimSpace(afterTitle)
+		return title, ""
+	}
+	title = strings.TrimSpace(afterTitle[:titleEnd])
+
+	// Find PR_BODY marker
+	bodyIdx := strings.Index(afterTitle, "PR_BODY:")
+	if bodyIdx == -1 {
+		// Everything after the title line is the body
+		body = strings.TrimSpace(afterTitle[titleEnd:])
+	} else {
+		body = strings.TrimSpace(afterTitle[bodyIdx+len("PR_BODY:"):])
+	}
+
+	return title, body
+}
+
+// buildFallbackPRDescription generates a basic PR description from commit messages.
+// Used when the agent doesn't support print mode or generation fails.
+func buildFallbackPRDescription(branch, commitLog, diffStat string) (title, body string) {
+	// Title: clean up branch name (replace separators, collapse whitespace)
+	title = strings.ReplaceAll(branch, "-", " ")
+	title = strings.ReplaceAll(title, "_", " ")
+	title = strings.ReplaceAll(title, "/", " ")
+	// Collapse multiple spaces and trim
+	for strings.Contains(title, "  ") {
+		title = strings.ReplaceAll(title, "  ", " ")
+	}
+	title = strings.TrimSpace(title)
+
+	var sb strings.Builder
+	sb.WriteString("## Summary\n\n")
+
+	if commitLog != "" {
+		sb.WriteString("### Commits\n")
+		for _, line := range strings.Split(commitLog, "\n") {
+			line = strings.TrimSpace(line)
+			if line != "" {
+				sb.WriteString("- ")
+				sb.WriteString(line)
+				sb.WriteString("\n")
+			}
+		}
+		sb.WriteString("\n")
+	}
+
+	if diffStat != "" {
+		sb.WriteString("### Files Changed\n")
+		sb.WriteString("```\n")
+		sb.WriteString(diffStat)
+		sb.WriteString("\n```\n")
+	}
+
+	return title, sb.String()
+}
+
+// getCommitLogForPR returns the commit log for PR description generation.
+func getCommitLogForPR(workdir, baseBranch string) string {
+	if baseBranch == "" {
+		baseBranch = detectDefaultBranch(workdir)
+	}
+	cmd := exec.Command("git", "log", baseBranch+"..HEAD", "--oneline", "--no-merges")
+	cmd.Dir = workdir
+	output, err := cmd.Output()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(output))
+}
+
+// getDiffStatForPR returns the diff stat for PR description generation.
+func getDiffStatForPR(workdir, baseBranch string) string {
+	stat, err := getDiffStatFromBase(workdir, baseBranch)
+	if err != nil {
+		return ""
+	}
+	return stat
+}
+
+// getDiffForPR returns the full diff for PR description generation.
+func getDiffForPR(workdir, baseBranch string) string {
+	if baseBranch == "" {
+		baseBranch = detectDefaultBranch(workdir)
+	}
+
+	// Try merge-base for accurate diff
+	mbCmd := exec.Command("git", "merge-base", baseBranch, "HEAD")
+	mbCmd.Dir = workdir
+	mbOutput, err := mbCmd.Output()
+
+	var args []string
+	if err == nil {
+		mbHash := strings.TrimSpace(string(mbOutput))
+		if len(mbHash) >= 7 {
+			args = []string{"diff", mbHash + "..HEAD"}
+		} else {
+			args = []string{"diff", baseBranch + "..HEAD"}
+		}
+	} else {
+		args = []string{"diff", baseBranch + "..HEAD"}
+	}
+
+	cmd := exec.Command("git", args...)
+	cmd.Dir = workdir
+	output, err := cmd.Output()
+	if err != nil {
+		return ""
+	}
+	return string(output)
+}
+
+// schedulePRGenerationTick schedules the next animation tick for PR generation progress.
+func (p *Plugin) schedulePRGenerationTick(wtName string) tea.Cmd {
+	return tea.Tick(400*time.Millisecond, func(t time.Time) tea.Msg {
+		return prGenerationTickMsg{WorkspaceName: wtName}
+	})
 }
 
 // checkPRMerged checks if a PR has been merged using gh CLI.
@@ -888,6 +1194,7 @@ func (p *Plugin) advanceMergeStep() tea.Cmd {
 		if p.mergeState.UseDirectMerge {
 			// Direct merge path - skip PR workflow
 			p.mergeState.StepStatus[MergeStepPush] = "skipped"
+			p.mergeState.StepStatus[MergeStepGeneratePR] = "skipped"
 			p.mergeState.StepStatus[MergeStepCreatePR] = "skipped"
 			p.mergeState.StepStatus[MergeStepWaitingMerge] = "skipped"
 			p.mergeState.Step = MergeStepDirectMerge
@@ -915,8 +1222,20 @@ func (p *Plugin) advanceMergeStep() tea.Cmd {
 		return nil
 
 	case MergeStepPush:
-		// Mark Push as done, move to create PR step
+		// Mark Push as done, move to PR generation step
 		p.mergeState.StepStatus[MergeStepPush] = "done"
+		p.mergeState.Step = MergeStepGeneratePR
+		p.mergeState.StepStatus[MergeStepGeneratePR] = "running"
+		p.mergeState.PRGenerationDots = 0
+		// Launch agent-powered PR description generation + animation tick
+		return tea.Batch(
+			p.generatePRDescription(p.mergeState.Worktree, p.mergeState.TargetBranch),
+			p.schedulePRGenerationTick(p.mergeState.Worktree.Name),
+		)
+
+	case MergeStepGeneratePR:
+		// PR description generated, now create the PR
+		p.mergeState.StepStatus[MergeStepGeneratePR] = "done"
 		p.mergeState.Step = MergeStepCreatePR
 		p.mergeState.StepStatus[MergeStepCreatePR] = "running"
 		title := p.mergeState.PRTitle
@@ -1014,6 +1333,9 @@ func (p *Plugin) advanceMergeStep() tea.Cmd {
 
 // cancelMergeWorkflow cancels the merge workflow and returns to list view.
 func (p *Plugin) cancelMergeWorkflow() {
+	if p.mergeState != nil && p.mergeState.PRGenerationCancel != nil {
+		p.mergeState.PRGenerationCancel()
+	}
 	p.mergeState = nil
 	p.viewMode = ViewModeList
 }
