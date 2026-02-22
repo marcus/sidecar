@@ -25,9 +25,10 @@ type ProjectsConfig struct {
 
 // ProjectConfig represents a single project in the project switcher.
 type ProjectConfig struct {
-	Name  string       `json:"name"`            // display name for the project
-	Path  string       `json:"path"`            // absolute path to project root (supports ~ expansion)
-	Theme *ThemeConfig `json:"theme,omitempty"` // per-project theme (nil = use global)
+	Name          string       `json:"name"`                    // display name for the project
+	Path          string       `json:"path"`                    // absolute path to project root (supports ~ expansion)
+	Theme         *ThemeConfig `json:"theme,omitempty"`         // per-project theme (nil = use global)
+	LastOpenInApp string       `json:"lastOpenInApp,omitempty"` // last app used to open this project (e.g. "vscode", "goland")
 }
 
 // PluginsConfig holds per-plugin configuration.
@@ -98,7 +99,8 @@ type KeymapConfig struct {
 type UIConfig struct {
 	ShowClock        bool        `json:"showClock"`
 	Theme            ThemeConfig `json:"theme"`
-	NerdFontsEnabled bool        `json:"nerdFontsEnabled"` // enables Nerd Font glyphs (pill tabs, icons, etc.)
+	NerdFontsEnabled bool        `json:"nerdFontsEnabled"`        // enables Nerd Font glyphs (pill tabs, icons, etc.)
+	LastOpenInApp    string      `json:"lastOpenInApp,omitempty"` // global fallback for last app used to open projects
 }
 
 // ThemeConfig configures the color theme.

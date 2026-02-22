@@ -71,6 +71,97 @@ func TestSave_PreservesUnknownKeys(t *testing.T) {
 	}
 }
 
+func TestSave_LastOpenInApp(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+
+	SetTestConfigPath(path)
+	defer ResetTestConfigPath()
+
+	// Create a config with UI.LastOpenInApp and a project with LastOpenInApp
+	cfg := Default()
+	cfg.UI.LastOpenInApp = "vscode"
+	cfg.Projects.List = []ProjectConfig{
+		{
+			Name:          "my-project",
+			Path:          "/home/user/my-project",
+			LastOpenInApp: "goland",
+		},
+	}
+
+	if err := Save(cfg); err != nil {
+		t.Fatalf("Save failed: %v", err)
+	}
+
+	// Reload and verify both values round-trip
+	loaded, err := LoadFrom(path)
+	if err != nil {
+		t.Fatalf("LoadFrom failed: %v", err)
+	}
+
+	if loaded.UI.LastOpenInApp != "vscode" {
+		t.Errorf("UI.LastOpenInApp = %q, want %q", loaded.UI.LastOpenInApp, "vscode")
+	}
+	if len(loaded.Projects.List) != 1 {
+		t.Fatalf("got %d projects, want 1", len(loaded.Projects.List))
+	}
+	if loaded.Projects.List[0].LastOpenInApp != "goland" {
+		t.Errorf("Projects.List[0].LastOpenInApp = %q, want %q", loaded.Projects.List[0].LastOpenInApp, "goland")
+	}
+}
+
+func TestSaveLastOpenInApp(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+
+	SetTestConfigPath(path)
+	defer ResetTestConfigPath()
+
+	// Seed a config with a project
+	cfg := Default()
+	cfg.Projects.List = []ProjectConfig{
+		{Name: "my-project", Path: "/home/user/my-project"},
+	}
+	if err := Save(cfg); err != nil {
+		t.Fatalf("Save failed: %v", err)
+	}
+
+	// Use SaveLastOpenInApp with a matching project path
+	if err := SaveLastOpenInApp("/home/user/my-project", "goland"); err != nil {
+		t.Fatalf("SaveLastOpenInApp failed: %v", err)
+	}
+
+	loaded, err := LoadFrom(path)
+	if err != nil {
+		t.Fatalf("LoadFrom failed: %v", err)
+	}
+
+	if loaded.UI.LastOpenInApp != "goland" {
+		t.Errorf("UI.LastOpenInApp = %q, want %q", loaded.UI.LastOpenInApp, "goland")
+	}
+	if loaded.Projects.List[0].LastOpenInApp != "goland" {
+		t.Errorf("project LastOpenInApp = %q, want %q", loaded.Projects.List[0].LastOpenInApp, "goland")
+	}
+
+	// Use SaveLastOpenInApp with a non-matching path: only global should update
+	if err := SaveLastOpenInApp("/nonexistent", "cursor"); err != nil {
+		t.Fatalf("SaveLastOpenInApp failed: %v", err)
+	}
+
+	loaded, err = LoadFrom(path)
+	if err != nil {
+		t.Fatalf("LoadFrom failed: %v", err)
+	}
+
+	if loaded.UI.LastOpenInApp != "cursor" {
+		t.Errorf("UI.LastOpenInApp = %q, want %q", loaded.UI.LastOpenInApp, "cursor")
+	}
+	// Project should still have "goland" from previous save
+	if loaded.Projects.List[0].LastOpenInApp != "goland" {
+		t.Errorf("project LastOpenInApp = %q, want %q (should not change)", loaded.Projects.List[0].LastOpenInApp, "goland")
+	}
+}
+
 func TestSave_WorksWithNoExistingFile(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.json")

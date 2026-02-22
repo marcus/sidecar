@@ -201,3 +201,21 @@ func SaveGlobalTheme(tc ThemeConfig) error {
 	cfg.UI.Theme = tc
 	return Save(cfg)
 }
+
+// SaveLastOpenInApp persists the last-used "open in" app ID.
+// If projectPath matches a configured project, that project's LastOpenInApp is set.
+// The global UI.LastOpenInApp is always set as a fallback.
+func SaveLastOpenInApp(projectPath, appID string) error {
+	cfg, err := LoadFrom(ConfigPath())
+	if err != nil {
+		return err
+	}
+	for i, proj := range cfg.Projects.List {
+		if proj.Path == projectPath {
+			cfg.Projects.List[i].LastOpenInApp = appID
+			break
+		}
+	}
+	cfg.UI.LastOpenInApp = appID
+	return Save(cfg)
+}
