@@ -82,3 +82,61 @@ func TestInitCreateModalBase_UsesConfiguredDefaultAgent(t *testing.T) {
 		t.Errorf("createAgentType = %q, want %q", p.createAgentType, AgentPi)
 	}
 }
+
+func TestResolveWorktreeAgentType_UsesConfigWhenNoSidecarFile(t *testing.T) {
+	workDir := t.TempDir()
+	cfg := config.Default()
+	cfg.Plugins.Workspace.DefaultAgentType = string(AgentOpenCode)
+
+	p := &Plugin{
+		ctx: &plugin.Context{
+			WorkDir: workDir,
+			Config:  cfg,
+		},
+	}
+	wt := &Worktree{Path: workDir}
+
+	if got := p.resolveWorktreeAgentType(wt); got != AgentOpenCode {
+		t.Errorf("resolveWorktreeAgentType() = %q, want %q", got, AgentOpenCode)
+	}
+}
+
+func TestResolveWorktreeAgentType_SidecarFilePrecedence(t *testing.T) {
+	workDir := t.TempDir()
+	cfg := config.Default()
+	cfg.Plugins.Workspace.DefaultAgentType = string(AgentGemini)
+
+	if err := os.WriteFile(filepath.Join(workDir, sidecarAgentFile), []byte(string(AgentCodex)+"\n"), 0644); err != nil {
+		t.Fatalf("write .sidecar-agent: %v", err)
+	}
+
+	p := &Plugin{
+		ctx: &plugin.Context{
+			WorkDir: workDir,
+			Config:  cfg,
+		},
+	}
+	wt := &Worktree{Path: workDir}
+
+	if got := p.resolveWorktreeAgentType(wt); got != AgentCodex {
+		t.Errorf("resolveWorktreeAgentType() = %q, want %q", got, AgentCodex)
+	}
+}
+
+func TestResolveWorktreeAgentType_ClaudeFallback(t *testing.T) {
+	workDir := t.TempDir()
+	cfg := config.Default()
+	cfg.Plugins.Workspace.DefaultAgentType = "not-an-agent"
+
+	p := &Plugin{
+		ctx: &plugin.Context{
+			WorkDir: workDir,
+			Config:  cfg,
+		},
+	}
+	wt := &Worktree{Path: workDir}
+
+	if got := p.resolveWorktreeAgentType(wt); got != AgentClaude {
+		t.Errorf("resolveWorktreeAgentType() = %q, want %q", got, AgentClaude)
+	}
+}

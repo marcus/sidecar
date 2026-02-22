@@ -1536,10 +1536,7 @@ func (p *Plugin) reconnectAgents() tea.Cmd {
 
 			// Create agent record
 			paneID := getPaneID(session)
-			agentType := wt.ChosenAgentType
-			if agentType == "" || agentType == AgentNone {
-				agentType = AgentClaude // Fallback if no .sidecar-agent file
-			}
+			agentType := p.resolveWorktreeAgentType(wt)
 			agent := &Agent{
 				Type:        agentType,
 				TmuxSession: session,

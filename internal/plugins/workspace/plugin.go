@@ -719,6 +719,28 @@ func isCreateDefaultAgent(agentType AgentType) bool {
 	return false
 }
 
+func (p *Plugin) getConfigDefaultAgentType() AgentType {
+	if p != nil && p.ctx != nil && p.ctx.Config != nil {
+		configAgent := AgentType(strings.TrimSpace(p.ctx.Config.Plugins.Workspace.DefaultAgentType))
+		if isCreateDefaultAgent(configAgent) {
+			return configAgent
+		}
+	}
+	return AgentClaude
+}
+
+// resolveWorktreeAgentType returns the agent type to use when starting an agent for a worktree.
+// Hierarchy: .sidecar-agent file -> config defaultAgentType -> Claude fallback.
+func (p *Plugin) resolveWorktreeAgentType(wt *Worktree) AgentType {
+	if wt != nil {
+		fileAgent := loadAgentType(wt.Path)
+		if isCreateDefaultAgent(fileAgent) {
+			return fileAgent
+		}
+	}
+	return p.getConfigDefaultAgentType()
+}
+
 // getDefaultCreateAgentType returns the default agent for create-worktree modal.
 // .sidecar-agent in the current workspace is treated equivalently to config defaultAgentType.
 func (p *Plugin) getDefaultCreateAgentType() AgentType {
@@ -731,14 +753,9 @@ func (p *Plugin) getDefaultCreateAgentType() AgentType {
 			}
 		}
 
-		if p.ctx.Config != nil {
-			configAgent := AgentType(strings.TrimSpace(p.ctx.Config.Plugins.Workspace.DefaultAgentType))
-			if isCreateDefaultAgent(configAgent) {
-				return configAgent
-			}
-		}
+		return p.getConfigDefaultAgentType()
 	}
-	return AgentClaude
+	return p.getConfigDefaultAgentType()
 }
 
 // clearCreateModal resets create modal state.

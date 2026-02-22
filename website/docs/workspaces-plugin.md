@@ -129,7 +129,14 @@ Its contents should be a single-line command prefix (hidden characters are strip
 1. `.sidecar-agent-start` in that worktree
 2. `plugins.workspace.agentStart[<selectedAgentType>]`
 3. `plugins.workspace.agentStart["*"]` (or `"default"`)
-4. Built-in command for the selected agent type
+4. Built-in command for the selected agent type (`AgentCommands`)
+5. `claude` (only if the selected type has no built-in command mapping)
+
+**Selected agent type precedence** (used for `s` start/restart/reconnect):
+
+1. `.sidecar-agent` in that worktree
+2. `plugins.workspace.defaultAgentType` (or `SIDECAR_WORKSPACE_DEFAULT_AGENT_TYPE` / `SIDECAR_DEFAULT_AGENT_TYPE`)
+3. `claude`
 
 For OpenCode, provide the command prefix (e.g. `opencode --profile fast`), not `opencode run ...`; sidecar handles `run` when needed for prompt launch.
 
@@ -613,7 +620,7 @@ When sidecar starts, it:
 2. Checks for existing tmux sessions named `sidecar-ws-*`
 3. Reconnects to active sessions and resumes output streaming
 4. Detects agent status (Active, Waiting, Done) by analyzing recent output
-5. Restores agent type from `.sidecar-agent` file
+5. Resolves agent type using `.sidecar-agent` -> `defaultAgentType` -> `claude`
 
 **Claude Code integration:**
 
