@@ -1,6 +1,8 @@
 package opencode
 
 import (
+	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -13,21 +15,26 @@ import (
 	"time"
 
 	"github.com/marcus/sidecar/internal/adapter"
+	_ "github.com/mattn/go-sqlite3"
 )
 
 const (
 	adapterID           = "opencode"
 	adapterName         = "OpenCode"
 	metaCacheMaxEntries = 2048
+	queryTimeout        = 5 * time.Second
 )
 
 // Adapter implements the adapter.Adapter interface for OpenCode sessions.
 type Adapter struct {
 	storageDir     string
+	dbPath         string
 	projectIndex   map[string]*Project // worktree path -> Project
 	projectsLoaded bool                // true after loadProjects populates projectIndex
 	metaCache      map[string]sessionMetaCacheEntry
 	metaMu         sync.RWMutex // guards metaCache
+	db             *sql.DB
+	dbMu           sync.Mutex // guards db
 }
 
 // sessionMetaCacheEntry caches parsed session metadata with validation info.
@@ -42,8 +49,10 @@ type sessionMetaCacheEntry struct {
 func New() *Adapter {
 	home, _ := os.UserHomeDir()
 	storageDir := findOpenCodeStorageDir(home)
+	dbPath := findOpenCodeDBPath(home)
 	return &Adapter{
 		storageDir:   storageDir,
+		dbPath:       dbPath,
 		projectIndex: make(map[string]*Project),
 		metaCache:    make(map[string]sessionMetaCacheEntry),
 	}
@@ -62,6 +71,21 @@ func findOpenCodeStorageDir(home string) string {
 		return candidates[0]
 	}
 	return filepath.Join(home, ".local", "share", "opencode", "storage")
+}
+
+// findOpenCodeDBPath searches candidate paths for the OpenCode SQLite database.
+// Returns the first path that exists, or the primary default if none found.
+func findOpenCodeDBPath(home string) string {
+	candidates := openCodeDBCandidates(home)
+	for _, path := range candidates {
+		if info, err := os.Stat(path); err == nil && !info.IsDir() {
+			return path
+		}
+	}
+	if len(candidates) > 0 {
+		return candidates[0]
+	}
+	return filepath.Join(home, ".local", "share", "opencode", "opencode.db")
 }
 
 // openCodeStorageCandidates returns platform-ordered candidate paths for OpenCode storage.
@@ -96,6 +120,33 @@ func openCodeStorageCandidates(home string) []string {
 	return candidates
 }
 
+// openCodeDBCandidates returns platform-ordered candidate paths for OpenCode DB.
+func openCodeDBCandidates(home string) []string {
+	var candidates []string
+
+	switch runtime.GOOS {
+	case "darwin":
+		candidates = append(candidates, filepath.Join(home, "Library", "Application Support", "opencode", "opencode.db"))
+	case "linux":
+		xdgData := os.Getenv("XDG_DATA_HOME")
+		if xdgData == "" {
+			xdgData = filepath.Join(home, ".local", "share")
+		}
+		candidates = append(candidates, filepath.Join(xdgData, "opencode", "opencode.db"))
+	case "windows":
+		if localAppData := os.Getenv("LOCALAPPDATA"); localAppData != "" {
+			candidates = append(candidates, filepath.Join(localAppData, "opencode", "Data", "opencode.db"))
+		}
+	}
+
+	defaultPath := filepath.Join(home, ".local", "share", "opencode", "opencode.db")
+	if len(candidates) == 0 || candidates[len(candidates)-1] != defaultPath {
+		candidates = append(candidates, defaultPath)
+	}
+
+	return candidates
+}
+
 // ID returns the adapter identifier.
 func (a *Adapter) ID() string { return adapterID }
 
@@ -105,8 +156,58 @@ func (a *Adapter) Name() string { return adapterName }
 // Icon returns the adapter icon for badge display.
 func (a *Adapter) Icon() string { return "◇" }
 
+func (a *Adapter) useSQLite() bool {
+	if strings.TrimSpace(a.dbPath) == "" {
+		return false
+	}
+	info, err := os.Stat(a.dbPath)
+	return err == nil && !info.IsDir()
+}
+
+func (a *Adapter) getDB() (*sql.DB, error) {
+	a.dbMu.Lock()
+	defer a.dbMu.Unlock()
+
+	if a.db != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), queryTimeout)
+		err := a.db.PingContext(ctx)
+		cancel()
+		if err == nil {
+			return a.db, nil
+		}
+		_ = a.db.Close()
+		a.db = nil
+	}
+
+	if strings.TrimSpace(a.dbPath) == "" {
+		return nil, fmt.Errorf("opencode db path not configured")
+	}
+	connStr := a.dbPath + "?mode=ro&_journal_mode=WAL"
+	db, err := sql.Open("sqlite3", connStr)
+	if err != nil {
+		return nil, err
+	}
+	db.SetMaxOpenConns(1)
+	db.SetMaxIdleConns(1)
+	db.SetConnMaxLifetime(time.Minute)
+
+	a.db = db
+	return a.db, nil
+}
+
 // Detect checks if OpenCode sessions exist for the given project.
 func (a *Adapter) Detect(projectRoot string) (bool, error) {
+	if a.useSQLite() {
+		found, err := a.detectSQLite(projectRoot)
+		if err == nil && found {
+			return true, nil
+		}
+		// Fall back to legacy JSON storage if SQLite detection fails or finds no project.
+	}
+	return a.detectJSON(projectRoot)
+}
+
+func (a *Adapter) detectJSON(projectRoot string) (bool, error) {
 	projectID, err := a.findProjectID(projectRoot)
 	if err != nil {
 		return false, nil
@@ -145,6 +246,17 @@ func (a *Adapter) Capabilities() adapter.CapabilitySet {
 
 // Sessions returns all sessions for the given project, sorted by update time.
 func (a *Adapter) Sessions(projectRoot string) ([]adapter.Session, error) {
+	if a.useSQLite() {
+		sessions, err := a.sessionsSQLite(projectRoot)
+		if err == nil && len(sessions) > 0 {
+			return sessions, nil
+		}
+		// Keep legacy compatibility when SQLite is present but unreadable/incomplete.
+	}
+	return a.sessionsJSON(projectRoot)
+}
+
+func (a *Adapter) sessionsJSON(projectRoot string) ([]adapter.Session, error) {
 	projectID, err := a.findProjectID(projectRoot)
 	if err != nil {
 		return nil, err
@@ -224,6 +336,16 @@ func (a *Adapter) Sessions(projectRoot string) ([]adapter.Session, error) {
 // Messages returns all messages for the given session.
 // Uses batch reading to minimize file I/O overhead.
 func (a *Adapter) Messages(sessionID string) ([]adapter.Message, error) {
+	if a.useSQLite() {
+		messages, err := a.messagesSQLite(sessionID)
+		if err == nil && len(messages) > 0 {
+			return messages, nil
+		}
+	}
+	return a.messagesJSON(sessionID)
+}
+
+func (a *Adapter) messagesJSON(sessionID string) ([]adapter.Message, error) {
 	messageDir := filepath.Join(a.storageDir, "message", sessionID)
 
 	// Batch read all message files at once
@@ -321,6 +443,9 @@ func (a *Adapter) Usage(sessionID string) (*adapter.UsageStats, error) {
 
 // Watch returns a channel that emits events when session data changes.
 func (a *Adapter) Watch(projectRoot string) (<-chan adapter.Event, io.Closer, error) {
+	if a.useSQLite() {
+		return NewDBWatcher(a.dbPath)
+	}
 	projectID, err := a.findProjectID(projectRoot)
 	if err != nil {
 		return nil, nil, err
@@ -331,6 +456,398 @@ func (a *Adapter) Watch(projectRoot string) (<-chan adapter.Event, io.Closer, er
 
 	sessionDir := filepath.Join(a.storageDir, "session", projectID)
 	return NewWatcher(sessionDir)
+}
+
+// WatchScope returns Global when SQLite storage is used and Project for legacy JSON.
+func (a *Adapter) WatchScope() adapter.WatchScope {
+	if a.useSQLite() {
+		return adapter.WatchScopeGlobal
+	}
+	return adapter.WatchScopeProject
+}
+
+func normalizePath(path string) string {
+	if strings.TrimSpace(path) == "" {
+		return ""
+	}
+	if abs, err := filepath.Abs(path); err == nil {
+		path = abs
+	}
+	if resolved, err := filepath.EvalSymlinks(path); err == nil {
+		path = resolved
+	}
+	return filepath.Clean(path)
+}
+
+func sqliteStorageSize(dbPath string) int64 {
+	var total int64
+	if info, err := os.Stat(dbPath); err == nil {
+		total += info.Size()
+	}
+	if info, err := os.Stat(dbPath + "-wal"); err == nil {
+		total += info.Size()
+	}
+	return total
+}
+
+func (a *Adapter) findProjectIDSQLite(projectRoot string) (string, error) {
+	projectRoot = normalizePath(projectRoot)
+	if projectRoot == "" {
+		return "", nil
+	}
+
+	db, err := a.getDB()
+	if err != nil {
+		return "", err
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), queryTimeout)
+	defer cancel()
+
+	rows, err := db.QueryContext(ctx, `SELECT id, worktree FROM project`)
+	if err != nil {
+		return "", err
+	}
+	defer func() { _ = rows.Close() }()
+
+	for rows.Next() {
+		var (
+			id       string
+			worktree sql.NullString
+		)
+		if err := rows.Scan(&id, &worktree); err != nil {
+			continue
+		}
+		if !worktree.Valid || worktree.String == "/" {
+			continue
+		}
+		if normalizePath(worktree.String) == projectRoot {
+			return id, nil
+		}
+	}
+	return "", nil
+}
+
+func (a *Adapter) detectSQLite(projectRoot string) (bool, error) {
+	projectID, err := a.findProjectIDSQLite(projectRoot)
+	if err != nil || projectID == "" {
+		return false, err
+	}
+
+	db, err := a.getDB()
+	if err != nil {
+		return false, err
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), queryTimeout)
+	defer cancel()
+
+	var exists int
+	err = db.QueryRowContext(ctx, `SELECT 1 FROM session WHERE project_id = ? LIMIT 1`, projectID).Scan(&exists)
+	if err == sql.ErrNoRows {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+func (a *Adapter) sessionsSQLite(projectRoot string) ([]adapter.Session, error) {
+	projectID, err := a.findProjectIDSQLite(projectRoot)
+	if err != nil || projectID == "" {
+		return nil, err
+	}
+
+	db, err := a.getDB()
+	if err != nil {
+		return nil, err
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), queryTimeout)
+	defer cancel()
+
+	rows, err := db.QueryContext(ctx, `
+		SELECT
+			s.id,
+			s.title,
+			s.parent_id,
+			s.time_created,
+			s.time_updated,
+			(SELECT COUNT(*) FROM message m WHERE m.session_id = s.id) AS msg_count
+		FROM session s
+		WHERE s.project_id = ?
+		ORDER BY s.time_updated DESC
+	`, projectID)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	fileSize := sqliteStorageSize(a.dbPath)
+	var sessions []adapter.Session
+	for rows.Next() {
+		var (
+			id        string
+			title     sql.NullString
+			parentID  sql.NullString
+			createdMS int64
+			updatedMS int64
+			msgCount  int
+		)
+		if err := rows.Scan(&id, &title, &parentID, &createdMS, &updatedMS, &msgCount); err != nil {
+			continue
+		}
+
+		name := strings.TrimSpace(title.String)
+		if name == "" {
+			name = shortID(id)
+		}
+
+		createdAt := time.UnixMilli(createdMS).Local()
+		updatedAt := time.UnixMilli(updatedMS).Local()
+		if createdMS == 0 {
+			createdAt = time.Time{}
+		}
+		if updatedMS == 0 {
+			updatedAt = createdAt
+		}
+
+		duration := time.Duration(0)
+		if !createdAt.IsZero() && !updatedAt.IsZero() && updatedAt.After(createdAt) {
+			duration = updatedAt.Sub(createdAt)
+		}
+
+		sessions = append(sessions, adapter.Session{
+			ID:           id,
+			Name:         name,
+			AdapterID:    adapterID,
+			AdapterName:  adapterName,
+			AdapterIcon:  a.Icon(),
+			CreatedAt:    createdAt,
+			UpdatedAt:    updatedAt,
+			Duration:     duration,
+			IsActive:     !updatedAt.IsZero() && time.Since(updatedAt) < 5*time.Minute,
+			IsSubAgent:   parentID.Valid && strings.TrimSpace(parentID.String) != "",
+			MessageCount: msgCount,
+			FileSize:     fileSize,
+		})
+	}
+	return sessions, nil
+}
+
+func appendParsedPart(parts parsedParts, part Part) parsedParts {
+	switch part.Type {
+	case "text":
+		if part.Text != "" {
+			parts.content = strings.TrimSpace(strings.Join([]string{parts.content, part.Text}, "\n"))
+		}
+	case "tool":
+		tu := adapter.ToolUse{
+			ID:   part.CallID,
+			Name: part.Tool,
+		}
+		if part.State != nil {
+			tu.Input = ToolInputString(part.State.Input)
+			tu.Output = ToolOutputString(part.State.Output)
+		}
+		parts.toolUses = append(parts.toolUses, tu)
+	case "file":
+		if part.Filename != "" {
+			parts.fileRefs = append(parts.fileRefs, part.Filename)
+		}
+	case "patch":
+		parts.patchFiles = append(parts.patchFiles, part.Files...)
+	}
+	return parts
+}
+
+func (a *Adapter) messagesSQLite(sessionID string) ([]adapter.Message, error) {
+	db, err := a.getDB()
+	if err != nil {
+		return nil, err
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), queryTimeout)
+	defer cancel()
+
+	type messageRow struct {
+		ID        string
+		SessionID string
+		CreatedMS int64
+		UpdatedMS int64
+		Data      []byte
+	}
+
+	msgRows, err := db.QueryContext(ctx, `
+		SELECT id, session_id, time_created, time_updated, data
+		FROM message
+		WHERE session_id = ?
+		ORDER BY time_created ASC, id ASC
+	`, sessionID)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = msgRows.Close() }()
+
+	rows := make([]messageRow, 0, 64)
+	for msgRows.Next() {
+		var row messageRow
+		if err := msgRows.Scan(&row.ID, &row.SessionID, &row.CreatedMS, &row.UpdatedMS, &row.Data); err != nil {
+			continue
+		}
+		rows = append(rows, row)
+	}
+	if len(rows) == 0 {
+		return nil, nil
+	}
+
+	partRows, err := db.QueryContext(ctx, `
+		SELECT id, message_id, session_id, data
+		FROM part
+		WHERE session_id = ?
+		ORDER BY message_id ASC, id ASC
+	`, sessionID)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = partRows.Close() }()
+
+	partsMap := make(map[string]parsedParts)
+	for partRows.Next() {
+		var (
+			partID    string
+			messageID string
+			partSID   string
+			data      []byte
+		)
+		if err := partRows.Scan(&partID, &messageID, &partSID, &data); err != nil {
+			continue
+		}
+
+		var part Part
+		if err := json.Unmarshal(data, &part); err != nil {
+			continue
+		}
+		part.ID = partID
+		part.MessageID = messageID
+		part.SessionID = partSID
+
+		current := partsMap[messageID]
+		partsMap[messageID] = appendParsedPart(current, part)
+	}
+
+	messages := make([]adapter.Message, 0, len(rows))
+	for _, row := range rows {
+		var msg Message
+		if err := json.Unmarshal(row.Data, &msg); err != nil {
+			continue
+		}
+		msg.ID = row.ID
+		if msg.SessionID == "" {
+			msg.SessionID = row.SessionID
+		}
+		if msg.Time.Created == 0 {
+			msg.Time.Created = row.CreatedMS
+		}
+		if msg.Time.Updated == 0 {
+			msg.Time.Updated = row.UpdatedMS
+		}
+
+		if msg.Role != "user" && msg.Role != "assistant" {
+			continue
+		}
+
+		parts := partsMap[msg.ID]
+		var contentParts []string
+		if parts.content != "" {
+			contentParts = append(contentParts, parts.content)
+		}
+		if len(parts.fileRefs) > 0 {
+			contentParts = append(contentParts, fmt.Sprintf("[files: %s]", strings.Join(parts.fileRefs, ", ")))
+		}
+		if len(parts.patchFiles) > 0 {
+			contentParts = append(contentParts, fmt.Sprintf("[edited: %d files]", len(parts.patchFiles)))
+		}
+
+		model := msg.ModelID
+		if model == "" && msg.Model != nil {
+			model = msg.Model.ModelID
+		}
+
+		adapterMsg := adapter.Message{
+			ID:             msg.ID,
+			Role:           msg.Role,
+			Content:        strings.Join(contentParts, "\n"),
+			Timestamp:      msg.Time.CreatedTime(),
+			Model:          model,
+			ToolUses:       parts.toolUses,
+			ThinkingBlocks: parts.thinkingBlocks,
+		}
+		if adapterMsg.Timestamp.IsZero() && row.CreatedMS > 0 {
+			adapterMsg.Timestamp = time.UnixMilli(row.CreatedMS).Local()
+		}
+		if msg.Tokens != nil {
+			adapterMsg.TokenUsage = adapter.TokenUsage{
+				InputTokens:  msg.Tokens.Input,
+				OutputTokens: msg.Tokens.Output,
+			}
+			if msg.Tokens.Cache != nil {
+				adapterMsg.CacheRead = msg.Tokens.Cache.Read
+				adapterMsg.CacheWrite = msg.Tokens.Cache.Write
+			}
+		}
+
+		messages = append(messages, adapterMsg)
+	}
+
+	sort.Slice(messages, func(i, j int) bool {
+		return messages[i].Timestamp.Before(messages[j].Timestamp)
+	})
+	return messages, nil
+}
+
+func (a *Adapter) discoverRelatedProjectDirsSQLite(mainWorktreePath string) ([]string, error) {
+	absMain := normalizePath(mainWorktreePath)
+	repoName := filepath.Base(absMain)
+	if repoName == "" || repoName == "." || repoName == "/" {
+		return nil, nil
+	}
+
+	db, err := a.getDB()
+	if err != nil {
+		return nil, err
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), queryTimeout)
+	defer cancel()
+
+	rows, err := db.QueryContext(ctx, `SELECT worktree FROM project`)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	var related []string
+	seen := make(map[string]struct{})
+	for rows.Next() {
+		var worktree sql.NullString
+		if err := rows.Scan(&worktree); err != nil || !worktree.Valid {
+			continue
+		}
+		cleaned := normalizePath(worktree.String)
+		if cleaned == "" || cleaned == "/" {
+			continue
+		}
+		base := filepath.Base(cleaned)
+		if base == repoName || strings.HasPrefix(base, repoName+"-") {
+			if _, ok := seen[cleaned]; !ok {
+				seen[cleaned] = struct{}{}
+				related = append(related, cleaned)
+			}
+		}
+	}
+	return related, nil
 }
 
 // findProjectID finds the OpenCode project ID for the given project root.
@@ -433,6 +950,14 @@ func (a *Adapter) loadProjects() error {
 // related to the given main worktree path. This finds conversations from deleted
 // worktrees by checking if stored worktree paths share the same repository base name.
 func (a *Adapter) DiscoverRelatedProjectDirs(mainWorktreePath string) ([]string, error) {
+	if a.useSQLite() {
+		related, err := a.discoverRelatedProjectDirsSQLite(mainWorktreePath)
+		if err == nil && len(related) > 0 {
+			return related, nil
+		}
+		// Fall back to legacy project files if DB discovery fails.
+	}
+
 	absMain, err := filepath.Abs(mainWorktreePath)
 	if err != nil {
 		return nil, nil

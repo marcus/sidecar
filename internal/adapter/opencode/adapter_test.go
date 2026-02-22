@@ -1,11 +1,16 @@
 package opencode
 
 import (
+	"database/sql"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/marcus/sidecar/internal/adapter"
+	_ "github.com/mattn/go-sqlite3"
 )
 
 func TestNew(t *testing.T) {
@@ -50,6 +55,197 @@ func TestCapabilities(t *testing.T) {
 	}
 	if !caps["watch"] {
 		t.Error("expected watch capability")
+	}
+}
+
+func createSQLiteFixture(t *testing.T) (dbPath string, projectPath string, sessionID string) {
+	t.Helper()
+
+	tmpDir := t.TempDir()
+	projectPath = filepath.Join(tmpDir, "repo")
+	if err := os.MkdirAll(projectPath, 0755); err != nil {
+		t.Fatalf("mkdir project: %v", err)
+	}
+	dbPath = filepath.Join(tmpDir, "opencode.db")
+
+	db, err := sql.Open("sqlite3", dbPath)
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	defer func() { _ = db.Close() }()
+
+	stmts := []string{
+		`CREATE TABLE project (id TEXT PRIMARY KEY, worktree TEXT);`,
+		`CREATE TABLE session (id TEXT PRIMARY KEY, project_id TEXT, parent_id TEXT, title TEXT, time_created INTEGER, time_updated INTEGER);`,
+		`CREATE TABLE message (id TEXT PRIMARY KEY, session_id TEXT, time_created INTEGER, time_updated INTEGER, data TEXT);`,
+		`CREATE TABLE part (id TEXT PRIMARY KEY, message_id TEXT, session_id TEXT, data TEXT);`,
+	}
+	for _, stmt := range stmts {
+		if _, err := db.Exec(stmt); err != nil {
+			t.Fatalf("create schema: %v", err)
+		}
+	}
+
+	sessionID = "ses_sqlite_main"
+	now := time.Now().UnixMilli()
+	if _, err := db.Exec(`INSERT INTO project(id, worktree) VALUES(?, ?)`, "proj_sql", projectPath); err != nil {
+		t.Fatalf("insert project: %v", err)
+	}
+	if _, err := db.Exec(`INSERT INTO session(id, project_id, parent_id, title, time_created, time_updated) VALUES(?, ?, ?, ?, ?, ?)`,
+		sessionID, "proj_sql", "", "SQLite Session", now-5000, now-1000); err != nil {
+		t.Fatalf("insert session: %v", err)
+	}
+
+	userData, _ := json.Marshal(map[string]any{
+		"role": "user",
+		"time": map[string]any{"created": now - 5000, "updated": now - 5000},
+		"model": map[string]any{
+			"providerID": "anthropic",
+			"modelID":    "claude-3-5-sonnet",
+		},
+	})
+	assistantData, _ := json.Marshal(map[string]any{
+		"role":       "assistant",
+		"modelID":    "claude-3-5-sonnet",
+		"providerID": "anthropic",
+		"time":       map[string]any{"created": now - 3000, "updated": now - 2000},
+		"tokens": map[string]any{
+			"input":  123,
+			"output": 45,
+			"cache":  map[string]any{"read": 7, "write": 2},
+		},
+	})
+	if _, err := db.Exec(`INSERT INTO message(id, session_id, time_created, time_updated, data) VALUES(?, ?, ?, ?, ?)`,
+		"msg_sql_user", sessionID, now-5000, now-5000, string(userData)); err != nil {
+		t.Fatalf("insert user message: %v", err)
+	}
+	if _, err := db.Exec(`INSERT INTO message(id, session_id, time_created, time_updated, data) VALUES(?, ?, ?, ?, ?)`,
+		"msg_sql_assistant", sessionID, now-3000, now-2000, string(assistantData)); err != nil {
+		t.Fatalf("insert assistant message: %v", err)
+	}
+
+	partTextUser, _ := json.Marshal(map[string]any{"type": "text", "text": "Hello from sqlite user"})
+	partTextAssistant, _ := json.Marshal(map[string]any{"type": "text", "text": "Hello from sqlite assistant"})
+	partToolAssistant, _ := json.Marshal(map[string]any{
+		"type":   "tool",
+		"callID": "call_sql_1",
+		"tool":   "bash",
+		"state": map[string]any{
+			"status": "completed",
+			"input":  map[string]any{"cmd": "ls -la"},
+			"output": "ok",
+		},
+	})
+	if _, err := db.Exec(`INSERT INTO part(id, message_id, session_id, data) VALUES(?, ?, ?, ?)`,
+		"prt_sql_user", "msg_sql_user", sessionID, string(partTextUser)); err != nil {
+		t.Fatalf("insert user part: %v", err)
+	}
+	if _, err := db.Exec(`INSERT INTO part(id, message_id, session_id, data) VALUES(?, ?, ?, ?)`,
+		"prt_sql_assistant_text", "msg_sql_assistant", sessionID, string(partTextAssistant)); err != nil {
+		t.Fatalf("insert assistant text part: %v", err)
+	}
+	if _, err := db.Exec(`INSERT INTO part(id, message_id, session_id, data) VALUES(?, ?, ?, ?)`,
+		"prt_sql_assistant_tool", "msg_sql_assistant", sessionID, string(partToolAssistant)); err != nil {
+		t.Fatalf("insert assistant tool part: %v", err)
+	}
+
+	return dbPath, projectPath, sessionID
+}
+
+func TestSQLiteStorageMode_DetectSessionsMessages(t *testing.T) {
+	dbPath, projectPath, sessionID := createSQLiteFixture(t)
+	a := &Adapter{
+		storageDir:   filepath.Join(t.TempDir(), "storage"),
+		dbPath:       dbPath,
+		projectIndex: make(map[string]*Project),
+		metaCache:    make(map[string]sessionMetaCacheEntry),
+	}
+
+	found, err := a.Detect(projectPath)
+	if err != nil {
+		t.Fatalf("Detect sqlite error: %v", err)
+	}
+	if !found {
+		t.Fatal("expected sqlite project detection to succeed")
+	}
+
+	sessions, err := a.Sessions(projectPath)
+	if err != nil {
+		t.Fatalf("Sessions sqlite error: %v", err)
+	}
+	if len(sessions) != 1 {
+		t.Fatalf("expected 1 sqlite session, got %d", len(sessions))
+	}
+	if sessions[0].ID != sessionID {
+		t.Fatalf("session id = %q, want %q", sessions[0].ID, sessionID)
+	}
+	if sessions[0].Path != "" {
+		t.Fatalf("sqlite-backed session Path = %q, want empty", sessions[0].Path)
+	}
+
+	messages, err := a.Messages(sessionID)
+	if err != nil {
+		t.Fatalf("Messages sqlite error: %v", err)
+	}
+	if len(messages) != 2 {
+		t.Fatalf("expected 2 sqlite messages, got %d", len(messages))
+	}
+	if messages[0].Role != "user" || messages[1].Role != "assistant" {
+		t.Fatalf("unexpected roles: %q, %q", messages[0].Role, messages[1].Role)
+	}
+	if len(messages[1].ToolUses) == 0 {
+		t.Fatal("expected assistant tool uses from sqlite parts")
+	}
+	if messages[1].InputTokens != 123 || messages[1].OutputTokens != 45 {
+		t.Fatalf("unexpected sqlite tokens: in=%d out=%d", messages[1].InputTokens, messages[1].OutputTokens)
+	}
+}
+
+func TestWatchScope_WithSQLiteDB(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "opencode.db")
+	a := &Adapter{dbPath: dbPath}
+
+	if got := a.WatchScope(); got != adapter.WatchScopeProject {
+		t.Fatalf("WatchScope before db exists = %v, want %v", got, adapter.WatchScopeProject)
+	}
+	if err := os.WriteFile(dbPath, []byte("sqlite"), 0644); err != nil {
+		t.Fatalf("write db file: %v", err)
+	}
+	if got := a.WatchScope(); got != adapter.WatchScopeGlobal {
+		t.Fatalf("WatchScope after db exists = %v, want %v", got, adapter.WatchScopeGlobal)
+	}
+}
+
+func TestWatch_WithSQLiteDB(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "opencode.db")
+	if err := os.WriteFile(dbPath, []byte("sqlite"), 0644); err != nil {
+		t.Fatalf("write db file: %v", err)
+	}
+
+	a := &Adapter{
+		dbPath:       dbPath,
+		projectIndex: make(map[string]*Project),
+		metaCache:    make(map[string]sessionMetaCacheEntry),
+	}
+	ch, closer, err := a.Watch(t.TempDir())
+	if err != nil {
+		t.Fatalf("Watch sqlite error: %v", err)
+	}
+	defer func() { _ = closer.Close() }()
+
+	if err := os.WriteFile(dbPath+"-wal", []byte("wal-update"), 0644); err != nil {
+		t.Fatalf("write wal file: %v", err)
+	}
+
+	select {
+	case evt := <-ch:
+		if evt.Type != adapter.EventSessionCreated && evt.Type != adapter.EventSessionUpdated {
+			t.Fatalf("unexpected event type: %v", evt.Type)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("expected sqlite watcher event")
 	}
 }
 
