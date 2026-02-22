@@ -89,6 +89,8 @@ func (m Model) View() string {
 		return m.renderWorktreeSwitcherModal(bg)
 	case ModalThemeSwitcher:
 		return m.renderThemeSwitcherModal(bg)
+	case ModalOpenIn:
+		return m.renderOpenInModal(bg)
 	case ModalIssueInput:
 		return m.renderIssueInputOverlay(bg)
 	case ModalIssuePreview:

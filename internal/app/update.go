@@ -103,6 +103,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.handleWorktreeSwitcherMouse(msg)
 		case ModalThemeSwitcher:
 			return m.handleThemeSwitcherMouse(msg)
+		case ModalOpenIn:
+			return m.handleOpenInMouse(msg)
 		case ModalIssueInput:
 			return m.handleIssueInputMouse(msg)
 		case ModalIssuePreview:
@@ -974,6 +976,26 @@ func (m *Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, cmd
 	}
 
+	// Handle Open In modal keys (Esc handled above)
+	if m.showOpenIn {
+		m.ensureOpenInModal()
+		if m.openInModal != nil {
+			action, cmd := m.openInModal.HandleKey(msg)
+			switch action {
+			case "cancel":
+				m.resetOpenIn()
+				m.updateContext()
+				return m, nil
+			case "select":
+				return m, m.confirmOpenIn()
+			}
+			if cmd != nil {
+				return m, cmd
+			}
+		}
+		return m, nil
+	}
+
 	// Handle issue input modal keys
 	if m.showIssueInput {
 		// ctrl+x toggles closed issue visibility (before type switch)
@@ -1249,6 +1271,13 @@ func (m *Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.previewThemeEntry(m.themeSwitcherOriginal)
 			m.resetThemeSwitcher()
 			m.updateContext()
+		}
+		return m, nil
+	case "O":
+		if !m.hasModal() {
+			m.showOpenIn = true
+			m.activeContext = "open-in"
+			m.initOpenIn()
 		}
 		return m, nil
 	case "i":

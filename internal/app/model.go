@@ -37,6 +37,7 @@ const (
 	ModalProjectSwitcher                   // Project switcher
 	ModalWorktreeSwitcher                  // Worktree switcher
 	ModalThemeSwitcher                     // Theme switcher
+	ModalOpenIn                            // Open In IDE picker
 	ModalIssueInput                        // Issue ID text input
 	ModalIssuePreview                      // Issue preview display (lowest priority)
 )
@@ -61,6 +62,8 @@ func (m *Model) activeModal() ModalKind {
 		return ModalWorktreeSwitcher
 	case m.showThemeSwitcher:
 		return ModalThemeSwitcher
+	case m.showOpenIn:
+		return ModalOpenIn
 	case m.showIssueInput:
 		return ModalIssueInput
 	case m.showIssuePreview:
