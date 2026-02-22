@@ -69,10 +69,10 @@ When done, press `m` to review the diff, create a GitHub PR, and clean up branch
 
 ## Configuration
 
-Workspace behavior is configured via JSON files:
+Workspace behavior is configured via:
 
-**Global config:** `~/.config/sidecar/config.json`
-**Project config:** `.sidecar/config.json` (overrides global)
+- **Global config:** `~/.config/sidecar/config.json` (for `plugins.workspace.*` settings)
+- **Project config:** `.sidecar/config.json` (currently used for prompt definitions)
 
 **Example config:**
 
@@ -81,6 +81,12 @@ Workspace behavior is configured via JSON files:
   "plugins": {
     "workspace": {
       "dirPrefix": true,
+      "defaultAgentType": "claude",
+      "agentStart": {
+        "claude": "claude --dangerously-skip-permissions",
+        "opencode": "opencode --profile fast",
+        "*": "claude"
+      },
       "setupScript": ".sidecar/setup-workspace.sh"
     }
   },
@@ -104,7 +110,28 @@ Workspace behavior is configured via JSON files:
 | Option | Type | Description |
 |--------|------|-------------|
 | `dirPrefix` | bool | Prefix workspace dir with repo name (e.g., `myrepo-feature-auth`) |
+| `defaultAgentType` | string | Default agent family selected in create-workspace modal for new worktrees (AgentType value, e.g. `claude`, `codex`, `opencode`) |
+| `agentStart` | object | Default startup command map keyed by AgentType (plus optional `*`/`default` fallback) |
 | `setupScript` | string | Path to script run after workspace creation (for env setup, symlinks, etc.) |
+
+Environment override: set `SIDECAR_WORKSPACE_DEFAULT_AGENT_TYPE` (or `SIDECAR_DEFAULT_AGENT_TYPE`) before launching sidecar to override `defaultAgentType` for that process.
+
+### Per-worktree / per-branch agent command
+
+To override startup for one specific worktree/branch, create this file in that worktree root:
+
+- `.sidecar-agent-start` (exact filename)
+
+Its contents should be a single-line command prefix (hidden characters are stripped; empty/multiline values are ignored).
+
+**Command precedence** when starting an agent in a worktree:
+
+1. `.sidecar-agent-start` in that worktree
+2. `plugins.workspace.agentStart[<selectedAgentType>]`
+3. `plugins.workspace.agentStart["*"]` (or `"default"`)
+4. Built-in command for the selected agent type
+
+For OpenCode, provide the command prefix (e.g. `opencode --profile fast`), not `opencode run ...`; sidecar handles `run` when needed for prompt launch.
 
 The setup script runs in the new workspace directory with `$SIDECAR_WORKTREE_NAME` and `$SIDECAR_BASE_BRANCH` environment variables.
 
@@ -575,6 +602,7 @@ The plugin remembers state across restarts and automatically reconnects to runni
 | Diff view mode | User config |
 | Active tab | User config |
 | Agent type | `.sidecar-agent` in workspace dir |
+| Agent start command override | `.sidecar-agent-start` in workspace dir |
 | Task link | `.sidecar-task` in workspace dir |
 | PR URL | `.sidecar-pr` in workspace dir |
 

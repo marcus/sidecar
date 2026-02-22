@@ -184,3 +184,133 @@ func TestLoadFrom_EmptyProjectsList(t *testing.T) {
 		t.Errorf("got %d projects, want 0", len(cfg.Projects.List))
 	}
 }
+
+func TestLoadFrom_WorkspaceAgentSettings(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+
+	content := []byte(`{
+		"plugins": {
+			"workspace": {
+				"defaultAgentType": "opencode",
+				"agentStart": {
+					"opencode": "opencode --profile fast"
+				}
+			}
+		}
+	}`)
+	if err := os.WriteFile(path, content, 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := LoadFrom(path)
+	if err != nil {
+		t.Fatalf("LoadFrom failed: %v", err)
+	}
+
+	if cfg.Plugins.Workspace.DefaultAgentType != "opencode" {
+		t.Errorf("DefaultAgentType = %q, want %q", cfg.Plugins.Workspace.DefaultAgentType, "opencode")
+	}
+	if got := cfg.Plugins.Workspace.AgentStart["opencode"]; got != "opencode --profile fast" {
+		t.Errorf("AgentStart[opencode] = %q, want %q", got, "opencode --profile fast")
+	}
+}
+
+func TestLoadFrom_WorkspaceDefaultAgentTypeEnvOverride(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+	content := []byte(`{
+		"plugins": {
+			"workspace": {
+				"defaultAgentType": "opencode"
+			}
+		}
+	}`)
+	if err := os.WriteFile(path, content, 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	t.Setenv("SIDECAR_WORKSPACE_DEFAULT_AGENT_TYPE", "codex")
+
+	cfg, err := LoadFrom(path)
+	if err != nil {
+		t.Fatalf("LoadFrom failed: %v", err)
+	}
+	if cfg.Plugins.Workspace.DefaultAgentType != "codex" {
+		t.Errorf("DefaultAgentType = %q, want %q", cfg.Plugins.Workspace.DefaultAgentType, "codex")
+	}
+}
+
+func TestLoadFrom_WorkspaceDefaultAgentTypeEnvOverride_NoConfigFile(t *testing.T) {
+	t.Setenv("SIDECAR_WORKSPACE_DEFAULT_AGENT_TYPE", "gemini")
+
+	cfg, err := LoadFrom("/definitely/missing/config.json")
+	if err != nil {
+		t.Fatalf("LoadFrom failed: %v", err)
+	}
+	if cfg.Plugins.Workspace.DefaultAgentType != "gemini" {
+		t.Errorf("DefaultAgentType = %q, want %q", cfg.Plugins.Workspace.DefaultAgentType, "gemini")
+	}
+}
+
+func TestLoadFrom_WorkspaceDefaultAgentTypeEnvOverride_LegacyAlias(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+	content := []byte(`{"plugins":{"workspace":{"defaultAgentType":"opencode"}}}`)
+	if err := os.WriteFile(path, content, 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	t.Setenv("SIDECAR_DEFAULT_AGENT_TYPE", "cursor")
+
+	cfg, err := LoadFrom(path)
+	if err != nil {
+		t.Fatalf("LoadFrom failed: %v", err)
+	}
+	if cfg.Plugins.Workspace.DefaultAgentType != "cursor" {
+		t.Errorf("DefaultAgentType = %q, want %q", cfg.Plugins.Workspace.DefaultAgentType, "cursor")
+	}
+}
+
+func TestLoadFrom_WorkspaceDefaultAgentTypeEnvOverride_PrefersPrimaryVar(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+	content := []byte(`{"plugins":{"workspace":{"defaultAgentType":"opencode"}}}`)
+	if err := os.WriteFile(path, content, 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	t.Setenv("SIDECAR_DEFAULT_AGENT_TYPE", "cursor")
+	t.Setenv("SIDECAR_WORKSPACE_DEFAULT_AGENT_TYPE", "codex")
+
+	cfg, err := LoadFrom(path)
+	if err != nil {
+		t.Fatalf("LoadFrom failed: %v", err)
+	}
+	if cfg.Plugins.Workspace.DefaultAgentType != "codex" {
+		t.Errorf("DefaultAgentType = %q, want %q", cfg.Plugins.Workspace.DefaultAgentType, "codex")
+	}
+}
+
+func TestLoadFrom_WorkspaceAgentStartLegacyStringBackwardCompat(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+	content := []byte(`{
+		"plugins": {
+			"workspace": {
+				"agentStart": "custom-agent --legacy"
+			}
+		}
+	}`)
+	if err := os.WriteFile(path, content, 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := LoadFrom(path)
+	if err != nil {
+		t.Fatalf("LoadFrom failed: %v", err)
+	}
+	if got := cfg.Plugins.Workspace.AgentStart["*"]; got != "custom-agent --legacy" {
+		t.Errorf("AgentStart[*] = %q, want %q", got, "custom-agent --legacy")
+	}
+}

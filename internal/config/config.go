@@ -67,6 +67,13 @@ type WorkspacePluginConfig struct {
 	// DirPrefix prefixes workspace directory names with the repo name (e.g., 'myrepo-feature-auth')
 	// This helps associate conversations with the repo after workspace deletion. Default: true.
 	DirPrefix bool `json:"dirPrefix"`
+	// DefaultAgentType sets the default agent family selected when creating a workspace.
+	// Uses workspace.AgentType values (e.g. "claude", "codex", "opencode").
+	DefaultAgentType string `json:"defaultAgentType,omitempty"`
+	// AgentStart maps agent family (AgentType string) to default startup command.
+	// Example: {"claude":"claude", "opencode":"opencode --profile fast"}.
+	// Per-workspace .sidecar-agent-start still takes precedence when present.
+	AgentStart map[string]string `json:"agentStart,omitempty"`
 	// TmuxCaptureMaxBytes caps tmux pane capture size for the preview pane. Default: 2MB.
 	TmuxCaptureMaxBytes int `json:"tmuxCaptureMaxBytes"`
 	// InteractiveExitKey is the keybinding to exit interactive mode. Default: "ctrl+\".
@@ -138,7 +145,7 @@ func Default() *Config {
 			Overrides: make(map[string]string),
 		},
 		UI: UIConfig{
-			ShowClock:  true,
+			ShowClock: true,
 			Theme: ThemeConfig{
 				Name:      "default",
 				Overrides: make(map[string]interface{}),

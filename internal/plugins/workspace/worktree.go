@@ -552,6 +552,7 @@ func (p *Plugin) setupTDRoot(worktreePath string) error {
 
 const sidecarTaskFile = ".sidecar-task"
 const sidecarAgentFile = ".sidecar-agent"
+const sidecarAgentStartFile = ".sidecar-agent-start"
 const sidecarPRFile = ".sidecar-pr"
 const sidecarBaseFile = ".sidecar-base"
 

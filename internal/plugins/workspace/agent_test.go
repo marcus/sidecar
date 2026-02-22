@@ -2,9 +2,13 @@ package workspace
 
 import (
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/marcus/sidecar/internal/config"
+	"github.com/marcus/sidecar/internal/plugin"
 )
 
 func TestSanitizeName(t *testing.T) {
@@ -148,6 +152,218 @@ func TestGetAgentCommand(t *testing.T) {
 				t.Errorf("getAgentCommand(%q) = %q, want %q", tt.agentType, result, tt.expected)
 			}
 		})
+	}
+}
+
+func TestResolveAgentBaseCommand(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	tests := []struct {
+		name      string
+		agentType AgentType
+		hasFile   bool
+		content   string
+		expected  string
+	}{
+		{
+			name:      "missing override file falls back to defaults",
+			agentType: AgentOpenCode,
+			hasFile:   false,
+			content:   "",
+			expected:  "opencode",
+		},
+		{
+			name:      "non-empty override file is used",
+			agentType: AgentOpenCode,
+			hasFile:   true,
+			content:   "custom-opencode --mode fast\n",
+			expected:  "custom-opencode --mode fast",
+		},
+		{
+			name:      "empty override file falls back to defaults",
+			agentType: AgentCodex,
+			hasFile:   true,
+			content:   "\n  \n",
+			expected:  "codex",
+		},
+		{
+			name:      "unknown type falls back to claude",
+			agentType: AgentCustom,
+			hasFile:   false,
+			content:   "",
+			expected:  "claude",
+		},
+	}
+
+	overridePath := tmpDir + "/" + sidecarAgentStartFile
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_ = os.Remove(overridePath)
+			if tt.hasFile {
+				if err := os.WriteFile(overridePath, []byte(tt.content), 0644); err != nil {
+					t.Fatalf("failed to write override file: %v", err)
+				}
+			}
+
+			p := &Plugin{}
+			got := p.resolveAgentBaseCommand(tmpDir, tt.agentType)
+			if got != tt.expected {
+				t.Errorf("resolveAgentBaseCommand(%q) = %q, want %q", tt.agentType, got, tt.expected)
+			}
+		})
+	}
+}
+
+func TestResolveAgentBaseCommand_ConfigFallback(t *testing.T) {
+	tmpDir := t.TempDir()
+	overridePath := tmpDir + "/" + sidecarAgentStartFile
+
+	cfg := config.Default()
+	cfg.Plugins.Workspace.AgentStart = map[string]string{
+		string(AgentCodex): "configured-agent --from config",
+	}
+	p := &Plugin{
+		ctx: &plugin.Context{
+			WorkDir: tmpDir,
+			Config:  cfg,
+		},
+	}
+
+	got := p.resolveAgentBaseCommand(tmpDir, AgentCodex)
+	if got != "configured-agent --from config" {
+		t.Fatalf("resolveAgentBaseCommand config fallback = %q, want %q", got, "configured-agent --from config")
+	}
+
+	// Worktree file should override config agentStart when present.
+	if err := os.WriteFile(overridePath, []byte("file-agent --preferred"), 0644); err != nil {
+		t.Fatalf("failed to write override file: %v", err)
+	}
+	got = p.resolveAgentBaseCommand(tmpDir, AgentCodex)
+	if got != "file-agent --preferred" {
+		t.Errorf("resolveAgentBaseCommand file override = %q, want %q", got, "file-agent --preferred")
+	}
+}
+
+func TestResolveAgentBaseCommand_InvalidOverrideEncodingFallsBack(t *testing.T) {
+	tmpDir := t.TempDir()
+	overridePath := filepath.Join(tmpDir, sidecarAgentStartFile)
+
+	// UTF-16LE-like bytes with NULs should be rejected to avoid invalid character errors.
+	if err := os.WriteFile(overridePath, []byte{0xff, 0xfe, 'o', 0x00, 'p', 0x00}, 0644); err != nil {
+		t.Fatalf("failed to write override file: %v", err)
+	}
+
+	p := &Plugin{}
+	got := p.resolveAgentBaseCommand(tmpDir, AgentOpenCode)
+	if got != "opencode" {
+		t.Errorf("resolveAgentBaseCommand invalid bytes = %q, want %q", got, "opencode")
+	}
+}
+
+func TestResolveAgentBaseCommand_UTF8BOMStripped(t *testing.T) {
+	tmpDir := t.TempDir()
+	overridePath := filepath.Join(tmpDir, sidecarAgentStartFile)
+	content := append([]byte{0xEF, 0xBB, 0xBF}, []byte("custom-agent --ok\n")...)
+
+	if err := os.WriteFile(overridePath, content, 0644); err != nil {
+		t.Fatalf("failed to write override file: %v", err)
+	}
+
+	p := &Plugin{}
+	got := p.resolveAgentBaseCommand(tmpDir, AgentOpenCode)
+	if got != "custom-agent --ok" {
+		t.Errorf("resolveAgentBaseCommand BOM content = %q, want %q", got, "custom-agent --ok")
+	}
+}
+
+func TestResolveAgentBaseCommand_ReplacementCharFallsBack(t *testing.T) {
+	tmpDir := t.TempDir()
+	overridePath := filepath.Join(tmpDir, sidecarAgentStartFile)
+	if err := os.WriteFile(overridePath, []byte("opencode\ufffd"), 0644); err != nil {
+		t.Fatalf("failed to write override file: %v", err)
+	}
+
+	p := &Plugin{}
+	got := p.resolveAgentBaseCommand(tmpDir, AgentOpenCode)
+	if got != "opencode" {
+		t.Errorf("resolveAgentBaseCommand replacement char = %q, want %q", got, "opencode")
+	}
+}
+
+func TestResolveAgentBaseCommand_MultilineOverrideIgnored(t *testing.T) {
+	tmpDir := t.TempDir()
+	overridePath := filepath.Join(tmpDir, sidecarAgentStartFile)
+	if err := os.WriteFile(overridePath, []byte("custom-opencode\n--bad"), 0644); err != nil {
+		t.Fatalf("failed to write override file: %v", err)
+	}
+
+	p := &Plugin{}
+	got := p.resolveAgentBaseCommand(tmpDir, AgentOpenCode)
+	if got != "opencode" {
+		t.Errorf("resolveAgentBaseCommand multiline override = %q, want %q", got, "opencode")
+	}
+}
+
+func TestResolveAgentBaseCommand_StripsHiddenChars(t *testing.T) {
+	tmpDir := t.TempDir()
+	overridePath := filepath.Join(tmpDir, sidecarAgentStartFile)
+	if err := os.WriteFile(overridePath, []byte("custom\u200b-agent --ok"), 0644); err != nil {
+		t.Fatalf("failed to write override file: %v", err)
+	}
+
+	p := &Plugin{}
+	got := p.resolveAgentBaseCommand(tmpDir, AgentOpenCode)
+	if got != "custom-agent --ok" {
+		t.Errorf("resolveAgentBaseCommand hidden chars = %q, want %q", got, "custom-agent --ok")
+	}
+}
+
+func TestResolveAgentBaseCommand_OpenCodeRunSubcommandStripped(t *testing.T) {
+	tmpDir := t.TempDir()
+	overridePath := filepath.Join(tmpDir, sidecarAgentStartFile)
+	if err := os.WriteFile(overridePath, []byte("opencode run --profile fast"), 0644); err != nil {
+		t.Fatalf("failed to write override file: %v", err)
+	}
+
+	p := &Plugin{}
+	got := p.resolveAgentBaseCommand(tmpDir, AgentOpenCode)
+	if got != "opencode --profile fast" {
+		t.Errorf("resolveAgentBaseCommand opencode run strip = %q, want %q", got, "opencode --profile fast")
+	}
+}
+
+func TestResolveAgentBaseCommand_ConfigOpenCodeRunSubcommandStripped(t *testing.T) {
+	tmpDir := t.TempDir()
+	cfg := config.Default()
+	cfg.Plugins.Workspace.AgentStart = map[string]string{
+		string(AgentOpenCode): "opencode run --profile fast",
+	}
+	p := &Plugin{
+		ctx: &plugin.Context{
+			WorkDir: tmpDir,
+			Config:  cfg,
+		},
+	}
+
+	got := p.resolveAgentBaseCommand(tmpDir, AgentOpenCode)
+	if got != "opencode --profile fast" {
+		t.Errorf("resolveAgentBaseCommand config opencode run strip = %q, want %q", got, "opencode --profile fast")
+	}
+}
+
+func TestBuildAgentCommandUsesSidecarAgentStart(t *testing.T) {
+	tmpDir := t.TempDir()
+	overridePath := tmpDir + "/" + sidecarAgentStartFile
+	if err := os.WriteFile(overridePath, []byte("custom-codex"), 0644); err != nil {
+		t.Fatalf("failed to write override file: %v", err)
+	}
+
+	p := &Plugin{}
+	wt := &Worktree{Path: tmpDir}
+	got := p.buildAgentCommand(AgentCodex, wt, true, nil)
+	want := "custom-codex --dangerously-bypass-approvals-and-sandbox"
+	if got != want {
+		t.Errorf("buildAgentCommand with override = %q, want %q", got, want)
 	}
 }
 
@@ -308,7 +524,6 @@ func TestExtractPrompt(t *testing.T) {
 	}
 }
 
-
 func TestDetectStatusPriorityOrder(t *testing.T) {
 	// Waiting should take priority over error when both patterns present
 	output := "Error occurred\nRetry? [y/n]"
@@ -468,12 +683,12 @@ func TestShouldShowSkipPermissions(t *testing.T) {
 
 func TestBuildAgentCommand(t *testing.T) {
 	tests := []struct {
-		name      string
-		agentType AgentType
-		skipPerms bool
-		taskID    string
-		wantFlag  string   // Expected skip-perms flag in output
-		wantPrompt bool    // Whether prompt should be included
+		name       string
+		agentType  AgentType
+		skipPerms  bool
+		taskID     string
+		wantFlag   string // Expected skip-perms flag in output
+		wantPrompt bool   // Whether prompt should be included
 	}{
 		// Claude tests
 		{
