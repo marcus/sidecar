@@ -1273,7 +1273,8 @@ func (m *Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.updateContext()
 		}
 		return m, nil
-	case "O":
+	case "^":
+		// Toggle Open In modal
 		if !m.hasModal() {
 			m.showOpenIn = true
 			m.activeContext = "open-in"

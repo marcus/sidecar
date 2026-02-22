@@ -10,6 +10,7 @@ func DefaultBindings() []Binding {
 		{Key: "`", Command: "next-plugin", Context: "global"},
 		{Key: "~", Command: "prev-plugin", Context: "global"},
 		{Key: "@", Command: "switch-project", Context: "global"},
+		{Key: "^", Command: "open-in", Context: "global"},
 		{Key: "1", Command: "focus-plugin-1", Context: "global"},
 		{Key: "2", Command: "focus-plugin-2", Context: "global"},
 		{Key: "3", Command: "focus-plugin-3", Context: "global"},
