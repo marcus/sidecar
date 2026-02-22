@@ -160,6 +160,16 @@ type Model struct {
 	// Worktree info cache (avoids git subprocess forks on every View render)
 	cachedWorktreeInfo *WorktreeInfo
 
+	// Open In modal
+	showOpenIn         bool
+	openInCursor       int
+	openInScroll       int
+	openInApps         []openInApp
+	openInLastID       string
+	openInModal        *modal.Modal
+	openInModalWidth   int
+	openInMouseHandler *mouse.Handler
+
 	// Theme switcher modal
 	showThemeSwitcher          bool
 	themeSwitcherModal         *modal.Modal
