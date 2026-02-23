@@ -408,6 +408,18 @@ func (a *Adapter) loadProjects() error {
 
 		projCopy := proj // Copy to avoid pointer aliasing
 		a.projectIndex[worktree] = &projCopy
+
+		// Index sandbox paths as well
+		for _, sandbox := range proj.Sandboxes {
+			sbNorm := sandbox
+			if resolved, err := filepath.EvalSymlinks(sbNorm); err == nil {
+				sbNorm = resolved
+			}
+			sbNorm = filepath.Clean(sbNorm)
+			if sbNorm != worktree {
+				a.projectIndex[sbNorm] = &projCopy
+			}
+		}
 	}
 
 	a.projectsLoaded = true
