@@ -409,27 +409,6 @@ func resolveProjectPath(projectRoot string) string {
 	return filepath.Clean(abs)
 }
 
-// cwdMatchesProject checks if the working directory matches the project root.
-func cwdMatchesProject(projectRoot, cwd string) bool {
-	if projectRoot == "" || cwd == "" {
-		return false
-	}
-	projectAbs := resolveProjectPath(projectRoot)
-	cwdAbs := resolveProjectPath(cwd)
-
-	if projectAbs == "" || cwdAbs == "" {
-		return false
-	}
-
-	rel, err := filepath.Rel(projectAbs, cwdAbs)
-	if err != nil {
-		return false
-	}
-	if rel == "." {
-		return true
-	}
-	return !strings.HasPrefix(rel, "..")
-}
 
 // firstPromptText returns the text of the first Prompt entry in the history.
 func firstPromptText(history []HistoryEntry) string {

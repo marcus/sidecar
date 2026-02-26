@@ -140,30 +140,6 @@ func TestShortConversationID(t *testing.T) {
 	}
 }
 
-func TestCwdMatchesProject(t *testing.T) {
-	tests := []struct {
-		name    string
-		project string
-		cwd     string
-		want    bool
-	}{
-		{"exact match", "/Users/foo/project", "/Users/foo/project", true},
-		{"subdirectory", "/Users/foo/project", "/Users/foo/project/src", true},
-		{"different project", "/Users/foo/project", "/Users/foo/other", false},
-		{"parent dir", "/Users/foo/project/src", "/Users/foo/project", false},
-		{"empty project", "", "/Users/foo/project", false},
-		{"empty cwd", "/Users/foo/project", "", false},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := cwdMatchesProject(tt.project, tt.cwd)
-			if got != tt.want {
-				t.Errorf("cwdMatchesProject(%q, %q) = %v, want %v", tt.project, tt.cwd, got, tt.want)
-			}
-		})
-	}
-}
 
 func TestIsPromptEntry(t *testing.T) {
 	prompt := HistoryEntry{
