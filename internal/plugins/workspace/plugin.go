@@ -681,6 +681,22 @@ func (p *Plugin) pollSelectedAgentNowIfVisible() tea.Cmd {
 	return p.scheduleAgentPoll(wt.Name, 0)
 }
 
+// pollAllAgentStatusesNow triggers an immediate poll for every worktree that has
+// an active agent. Used when entering kanban view so all statuses are fresh.
+func (p *Plugin) pollAllAgentStatusesNow() tea.Cmd {
+	var cmds []tea.Cmd
+	for _, wt := range p.worktrees {
+		if wt.Agent == nil || p.attachedSession == wt.Name {
+			continue
+		}
+		cmds = append(cmds, p.scheduleAgentPoll(wt.Name, 0))
+	}
+	if len(cmds) == 0 {
+		return nil
+	}
+	return tea.Batch(cmds...)
+}
+
 // removeWorktreeByName removes a worktree from the list by name.
 func (p *Plugin) removeWorktreeByName(name string) {
 	for i, wt := range p.worktrees {

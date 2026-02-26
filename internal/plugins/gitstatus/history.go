@@ -45,7 +45,7 @@ func GetCommitHistory(workDir string, limit int) ([]*Commit, error) {
 	format := "%H%x00%h%x00%an%x00%ae%x00%at%x00%s%x00%P"
 	args := []string{"log", "--format=" + format, "-n", strconv.Itoa(limit)}
 
-	cmd := exec.Command("git", args...)
+	cmd := gitReadOnly(args...)
 	cmd.Dir = workDir
 	output, err := cmd.Output()
 	if err != nil {
@@ -90,7 +90,7 @@ func GetCommitHistory(workDir string, limit int) ([]*Commit, error) {
 func GetCommitDetail(workDir, hash string) (*Commit, error) {
 	// Get commit metadata (%P = parent hashes for merge detection)
 	format := "%H%n%h%n%an%n%ae%n%at%n%P%n%s%n%b"
-	cmd := exec.Command("git", "show", "--format="+format, "-s", hash)
+	cmd := gitReadOnly("show", "--format="+format, "-s", hash)
 	cmd.Dir = workDir
 	output, err := cmd.Output()
 	if err != nil {
@@ -126,9 +126,9 @@ func GetCommitDetail(workDir, hash string) (*Commit, error) {
 
 	// Get file stats — for merge commits, diff against first parent to avoid empty combined diff
 	if commit.IsMerge && len(commit.ParentHashes) > 0 {
-		cmd = exec.Command("git", "diff", "--numstat", commit.ParentHashes[0], hash)
+		cmd = gitReadOnly("diff", "--numstat", commit.ParentHashes[0], hash)
 	} else {
-		cmd = exec.Command("git", "show", "--numstat", "--format=", hash)
+		cmd = gitReadOnly("show", "--numstat", "--format=", hash)
 	}
 	cmd.Dir = workDir
 	output, err = cmd.Output()
@@ -202,7 +202,7 @@ func GetCommitDiff(workDir, hash, path string, parentHash string) (string, error
 		args = []string{"show", hash, "--", path}
 	}
 
-	cmd := exec.Command("git", args...)
+	cmd := gitReadOnly(args...)
 	cmd.Dir = workDir
 	output, err := cmd.Output()
 	if err != nil {
@@ -219,7 +219,7 @@ func GetCommitDiff(workDir, hash, path string, parentHash string) (string, error
 
 // GetCommitFullDiff returns the full diff for a commit.
 func GetCommitFullDiff(workDir, hash string) (string, error) {
-	cmd := exec.Command("git", "show", hash)
+	cmd := gitReadOnly("show", hash)
 	cmd.Dir = workDir
 	output, err := cmd.Output()
 	if err != nil {
@@ -258,7 +258,7 @@ func GetCommitHistoryWithOffset(workDir string, limit, skip int) ([]*Commit, err
 	format := "%H%x00%h%x00%an%x00%ae%x00%at%x00%s%x00%P"
 	args := []string{"log", "--format=" + format, "-n", strconv.Itoa(limit), "--skip", strconv.Itoa(skip)}
 
-	cmd := exec.Command("git", args...)
+	cmd := gitReadOnly(args...)
 	cmd.Dir = workDir
 	output, err := cmd.Output()
 	if err != nil {
@@ -340,7 +340,7 @@ func GetCommitHistoryFiltered(workDir string, opts HistoryFilterOpts) ([]*Commit
 		args = append(args, "--", opts.Path)
 	}
 
-	cmd := exec.Command("git", args...)
+	cmd := gitReadOnly(args...)
 	cmd.Dir = workDir
 	output, err := cmd.Output()
 	if err != nil {

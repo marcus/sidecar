@@ -17,6 +17,8 @@ const (
 	ColdPollInterval = 30 * time.Second
 	// HotInactivityTimeout demotes sessions to COLD after this period without activity.
 	HotInactivityTimeout = 5 * time.Minute
+	// FrozenThreshold is the duration after which unchanged COLD sessions stop being polled.
+	FrozenThreshold = 24 * time.Hour
 )
 
 // SessionInfo tracks a watched session's path and modification time.
@@ -26,6 +28,7 @@ type SessionInfo struct {
 	ModTime  time.Time // Last known modification time
 	LastHot  time.Time // When this session was last in HOT tier or accessed
 	FileSize int64     // Last known file size
+	Frozen   bool      // true = unchanged >24h, skip in pollColdSessions
 }
 
 // TieredWatcher manages tiered watching for a single adapter's sessions.
@@ -130,6 +133,7 @@ func (tw *TieredWatcher) PromoteToHot(sessionID string) {
 		return
 	}
 	info.LastHot = time.Now()
+	info.Frozen = false
 	if tw.hotTarget < 1 {
 		tw.hotTarget = 1
 	}
@@ -162,6 +166,9 @@ func (tw *TieredWatcher) RegisterSession(id, path string) {
 	if stat, err := os.Stat(path); err == nil {
 		info.ModTime = stat.ModTime()
 		info.FileSize = stat.Size()
+		if time.Since(info.ModTime) > FrozenThreshold {
+			info.Frozen = true
+		}
 	}
 
 	tw.sessions[id] = info
@@ -187,6 +194,9 @@ func (tw *TieredWatcher) RegisterSessions(sessions []SessionInfo) {
 			ModTime:  s.ModTime,
 			LastHot:  s.LastHot,
 			FileSize: s.FileSize,
+		}
+		if time.Since(s.ModTime) > FrozenThreshold {
+			info.Frozen = true
 		}
 		tw.sessions[s.ID] = info
 		tw.pathIndex[s.Path] = s.ID
@@ -413,7 +423,7 @@ func (tw *TieredWatcher) pollLoop() {
 	}
 }
 
-// pollColdSessions checks all COLD tier sessions for changes.
+// pollColdSessions checks non-frozen COLD tier sessions for changes using batch ReadDir.
 func (tw *TieredWatcher) pollColdSessions() {
 	tw.mu.Lock()
 	hotSet := make(map[string]bool, len(tw.hotIDs))
@@ -421,17 +431,18 @@ func (tw *TieredWatcher) pollColdSessions() {
 		hotSet[id] = true
 	}
 
-	// Collect COLD sessions to check
+	// Collect non-frozen COLD sessions to check, grouped by directory
 	type checkInfo struct {
 		id   string
 		path string
 		prev time.Time
 		size int64
 	}
-	var toCheck []checkInfo
+	dirSessions := make(map[string][]checkInfo) // dir -> sessions in that dir
 	for id, info := range tw.sessions {
-		if !hotSet[id] {
-			toCheck = append(toCheck, checkInfo{
+		if !hotSet[id] && !info.Frozen {
+			dir := filepath.Dir(info.Path)
+			dirSessions[dir] = append(dirSessions[dir], checkInfo{
 				id:   id,
 				path: info.Path,
 				prev: info.ModTime,
@@ -441,29 +452,62 @@ func (tw *TieredWatcher) pollColdSessions() {
 	}
 	tw.mu.Unlock()
 
-	// Check each COLD session outside the lock
-	for _, c := range toCheck {
-		stat, err := os.Stat(c.path)
+	// Batch check: one ReadDir per directory instead of one Stat per file
+	for dir, sessions := range dirSessions {
+		entries, err := os.ReadDir(dir)
 		if err != nil {
 			continue
 		}
 
-		// Check if file changed
-		if stat.ModTime().After(c.prev) || stat.Size() != c.size {
-			tw.mu.Lock()
-			if info := tw.sessions[c.id]; info != nil {
-				info.ModTime = stat.ModTime()
-				info.FileSize = stat.Size()
-				tw.noteActivityLocked(c.id)
-			}
-			tw.mu.Unlock()
+		// Build lookup map: filename -> DirEntry
+		entryMap := make(map[string]os.DirEntry, len(entries))
+		for _, e := range entries {
+			entryMap[e.Name()] = e
+		}
 
-			select {
-			case tw.events <- adapter.Event{
-				Type:      adapter.EventSessionUpdated,
-				SessionID: c.id,
-			}:
-			default:
+		for _, c := range sessions {
+			entry, ok := entryMap[filepath.Base(c.path)]
+			if !ok {
+				// File no longer on disk — freeze so we stop polling it
+				tw.mu.Lock()
+				if info := tw.sessions[c.id]; info != nil {
+					info.Frozen = true
+				}
+				tw.mu.Unlock()
+				continue
+			}
+			fi, err := entry.Info()
+			if err != nil {
+				continue
+			}
+
+			if fi.ModTime().After(c.prev) || fi.Size() != c.size {
+				// File changed — update and emit event
+				tw.mu.Lock()
+				if info := tw.sessions[c.id]; info != nil {
+					info.ModTime = fi.ModTime()
+					info.FileSize = fi.Size()
+					info.Frozen = false
+					tw.noteActivityLocked(c.id)
+				}
+				tw.mu.Unlock()
+
+				select {
+				case tw.events <- adapter.Event{
+					Type:      adapter.EventSessionUpdated,
+					SessionID: c.id,
+				}:
+				default:
+				}
+			} else {
+				// Unchanged — freeze check uses current info under lock
+				tw.mu.Lock()
+				if info := tw.sessions[c.id]; info != nil {
+					if time.Since(info.ModTime) > FrozenThreshold {
+						info.Frozen = true
+					}
+				}
+				tw.mu.Unlock()
 			}
 		}
 	}
@@ -505,6 +549,9 @@ func (tw *TieredWatcher) scanForNewSessions() {
 				ModTime:  s.ModTime,
 				LastHot:  time.Now(),
 				FileSize: s.FileSize,
+			}
+			if time.Since(s.ModTime) > FrozenThreshold {
+				info.Frozen = true
 			}
 			tw.sessions[s.ID] = info
 			tw.pathIndex[s.Path] = s.ID
@@ -619,12 +666,32 @@ func (tw *TieredWatcher) Close() error {
 	return nil
 }
 
-// Stats returns current watcher statistics.
-func (tw *TieredWatcher) Stats() (hotCount, coldCount, watchedDirs int) {
+// Touch unfreezes a session so it will be polled again in COLD tier.
+func (tw *TieredWatcher) Touch(sessionID string) {
 	tw.mu.Lock()
 	defer tw.mu.Unlock()
-	hotCount = len(tw.hotIDs)
-	coldCount = len(tw.sessions) - len(tw.hotIDs)
+	if info, ok := tw.sessions[sessionID]; ok {
+		info.Frozen = false
+	}
+}
+
+// Stats returns current watcher statistics.
+func (tw *TieredWatcher) Stats() (hotCount, coldCount, frozenCount, watchedDirs int) {
+	tw.mu.Lock()
+	defer tw.mu.Unlock()
+	hotSet := make(map[string]bool, len(tw.hotIDs))
+	for _, id := range tw.hotIDs {
+		hotSet[id] = true
+	}
+	for id, info := range tw.sessions {
+		if hotSet[id] {
+			hotCount++
+		} else if info.Frozen {
+			frozenCount++
+		} else {
+			coldCount++
+		}
+	}
 	watchedDirs = len(tw.watchDirs)
 	return
 }
@@ -734,15 +801,34 @@ func (m *Manager) RegisterSession(adapterID, sessionID, path string) {
 	}
 }
 
+// Touch unfreezes a session for a specific adapter so it will be polled again.
+// If adapterID is empty, touches across all watchers.
+func (m *Manager) Touch(adapterID, sessionID string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if adapterID != "" {
+		if tw, ok := m.watchers[adapterID]; ok {
+			tw.Touch(sessionID)
+		}
+		return
+	}
+
+	for _, tw := range m.watchers {
+		tw.Touch(sessionID)
+	}
+}
+
 // Stats returns aggregate statistics across all watchers.
-func (m *Manager) Stats() (hotCount, coldCount, watchedDirs int) {
+func (m *Manager) Stats() (hotCount, coldCount, frozenCount, watchedDirs int) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
 	for _, tw := range m.watchers {
-		h, c, w := tw.Stats()
+		h, c, f, w := tw.Stats()
 		hotCount += h
 		coldCount += c
+		frozenCount += f
 		watchedDirs += w
 	}
 	return

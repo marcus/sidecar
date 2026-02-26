@@ -33,14 +33,14 @@ type WorktreeInfo struct {
 // Returns nil if workDir is not in a git repository.
 func GetWorktrees(workDir string) []WorktreeInfo {
 	// First, verify this is a git repo
-	cmd := exec.Command("git", "rev-parse", "--git-dir")
+	cmd := exec.Command("git", "--no-optional-locks", "rev-parse", "--git-dir")
 	cmd.Dir = workDir
 	if err := cmd.Run(); err != nil {
 		return nil
 	}
 
 	// Get list of worktrees
-	cmd = exec.Command("git", "worktree", "list", "--porcelain")
+	cmd = exec.Command("git", "--no-optional-locks", "worktree", "list", "--porcelain")
 	cmd.Dir = workDir
 	output, err := cmd.Output()
 	if err != nil {
@@ -150,14 +150,14 @@ func WorktreeNameForPath(workDir, targetPath string) string {
 // Returns empty string if the directory is not a git repository.
 func GetRepoName(workDir string) string {
 	// Check if this is a git repo
-	cmd := exec.Command("git", "rev-parse", "--git-dir")
+	cmd := exec.Command("git", "--no-optional-locks", "rev-parse", "--git-dir")
 	cmd.Dir = workDir
 	if err := cmd.Run(); err != nil {
 		return ""
 	}
 
 	// Try to get remote URL
-	cmd = exec.Command("git", "remote", "get-url", "origin")
+	cmd = exec.Command("git", "--no-optional-locks", "remote", "get-url", "origin")
 	cmd.Dir = workDir
 	output, err := cmd.Output()
 	if err == nil {

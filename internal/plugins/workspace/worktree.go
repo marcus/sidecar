@@ -7,11 +7,13 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/marcus/sidecar/internal/app"
+	"github.com/marcus/sidecar/internal/palette"
 	"github.com/marcus/sidecar/internal/tdroot"
 )
 
@@ -735,25 +737,43 @@ func parseTDJSON(data []byte) ([]Task, error) {
 	return tasks, nil
 }
 
-// filterTasks filters tasks based on a search query.
+// filterTasks filters tasks using fuzzy matching and returns results sorted by relevance.
+// Scores against Title (3x weight), ID (2x), and EpicTitle (1x).
+// When query is empty, returns all tasks unmodified.
 func filterTasks(query string, allTasks []Task) []Task {
 	if query == "" {
 		return allTasks
 	}
 
-	query = strings.ToLower(query)
-	var matches []Task
+	type scoredTask struct {
+		task  Task
+		score int
+	}
+
+	var scored []scoredTask
 
 	for _, task := range allTasks {
-		// Match on title, ID, or parent epic title
-		if strings.Contains(strings.ToLower(task.Title), query) ||
-			strings.Contains(strings.ToLower(task.ID), query) ||
-			strings.Contains(strings.ToLower(task.EpicTitle), query) {
-			matches = append(matches, task)
+		titleScore, _ := palette.FuzzyMatch(query, task.Title)
+		idScore, _ := palette.FuzzyMatch(query, task.ID)
+		epicScore, _ := palette.FuzzyMatch(query, task.EpicTitle)
+
+		total := titleScore*3 + idScore*2 + epicScore
+
+		if total > 0 {
+			scored = append(scored, scoredTask{task: task, score: total})
 		}
 	}
 
-	return matches
+	sort.Slice(scored, func(i, j int) bool {
+		return scored[i].score > scored[j].score
+	})
+
+	result := make([]Task, len(scored))
+	for i, s := range scored {
+		result[i] = s.task
+	}
+
+	return result
 }
 
 // ValidateBranchName validates a git branch name and returns validation state.

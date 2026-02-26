@@ -574,7 +574,7 @@ func (m *Model) runVerifyPhase(installResult UpdateInstallDoneMsg) tea.Cmd {
 				expected := strings.TrimPrefix(installResult.NewSidecarVersion, "v")
 				if !strings.Contains(got, expected) {
 					return UpdateErrorMsg{Step: "verify", Err: fmt.Errorf(
-						"version mismatch after update: expected %s, got %s — the update may not have taken effect. Try updating manually.",
+						"version mismatch after update: expected %s, got %s — the update may not have taken effect, try updating manually",
 						installResult.NewSidecarVersion, got)}
 				}
 			}

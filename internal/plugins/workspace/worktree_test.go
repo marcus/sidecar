@@ -303,3 +303,73 @@ prunable gitdir file points to non-existent location
 	}
 }
 
+func TestFilterTasks(t *testing.T) {
+	allTasks := []Task{
+		{ID: "td-abc123", Title: "Fix login bug", EpicTitle: "Authentication"},
+		{ID: "td-def456", Title: "Add dashboard widget", EpicTitle: "Dashboard"},
+		{ID: "td-ghi789", Title: "Refactor auth middleware", EpicTitle: "Authentication"},
+		{ID: "td-jkl012", Title: "Update README", EpicTitle: "Documentation"},
+	}
+
+	t.Run("empty query returns all tasks", func(t *testing.T) {
+		result := filterTasks("", allTasks)
+		if len(result) != len(allTasks) {
+			t.Errorf("empty query: got %d tasks, want %d", len(result), len(allTasks))
+		}
+	})
+
+	t.Run("no matches returns empty", func(t *testing.T) {
+		result := filterTasks("zzzzz", allTasks)
+		if len(result) != 0 {
+			t.Errorf("no match query: got %d tasks, want 0", len(result))
+		}
+	})
+
+	t.Run("fuzzy match on title", func(t *testing.T) {
+		result := filterTasks("lgn", allTasks)
+		if len(result) == 0 {
+			t.Fatal("expected at least one result for 'lgn'")
+		}
+		if result[0].ID != "td-abc123" {
+			t.Errorf("expected 'Fix login bug' first, got %q", result[0].Title)
+		}
+	})
+
+	t.Run("match on task ID", func(t *testing.T) {
+		result := filterTasks("def456", allTasks)
+		if len(result) == 0 {
+			t.Fatal("expected match on task ID")
+		}
+		if result[0].ID != "td-def456" {
+			t.Errorf("expected task td-def456 first, got %q", result[0].ID)
+		}
+	})
+
+	t.Run("match on epic title", func(t *testing.T) {
+		result := filterTasks("auth", allTasks)
+		if len(result) < 2 {
+			t.Errorf("expected at least 2 results for 'auth', got %d", len(result))
+		}
+	})
+
+	t.Run("results sorted by relevance", func(t *testing.T) {
+		result := filterTasks("dashboard", allTasks)
+		if len(result) == 0 {
+			t.Fatal("expected at least one result for 'dashboard'")
+		}
+		if result[0].ID != "td-def456" {
+			t.Errorf("expected 'Add dashboard widget' first, got %q", result[0].Title)
+		}
+	})
+
+	t.Run("title match ranked higher than epic match", func(t *testing.T) {
+		result := filterTasks("readme", allTasks)
+		if len(result) == 0 {
+			t.Fatal("expected at least one result for 'readme'")
+		}
+		if result[0].ID != "td-jkl012" {
+			t.Errorf("expected 'Update README' first, got %q", result[0].Title)
+		}
+	})
+}
+

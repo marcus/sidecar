@@ -22,6 +22,7 @@ import (
 	_ "github.com/marcus/sidecar/internal/adapter/kiro"
 	_ "github.com/marcus/sidecar/internal/adapter/opencode"
 	_ "github.com/marcus/sidecar/internal/adapter/pi"
+	_ "github.com/marcus/sidecar/internal/adapter/piagent"
 	_ "github.com/marcus/sidecar/internal/adapter/warp"
 	"github.com/marcus/sidecar/internal/app"
 	"github.com/marcus/sidecar/internal/config"
@@ -60,7 +61,7 @@ func main() {
 	// Unset TMUX so sidecar's internal tmux sessions are independent of any
 	// outer tmux session. This allows prefix+d to detach from the workspace's
 	// inner session rather than the user's outer tmux.
-	os.Unsetenv("TMUX")
+	_ = os.Unsetenv("TMUX")
 
 	// Start pprof server if enabled (for memory profiling)
 	if pprofPort := os.Getenv("SIDECAR_PPROF"); pprofPort != "" {

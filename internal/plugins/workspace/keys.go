@@ -481,9 +481,9 @@ func (p *Plugin) handleListKeys(msg tea.KeyMsg) tea.Cmd {
 	switch msg.String() {
 	case "j", "down":
 		if p.viewMode == ViewModeKanban {
-			// Kanban mode: move down within column
+			// Kanban mode: move cursor down within column (no selection change)
 			p.moveKanbanRow(1)
-			return p.loadSelectedContent()
+			return nil
 		}
 		if p.activePane == PaneSidebar {
 			p.moveCursor(1)
@@ -499,9 +499,9 @@ func (p *Plugin) handleListKeys(msg tea.KeyMsg) tea.Cmd {
 		}
 	case "k", "up":
 		if p.viewMode == ViewModeKanban {
-			// Kanban mode: move up within column
+			// Kanban mode: move cursor up within column (no selection change)
 			p.moveKanbanRow(-1)
-			return p.loadSelectedContent()
+			return nil
 		}
 		if p.activePane == PaneSidebar {
 			p.moveCursor(-1)
@@ -512,6 +512,11 @@ func (p *Plugin) handleListKeys(msg tea.KeyMsg) tea.Cmd {
 		p.captureScrollBaseLineCount() // td-f7c8be: prevent bounce on poll
 		p.previewOffset++
 	case "g":
+		if p.viewMode == ViewModeKanban {
+			// Kanban mode: jump cursor to top of current column
+			p.kanbanRow = 0
+			return nil
+		}
 		if p.activePane == PaneSidebar {
 			// Jump to top = select first shell if any, otherwise first worktree
 			if len(p.shells) > 0 {
@@ -535,6 +540,15 @@ func (p *Plugin) handleListKeys(msg tea.KeyMsg) tea.Cmd {
 		p.captureScrollBaseLineCount() // td-f7c8be: prevent bounce on poll
 		p.previewOffset = math.MaxInt // Will be clamped in render
 	case "G":
+		if p.viewMode == ViewModeKanban {
+			// Kanban mode: jump cursor to bottom of current column
+			columns := p.getKanbanColumns()
+			count := p.kanbanColumnItemCount(p.kanbanCol, columns)
+			if count > 0 {
+				p.kanbanRow = count - 1
+			}
+			return nil
+		}
 		if p.activePane == PaneSidebar {
 			// Jump to bottom = select last worktree (not shell)
 			if len(p.worktrees) > 0 {
@@ -597,14 +611,22 @@ func (p *Plugin) handleListKeys(msg tea.KeyMsg) tea.Cmd {
 		return p.pushSelected()
 	case "l", "right":
 		if p.viewMode == ViewModeKanban {
-			// Kanban mode: move to next column
+			// Kanban mode: move cursor to next column (no selection change)
 			p.moveKanbanColumn(1)
-			return p.loadSelectedContent()
+			return nil
 		}
 		if p.activePane == PaneSidebar {
 			p.activePane = PanePreview
 		}
 	case "enter":
+		// Kanban mode: sync cursor to selection, then fall through to activate
+		if p.viewMode == ViewModeKanban {
+			oldShellSelected := p.shellSelected
+			oldShellIdx := p.selectedShellIdx
+			oldWorktreeIdx := p.selectedIdx
+			p.syncKanbanToList()
+			p.applyKanbanSelectionChange(oldShellSelected, oldShellIdx, oldWorktreeIdx)
+		}
 		// Enter interactive mode (tmux input passthrough) - feature gated
 		// Works from sidebar for selected shell/worktree with active session
 		// Handle orphaned worktrees: start new agent instead of silently returning nil
@@ -619,7 +641,11 @@ func (p *Plugin) handleListKeys(msg tea.KeyMsg) tea.Cmd {
 				return p.StartAgent(wt, agentType)
 			}
 		}
-		return p.enterInteractiveMode()
+		if cmd := p.enterInteractiveMode(); cmd != nil {
+			return cmd
+		}
+		// Interactive mode couldn't start — at least load content for the selection
+		return p.loadSelectedContent()
 	case "t":
 		// Attach to tmux session
 		// Shell entry: attach to selected shell session
@@ -655,9 +681,9 @@ func (p *Plugin) handleListKeys(msg tea.KeyMsg) tea.Cmd {
 		}
 	case "h", "left":
 		if p.viewMode == ViewModeKanban {
-			// Kanban mode: move to previous column
+			// Kanban mode: move cursor to previous column (no selection change)
 			p.moveKanbanColumn(-1)
-			return p.loadSelectedContent()
+			return nil
 		}
 		if p.activePane == PanePreview {
 			p.activePane = PaneSidebar
@@ -729,7 +755,7 @@ func (p *Plugin) handleListKeys(msg tea.KeyMsg) tea.Cmd {
 			case ViewModeList:
 				p.viewMode = ViewModeKanban
 				p.syncListToKanban()
-				return nil
+				return p.pollAllAgentStatusesNow()
 			case ViewModeKanban:
 				p.viewMode = ViewModeList
 				return p.pollSelectedAgentNowIfVisible()
@@ -784,7 +810,7 @@ func (p *Plugin) handleListKeys(msg tea.KeyMsg) tea.Cmd {
 		}
 		if wt.Agent == nil {
 			// No agent running - start new one
-			return p.StartAgent(wt, AgentClaude)
+			return p.StartAgent(wt, wt.ChosenAgentType)
 		}
 		// Agent exists - show choice modal (attach or restart)
 		p.agentChoiceWorktree = wt
