@@ -38,6 +38,8 @@ func MapKeyToTmux(msg tea.KeyMsg) (key string, useLiteral bool) {
 		return "\x1b[1;3D", true
 	case "shift+tab":
 		return "\x1b[Z", true
+	case "shift+enter":
+		return "\x1b[13;2u", true // CSI u: shift+return
 	}
 
 	// Handle special keys

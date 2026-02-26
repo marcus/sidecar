@@ -115,11 +115,8 @@ func (p *Plugin) applyKanbanSelectionChange(oldShellSelected bool, oldShellIdx, 
 	return selectionChanged
 }
 
-// moveKanbanColumn moves selection to an adjacent column.
+// moveKanbanColumn moves the kanban cursor to an adjacent column (navigation only, no selection sync).
 func (p *Plugin) moveKanbanColumn(delta int) {
-	oldShellSelected := p.shellSelected
-	oldShellIdx := p.selectedShellIdx
-	oldWorktreeIdx := p.selectedIdx
 	columns := p.getKanbanColumns()
 	newCol := p.kanbanCol + delta
 
@@ -140,16 +137,11 @@ func (p *Plugin) moveKanbanColumn(delta int) {
 		} else if p.kanbanRow >= count {
 			p.kanbanRow = count - 1
 		}
-		p.syncKanbanToList()
-		p.applyKanbanSelectionChange(oldShellSelected, oldShellIdx, oldWorktreeIdx)
 	}
 }
 
-// moveKanbanRow moves selection within the current column.
+// moveKanbanRow moves the kanban cursor within the current column (navigation only, no selection sync).
 func (p *Plugin) moveKanbanRow(delta int) {
-	oldShellSelected := p.shellSelected
-	oldShellIdx := p.selectedShellIdx
-	oldWorktreeIdx := p.selectedIdx
 	columns := p.getKanbanColumns()
 	count := p.kanbanColumnItemCount(p.kanbanCol, columns)
 
@@ -165,11 +157,7 @@ func (p *Plugin) moveKanbanRow(delta int) {
 		newRow = count - 1
 	}
 
-	if newRow != p.kanbanRow {
-		p.kanbanRow = newRow
-		p.syncKanbanToList()
-		p.applyKanbanSelectionChange(oldShellSelected, oldShellIdx, oldWorktreeIdx)
-	}
+	p.kanbanRow = newRow
 }
 
 // getKanbanWorktree returns the worktree at the given Kanban coordinates.

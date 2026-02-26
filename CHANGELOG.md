@@ -2,6 +2,47 @@
 
 All notable changes to sidecar are documented here.
 
+## [v0.74.1] - 2026-02-19
+
+### Bug Fixes
+
+- Fix git locking errors in background operations by using `--no-optional-locks` (PR #186 by @borisvu)
+- Fix tmux agent reconnection type handling (PR #150 by @jacola)
+
+### Added
+
+- MIT LICENSE file (Issue #182)
+
+### Dependencies
+
+- Updated td to v0.38.0 — approval workflow fix
+
+## [v0.73.1] - 2026-02-15
+
+### Bug Fixes
+
+- Shift+Enter and semicolon key fix for Ghostty terminal (PR #171 by @boozedog)
+
+## [v0.73.0] - 2026-02-15
+
+### Features
+
+- Kanban board view — press V in board context for overlay, f to toggle fullscreen
+- 7 status columns: Review, Rework, WIP, Ready, P.Review, Blocked, Closed
+- Per-column independent scrolling with scroll indicators
+- Form autofill/autocomplete for Parent Epic and Dependencies fields
+- InProgress and PendingReview now have distinct categories (previously lumped into Ready)
+
+### Dependencies
+
+- Updated td to v0.37.0
+
+## [v0.72.0] - 2026-02-14
+
+### Dependencies
+
+- Updated td to v0.35.0 — adds GTD-style deferral (td defer, td due, temporal list filters, monitor modal defer/due display)
+
 ## [v0.71.1] - 2026-02-10
 
 ### Bug Fixes

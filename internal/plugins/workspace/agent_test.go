@@ -137,6 +137,7 @@ func TestGetAgentCommand(t *testing.T) {
 		{AgentGemini, "gemini"},
 		{AgentCursor, "cursor-agent"},
 		{AgentOpenCode, "opencode"},
+		{AgentPi, "pi"},
 		{AgentCustom, "claude"}, // Falls back to claude
 	}
 
@@ -217,19 +218,19 @@ func TestDetectStatus(t *testing.T) {
 			expected: StatusActive,
 		},
 		{
-			name:     "claude code prompt symbol",
-			output:   "Some output\n❯",
+			name:     "prompt symbol in scrollback should not trigger waiting",
+			output:   "~/project ❯ claude fix bug\nReading files...\nEditing main.go\nCompiling",
+			expected: StatusActive,
+		},
+		{
+			name:     "waiting pattern only in last few lines",
+			output:   "Lots of output\nMore output\nEven more output\nDo you want to continue? [y/n]",
 			expected: StatusWaiting,
 		},
 		{
-			name:     "claude code prompt with tree line",
-			output:   "Some output\n╰─❯",
-			expected: StatusWaiting,
-		},
-		{
-			name:     "claude code prompt in multiline output",
-			output:   "Processing complete\nChanges applied successfully\n\n❯",
-			expected: StatusWaiting,
+			name:     "waiting pattern deep in scrollback should not match",
+			output:   "Do you want to continue? [y/n]\nUser said yes\nProceeding\nCompiling\nBuilding\nRunning tests",
+			expected: StatusActive,
 		},
 		// Thinking status tests
 		{
@@ -450,6 +451,7 @@ func TestShouldShowSkipPermissions(t *testing.T) {
 		{AgentGemini, true},    // Has --yolo
 		{AgentCursor, true},    // Has -f flag
 		{AgentOpenCode, false}, // No known flag
+		{AgentPi, false},       // No known flag
 	}
 
 	p := &Plugin{}
@@ -625,6 +627,8 @@ func TestBuildAgentCommandSyntax(t *testing.T) {
 		{AgentCursor, true, "cursor-agent -f"},
 		{AgentOpenCode, false, "opencode"},
 		{AgentOpenCode, true, "opencode"}, // No skip flag
+		{AgentPi, false, "pi"},
+		{AgentPi, true, "pi"}, // No skip flag
 		{AgentAider, false, "aider"},
 		{AgentAider, true, "aider --yes"},
 	}
@@ -909,6 +913,61 @@ func TestWriteAgentLauncher(t *testing.T) {
 
 			// Cleanup for next test
 			_ = os.Remove(tmpDir + "/.sidecar-start.sh")
+		})
+	}
+}
+
+func TestExtractLastNLines(t *testing.T) {
+	tests := []struct {
+		name     string
+		text     string
+		n        int
+		expected string
+	}{
+		{
+			name:     "empty string",
+			text:     "",
+			n:        3,
+			expected: "",
+		},
+		{
+			name:     "single line",
+			text:     "hello",
+			n:        3,
+			expected: "hello",
+		},
+		{
+			name:     "exact n lines",
+			text:     "line1\nline2\nline3",
+			n:        3,
+			expected: "line1\nline2\nline3",
+		},
+		{
+			name:     "more lines than n",
+			text:     "line1\nline2\nline3\nline4\nline5",
+			n:        2,
+			expected: "line4\nline5",
+		},
+		{
+			name:     "trailing newlines stripped",
+			text:     "line1\nline2\nline3\n\n",
+			n:        2,
+			expected: "line2\nline3",
+		},
+		{
+			name:     "fewer lines than n",
+			text:     "line1\nline2",
+			n:        5,
+			expected: "line1\nline2",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := extractLastNLines(tt.text, tt.n)
+			if result != tt.expected {
+				t.Errorf("extractLastNLines(%q, %d) = %q, want %q", tt.text, tt.n, result, tt.expected)
+			}
 		})
 	}
 }

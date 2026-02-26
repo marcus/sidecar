@@ -31,6 +31,16 @@ func SendKeyToTmux(sessionName, key string) error {
 // SendLiteralToTmux sends literal text to a tmux pane using send-keys -l.
 // This prevents tmux from interpreting special key names.
 func SendLiteralToTmux(sessionName, text string) error {
+	// tmux treats bare ; in argv as a command separator, so a literal
+	// semicolon never reaches send-keys. Fall back to hex encoding (-H)
+	// which bypasses tmux's command parser entirely.
+	if strings.Contains(text, ";") {
+		args := []string{"send-keys", "-t", sessionName, "-H"}
+		for _, b := range []byte(text) {
+			args = append(args, fmt.Sprintf("%02x", b))
+		}
+		return exec.Command("tmux", args...).Run()
+	}
 	cmd := exec.Command("tmux", "send-keys", "-l", "-t", sessionName, text)
 	return cmd.Run()
 }

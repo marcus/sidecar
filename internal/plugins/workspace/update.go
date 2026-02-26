@@ -463,6 +463,11 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 		// Track unchanged poll for throttle reset (td-018f25)
 		if wt := p.findWorktree(msg.WorkspaceName); wt != nil && wt.Agent != nil {
 			wt.Agent.RecordUnchangedPoll()
+			// Update status from session file re-check (td-2fca7d v8).
+			// Session files may change even when tmux output is unchanged
+			// (e.g., agent finishes but terminal output stays the same).
+			wt.Status = msg.CurrentStatus
+			wt.Agent.WaitingFor = msg.WaitingFor
 		}
 		// Content unchanged - use longer interval based on current status
 		interval := pollIntervalIdle
@@ -1040,7 +1045,7 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 			}
 			p.mergeState.TargetBranches = branches
 			p.mergeState.TargetBranchOption = 0 // Default to resolved base branch
-			p.mergeModal = nil                   // Force modal rebuild
+			p.mergeModal = nil                  // Force modal rebuild
 		}
 
 	case UncommittedChangesCheckMsg:
@@ -1338,6 +1343,13 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 	case tea.MouseMsg:
 		cmd := p.handleMouse(msg)
 		if cmd != nil {
+			cmds = append(cmds, cmd)
+		}
+
+	default:
+		// Forward unrecognized CSI sequences (e.g. CSI u / kitty keyboard
+		// protocol) to tmux when in interactive mode.
+		if cmd := p.handleUnknownSequence(msg); cmd != nil {
 			cmds = append(cmds, cmd)
 		}
 	}
