@@ -3,6 +3,7 @@ package tdmonitor
 import (
 	"log/slog"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -227,5 +228,63 @@ func TestViewWithoutModel(t *testing.T) {
 	view := p.View(80, 24)
 	if view == "" {
 		t.Error("expected non-empty view")
+	}
+}
+
+func TestInitWithTodosFileConflict(t *testing.T) {
+	// Create temp directory with .todos as a regular FILE (not directory)
+	tmpDir, err := os.MkdirTemp("", "tdmonitor-conflict-*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer func() { _ = os.RemoveAll(tmpDir) }()
+
+	todosFile := filepath.Join(tmpDir, ".todos")
+	if err := os.WriteFile(todosFile, []byte("not a directory"), 0644); err != nil {
+		t.Fatalf("failed to write .todos file: %v", err)
+	}
+
+	p := New()
+	ctx := &plugin.Context{
+		WorkDir: tmpDir,
+		Logger:  slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError})),
+	}
+
+	// Init should not return an error (silent degradation)
+	if err := p.Init(ctx); err != nil {
+		t.Errorf("Init should not return error, got: %v", err)
+	}
+
+	// Plugin should detect the conflict
+	if !p.todosConflict {
+		t.Error("expected todosConflict to be true when .todos is a file")
+	}
+
+	// Model should be nil (no monitor created)
+	if p.model != nil {
+		t.Error("model should be nil when .todos is a file")
+	}
+
+	// Setup modal should NOT be shown (the conflict takes priority)
+	if p.setupModal != nil {
+		t.Error("setupModal should be nil when .todos is a file")
+	}
+
+	// View should contain the conflict error message
+	view := p.View(80, 24)
+	if !strings.Contains(view, "file where a directory is expected") {
+		t.Errorf("expected conflict error in view, got: %s", view)
+	}
+
+	// Diagnostics should report the error
+	diags := p.Diagnostics()
+	if len(diags) != 1 {
+		t.Fatalf("expected 1 diagnostic, got %d", len(diags))
+	}
+	if diags[0].Status != "error" {
+		t.Errorf("expected diagnostic status 'error', got %q", diags[0].Status)
+	}
+	if !strings.Contains(diags[0].Detail, "file, not a directory") {
+		t.Errorf("expected diagnostic detail about file conflict, got %q", diags[0].Detail)
 	}
 }

@@ -10,6 +10,8 @@ import (
 	"github.com/marcus/td/pkg/monitor"
 	"github.com/marcus/td/pkg/monitor/modal"
 	"github.com/marcus/td/pkg/monitor/mouse"
+
+	"github.com/marcus/sidecar/internal/tdroot"
 )
 
 // SetupModel handles the setup modal when td is on PATH but not initialized in project.
@@ -107,16 +109,30 @@ func (m *SetupModel) handleAction(action string) tea.Cmd {
 	return nil
 }
 
+// SetupErrorMsg is sent when setup encounters a blocking error.
+type SetupErrorMsg struct {
+	Error string
+}
+
 // performSetup executes the selected setup options.
 func (m *SetupModel) performSetup() tea.Cmd {
 	return func() tea.Msg {
+		// Check for .todos file conflict before running td init (#194)
+		if m.initDB {
+			if err := tdroot.CheckTodosConflict(m.baseDir); err != nil {
+				return SetupErrorMsg{
+					Error: "A .todos file exists where a directory is expected. " +
+						"Remove or rename it (mv .todos .todos.bak) and try again.",
+				}
+			}
+		}
+
 		if m.initDB {
 			// Call td init via exec
 			cmd := exec.Command("td", "init")
 			cmd.Dir = m.baseDir
 			if err := cmd.Run(); err != nil {
-				// Return nil on error - could add error display
-				return nil
+				return SetupErrorMsg{Error: "td init failed: " + err.Error()}
 			}
 		}
 
