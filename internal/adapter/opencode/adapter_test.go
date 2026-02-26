@@ -19,9 +19,6 @@ func TestNew(t *testing.T) {
 	if a.projectIndex == nil {
 		t.Error("projectIndex should be initialized")
 	}
-	if a.sessionIndex == nil {
-		t.Error("sessionIndex should be initialized")
-	}
 }
 
 func TestID(t *testing.T) {
@@ -398,7 +395,6 @@ func newTestAdapter(t *testing.T) *Adapter {
 	return &Adapter{
 		storageDir:   testdataDir,
 		projectIndex: make(map[string]*Project),
-		sessionIndex: make(map[string]string),
 		metaCache:    make(map[string]sessionMetaCacheEntry),
 	}
 }
@@ -524,7 +520,6 @@ func TestDiscoverRelatedProjectDirs(t *testing.T) {
 	a := &Adapter{
 		storageDir:   tmpDir,
 		projectIndex: make(map[string]*Project),
-		sessionIndex: make(map[string]string),
 		metaCache:    make(map[string]sessionMetaCacheEntry),
 	}
 
@@ -552,7 +547,6 @@ func TestDiscoverRelatedProjectDirs_EmptyStorage(t *testing.T) {
 	a := &Adapter{
 		storageDir:   tmpDir,
 		projectIndex: make(map[string]*Project),
-		sessionIndex: make(map[string]string),
 		metaCache:    make(map[string]sessionMetaCacheEntry),
 	}
 
@@ -585,7 +579,6 @@ func TestMalformedProjectJSON(t *testing.T) {
 	a := &Adapter{
 		storageDir:   tmpDir,
 		projectIndex: make(map[string]*Project),
-		sessionIndex: make(map[string]string),
 		metaCache:    make(map[string]sessionMetaCacheEntry),
 	}
 
@@ -641,7 +634,6 @@ func TestMalformedSessionJSON(t *testing.T) {
 	a := &Adapter{
 		storageDir:   filepath.Join(tmpDir, "storage"),
 		projectIndex: make(map[string]*Project),
-		sessionIndex: make(map[string]string),
 		metaCache:    make(map[string]sessionMetaCacheEntry),
 	}
 
@@ -684,7 +676,6 @@ func TestMalformedMessageJSON(t *testing.T) {
 	a := &Adapter{
 		storageDir:   tmpDir,
 		projectIndex: make(map[string]*Project),
-		sessionIndex: make(map[string]string),
 		metaCache:    make(map[string]sessionMetaCacheEntry),
 	}
 

@@ -3,6 +3,7 @@ package workspace
 import (
 	"os/exec"
 	"strings"
+	"sync"
 
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -202,12 +203,18 @@ func tryGitLog(workdir, baseRef string) ([]byte, error) {
 
 // detectDefaultBranch detects the default branch for a repository.
 // Checks remote HEAD first, then falls back to common names.
-var defaultBranchCache = make(map[string]string)
+var (
+	defaultBranchCache   = make(map[string]string)
+	defaultBranchCacheMu sync.RWMutex
+)
 
 func detectDefaultBranch(workdir string) string {
+	defaultBranchCacheMu.RLock()
 	if branch, ok := defaultBranchCache[workdir]; ok {
+		defaultBranchCacheMu.RUnlock()
 		return branch
 	}
+	defaultBranchCacheMu.RUnlock()
 
 	// Try to get the remote HEAD (most reliable)
 	cmd := exec.Command("git", "symbolic-ref", "refs/remotes/origin/HEAD")
@@ -217,7 +224,7 @@ func detectDefaultBranch(workdir string) string {
 		// Output is like "refs/remotes/origin/main"
 		ref := strings.TrimSpace(string(output))
 		if branch, found := strings.CutPrefix(ref, "refs/remotes/origin/"); found {
-			defaultBranchCache[workdir] = branch
+			setDefaultBranchCache(workdir, branch)
 			return branch
 		}
 	}
@@ -227,14 +234,20 @@ func detectDefaultBranch(workdir string) string {
 		cmd := exec.Command("git", "rev-parse", "--verify", branch)
 		cmd.Dir = workdir
 		if err := cmd.Run(); err == nil {
-			defaultBranchCache[workdir] = branch
+			setDefaultBranchCache(workdir, branch)
 			return branch
 		}
 	}
 
 	// Last resort default
-	defaultBranchCache[workdir] = "main"
+	setDefaultBranchCache(workdir, "main")
 	return "main"
+}
+
+func setDefaultBranchCache(workdir, branch string) {
+	defaultBranchCacheMu.Lock()
+	defaultBranchCache[workdir] = branch
+	defaultBranchCacheMu.Unlock()
 }
 
 // resolveBaseBranch returns the worktree's BaseBranch if set,

@@ -140,15 +140,22 @@ func (p *Plugin) loadSessions() tea.Cmd {
 					sessions []adapter.Session
 					err      error
 				}
-				resultChan := make(chan result, len(worktreePaths))
 
 				var adapterSess []adapter.Session
 				for _, wtPath := range worktreePaths {
+					loadToken, ok := p.beginSessionLoad(adapterID, wtPath)
+					if !ok {
+						continue
+					}
+
+					resultChan := make(chan result, 1)
+
 					// Run each Sessions() call with timeout
-					go func(path string) {
+					go func(path string, token uint64) {
+						defer p.endSessionLoad(adapterID, path, token)
 						sess, err := adpt.Sessions(path)
 						resultChan <- result{sessions: sess, err: err}
-					}(wtPath)
+					}(wtPath, loadToken)
 
 					// Wait for result or timeout after 5 seconds per worktree
 					select {
@@ -618,6 +625,37 @@ func (p *Plugin) listenForAdapterBatch() tea.Cmd {
 		}
 		return msg
 	}
+}
+
+func sessionLoadKey(adapterID, worktreePath string) string {
+	return adapterID + "\x00" + worktreePath
+}
+
+func (p *Plugin) beginSessionLoad(adapterID, worktreePath string) (uint64, bool) {
+	key := sessionLoadKey(adapterID, worktreePath)
+	p.sessionLoadMu.Lock()
+	defer p.sessionLoadMu.Unlock()
+
+	if _, inFlight := p.sessionLoads[key]; inFlight {
+		return 0, false
+	}
+
+	p.sessionLoadSeq++
+	token := p.sessionLoadSeq
+	p.sessionLoads[key] = token
+	return token, true
+}
+
+func (p *Plugin) endSessionLoad(adapterID, worktreePath string, token uint64) {
+	key := sessionLoadKey(adapterID, worktreePath)
+	p.sessionLoadMu.Lock()
+	defer p.sessionLoadMu.Unlock()
+
+	current, inFlight := p.sessionLoads[key]
+	if !inFlight || current != token {
+		return
+	}
+	delete(p.sessionLoads, key)
 }
 
 // listenForCoalescedRefresh waits for coalesced refresh messages.

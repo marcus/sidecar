@@ -57,3 +57,59 @@ func TestDeriveWorktreeNameFromPath(t *testing.T) {
 		})
 	}
 }
+
+func TestSessionLoadGuard_PreventsDuplicateInFlight(t *testing.T) {
+	p := New()
+
+	token, ok := p.beginSessionLoad("codex", "/tmp/repo")
+	if !ok {
+		t.Fatal("first beginSessionLoad should succeed")
+	}
+	if token == 0 {
+		t.Fatal("token should be non-zero")
+	}
+
+	if _, ok := p.beginSessionLoad("codex", "/tmp/repo"); ok {
+		t.Fatal("duplicate in-flight load should be rejected")
+	}
+
+	p.endSessionLoad("codex", "/tmp/repo", token)
+
+	if _, ok := p.beginSessionLoad("codex", "/tmp/repo"); !ok {
+		t.Fatal("beginSessionLoad should succeed after endSessionLoad")
+	}
+}
+
+func TestSessionLoadGuard_IgnoresStaleTokenOnEnd(t *testing.T) {
+	p := New()
+
+	oldToken, ok := p.beginSessionLoad("cursor", "/tmp/repo")
+	if !ok {
+		t.Fatal("initial beginSessionLoad should succeed")
+	}
+
+	// Simulate project reset replacing the in-flight map while an old goroutine is still running.
+	p.sessionLoadMu.Lock()
+	p.sessionLoads = make(map[string]uint64)
+	p.sessionLoadMu.Unlock()
+
+	newToken, ok := p.beginSessionLoad("cursor", "/tmp/repo")
+	if !ok {
+		t.Fatal("new beginSessionLoad should succeed after reset")
+	}
+	if newToken == oldToken {
+		t.Fatal("session load tokens must remain unique across resets")
+	}
+
+	// Old goroutine completion should not clear the newer in-flight entry.
+	p.endSessionLoad("cursor", "/tmp/repo", oldToken)
+
+	if _, ok := p.beginSessionLoad("cursor", "/tmp/repo"); ok {
+		t.Fatal("stale token must not clear current in-flight load")
+	}
+
+	p.endSessionLoad("cursor", "/tmp/repo", newToken)
+	if _, ok := p.beginSessionLoad("cursor", "/tmp/repo"); !ok {
+		t.Fatal("beginSessionLoad should succeed after valid endSessionLoad")
+	}
+}
