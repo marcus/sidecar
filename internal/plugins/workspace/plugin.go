@@ -13,9 +13,9 @@ import (
 	"github.com/marcus/sidecar/internal/modal"
 	"github.com/marcus/sidecar/internal/mouse"
 	"github.com/marcus/sidecar/internal/plugin"
-	"github.com/marcus/sidecar/internal/ui"
 	"github.com/marcus/sidecar/internal/plugins/gitstatus"
 	"github.com/marcus/sidecar/internal/state"
+	"github.com/marcus/sidecar/internal/ui"
 )
 
 const (
@@ -34,11 +34,11 @@ const (
 	flashDuration = 1500 * time.Millisecond
 
 	// Hit region IDs
-	regionSidebar            = "sidebar"
-	regionPreviewPane        = "preview-pane"
-	regionPaneDivider        = "pane-divider"
-	regionWorktreeItem       = "workspace-item"
-	regionPreviewTab         = "preview-tab"
+	regionSidebar      = "sidebar"
+	regionPreviewPane  = "preview-pane"
+	regionPaneDivider  = "pane-divider"
+	regionWorktreeItem = "workspace-item"
+	regionPreviewTab   = "preview-tab"
 	// Agent choice modal IDs (modal library)
 	agentChoiceListID    = "agent-choice-list"
 	agentChoiceConfirmID = "agent-choice-confirm"
@@ -90,9 +90,9 @@ const (
 	typeSelectorInputID      = "type-selector-name-input"
 	typeSelectorConfirmID    = "type-selector-confirm"
 	typeSelectorCancelID     = "type-selector-cancel"
-	typeSelectorAgentListID  = "type-selector-agent-list"  // td-a902fe
-	typeSelectorSkipPermsID  = "type-selector-skip-perms"  // td-a902fe
-	typeSelectorAgentItemPfx = "ts-agent-"                 // td-a902fe: prefix for agent items
+	typeSelectorAgentListID  = "type-selector-agent-list" // td-a902fe
+	typeSelectorSkipPermsID  = "type-selector-skip-perms" // td-a902fe
+	typeSelectorAgentItemPfx = "ts-agent-"                // td-a902fe: prefix for agent items
 
 	// Shell delete confirmation modal regions
 )
@@ -113,20 +113,20 @@ type Plugin struct {
 	managedSessions map[string]bool
 
 	// View state
-	viewMode         ViewMode
-	activePane       FocusPane
-	previewTab       PreviewTab
-	selectedIdx      int
-	scrollOffset     int // Sidebar list scroll offset
-	visibleCount     int // Number of visible list items
+	viewMode            ViewMode
+	activePane          FocusPane
+	previewTab          PreviewTab
+	selectedIdx         int
+	scrollOffset        int // Sidebar list scroll offset
+	visibleCount        int // Number of visible list items
 	previewOffset       int
-	autoScrollOutput    bool // Auto-scroll output to follow agent (paused when user scrolls up)
-	scrollBaseLineCount int  // Snapshot of lineCount when scroll started (td-f7c8be: prevents bounce on poll)
-	sidebarWidth     int       // Persisted sidebar width
-	sidebarVisible   bool      // Whether sidebar is visible (toggled with \)
-	flashPreviewTime time.Time // When preview flash was triggered
-	toastMessage     string    // Temporary toast message to display
-	toastTime        time.Time // When toast was triggered
+	autoScrollOutput    bool      // Auto-scroll output to follow agent (paused when user scrolls up)
+	scrollBaseLineCount int       // Snapshot of lineCount when scroll started (td-f7c8be: prevents bounce on poll)
+	sidebarWidth        int       // Persisted sidebar width
+	sidebarVisible      bool      // Whether sidebar is visible (toggled with \)
+	flashPreviewTime    time.Time // When preview flash was triggered
+	toastMessage        string    // Temporary toast message to display
+	toastTime           time.Time // When toast was triggered
 
 	// Interactive selection state (preview pane)
 	selection                     ui.SelectionState
@@ -228,21 +228,21 @@ type Plugin struct {
 
 	// Merge workflow state
 	mergeState      *MergeWorkflowState
-	mergeModal      *modal.Modal // Modal instance for merge workflow
-	mergeModalWidth int          // Cached width for rebuild detection
+	mergeModal      *modal.Modal      // Modal instance for merge workflow
+	mergeModalWidth int               // Cached width for rebuild detection
 	mergeModalStep  MergeWorkflowStep // Cached step for rebuild detection
 
 	// Commit-before-merge state
-	mergeCommitState        *MergeCommitState
-	mergeCommitMessageInput textinput.Model
-	commitForMergeModal     *modal.Modal // Modal instance
-	commitForMergeModalWidth int         // Cached width for rebuild detection
+	mergeCommitState         *MergeCommitState
+	mergeCommitMessageInput  textinput.Model
+	commitForMergeModal      *modal.Modal // Modal instance
+	commitForMergeModalWidth int          // Cached width for rebuild detection
 
 	// Agent choice modal state (attach vs restart)
-	agentChoiceWorktree    *Worktree
-	agentChoiceIdx         int          // 0=attach, 1=restart
-	agentChoiceModal       *modal.Modal // Modal instance
-	agentChoiceModalWidth  int          // Cached width for rebuild detection
+	agentChoiceWorktree   *Worktree
+	agentChoiceIdx        int          // 0=attach, 1=restart
+	agentChoiceModal      *modal.Modal // Modal instance
+	agentChoiceModalWidth int          // Cached width for rebuild detection
 
 	// Delete confirmation modal state
 	deleteConfirmWorktree   *Worktree // Worktree pending deletion
@@ -290,10 +290,10 @@ type Plugin struct {
 	shellSelected    bool            // True when any shell is selected (vs a worktree)
 
 	// Type selector modal state (shell vs worktree)
-	typeSelectorIdx         int             // 0=Shell, 1=Worktree
-	typeSelectorNameInput   textinput.Model // Optional shell name input
-	typeSelectorModal       *modal.Modal    // Modal instance
-	typeSelectorModalWidth  int             // Cached width for rebuild detection
+	typeSelectorIdx        int             // 0=Shell, 1=Worktree
+	typeSelectorNameInput  textinput.Model // Optional shell name input
+	typeSelectorModal      *modal.Modal    // Modal instance
+	typeSelectorModalWidth int             // Cached width for rebuild detection
 
 	// Type selector modal - shell agent selection (td-2bb232)
 	typeSelectorAgentIdx   int       // Selected index in agent list (0 = None)
@@ -301,7 +301,7 @@ type Plugin struct {
 	typeSelectorSkipPerms  bool      // Whether skip permissions is checked
 	typeSelectorFocusField int       // Focus: 0=name, 1=agent, 2=skipPerms, 3=buttons
 
-// Resume conversation state (td-aa4136)
+	// Resume conversation state (td-aa4136)
 	pendingResumeCmd      string // Resume command to inject after shell creation
 	pendingResumeWorktree string // Worktree name to enter interactive mode after agent starts
 
@@ -707,13 +707,64 @@ func (p *Plugin) removeWorktreeByName(name string) {
 	}
 }
 
+func isCreateDefaultAgent(agentType AgentType) bool {
+	if agentType == "" {
+		return false
+	}
+	for _, at := range AgentTypeOrder {
+		if at == agentType {
+			return true
+		}
+	}
+	return false
+}
+
+func (p *Plugin) getConfigDefaultAgentType() AgentType {
+	if p != nil && p.ctx != nil && p.ctx.Config != nil {
+		configAgent := AgentType(strings.TrimSpace(p.ctx.Config.Plugins.Workspace.DefaultAgentType))
+		if isCreateDefaultAgent(configAgent) {
+			return configAgent
+		}
+	}
+	return AgentClaude
+}
+
+// resolveWorktreeAgentType returns the agent type to use when starting an agent for a worktree.
+// Hierarchy: .sidecar-agent file -> config defaultAgentType -> Claude fallback.
+func (p *Plugin) resolveWorktreeAgentType(wt *Worktree) AgentType {
+	if wt != nil {
+		fileAgent := loadAgentType(wt.Path)
+		if isCreateDefaultAgent(fileAgent) {
+			return fileAgent
+		}
+	}
+	return p.getConfigDefaultAgentType()
+}
+
+// getDefaultCreateAgentType returns the default agent for create-worktree modal.
+// .sidecar-agent in the current workspace is treated equivalently to config defaultAgentType.
+func (p *Plugin) getDefaultCreateAgentType() AgentType {
+	if p != nil && p.ctx != nil {
+		agentPath := filepath.Join(p.ctx.WorkDir, sidecarAgentFile)
+		if content, err := os.ReadFile(agentPath); err == nil {
+			fileAgent := AgentType(strings.TrimSpace(string(content)))
+			if isCreateDefaultAgent(fileAgent) {
+				return fileAgent
+			}
+		}
+
+		return p.getConfigDefaultAgentType()
+	}
+	return p.getConfigDefaultAgentType()
+}
+
 // clearCreateModal resets create modal state.
 func (p *Plugin) clearCreateModal() {
 	p.createNameInput = textinput.Model{}
 	p.createBaseBranchInput = textinput.Model{}
 	p.createTaskID = ""
 	p.createTaskTitle = ""
-	p.createAgentType = AgentClaude // Default to Claude
+	p.createAgentType = p.getDefaultCreateAgentType()
 	p.createAgentIdx = p.agentTypeIndex(p.createAgentType)
 	p.createSkipPermissions = false
 	p.createFocus = 0
@@ -765,7 +816,7 @@ func (p *Plugin) initCreateModalBase() {
 	// Reset all state
 	p.createTaskID = ""
 	p.createTaskTitle = ""
-	p.createAgentType = AgentClaude
+	p.createAgentType = p.getDefaultCreateAgentType()
 	p.createAgentIdx = p.agentTypeIndex(p.createAgentType)
 	p.createSkipPermissions = false
 	p.createFocus = 0
@@ -909,7 +960,7 @@ func (p *Plugin) moveCursor(delta int) {
 		p.previewOffset = 0
 		p.autoScrollOutput = true
 		p.resetScrollBaseLineCount() // td-f7c8be: clear snapshot for new selection
-		p.taskLoading = false // Reset task loading state for new selection (td-3668584f)
+		p.taskLoading = false        // Reset task loading state for new selection (td-3668584f)
 		// Exit interactive mode when switching selection (td-fc758e88)
 		p.exitInteractiveMode()
 		// Persist selection to disk
@@ -946,7 +997,7 @@ func (p *Plugin) cyclePreviewTab(delta int) tea.Cmd {
 	prevTab := p.previewTab
 	p.previewTab = PreviewTab((int(p.previewTab) + delta + 3) % 3)
 	p.previewOffset = 0
-	p.autoScrollOutput = true // Reset auto-scroll when switching tabs
+	p.autoScrollOutput = true    // Reset auto-scroll when switching tabs
 	p.resetScrollBaseLineCount() // td-f7c8be: clear snapshot when switching tabs
 
 	if prevTab == PreviewTabOutput && p.previewTab != PreviewTabOutput {

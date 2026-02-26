@@ -27,7 +27,7 @@ type savePluginsConfig struct {
 	GitStatus     saveGitStatusConfig     `json:"git-status,omitempty"`
 	TDMonitor     saveTDMonitorConfig     `json:"td-monitor,omitempty"`
 	Conversations saveConversationsConfig `json:"conversations,omitempty"`
-	Workspace     saveWorkspaceConfig      `json:"workspace,omitempty"`
+	Workspace     saveWorkspaceConfig     `json:"workspace,omitempty"`
 }
 
 type saveGitStatusConfig struct {
@@ -47,12 +47,14 @@ type saveConversationsConfig struct {
 }
 
 type saveWorkspaceConfig struct {
-	DirPrefix            *bool  `json:"dirPrefix,omitempty"`
-	TmuxCaptureMaxBytes  *int   `json:"tmuxCaptureMaxBytes,omitempty"`
-	InteractiveExitKey   string `json:"interactiveExitKey,omitempty"`
-	InteractiveAttachKey string `json:"interactiveAttachKey,omitempty"`
-	InteractiveCopyKey   string `json:"interactiveCopyKey,omitempty"`
-	InteractivePasteKey  string `json:"interactivePasteKey,omitempty"`
+	DirPrefix            *bool             `json:"dirPrefix,omitempty"`
+	DefaultAgentType     string            `json:"defaultAgentType,omitempty"`
+	AgentStart           map[string]string `json:"agentStart,omitempty"`
+	TmuxCaptureMaxBytes  *int              `json:"tmuxCaptureMaxBytes,omitempty"`
+	InteractiveExitKey   string            `json:"interactiveExitKey,omitempty"`
+	InteractiveAttachKey string            `json:"interactiveAttachKey,omitempty"`
+	InteractiveCopyKey   string            `json:"interactiveCopyKey,omitempty"`
+	InteractivePasteKey  string            `json:"interactivePasteKey,omitempty"`
 }
 
 // toSaveConfig converts Config to the JSON-serializable format.
@@ -79,6 +81,8 @@ func toSaveConfig(cfg *Config) saveConfig {
 			},
 			Workspace: saveWorkspaceConfig{
 				DirPrefix:            &cfg.Plugins.Workspace.DirPrefix,
+				DefaultAgentType:     cfg.Plugins.Workspace.DefaultAgentType,
+				AgentStart:           cfg.Plugins.Workspace.AgentStart,
 				TmuxCaptureMaxBytes:  &cfg.Plugins.Workspace.TmuxCaptureMaxBytes,
 				InteractiveExitKey:   cfg.Plugins.Workspace.InteractiveExitKey,
 				InteractiveAttachKey: cfg.Plugins.Workspace.InteractiveAttachKey,

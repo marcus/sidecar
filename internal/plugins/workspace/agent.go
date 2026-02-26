@@ -1,6 +1,7 @@
 package workspace
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -8,15 +9,19 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
+	"unicode"
 	"unicode/utf8"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/marcus/sidecar/internal/features"
 )
+
+var openCodeRunPrefixRe = regexp.MustCompile(`^(\S+)\s+run(\s+.*)?$`)
 
 // paneCacheEntry holds cached capture output with timestamp
 type paneCacheEntry struct {
@@ -235,9 +240,9 @@ const (
 
 	// Runaway detection thresholds (td-018f25)
 	// Detect sessions producing continuous output and throttle them to reduce CPU usage.
-	runawayPollCount    = 20               // Number of polls to track
-	runawayTimeWindow   = 3 * time.Second  // If 20 polls happen within this window = runaway
-	runawayResetCount   = 3                // Consecutive unchanged polls to reset throttle
+	runawayPollCount  = 20              // Number of polls to track
+	runawayTimeWindow = 3 * time.Second // If 20 polls happen within this window = runaway
+	runawayResetCount = 3               // Consecutive unchanged polls to reset throttle
 )
 
 // AgentStartedMsg signals an agent has been started in a worktree.
@@ -257,27 +262,27 @@ func (m AgentStartedMsg) GetEpoch() uint64 { return m.Epoch }
 // ApproveResultMsg signals the result of an approve action.
 type ApproveResultMsg struct {
 	WorkspaceName string
-	Err          error
+	Err           error
 }
 
 // RejectResultMsg signals the result of a reject action.
 type RejectResultMsg struct {
 	WorkspaceName string
-	Err          error
+	Err           error
 }
 
 // SendTextResultMsg signals the result of sending text to an agent.
 type SendTextResultMsg struct {
 	WorkspaceName string
-	Text         string
-	Err          error
+	Text          string
+	Err           error
 }
 
 // pollAgentMsg triggers output polling for a worktree's agent.
 // Includes generation for timer leak prevention (td-83dc22).
 type pollAgentMsg struct {
 	WorkspaceName string
-	Generation   int // Generation at time of scheduling; ignore if stale
+	Generation    int // Generation at time of scheduling; ignore if stale
 }
 
 // reconnectedAgentsMsg delivers reconnected agents from startup.
@@ -422,10 +427,112 @@ func getAgentCommand(agentType AgentType) string {
 	return "claude" // Default to claude
 }
 
+// readAgentStartOverride reads a .sidecar-agent-start command override from a worktree path.
+func readAgentStartOverride(worktreePath string) string {
+	if worktreePath == "" {
+		return ""
+	}
+	overridePath := filepath.Join(worktreePath, sidecarAgentStartFile)
+	raw, err := os.ReadFile(overridePath)
+	if err != nil {
+		return ""
+	}
+
+	// Normalize editor/file encoding quirks so an invalid override never breaks startup.
+	raw = bytes.TrimSpace(raw)
+	raw = bytes.TrimPrefix(raw, []byte{0xEF, 0xBB, 0xBF}) // UTF-8 BOM
+	raw = bytes.TrimSpace(raw)
+	if len(raw) == 0 || bytes.IndexByte(raw, 0) >= 0 || !utf8.Valid(raw) {
+		return ""
+	}
+	return sanitizeAgentStartCommand(string(raw))
+}
+
+func sanitizeAgentStartCommand(raw string) string {
+	cmd := strings.TrimSpace(raw)
+	if cmd == "" || strings.ContainsAny(cmd, "\r\n") {
+		return ""
+	}
+
+	var cleaned strings.Builder
+	cleaned.Grow(len(cmd))
+	for _, r := range cmd {
+		if r == '\uFFFD' || r == '\uFEFF' {
+			continue
+		}
+		if unicode.Is(unicode.Cf, r) || unicode.IsControl(r) {
+			continue
+		}
+		cleaned.WriteRune(r)
+	}
+
+	result := strings.TrimSpace(cleaned.String())
+	if result == "" || strings.ContainsAny(result, "\r\n") {
+		return ""
+	}
+	return result
+}
+
+func resolveConfigAgentStart(agentStart map[string]string, agentType AgentType) string {
+	if len(agentStart) == 0 {
+		return ""
+	}
+
+	lookupOrder := []string{string(agentType), "*", "default"}
+	for _, key := range lookupOrder {
+		cmd := sanitizeAgentStartCommand(agentStart[key])
+		if cmd != "" {
+			return cmd
+		}
+	}
+	return ""
+}
+
+// normalizeOpenCodeBaseCommand ensures overrides represent the opencode command portion,
+// not the "opencode run" invocation. The launcher appends "run" itself.
+func normalizeOpenCodeBaseCommand(cmd string) string {
+	if cmd == "" {
+		return ""
+	}
+	m := openCodeRunPrefixRe.FindStringSubmatch(cmd)
+	if len(m) == 0 {
+		return cmd
+	}
+	suffix := ""
+	if len(m) > 2 {
+		suffix = m[2]
+	}
+	return strings.TrimSpace(m[1] + suffix)
+}
+
+// resolveAgentBaseCommand returns the command used to launch the selected agent family.
+// Precedence: worktree .sidecar-agent-start > config.plugins.workspace.agentStart > AgentCommands map.
+func (p *Plugin) resolveAgentBaseCommand(worktreePath string, agentType AgentType) string {
+	if overrideCmd := readAgentStartOverride(worktreePath); overrideCmd != "" {
+		if agentType == AgentOpenCode {
+			overrideCmd = normalizeOpenCodeBaseCommand(overrideCmd)
+		}
+		return overrideCmd
+	}
+	if p != nil && p.ctx != nil && p.ctx.Config != nil {
+		if configCmd := resolveConfigAgentStart(p.ctx.Config.Plugins.Workspace.AgentStart, agentType); configCmd != "" {
+			if agentType == AgentOpenCode {
+				configCmd = normalizeOpenCodeBaseCommand(configCmd)
+			}
+			return configCmd
+		}
+	}
+	return getAgentCommand(agentType)
+}
+
 // buildAgentCommand builds the agent command with optional skip permissions and task context.
 // If there's task context, it writes a launcher script to avoid shell escaping issues.
 func (p *Plugin) buildAgentCommand(agentType AgentType, wt *Worktree, skipPerms bool, prompt *Prompt) string {
-	baseCmd := getAgentCommand(agentType)
+	worktreePath := ""
+	if wt != nil {
+		worktreePath = wt.Path
+	}
+	baseCmd := p.resolveAgentBaseCommand(worktreePath, agentType)
 
 	// Apply skip permissions flag if requested
 	if skipPerms {
@@ -743,7 +850,7 @@ func (p *Plugin) scheduleInteractivePoll(worktreeName string, delay time.Duratio
 
 // AgentPollUnchangedMsg signals content unchanged, schedule next poll.
 type AgentPollUnchangedMsg struct {
-	WorkspaceName  string
+	WorkspaceName string
 	CurrentStatus WorktreeStatus // Status including session file re-check
 	WaitingFor    string         // Prompt text if waiting
 	// Cursor position captured atomically (even when content unchanged)
@@ -887,7 +994,7 @@ func (p *Plugin) handlePollAgent(worktreeName string) tea.Cmd {
 
 		if !outputChanged {
 			return AgentPollUnchangedMsg{
-				WorkspaceName:  worktreeName,
+				WorkspaceName: worktreeName,
 				CurrentStatus: status,
 				WaitingFor:    waitingFor,
 				CursorRow:     cursorRow,
@@ -900,7 +1007,7 @@ func (p *Plugin) handlePollAgent(worktreeName string) tea.Cmd {
 		}
 
 		return AgentOutputMsg{
-			WorkspaceName:  worktreeName,
+			WorkspaceName: worktreeName,
 			Output:        output,
 			Status:        status,
 			WaitingFor:    waitingFor,
@@ -1250,7 +1357,7 @@ func (p *Plugin) Approve(wt *Worktree) tea.Cmd {
 
 		return ApproveResultMsg{
 			WorkspaceName: wt.Name,
-			Err:          err,
+			Err:           err,
 		}
 	}
 }
@@ -1267,7 +1374,7 @@ func (p *Plugin) Reject(wt *Worktree) tea.Cmd {
 
 		return RejectResultMsg{
 			WorkspaceName: wt.Name,
-			Err:          err,
+			Err:           err,
 		}
 	}
 }
@@ -1307,8 +1414,8 @@ func (p *Plugin) SendText(wt *Worktree, text string) tea.Cmd {
 
 		return SendTextResultMsg{
 			WorkspaceName: wt.Name,
-			Text:         text,
-			Err:          err,
+			Text:          text,
+			Err:           err,
 		}
 	}
 }
@@ -1429,10 +1536,7 @@ func (p *Plugin) reconnectAgents() tea.Cmd {
 
 			// Create agent record
 			paneID := getPaneID(session)
-			agentType := wt.ChosenAgentType
-			if agentType == "" || agentType == AgentNone {
-				agentType = AgentClaude // Fallback if no .sidecar-agent file
-			}
+			agentType := p.resolveWorktreeAgentType(wt)
 			agent := &Agent{
 				Type:        agentType,
 				TmuxSession: session,

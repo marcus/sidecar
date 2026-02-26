@@ -98,3 +98,52 @@ func TestSave_WorksWithNoExistingFile(t *testing.T) {
 		t.Error("missing 'projects' key")
 	}
 }
+
+func TestSave_WritesWorkspaceAgentSettings(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+
+	SetTestConfigPath(path)
+	defer ResetTestConfigPath()
+
+	cfg := Default()
+	cfg.Plugins.Workspace.DefaultAgentType = "codex"
+	cfg.Plugins.Workspace.AgentStart = map[string]string{
+		"codex": "codex --dangerously-bypass-approvals-and-sandbox",
+	}
+
+	if err := Save(cfg); err != nil {
+		t.Fatalf("Save failed: %v", err)
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+
+	var plugins map[string]json.RawMessage
+	if err := json.Unmarshal(raw["plugins"], &plugins); err != nil {
+		t.Fatalf("unmarshal plugins: %v", err)
+	}
+
+	var workspace map[string]interface{}
+	if err := json.Unmarshal(plugins["workspace"], &workspace); err != nil {
+		t.Fatalf("unmarshal workspace: %v", err)
+	}
+
+	if got := workspace["defaultAgentType"]; got != "codex" {
+		t.Errorf("defaultAgentType = %v, want %q", got, "codex")
+	}
+	agentStart, ok := workspace["agentStart"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("agentStart type = %T, want object", workspace["agentStart"])
+	}
+	if got := agentStart["codex"]; got != "codex --dangerously-bypass-approvals-and-sandbox" {
+		t.Errorf("agentStart.codex = %v, want %q", got, "codex --dangerously-bypass-approvals-and-sandbox")
+	}
+}

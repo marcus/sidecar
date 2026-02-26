@@ -952,10 +952,7 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 	case restartAgentMsg:
 		// Start new agent after stop completed
 		if msg.worktree != nil {
-			agentType := msg.worktree.ChosenAgentType
-			if agentType == "" {
-				agentType = AgentClaude
-			}
+			agentType := p.resolveWorktreeAgentType(msg.worktree)
 			return p, p.StartAgent(msg.worktree, agentType)
 		}
 		return p, nil

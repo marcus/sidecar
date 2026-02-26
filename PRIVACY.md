@@ -54,7 +54,7 @@ In workspace directories, sidecar may create:
 
 - `.sidecar/config.json` — per-project configuration (prompts, theme overrides)
 - `.sidecar/shells.json` — shell display names and metadata
-- `.sidecar-task`, `.sidecar-agent`, `.sidecar-pr`, `.sidecar-base` — workspace state files
+- `.sidecar-task`, `.sidecar-agent`, `.sidecar-agent-start`, `.sidecar-pr`, `.sidecar-base` — workspace state files
 - `.sidecar-start.sh` — temporary agent launcher script
 - `.sidecar-rename-tmp` — temporary file for rename operations
 - `.td-root` — links worktrees to a shared td database root
@@ -81,6 +81,7 @@ Sidecar reads:
 - `HOME` — base path for all config and data directories
 - `EDITOR`, `VISUAL` — to open files in your editor
 - `SIDECAR_PPROF` — profiling server port (development only)
+- `SIDECAR_WORKSPACE_DEFAULT_AGENT_TYPE`, `SIDECAR_DEFAULT_AGENT_TYPE` — override workspace default agent type at startup
 - `XDG_DATA_HOME`, `XDG_CONFIG_HOME`, `XDG_STATE_HOME` — standard directories for locating agent data on Linux
 - `AMP_DATA_HOME` — Amp-specific data directory
 - `APPDATA`, `LOCALAPPDATA` — Windows data directories

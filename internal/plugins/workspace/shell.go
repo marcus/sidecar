@@ -462,6 +462,7 @@ func (p *Plugin) restoreShellDisplayNames() {
 		_ = state.SetWorkspaceState(p.ctx.ProjectRoot, wtState)
 	}
 }
+
 // nextShellIndex returns the next available shell index based on existing sessions.
 func (p *Plugin) nextShellIndex() int {
 	projectName := filepath.Base(p.ctx.WorkDir)
@@ -659,12 +660,17 @@ func (p *Plugin) recreateOrphanedShell(idx int) tea.Cmd {
 // td-21a2d8: Called after shell is created when an agent was selected.
 func (p *Plugin) startAgentInShell(tmuxName string, agentType AgentType, skipPerms bool) tea.Cmd {
 	return func() tea.Msg {
-		// Get the base command for this agent type
-		baseCmd := AgentCommands[agentType]
-		if baseCmd == "" {
+		workDir := ""
+		if p.ctx != nil {
+			workDir = p.ctx.WorkDir
+		}
+
+		// Get the base command for this agent family, allowing worktree-level override.
+		baseCmd := p.resolveAgentBaseCommand(workDir, agentType)
+		if strings.TrimSpace(baseCmd) == "" {
 			return ShellAgentErrorMsg{
 				TmuxName: tmuxName,
-				Err:      fmt.Errorf("unknown agent type: %s", agentType),
+				Err:      fmt.Errorf("empty agent command for type: %s", agentType),
 			}
 		}
 

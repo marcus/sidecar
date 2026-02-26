@@ -493,7 +493,7 @@ func (p *Plugin) handleListKeys(msg tea.KeyMsg) tea.Cmd {
 		if p.previewOffset > 0 {
 			p.previewOffset--
 			if p.previewOffset == 0 {
-				p.autoScrollOutput = true // Resume auto-scroll when at bottom
+				p.autoScrollOutput = true    // Resume auto-scroll when at bottom
 				p.resetScrollBaseLineCount() // td-f7c8be: clear snapshot
 			}
 		}
@@ -538,7 +538,7 @@ func (p *Plugin) handleListKeys(msg tea.KeyMsg) tea.Cmd {
 		// Go to top (oldest content) - pause auto-scroll
 		p.autoScrollOutput = false
 		p.captureScrollBaseLineCount() // td-f7c8be: prevent bounce on poll
-		p.previewOffset = math.MaxInt // Will be clamped in render
+		p.previewOffset = math.MaxInt  // Will be clamped in render
 	case "G":
 		if p.viewMode == ViewModeKanban {
 			// Kanban mode: jump cursor to bottom of current column
@@ -576,8 +576,8 @@ func (p *Plugin) handleListKeys(msg tea.KeyMsg) tea.Cmd {
 		p.typeSelectorNameInput.Prompt = ""
 		p.typeSelectorNameInput.Width = 30
 		p.typeSelectorNameInput.CharLimit = 50
-		p.typeSelectorModal = nil      // Force rebuild
-		p.typeSelectorModalWidth = 0   // Force rebuild
+		p.typeSelectorModal = nil    // Force rebuild
+		p.typeSelectorModalWidth = 0 // Force rebuild
 		return nil
 	case "D":
 		// Check if deleting a shell session
@@ -634,10 +634,7 @@ func (p *Plugin) handleListKeys(msg tea.KeyMsg) tea.Cmd {
 			wt := p.selectedWorktree()
 			if wt != nil && wt.IsOrphaned && wt.Agent == nil {
 				wt.IsOrphaned = false
-				agentType := wt.ChosenAgentType
-				if agentType == AgentNone || agentType == "" {
-					agentType = AgentClaude
-				}
+				agentType := p.resolveWorktreeAgentType(wt)
 				return p.StartAgent(wt, agentType)
 			}
 		}
@@ -669,10 +666,7 @@ func (p *Plugin) handleListKeys(msg tea.KeyMsg) tea.Cmd {
 			// Clear flag immediately for UI feedback; also cleared in AgentStartedMsg
 			// handler when agent actually starts (StartAgent is async)
 			wt.IsOrphaned = false
-			agentType := wt.ChosenAgentType
-			if agentType == AgentNone || agentType == "" {
-				agentType = AgentClaude // Fallback
-			}
+			agentType := p.resolveWorktreeAgentType(wt)
 			return p.StartAgent(wt, agentType)
 		}
 		// No agent, not orphaned: focus preview
@@ -810,7 +804,7 @@ func (p *Plugin) handleListKeys(msg tea.KeyMsg) tea.Cmd {
 		}
 		if wt.Agent == nil {
 			// No agent running - start new one
-			return p.StartAgent(wt, wt.ChosenAgentType)
+			return p.StartAgent(wt, p.resolveWorktreeAgentType(wt))
 		}
 		// Agent exists - show choice modal (attach or restart)
 		p.agentChoiceWorktree = wt

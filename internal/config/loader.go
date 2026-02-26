@@ -1,6 +1,7 @@
 package config
 
 import (
+	"bytes"
 	"encoding/json"
 	"log/slog"
 	"os"
@@ -59,16 +60,19 @@ type rawPluginsConfig struct {
 	GitStatus     rawGitStatusConfig     `json:"git-status"`
 	TDMonitor     rawTDMonitorConfig     `json:"td-monitor"`
 	Conversations rawConversationsConfig `json:"conversations"`
-	Workspace     rawWorkspaceConfig      `json:"workspace"`
+	Workspace     rawWorkspaceConfig     `json:"workspace"`
 }
 
 type rawWorkspaceConfig struct {
-	DirPrefix            *bool  `json:"dirPrefix"`
-	TmuxCaptureMaxBytes  *int   `json:"tmuxCaptureMaxBytes"`
-	InteractiveExitKey   string `json:"interactiveExitKey"`
-	InteractiveAttachKey string `json:"interactiveAttachKey"`
-	InteractiveCopyKey   string `json:"interactiveCopyKey"`
-	InteractivePasteKey  string `json:"interactivePasteKey"`
+	DirPrefix            *bool           `json:"dirPrefix"`
+	DefaultAgentType     string          `json:"defaultAgentType"`
+	LegacyDefaultAgent   string          `json:"defaultAgent"` // Backward compatibility
+	AgentStart           json.RawMessage `json:"agentStart"`
+	TmuxCaptureMaxBytes  *int            `json:"tmuxCaptureMaxBytes"`
+	InteractiveExitKey   string          `json:"interactiveExitKey"`
+	InteractiveAttachKey string          `json:"interactiveAttachKey"`
+	InteractiveCopyKey   string          `json:"interactiveCopyKey"`
+	InteractivePasteKey  string          `json:"interactivePasteKey"`
 }
 
 type rawGitStatusConfig struct {
@@ -87,6 +91,11 @@ type rawConversationsConfig struct {
 	ClaudeDataDir string `json:"claudeDataDir"`
 }
 
+const (
+	envWorkspaceDefaultAgentType = "SIDECAR_WORKSPACE_DEFAULT_AGENT_TYPE"
+	envDefaultAgentType          = "SIDECAR_DEFAULT_AGENT_TYPE"
+)
+
 // Load loads configuration from the default location.
 func Load() (*Config, error) {
 	return LoadFrom("")
@@ -100,6 +109,7 @@ func LoadFrom(path string) (*Config, error) {
 	if path == "" {
 		home, err := os.UserHomeDir()
 		if err != nil {
+			applyEnvOverrides(cfg)
 			return cfg, nil // Return defaults on error
 		}
 		path = filepath.Join(home, configDir, configFile)
@@ -108,6 +118,10 @@ func LoadFrom(path string) (*Config, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
+			applyEnvOverrides(cfg)
+			if err := cfg.Validate(); err != nil {
+				return nil, err
+			}
 			return cfg, nil // Return defaults if no config file
 		}
 		return nil, err
@@ -120,6 +134,7 @@ func LoadFrom(path string) (*Config, error) {
 
 	// Merge raw config into defaults
 	mergeConfig(cfg, &raw)
+	applyEnvOverrides(cfg)
 
 	// Expand paths
 	cfg.Plugins.Conversations.ClaudeDataDir = ExpandPath(cfg.Plugins.Conversations.ClaudeDataDir)
@@ -194,6 +209,15 @@ func mergeConfig(cfg *Config, raw *rawConfig) {
 	if raw.Plugins.Workspace.TmuxCaptureMaxBytes != nil {
 		cfg.Plugins.Workspace.TmuxCaptureMaxBytes = *raw.Plugins.Workspace.TmuxCaptureMaxBytes
 	}
+	if raw.Plugins.Workspace.DefaultAgentType != "" {
+		cfg.Plugins.Workspace.DefaultAgentType = raw.Plugins.Workspace.DefaultAgentType
+	}
+	if cfg.Plugins.Workspace.DefaultAgentType == "" && raw.Plugins.Workspace.LegacyDefaultAgent != "" {
+		cfg.Plugins.Workspace.DefaultAgentType = raw.Plugins.Workspace.LegacyDefaultAgent
+	}
+	if agentStart, ok := parseAgentStartOverrides(raw.Plugins.Workspace.AgentStart); ok {
+		cfg.Plugins.Workspace.AgentStart = agentStart
+	}
 	if raw.Plugins.Workspace.InteractiveExitKey != "" {
 		cfg.Plugins.Workspace.InteractiveExitKey = raw.Plugins.Workspace.InteractiveExitKey
 	}
@@ -249,6 +273,53 @@ func mergeConfig(cfg *Config, raw *rawConfig) {
 			cfg.Features.Flags[k] = v
 		}
 	}
+}
+
+func applyEnvOverrides(cfg *Config) {
+	if cfg == nil {
+		return
+	}
+
+	if v, ok := os.LookupEnv(envWorkspaceDefaultAgentType); ok {
+		cfg.Plugins.Workspace.DefaultAgentType = strings.TrimSpace(v)
+		return
+	}
+	if v, ok := os.LookupEnv(envDefaultAgentType); ok {
+		cfg.Plugins.Workspace.DefaultAgentType = strings.TrimSpace(v)
+	}
+}
+
+func parseAgentStartOverrides(raw json.RawMessage) (map[string]string, bool) {
+	raw = bytes.TrimSpace(raw)
+	if len(raw) == 0 || bytes.Equal(raw, []byte("null")) {
+		return nil, false
+	}
+
+	var byType map[string]string
+	if err := json.Unmarshal(raw, &byType); err == nil {
+		out := make(map[string]string, len(byType))
+		for k, v := range byType {
+			key := strings.TrimSpace(k)
+			val := strings.TrimSpace(v)
+			if key == "" || val == "" {
+				continue
+			}
+			out[key] = val
+		}
+		return out, true
+	}
+
+	// Backward compatibility: previous schema accepted a single string.
+	var single string
+	if err := json.Unmarshal(raw, &single); err == nil {
+		single = strings.TrimSpace(single)
+		if single == "" {
+			return map[string]string{}, true
+		}
+		return map[string]string{"*": single}, true
+	}
+
+	return nil, false
 }
 
 // ExpandPath expands ~ to home directory.
