@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/marcus/sidecar/internal/plugin"
+	"github.com/marcus/sidecar/internal/tdroot"
 )
 
 func TestNew(t *testing.T) {
@@ -103,14 +104,17 @@ func TestInitWithNonExistentDatabase(t *testing.T) {
 	}
 }
 
-func TestInitWithValidDatabase(t *testing.T) {
-	// Find project root by walking up to find .todos
+// findProjectRootWithDB walks up from cwd to find a directory whose resolved
+// td database path (following .td-root) actually exists. Returns the clean
+// project root or calls t.Skip if no usable database is found.
+func findProjectRootWithDB(t *testing.T) string {
+	t.Helper()
 	cwd, err := os.Getwd()
 	if err != nil {
 		t.Skip("couldn't get working directory")
 	}
 
-	// The test runs from internal/plugins/tdmonitor, so go up to project root
+	// Walk up to find a directory with .todos/issues.db
 	projectRoot := cwd
 	for i := 0; i < 5; i++ {
 		if _, err := os.Stat(projectRoot + "/.todos/issues.db"); err == nil {
@@ -118,11 +122,21 @@ func TestInitWithValidDatabase(t *testing.T) {
 		}
 		projectRoot = projectRoot + "/.."
 	}
+	projectRoot = filepath.Clean(projectRoot)
 
-	// Verify we found a .todos directory
-	if _, err := os.Stat(projectRoot + "/.todos/issues.db"); err != nil {
-		t.Skip("no .todos database found in project hierarchy")
+	// Verify the *resolved* database path exists. The monitor follows .td-root
+	// which may redirect to a different directory (e.g., a worktree root on
+	// another machine). Skip if the resolved path is unreachable.
+	resolvedDBPath := tdroot.ResolveDBPath(projectRoot)
+	if _, err := os.Stat(resolvedDBPath); err != nil {
+		t.Skipf("resolved td database not accessible: %s", resolvedDBPath)
 	}
+
+	return projectRoot
+}
+
+func TestInitWithValidDatabase(t *testing.T) {
+	projectRoot := findProjectRootWithDB(t)
 
 	p := New()
 	ctx := &plugin.Context{
@@ -130,7 +144,7 @@ func TestInitWithValidDatabase(t *testing.T) {
 		Logger:  slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError})),
 	}
 
-	err = p.Init(ctx)
+	err := p.Init(ctx)
 	if err != nil {
 		t.Errorf("Init failed: %v", err)
 	}
@@ -145,24 +159,7 @@ func TestInitWithValidDatabase(t *testing.T) {
 }
 
 func TestDiagnosticsWithDatabase(t *testing.T) {
-	// Find project root by walking up to find .todos
-	cwd, err := os.Getwd()
-	if err != nil {
-		t.Skip("couldn't get working directory")
-	}
-
-	projectRoot := cwd
-	for i := 0; i < 5; i++ {
-		if _, err := os.Stat(projectRoot + "/.todos/issues.db"); err == nil {
-			break
-		}
-		projectRoot = projectRoot + "/.."
-	}
-
-	// Verify we found a .todos directory
-	if _, err := os.Stat(projectRoot + "/.todos/issues.db"); err != nil {
-		t.Skip("no .todos database found in project hierarchy")
-	}
+	projectRoot := findProjectRootWithDB(t)
 
 	p := New()
 	ctx := &plugin.Context{
