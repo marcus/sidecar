@@ -12,6 +12,7 @@ import (
 	"github.com/marcus/sidecar/internal/plugin"
 	"github.com/marcus/sidecar/internal/plugins/workspace"
 	"github.com/marcus/sidecar/internal/styles"
+	"github.com/marcus/sidecar/internal/tdroot"
 )
 
 const (
@@ -36,6 +37,9 @@ type Plugin struct {
 
 	// Setup modal (shown when td is on PATH but project not initialized)
 	setupModal *SetupModel
+
+	// todosConflict is set when .todos exists as a file instead of a directory
+	todosConflict bool
 
 	// tdOnPath tracks whether td binary is available on the system
 	tdOnPath bool
@@ -73,7 +77,17 @@ func (p *Plugin) Init(ctx *plugin.Context) error {
 	p.model = nil
 	p.notInstalled = nil
 	p.setupModal = nil
+	p.todosConflict = false
 	p.started = false
+
+	// Check if .todos exists as a file instead of a directory (#194).
+	// This must happen before attempting to create the monitor or showing
+	// the setup modal, since td init will fail in this state.
+	if err := tdroot.CheckTodosConflict(ctx.WorkDir); err != nil {
+		p.ctx.Logger.Warn("td monitor: .todos path conflict", "error", err)
+		p.todosConflict = true
+		return nil
+	}
 
 	// Check if td binary is available on PATH
 	_, err := exec.LookPath("td")
@@ -153,6 +167,17 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 			return p, p.Start()
 		}
 		return p, nil
+	}
+
+	// Handle setup error - show error toast
+	if errMsg, ok := msg.(SetupErrorMsg); ok {
+		return p, func() tea.Msg {
+			return app.ToastMsg{
+				Message:  errMsg.Error,
+				Duration: 5 * time.Second,
+				IsError:  true,
+			}
+		}
 	}
 
 	// Handle setup skip - show not-installed view
@@ -287,7 +312,9 @@ func (p *Plugin) View(width, height int) string {
 	p.height = height
 
 	var content string
-	if p.model == nil {
+	if p.todosConflict {
+		content = renderConflictView(width)
+	} else if p.model == nil {
 		if p.setupModal != nil {
 			content = p.setupModal.View(width, height)
 		} else if p.notInstalled != nil {
@@ -388,7 +415,10 @@ func (p *Plugin) Diagnostics() []plugin.Diagnostic {
 	status := "ok"
 	detail := ""
 
-	if p.model == nil {
+	if p.todosConflict {
+		status = "error"
+		detail = ".todos is a file, not a directory"
+	} else if p.model == nil {
 		status = "disabled"
 		detail = "no database"
 	} else {
@@ -415,6 +445,28 @@ func formatCount(n int, singular, plural string) string {
 		return "1 " + singular
 	}
 	return fmt.Sprintf("%d %s", n, plural)
+}
+
+// renderConflictView renders the error view when .todos is a file instead of a directory.
+func renderConflictView(width int) string {
+	theme := styles.GetCurrentTheme()
+
+	title := lipgloss.NewStyle().
+		Bold(true).
+		Foreground(lipgloss.Color(theme.Colors.Error)).
+		Render("Cannot initialize td")
+
+	body := lipgloss.NewStyle().
+		Width(width - 4).
+		Render(
+			"Found a .todos file where a directory is expected.\n" +
+				"This may have been created by another tool or AI agent.\n\n" +
+				"To fix, remove or rename the file:\n\n" +
+				"  mv .todos .todos.bak\n" +
+				"  td init\n\n" +
+				"Then restart sidecar.")
+
+	return lipgloss.JoinVertical(lipgloss.Left, "", title, "", body)
 }
 
 // buildMarkdownTheme creates a MarkdownThemeConfig from the current sidecar theme.
