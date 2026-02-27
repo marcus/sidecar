@@ -36,6 +36,18 @@ func WorktreeDir(projectRoot, worktreePath string) (string, error) {
 	return worktreeDirWithBase(base, projectRoot, worktreePath)
 }
 
+// WorktreeDirWithBase is the exported, testable form of WorktreeDir.
+// base overrides the state directory (e.g. a temp dir in tests).
+func WorktreeDirWithBase(base, projectRoot, worktreePath string) (string, error) {
+	return worktreeDirWithBase(base, projectRoot, worktreePath)
+}
+
+// ResolveWithBase is the exported, testable form of Resolve.
+// base overrides the state directory (e.g. a temp dir in tests).
+func ResolveWithBase(base, projectRoot string) (string, error) {
+	return resolveWithBase(base, projectRoot)
+}
+
 // worktreeDirWithBase is the testable core of WorktreeDir.
 func worktreeDirWithBase(base, projectRoot, worktreePath string) (string, error) {
 	projectDir, err := resolveWithBase(base, projectRoot)

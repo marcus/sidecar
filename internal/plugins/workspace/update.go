@@ -9,6 +9,7 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	app "github.com/marcus/sidecar/internal/app"
+	"github.com/marcus/sidecar/internal/migration"
 	"github.com/marcus/sidecar/internal/plugin"
 	"github.com/marcus/sidecar/internal/plugins/gitstatus"
 )
@@ -78,6 +79,7 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 			}
 
 			// On first refresh after startup/project-switch, restore saved selection
+			// and run one-time legacy migration.
 			if !p.stateRestored {
 				p.stateRestored = true
 				// Only restore if we don't already have a valid selection from above
@@ -85,6 +87,17 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 				if selectedName == "" && (len(p.worktrees) > 0 || len(p.shells) > 0) {
 					p.restoreSelectionState()
 				}
+
+				// Migrate legacy per-project and per-worktree files to the
+				// centralized XDG state directory. This is idempotent and
+				// non-destructive — originals are never deleted.
+				wtPaths := make([]string, 0, len(p.worktrees))
+				for _, wt := range p.worktrees {
+					if !wt.IsMissing {
+						wtPaths = append(wtPaths, wt.Path)
+					}
+				}
+				go migration.MigrateProject(p.ctx.ProjectRoot, wtPaths)
 			}
 
 			// Bounds check in case the selected worktree was deleted
