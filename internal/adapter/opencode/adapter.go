@@ -334,6 +334,9 @@ func (a *Adapter) Watch(projectRoot string) (<-chan adapter.Event, io.Closer, er
 }
 
 // findProjectID finds the OpenCode project ID for the given project root.
+// It tries an exact match first, then checks if projectRoot is a subdirectory
+// of any known project worktree. This handles bare-repo layouts where sidecar's
+// ProjectRoot may be .bare/ inside the OpenCode-registered worktree directory.
 func (a *Adapter) findProjectID(projectRoot string) (string, error) {
 	// Normalize the project root path
 	absRoot, err := filepath.Abs(projectRoot)
@@ -344,19 +347,25 @@ func (a *Adapter) findProjectID(projectRoot string) (string, error) {
 		absRoot = resolved
 	}
 	absRoot = filepath.Clean(absRoot)
-
-	// Load and cache all projects once
 	if !a.projectsLoaded {
 		if err := a.loadProjects(); err != nil {
 			return "", err
 		}
 	}
 
-	// Lookup in cache
+	// Exact match (covers worktree path and sandbox paths)
 	if proj, ok := a.projectIndex[absRoot]; ok {
 		return proj.ID, nil
 	}
 
+	// Subdirectory match: check if absRoot is inside a known project directory.
+	// This handles bare-repo worktree layouts where git reports the main worktree
+	// as .bare/ (e.g., /repo/.bare) but OpenCode registers the parent (/repo).
+	for indexedPath, proj := range a.projectIndex {
+		if strings.HasPrefix(absRoot, indexedPath+string(filepath.Separator)) {
+			return proj.ID, nil
+		}
+	}
 	return "", nil
 }
 
@@ -402,6 +411,18 @@ func (a *Adapter) loadProjects() error {
 
 		projCopy := proj // Copy to avoid pointer aliasing
 		a.projectIndex[worktree] = &projCopy
+
+		// Index sandbox paths as well
+		for _, sandbox := range proj.Sandboxes {
+			sbNorm := sandbox
+			if resolved, err := filepath.EvalSymlinks(sbNorm); err == nil {
+				sbNorm = resolved
+			}
+			sbNorm = filepath.Clean(sbNorm)
+			if sbNorm != worktree {
+				a.projectIndex[sbNorm] = &projCopy
+			}
+		}
 	}
 
 	a.projectsLoaded = true

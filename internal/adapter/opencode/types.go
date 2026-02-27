@@ -10,6 +10,7 @@ type Project struct {
 	ID       string   `json:"id"`
 	Worktree string   `json:"worktree"`
 	VCS      string   `json:"vcs,omitempty"`
+	Sandboxes []string `json:"sandboxes,omitempty"`
 	Time     TimeInfo `json:"time"`
 	Icon     *Icon    `json:"icon,omitempty"`
 }

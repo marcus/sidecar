@@ -120,6 +120,171 @@ func TestDetect_SkipsGlobal(t *testing.T) {
 	}
 }
 
+func TestFindProjectID_WithSandboxPaths(t *testing.T) {
+	tmpDir := t.TempDir()
+	projectDir := filepath.Join(tmpDir, "project")
+	if err := os.MkdirAll(projectDir, 0755); err != nil {
+		t.Fatalf("failed to create project dir: %v", err)
+	}
+
+	// Create a project with sandboxes
+	worktreePath := filepath.Join(tmpDir, "repos", "core.zdaj.app")
+	sandboxPath := filepath.Join(worktreePath, "main")
+
+	projectJSON := fmt.Sprintf(`{
+  "id": "test_project_sandbox",
+  "worktree": "%s",
+  "vcs": "git",
+  "sandboxes": ["%s"],
+  "time": { "created": 1767000000000, "updated": 1767100000000 }
+}`, worktreePath, sandboxPath)
+
+	if err := os.WriteFile(filepath.Join(projectDir, "test_sandbox.json"), []byte(projectJSON), 0644); err != nil {
+		t.Fatalf("failed to write project file: %v", err)
+	}
+
+	a := &Adapter{
+		storageDir:   tmpDir,
+		projectIndex: make(map[string]*Project),
+		sessionIndex: make(map[string]string),
+		metaCache:    make(map[string]sessionMetaCacheEntry),
+	}
+
+	// Test 1: Find project by worktree path
+	projectID, err := a.findProjectID(worktreePath)
+	if err != nil {
+		t.Fatalf("findProjectID error: %v", err)
+	}
+	if projectID != "test_project_sandbox" {
+		t.Errorf("expected project ID %q, got %q", "test_project_sandbox", projectID)
+	}
+
+	// Test 2: Find project by sandbox path
+	projectID, err = a.findProjectID(sandboxPath)
+	if err != nil {
+		t.Fatalf("findProjectID error for sandbox: %v", err)
+	}
+	if projectID != "test_project_sandbox" {
+		t.Errorf("expected project ID %q for sandbox path, got %q", "test_project_sandbox", projectID)
+	}
+
+	// Test 3: Path not in sandboxes should not be found
+	unrelatedPath := filepath.Join(tmpDir, "repos", "other-repo")
+	projectID, err = a.findProjectID(unrelatedPath)
+	if err != nil {
+		t.Fatalf("findProjectID error: %v", err)
+	}
+	if projectID != "" {
+		t.Errorf("expected empty project ID for unrelated path, got %q", projectID)
+	}
+}
+
+
+func TestFindProjectID_SubdirectoryMatch(t *testing.T) {
+	tmpDir := t.TempDir()
+	projectDir := filepath.Join(tmpDir, "project")
+	if err := os.MkdirAll(projectDir, 0755); err != nil {
+		t.Fatalf("failed to create project dir: %v", err)
+	}
+
+	// Simulate bare-repo layout: OpenCode registers /repo as worktree,
+	// but sidecar's ProjectRoot resolves to /repo/.bare (the main worktree).
+	worktreePath := filepath.Join(tmpDir, "repos", "core.zdaj.app")
+	barePath := filepath.Join(worktreePath, ".bare")
+	sandboxPath := filepath.Join(worktreePath, "main")
+
+	projectJSON := fmt.Sprintf(`{
+  "id": "test_project_subdir",
+  "worktree": "%s",
+  "vcs": "git",
+  "sandboxes": ["%s"],
+  "time": { "created": 1767000000000, "updated": 1767100000000 }
+}`, worktreePath, sandboxPath)
+
+	if err := os.WriteFile(filepath.Join(projectDir, "test_subdir.json"), []byte(projectJSON), 0644); err != nil {
+		t.Fatalf("failed to write project file: %v", err)
+	}
+
+	a := &Adapter{
+		storageDir:   tmpDir,
+		projectIndex: make(map[string]*Project),
+		sessionIndex: make(map[string]string),
+		metaCache:    make(map[string]sessionMetaCacheEntry),
+	}
+
+	// Test 1: .bare subdirectory should match via subdirectory fallback
+	projectID, err := a.findProjectID(barePath)
+	if err != nil {
+		t.Fatalf("findProjectID error for .bare path: %v", err)
+	}
+	if projectID != "test_project_subdir" {
+		t.Errorf("expected project ID %q for .bare subdirectory, got %q", "test_project_subdir", projectID)
+	}
+
+	// Test 2: Nested subdirectory should also match
+	nestedPath := filepath.Join(worktreePath, ".bare", "worktrees", "main")
+	projectID, err = a.findProjectID(nestedPath)
+	if err != nil {
+		t.Fatalf("findProjectID error for nested path: %v", err)
+	}
+	if projectID != "test_project_subdir" {
+		t.Errorf("expected project ID %q for nested subdirectory, got %q", "test_project_subdir", projectID)
+	}
+
+	// Test 3: Sibling directory should NOT match (prefix attack prevention)
+	siblingPath := filepath.Join(tmpDir, "repos", "core.zdaj.app-other")
+	projectID, err = a.findProjectID(siblingPath)
+	if err != nil {
+		t.Fatalf("findProjectID error for sibling path: %v", err)
+	}
+	if projectID != "" {
+		t.Errorf("expected empty project ID for sibling path, got %q", projectID)
+	}
+}
+func TestFindProjectID_SandboxNotDuplicated(t *testing.T) {
+	tmpDir := t.TempDir()
+	projectDir := filepath.Join(tmpDir, "project")
+	if err := os.MkdirAll(projectDir, 0755); err != nil {
+		t.Fatalf("failed to create project dir: %v", err)
+	}
+
+	// Create a project where sandbox path equals worktree path (should not duplicate)
+	worktreePath := filepath.Join(tmpDir, "repos", "myrepo")
+
+	projectJSON := fmt.Sprintf(`{
+  "id": "test_project_no_dup",
+  "worktree": "%s",
+  "vcs": "git",
+  "sandboxes": ["%s"],
+  "time": { "created": 1767000000000, "updated": 1767100000000 }
+}`, worktreePath, worktreePath)
+
+	if err := os.WriteFile(filepath.Join(projectDir, "test_no_dup.json"), []byte(projectJSON), 0644); err != nil {
+		t.Fatalf("failed to write project file: %v", err)
+	}
+
+	a := &Adapter{
+		storageDir:   tmpDir,
+		projectIndex: make(map[string]*Project),
+		sessionIndex: make(map[string]string),
+		metaCache:    make(map[string]sessionMetaCacheEntry),
+	}
+
+	// Should find project by worktree path
+	projectID, err := a.findProjectID(worktreePath)
+	if err != nil {
+		t.Fatalf("findProjectID error: %v", err)
+	}
+	if projectID != "test_project_no_dup" {
+		t.Errorf("expected project ID %q, got %q", "test_project_no_dup", projectID)
+	}
+
+	// Verify projectIndex has only one entry for this path (no duplication)
+	if len(a.projectIndex) != 1 {
+		t.Errorf("expected 1 entry in projectIndex, got %d", len(a.projectIndex))
+	}
+}
+
 func TestSessions_WithTestdata(t *testing.T) {
 	a := newTestAdapter(t)
 	testdataDir := getTestdataDir(t)
