@@ -2,6 +2,22 @@
 
 All notable changes to sidecar are documented here.
 
+## [v0.75.0] - 2026-02-26
+
+### Features
+
+- Open In modal to open projects in IDEs (#200)
+- Centralized project data storage under `~/.local/state/sidecar` with migration (#197)
+- Detect `.todos` file vs directory conflict in onboarding (#206)
+- Agent restart uses chosen agent rather than defaulting to Claude (#192)
+
+### Bug Fixes
+
+- Use standard diagnostic status strings for fsnotify watcher (#158)
+- Hierarchical branch crash, git hangs, and adapter timeouts (#136)
+- Git init bug in test, remove dead kiro code (#148)
+- Opencode sandbox path matching for bare-repo worktrees (#204)
+
 ## [v0.74.1] - 2026-02-19
 
 ### Bug Fixes
