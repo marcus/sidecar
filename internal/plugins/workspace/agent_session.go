@@ -8,6 +8,7 @@ import (
 	"io"
 	"io/fs"
 	"log/slog"
+	"net/url"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -394,7 +395,7 @@ func detectAmpSessionStatus(worktreePath string) (WorktreeStatus, bool) {
 		return 0, false
 	}
 
-	threadsDir := filepath.Join(home, ".local", "share", "amp", "threads")
+	threadsDir := findAmpThreadsDir(home)
 
 	// Find thread files matching the worktree path and get last message status
 	threadFile, status, ok := findAmpThreadForPath(threadsDir, absPath)
@@ -493,7 +494,7 @@ func getAmpThreadStatus(threadPath, worktreePath string) (WorktreeStatus, bool) 
 
 	pathMatches := false
 	for _, tree := range thread.Env.Initial.Trees {
-		treePath := strings.TrimPrefix(tree.URI, "file://")
+		treePath := ampURIToPath(tree.URI)
 		if cwdMatches(treePath, worktreePath) {
 			pathMatches = true
 			break
@@ -521,6 +522,38 @@ func getAmpThreadStatus(threadPath, worktreePath string) (WorktreeStatus, bool) 
 		// Path matches but no messages yet - still a valid thread
 		return 0, true
 	}
+}
+
+// findAmpThreadsDir resolves the Amp threads directory, respecting AMP_DATA_HOME
+// and XDG_DATA_HOME (Linux), matching Amp's own path resolution order.
+func findAmpThreadsDir(home string) string {
+	// 1. AMP_DATA_HOME override (all platforms)
+	if ampHome := os.Getenv("AMP_DATA_HOME"); ampHome != "" {
+		return filepath.Join(ampHome, "amp", "threads")
+	}
+
+	// 2. XDG_DATA_HOME (Linux only)
+	if runtime.GOOS == "linux" {
+		if xdgData := os.Getenv("XDG_DATA_HOME"); xdgData != "" {
+			return filepath.Join(xdgData, "amp", "threads")
+		}
+	}
+
+	// 3. Default: ~/.local/share/amp/threads
+	return filepath.Join(home, ".local", "share", "amp", "threads")
+}
+
+// ampURIToPath converts a file:// URI to a filesystem path, correctly handling
+// URL-encoded characters and spaces.
+func ampURIToPath(uri string) string {
+	if !strings.HasPrefix(uri, "file://") {
+		return ""
+	}
+	parsed, err := url.Parse(uri)
+	if err != nil {
+		return ""
+	}
+	return filepath.FromSlash(parsed.Path)
 }
 
 func codexSessionCacheKey(sessionsDir, worktreePath string) string {
