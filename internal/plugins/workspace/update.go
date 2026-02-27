@@ -97,7 +97,7 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 						wtPaths = append(wtPaths, wt.Path)
 					}
 				}
-				go migration.MigrateProject(p.ctx.ProjectRoot, wtPaths)
+				go func() { _ = migration.MigrateProject(p.ctx.ProjectRoot, wtPaths) }()
 			}
 
 			// Bounds check in case the selected worktree was deleted

@@ -924,7 +924,7 @@ func TestWriteAgentLauncher(t *testing.T) {
 			agentType: AgentAmp,
 			baseCmd:   "amp --dangerously-allow-all",
 			prompt:    "Task: fix bug",
-			wantCmd:   "bash '" + tmpDir + "/.sidecar-start.sh'",
+			wantCmd:   "bash '" + expectedLauncherPath + "'",
 		},
 	}
 
