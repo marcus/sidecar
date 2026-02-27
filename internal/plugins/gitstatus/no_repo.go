@@ -12,8 +12,19 @@ import (
 	"github.com/marcus/sidecar/internal/styles"
 )
 
-var initRepoGitignoreEntries = []string{
+// sidecarGitignoreEntries lists all sidecar state paths that should be ignored
+// by git. These are added both when initializing a new repository and when
+// sidecar first opens an existing repository, ensuring worktree operations
+// never produce unexpected git noise.
+var sidecarGitignoreEntries = []string{
 	".todos/",
+	".sidecar/",
+	".sidecar-agent",
+	".sidecar-task",
+	".sidecar-pr",
+	".sidecar-start.sh",
+	".sidecar-base",
+	".td-root",
 }
 
 // RepoDetectedMsg is sent after probing for a repository in the current workdir.
@@ -94,7 +105,7 @@ func (p *Plugin) initRepo() tea.Cmd {
 			return RepoInitDoneMsg{Epoch: epoch, Err: fmt.Errorf("git init succeeded but repository was not detected: %w", err)}
 		}
 
-		if err := ensureGitignoreEntries(workDir, initRepoGitignoreEntries); err != nil {
+		if err := ensureGitignoreEntries(workDir, sidecarGitignoreEntries); err != nil {
 			return RepoInitDoneMsg{Epoch: epoch, Root: root, Err: err}
 		}
 

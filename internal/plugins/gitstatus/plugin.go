@@ -310,6 +310,10 @@ func (p *Plugin) Start() tea.Cmd {
 	if !p.hasRepo {
 		return nil
 	}
+	// Ensure all sidecar state paths are in .gitignore on every startup.
+	// This is intentionally best-effort: failures are non-fatal since the
+	// project already has a repo and the user can still work.
+	_ = ensureGitignoreEntries(p.repoRoot, sidecarGitignoreEntries)
 	return tea.Batch(
 		p.refresh(),
 		p.startWatcher(),
