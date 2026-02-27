@@ -3,6 +3,7 @@
 package tdroot
 
 import (
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -91,6 +92,26 @@ func ResolveTDRoot(workDir string) string {
 func ResolveDBPath(workDir string) string {
 	root := ResolveTDRoot(workDir)
 	return filepath.Join(root, TodosDir, DBFile)
+}
+
+// ErrTodosIsFile is returned when .todos exists as a file instead of a directory.
+var ErrTodosIsFile = errors.New("found .todos file where a directory is expected")
+
+// CheckTodosConflict checks whether a .todos path exists as a regular file
+// instead of a directory. This can happen when an AI agent or other tool
+// creates a .todos file, conflicting with td's expected .todos directory.
+// Returns ErrTodosIsFile if there's a conflict, nil otherwise.
+func CheckTodosConflict(workDir string) error {
+	root := ResolveTDRoot(workDir)
+	todosPath := filepath.Join(root, TodosDir)
+	fi, err := os.Lstat(todosPath)
+	if err != nil {
+		return nil // doesn't exist — no conflict
+	}
+	if !fi.IsDir() {
+		return ErrTodosIsFile
+	}
+	return nil
 }
 
 // CreateTDRoot writes a td-root file to the centralized project directory pointing to targetRoot.

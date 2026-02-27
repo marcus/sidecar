@@ -3,6 +3,7 @@ package workspace
 import (
 	"os/exec"
 	"strings"
+	"sync"
 
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -59,7 +60,6 @@ func getDiff(workdir string) (content, raw string, err error) {
 	return content, raw, nil
 }
 
-
 // getDiffStatFromBase returns the --stat output compared to the base branch.
 func getDiffStatFromBase(workdir, baseBranch string) (string, error) {
 	if baseBranch == "" {
@@ -92,7 +92,6 @@ func getDiffStatFromBase(workdir, baseBranch string) (string, error) {
 
 	return strings.TrimSpace(string(output)), nil
 }
-
 
 // splitLines splits a string into lines, handling various line endings.
 func splitLines(s string) []string {
@@ -204,7 +203,19 @@ func tryGitLog(workdir, baseRef string) ([]byte, error) {
 
 // detectDefaultBranch detects the default branch for a repository.
 // Checks remote HEAD first, then falls back to common names.
+var (
+	defaultBranchCache   = make(map[string]string)
+	defaultBranchCacheMu sync.RWMutex
+)
+
 func detectDefaultBranch(workdir string) string {
+	defaultBranchCacheMu.RLock()
+	if branch, ok := defaultBranchCache[workdir]; ok {
+		defaultBranchCacheMu.RUnlock()
+		return branch
+	}
+	defaultBranchCacheMu.RUnlock()
+
 	// Try to get the remote HEAD (most reliable)
 	cmd := exec.Command("git", "symbolic-ref", "refs/remotes/origin/HEAD")
 	cmd.Dir = workdir
@@ -213,6 +224,7 @@ func detectDefaultBranch(workdir string) string {
 		// Output is like "refs/remotes/origin/main"
 		ref := strings.TrimSpace(string(output))
 		if branch, found := strings.CutPrefix(ref, "refs/remotes/origin/"); found {
+			setDefaultBranchCache(workdir, branch)
 			return branch
 		}
 	}
@@ -222,12 +234,20 @@ func detectDefaultBranch(workdir string) string {
 		cmd := exec.Command("git", "rev-parse", "--verify", branch)
 		cmd.Dir = workdir
 		if err := cmd.Run(); err == nil {
+			setDefaultBranchCache(workdir, branch)
 			return branch
 		}
 	}
 
 	// Last resort default
+	setDefaultBranchCache(workdir, "main")
 	return "main"
+}
+
+func setDefaultBranchCache(workdir, branch string) {
+	defaultBranchCacheMu.Lock()
+	defaultBranchCache[workdir] = branch
+	defaultBranchCacheMu.Unlock()
 }
 
 // resolveBaseBranch returns the worktree's BaseBranch if set,
@@ -270,4 +290,3 @@ func getUnpushedCommits(workdir, remoteBranch string) map[string]bool {
 	}
 	return result
 }
-

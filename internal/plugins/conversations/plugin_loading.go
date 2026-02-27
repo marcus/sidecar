@@ -134,32 +134,60 @@ func (p *Plugin) loadSessions() tea.Cmd {
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
+
+				// Channel to receive results with timeout
+				type result struct {
+					sessions []adapter.Session
+					err      error
+				}
+
 				var adapterSess []adapter.Session
 				for _, wtPath := range worktreePaths {
-					wtSessions, err := adpt.Sessions(wtPath)
-					if err != nil {
+					loadToken, ok := p.beginSessionLoad(adapterID, wtPath)
+					if !ok {
 						continue
 					}
-					wtName := worktreeNames[wtPath]
-					for i := range wtSessions {
-						if wtSessions[i].AdapterID == "" {
-							wtSessions[i].AdapterID = adapterID
+
+					resultChan := make(chan result, 1)
+
+					// Run each Sessions() call with timeout
+					go func(path string, token uint64) {
+						defer p.endSessionLoad(adapterID, path, token)
+						sess, err := adpt.Sessions(path)
+						resultChan <- result{sessions: sess, err: err}
+					}(wtPath, loadToken)
+
+					// Wait for result or timeout after 5 seconds per worktree
+					select {
+					case res := <-resultChan:
+						if res.err != nil {
+							continue
 						}
-						if wtSessions[i].AdapterName == "" {
-							wtSessions[i].AdapterName = adpt.Name()
+						wtSessions := res.sessions
+						wtName := worktreeNames[wtPath]
+						for i := range wtSessions {
+							if wtSessions[i].AdapterID == "" {
+								wtSessions[i].AdapterID = adapterID
+							}
+							if wtSessions[i].AdapterName == "" {
+								wtSessions[i].AdapterName = adpt.Name()
+							}
+							if wtSessions[i].AdapterIcon == "" {
+								wtSessions[i].AdapterIcon = adpt.Icon()
+							}
+							absWtPath := wtPath
+							if abs, err := filepath.Abs(wtPath); err == nil {
+								absWtPath = abs
+							}
+							if absWtPath != currentPath {
+								wtSessions[i].WorktreeName = wtName
+								wtSessions[i].WorktreePath = absWtPath
+							}
+							adapterSess = append(adapterSess, wtSessions[i])
 						}
-						if wtSessions[i].AdapterIcon == "" {
-							wtSessions[i].AdapterIcon = adpt.Icon()
-						}
-						absWtPath := wtPath
-						if abs, err := filepath.Abs(wtPath); err == nil {
-							absWtPath = abs
-						}
-						if absWtPath != currentPath {
-							wtSessions[i].WorktreeName = wtName
-							wtSessions[i].WorktreePath = absWtPath
-						}
-						adapterSess = append(adapterSess, wtSessions[i])
+					case <-time.After(5 * time.Second):
+						// Timeout: skip this worktree
+						continue
 					}
 				}
 				// Mark sessions from deleted worktrees
@@ -179,8 +207,20 @@ func (p *Plugin) loadSessions() tea.Cmd {
 
 		// Coordinator goroutine: wait for all, send final signal, release lock
 		go func() {
-			wg.Wait()
-			fdmonitor.Check(nil)
+			done := make(chan struct{})
+			go func() {
+				wg.Wait()
+				close(done)
+			}()
+
+			// Wait for completion or timeout after 30 seconds
+			select {
+			case <-done:
+				fdmonitor.Check(nil)
+			case <-time.After(30 * time.Second):
+				// Timeout: log and continue anyway to prevent infinite hang
+				fdmonitor.Check(nil)
+			}
 
 			finalMsg := AdapterBatchMsg{Epoch: epoch, Final: true}
 			if cacheUpdated {
@@ -585,6 +625,37 @@ func (p *Plugin) listenForAdapterBatch() tea.Cmd {
 		}
 		return msg
 	}
+}
+
+func sessionLoadKey(adapterID, worktreePath string) string {
+	return adapterID + "\x00" + worktreePath
+}
+
+func (p *Plugin) beginSessionLoad(adapterID, worktreePath string) (uint64, bool) {
+	key := sessionLoadKey(adapterID, worktreePath)
+	p.sessionLoadMu.Lock()
+	defer p.sessionLoadMu.Unlock()
+
+	if _, inFlight := p.sessionLoads[key]; inFlight {
+		return 0, false
+	}
+
+	p.sessionLoadSeq++
+	token := p.sessionLoadSeq
+	p.sessionLoads[key] = token
+	return token, true
+}
+
+func (p *Plugin) endSessionLoad(adapterID, worktreePath string, token uint64) {
+	key := sessionLoadKey(adapterID, worktreePath)
+	p.sessionLoadMu.Lock()
+	defer p.sessionLoadMu.Unlock()
+
+	current, inFlight := p.sessionLoads[key]
+	if !inFlight || current != token {
+		return
+	}
+	delete(p.sessionLoads, key)
 }
 
 // listenForCoalescedRefresh waits for coalesced refresh messages.

@@ -199,6 +199,81 @@ func TestCreateTDRoot_Overwrite(t *testing.T) {
 	}
 }
 
+func TestCheckTodosConflict_NoTodosPath(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "tdroot-conflict-*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer func() { _ = os.RemoveAll(tmpDir) }()
+
+	// No .todos at all — no conflict
+	if err := CheckTodosConflict(tmpDir); err != nil {
+		t.Errorf("expected nil error when .todos doesn't exist, got: %v", err)
+	}
+}
+
+func TestCheckTodosConflict_TodosIsDirectory(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "tdroot-conflict-*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer func() { _ = os.RemoveAll(tmpDir) }()
+
+	// .todos is a directory — no conflict
+	if err := os.MkdirAll(filepath.Join(tmpDir, TodosDir), 0755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+
+	if err := CheckTodosConflict(tmpDir); err != nil {
+		t.Errorf("expected nil error when .todos is a directory, got: %v", err)
+	}
+}
+
+func TestCheckTodosConflict_TodosIsFile(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "tdroot-conflict-*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer func() { _ = os.RemoveAll(tmpDir) }()
+
+	// .todos is a regular file — conflict!
+	todosPath := filepath.Join(tmpDir, TodosDir)
+	if err := os.WriteFile(todosPath, []byte("not a directory"), 0644); err != nil {
+		t.Fatalf("write file: %v", err)
+	}
+
+	err = CheckTodosConflict(tmpDir)
+	if err == nil {
+		t.Fatal("expected error when .todos is a file, got nil")
+	}
+	if err != ErrTodosIsFile {
+		t.Errorf("expected ErrTodosIsFile, got: %v", err)
+	}
+}
+
+func TestCheckTodosConflict_TodosIsSymlink(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "tdroot-conflict-*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer func() { _ = os.RemoveAll(tmpDir) }()
+
+	// .todos is a symlink to a file — conflict (Lstat sees the symlink, not target)
+	targetFile := filepath.Join(tmpDir, "target")
+	if err := os.WriteFile(targetFile, []byte("data"), 0644); err != nil {
+		t.Fatalf("write target: %v", err)
+	}
+	todosPath := filepath.Join(tmpDir, TodosDir)
+	if err := os.Symlink(targetFile, todosPath); err != nil {
+		t.Fatalf("symlink: %v", err)
+	}
+
+	err = CheckTodosConflict(tmpDir)
+	if err == nil {
+		t.Fatal("expected error when .todos is a symlink to a file, got nil")
+	}
+}
+
 // --- helpers for worktree tests ---
 
 // initGitRepo creates a temp dir with a git repo containing one empty commit.

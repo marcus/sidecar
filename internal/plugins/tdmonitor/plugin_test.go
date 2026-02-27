@@ -3,10 +3,12 @@ package tdmonitor
 import (
 	"log/slog"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/marcus/sidecar/internal/plugin"
+	"github.com/marcus/sidecar/internal/tdroot"
 )
 
 func TestNew(t *testing.T) {
@@ -102,14 +104,17 @@ func TestInitWithNonExistentDatabase(t *testing.T) {
 	}
 }
 
-func TestInitWithValidDatabase(t *testing.T) {
-	// Find project root by walking up to find .todos
+// findProjectRootWithDB walks up from cwd to find a directory whose resolved
+// td database path (following .td-root) actually exists. Returns the clean
+// project root or calls t.Skip if no usable database is found.
+func findProjectRootWithDB(t *testing.T) string {
+	t.Helper()
 	cwd, err := os.Getwd()
 	if err != nil {
 		t.Skip("couldn't get working directory")
 	}
 
-	// The test runs from internal/plugins/tdmonitor, so go up to project root
+	// Walk up to find a directory with .todos/issues.db
 	projectRoot := cwd
 	for i := 0; i < 5; i++ {
 		if _, err := os.Stat(projectRoot + "/.todos/issues.db"); err == nil {
@@ -117,11 +122,21 @@ func TestInitWithValidDatabase(t *testing.T) {
 		}
 		projectRoot = projectRoot + "/.."
 	}
+	projectRoot = filepath.Clean(projectRoot)
 
-	// Verify we found a .todos directory
-	if _, err := os.Stat(projectRoot + "/.todos/issues.db"); err != nil {
-		t.Skip("no .todos database found in project hierarchy")
+	// Verify the *resolved* database path exists. The monitor follows .td-root
+	// which may redirect to a different directory (e.g., a worktree root on
+	// another machine). Skip if the resolved path is unreachable.
+	resolvedDBPath := tdroot.ResolveDBPath(projectRoot)
+	if _, err := os.Stat(resolvedDBPath); err != nil {
+		t.Skipf("resolved td database not accessible: %s", resolvedDBPath)
 	}
+
+	return projectRoot
+}
+
+func TestInitWithValidDatabase(t *testing.T) {
+	projectRoot := findProjectRootWithDB(t)
 
 	p := New()
 	ctx := &plugin.Context{
@@ -129,7 +144,7 @@ func TestInitWithValidDatabase(t *testing.T) {
 		Logger:  slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError})),
 	}
 
-	err = p.Init(ctx)
+	err := p.Init(ctx)
 	if err != nil {
 		t.Errorf("Init failed: %v", err)
 	}
@@ -144,24 +159,7 @@ func TestInitWithValidDatabase(t *testing.T) {
 }
 
 func TestDiagnosticsWithDatabase(t *testing.T) {
-	// Find project root by walking up to find .todos
-	cwd, err := os.Getwd()
-	if err != nil {
-		t.Skip("couldn't get working directory")
-	}
-
-	projectRoot := cwd
-	for i := 0; i < 5; i++ {
-		if _, err := os.Stat(projectRoot + "/.todos/issues.db"); err == nil {
-			break
-		}
-		projectRoot = projectRoot + "/.."
-	}
-
-	// Verify we found a .todos directory
-	if _, err := os.Stat(projectRoot + "/.todos/issues.db"); err != nil {
-		t.Skip("no .todos database found in project hierarchy")
-	}
+	projectRoot := findProjectRootWithDB(t)
 
 	p := New()
 	ctx := &plugin.Context{
@@ -227,5 +225,63 @@ func TestViewWithoutModel(t *testing.T) {
 	view := p.View(80, 24)
 	if view == "" {
 		t.Error("expected non-empty view")
+	}
+}
+
+func TestInitWithTodosFileConflict(t *testing.T) {
+	// Create temp directory with .todos as a regular FILE (not directory)
+	tmpDir, err := os.MkdirTemp("", "tdmonitor-conflict-*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer func() { _ = os.RemoveAll(tmpDir) }()
+
+	todosFile := filepath.Join(tmpDir, ".todos")
+	if err := os.WriteFile(todosFile, []byte("not a directory"), 0644); err != nil {
+		t.Fatalf("failed to write .todos file: %v", err)
+	}
+
+	p := New()
+	ctx := &plugin.Context{
+		WorkDir: tmpDir,
+		Logger:  slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError})),
+	}
+
+	// Init should not return an error (silent degradation)
+	if err := p.Init(ctx); err != nil {
+		t.Errorf("Init should not return error, got: %v", err)
+	}
+
+	// Plugin should detect the conflict
+	if !p.todosConflict {
+		t.Error("expected todosConflict to be true when .todos is a file")
+	}
+
+	// Model should be nil (no monitor created)
+	if p.model != nil {
+		t.Error("model should be nil when .todos is a file")
+	}
+
+	// Setup modal should NOT be shown (the conflict takes priority)
+	if p.setupModal != nil {
+		t.Error("setupModal should be nil when .todos is a file")
+	}
+
+	// View should contain the conflict error message
+	view := p.View(80, 24)
+	if !strings.Contains(view, "file where a directory is expected") {
+		t.Errorf("expected conflict error in view, got: %s", view)
+	}
+
+	// Diagnostics should report the error
+	diags := p.Diagnostics()
+	if len(diags) != 1 {
+		t.Fatalf("expected 1 diagnostic, got %d", len(diags))
+	}
+	if diags[0].Status != "error" {
+		t.Errorf("expected diagnostic status 'error', got %q", diags[0].Status)
+	}
+	if !strings.Contains(diags[0].Detail, "file, not a directory") {
+		t.Errorf("expected diagnostic detail about file conflict, got %q", diags[0].Detail)
 	}
 }

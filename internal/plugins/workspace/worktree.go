@@ -278,6 +278,11 @@ func (p *Plugin) doCreateWorktree(name, baseBranch, taskID, taskTitle string, ag
 	parentDir := filepath.Dir(p.ctx.WorkDir)
 	wtPath := filepath.Join(parentDir, dirName)
 
+	// Ensure parent directory exists for paths with slashes (e.g., feat/ui)
+	if err := os.MkdirAll(filepath.Dir(wtPath), 0755); err != nil {
+		return nil, fmt.Errorf("failed to create parent directory: %w", err)
+	}
+
 	// Create worktree with new branch (branch name stays simple, just the user-provided name)
 	args := []string{"worktree", "add", "-b", name, wtPath, baseBranch}
 	cmd := exec.Command("git", args...)

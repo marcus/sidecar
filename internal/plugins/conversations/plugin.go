@@ -173,10 +173,10 @@ type Plugin struct {
 	searchResults []adapter.Session
 
 	// Filter state
-	filterMode             bool
-	filters                SearchFilters
-	filterActive           bool     // true when any filter is active
-	defaultCategoryFilter  []string // from config, used by C toggle to restore
+	filterMode            bool
+	filters               SearchFilters
+	filterActive          bool     // true when any filter is active
+	defaultCategoryFilter []string // from config, used by C toggle to restore
 
 	// Markdown rendering
 	contentRenderer *GlamourRenderer
@@ -217,6 +217,9 @@ type Plugin struct {
 	// Session loading serialization to prevent FD accumulation (td-023577)
 	loadingMu       sync.Mutex // guards loadingSessions
 	loadingSessions bool       // true when loadSessions() goroutine is running
+	sessionLoadMu   sync.Mutex // guards in-flight per-adapter/worktree session loads
+	sessionLoadSeq  uint64     // monotonically increasing token for in-flight session loads
+	sessionLoads    map[string]uint64
 
 	// Large session warning tracking (td-ee67d8)
 	warnedSessions map[string]bool // session ID -> already warned about size
@@ -289,6 +292,7 @@ func New() *Plugin {
 		sidebarVisible:      true, // Sidebar visible by default
 		sidebarRestore:      PaneSidebar,
 		warnedSessions:      make(map[string]bool),
+		sessionLoads:        make(map[string]uint64),
 		skeleton:            ui.NewSkeleton(8, nil), // 8 placeholder rows
 	}
 	p.coalescer = NewEventCoalescer(0, coalesceChan)
@@ -320,6 +324,9 @@ func (p *Plugin) resetState() {
 	p.loadingMu.Lock()
 	p.loadingSessions = false
 	p.loadingMu.Unlock()
+	p.sessionLoadMu.Lock()
+	p.sessionLoads = make(map[string]uint64)
+	p.sessionLoadMu.Unlock()
 
 	// Session list state
 	p.sessions = nil
@@ -1233,9 +1240,9 @@ func (p *Plugin) Diagnostics() []plugin.Diagnostic {
 	}
 
 	// Add watcher status
-	watchStatus := "off"
+	watchStatus := "error"
 	if p.watchChan != nil {
-		watchStatus = "on"
+		watchStatus = "ok"
 	}
 
 	return []plugin.Diagnostic{
