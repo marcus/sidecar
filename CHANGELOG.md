@@ -2,6 +2,23 @@
 
 All notable changes to sidecar are documented here.
 
+## [v0.76.0] - 2026-02-27
+
+### Features
+
+- Add Amp agent support for workspaces (#195)
+- Make PR URL clickable and add yank shortcut in merge modal (#164)
+
+### Bug Fixes
+
+- Resolve CI lint and test failures (#214)
+- Remove stale sessionIndex references in opencode adapter tests (#212)
+- Add all sidecar state files to .gitignore on init and startup (#211)
+
+### Dependencies
+
+- Updated td to v0.39.0
+
 ## [v0.75.0] - 2026-02-26
 
 ### Features

@@ -85,8 +85,8 @@ github.com/lucasb-eyer/go-colorful v1.3.0 h1:2/yBRLdWBZKrf7gB40FoiKfAWYQ0lqNcbuQ
 github.com/lucasb-eyer/go-colorful v1.3.0/go.mod h1:R4dSotOR9KMtayYi1e77YzuveK+i7ruzyGqttikkLy0=
 github.com/makeworld-the-better-one/dither/v2 v2.4.0 h1:Az/dYXiTcwcRSe59Hzw4RI1rSnAZns+1msaCXetrMFE=
 github.com/makeworld-the-better-one/dither/v2 v2.4.0/go.mod h1:VBtN8DXO7SNtyGmLiGA7IsFeKrBkQPze1/iAeM95arc=
-github.com/marcus/td v0.38.0 h1:qPXt0D8lQWo0+bNhhiJLGGkH6K3rHpaLYam1X48iJ8I=
-github.com/marcus/td v0.38.0/go.mod h1:kf1Nsq43vu+A8aUnsnHo13ZXpaeEHnuCKGfotDezXkc=
+github.com/marcus/td v0.39.0 h1:HOnzY8MoEHRhD1LxHSnQmmoQFsU47aWGunKIcZb1ewE=
+github.com/marcus/td v0.39.0/go.mod h1:kf1Nsq43vu+A8aUnsnHo13ZXpaeEHnuCKGfotDezXkc=
 github.com/mattn/go-isatty v0.0.20 h1:xfD0iDuEKnDkl03q4limB+vH+GxLEtL/jb4xVJSWWEY=
 github.com/mattn/go-isatty v0.0.20/go.mod h1:W+V8PltTTMOvKvAeJH7IuucS94S2C6jfK/D7dTCTo3Y=
 github.com/mattn/go-localereader v0.0.1 h1:ygSAOl7ZXTx4RdPYinUpg6W99U8jWvWi9Ye2JC/oIi4=
