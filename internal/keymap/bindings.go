@@ -461,6 +461,32 @@ func DefaultBindings() []Binding {
 		{Key: "esc", Command: "cancel", Context: "notes-task-modal"},
 		{Key: "tab", Command: "next-field", Context: "notes-task-modal"},
 		{Key: "shift+tab", Command: "prev-field", Context: "notes-task-modal"},
+
+		// Run plugin list context
+		{Key: "j", Command: "cursor-down", Context: "run-list"},
+		{Key: "k", Command: "cursor-up", Context: "run-list"},
+		{Key: "down", Command: "cursor-down", Context: "run-list"},
+		{Key: "up", Command: "cursor-up", Context: "run-list"},
+		{Key: "enter", Command: "run", Context: "run-list"},
+		{Key: "x", Command: "stop", Context: "run-list"},
+		{Key: "r", Command: "refresh", Context: "run-list"},
+		{Key: "tab", Command: "switch-pane", Context: "run-list"},
+		{Key: "l", Command: "focus-right", Context: "run-list"},
+		{Key: "right", Command: "focus-right", Context: "run-list"},
+		{Key: "G", Command: "cursor-bottom", Context: "run-list"},
+
+		// Run plugin output context
+		{Key: "tab", Command: "switch-pane", Context: "run-output"},
+		{Key: "h", Command: "focus-left", Context: "run-output"},
+		{Key: "left", Command: "focus-left", Context: "run-output"},
+		{Key: "esc", Command: "focus-left", Context: "run-output"},
+		{Key: "j", Command: "scroll-down", Context: "run-output"},
+		{Key: "k", Command: "scroll-up", Context: "run-output"},
+		{Key: "down", Command: "scroll-down", Context: "run-output"},
+		{Key: "up", Command: "scroll-up", Context: "run-output"},
+		{Key: "ctrl+d", Command: "page-down", Context: "run-output"},
+		{Key: "ctrl+u", Command: "page-up", Context: "run-output"},
+		{Key: "x", Command: "stop", Context: "run-output"},
 	}
 }
 
