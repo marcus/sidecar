@@ -35,6 +35,8 @@ type Adapter struct {
 	metaMu         sync.RWMutex // guards metaCache
 	db             *sql.DB
 	dbMu           sync.Mutex // guards db
+	sqliteOnce     sync.Once  // guards sqliteAvail init
+	sqliteAvail    bool       // cached result of useSQLite() stat check
 }
 
 // sessionMetaCacheEntry caches parsed session metadata with validation info.
@@ -157,11 +159,15 @@ func (a *Adapter) Name() string { return adapterName }
 func (a *Adapter) Icon() string { return "◇" }
 
 func (a *Adapter) useSQLite() bool {
-	if strings.TrimSpace(a.dbPath) == "" {
-		return false
-	}
-	info, err := os.Stat(a.dbPath)
-	return err == nil && !info.IsDir()
+	a.sqliteOnce.Do(func() {
+		if strings.TrimSpace(a.dbPath) == "" {
+			a.sqliteAvail = false
+			return
+		}
+		info, err := os.Stat(a.dbPath)
+		a.sqliteAvail = err == nil && !info.IsDir()
+	})
+	return a.sqliteAvail
 }
 
 func (a *Adapter) getDB() (*sql.DB, error) {
@@ -525,6 +531,9 @@ func (a *Adapter) findProjectIDSQLite(projectRoot string) (string, error) {
 			return id, nil
 		}
 	}
+	if err := rows.Err(); err != nil {
+		return "", err
+	}
 	return "", nil
 }
 
@@ -633,6 +642,9 @@ func (a *Adapter) sessionsSQLite(projectRoot string) ([]adapter.Session, error) 
 			FileSize:     fileSize,
 		})
 	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
 	return sessions, nil
 }
 
@@ -640,7 +652,11 @@ func appendParsedPart(parts parsedParts, part Part) parsedParts {
 	switch part.Type {
 	case "text":
 		if part.Text != "" {
-			parts.content = strings.TrimSpace(strings.Join([]string{parts.content, part.Text}, "\n"))
+			if parts.content != "" {
+			parts.content += "\n" + part.Text
+		} else {
+			parts.content = part.Text
+		}
 		}
 	case "tool":
 		tu := adapter.ToolUse{
@@ -698,6 +714,9 @@ func (a *Adapter) messagesSQLite(sessionID string) ([]adapter.Message, error) {
 		}
 		rows = append(rows, row)
 	}
+	if err := msgRows.Err(); err != nil {
+		return nil, err
+	}
 	if len(rows) == 0 {
 		return nil, nil
 	}
@@ -735,6 +754,9 @@ func (a *Adapter) messagesSQLite(sessionID string) ([]adapter.Message, error) {
 
 		current := partsMap[messageID]
 		partsMap[messageID] = appendParsedPart(current, part)
+	}
+	if err := partRows.Err(); err != nil {
+		return nil, err
 	}
 
 	messages := make([]adapter.Message, 0, len(rows))
@@ -846,6 +868,9 @@ func (a *Adapter) discoverRelatedProjectDirsSQLite(mainWorktreePath string) ([]s
 				related = append(related, cleaned)
 			}
 		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
 	}
 	return related, nil
 }

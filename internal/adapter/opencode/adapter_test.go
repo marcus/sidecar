@@ -204,15 +204,19 @@ func TestSQLiteStorageMode_DetectSessionsMessages(t *testing.T) {
 func TestWatchScope_WithSQLiteDB(t *testing.T) {
 	tmpDir := t.TempDir()
 	dbPath := filepath.Join(tmpDir, "opencode.db")
-	a := &Adapter{dbPath: dbPath}
 
-	if got := a.WatchScope(); got != adapter.WatchScopeProject {
+	// Without DB file: should be project scope.
+	aNoDB := &Adapter{dbPath: dbPath}
+	if got := aNoDB.WatchScope(); got != adapter.WatchScopeProject {
 		t.Fatalf("WatchScope before db exists = %v, want %v", got, adapter.WatchScopeProject)
 	}
+
+	// Create DB file, then build a fresh adapter: useSQLite is cached at first call.
 	if err := os.WriteFile(dbPath, []byte("sqlite"), 0644); err != nil {
 		t.Fatalf("write db file: %v", err)
 	}
-	if got := a.WatchScope(); got != adapter.WatchScopeGlobal {
+	aWithDB := &Adapter{dbPath: dbPath}
+	if got := aWithDB.WatchScope(); got != adapter.WatchScopeGlobal {
 		t.Fatalf("WatchScope after db exists = %v, want %v", got, adapter.WatchScopeGlobal)
 	}
 }
