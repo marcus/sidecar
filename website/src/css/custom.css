@@ -2095,6 +2095,11 @@ a:hover {
   flex-direction: column !important;
 }
 
+/* Override Infima's translateX slide animation — we use display:none/flex via [inert] instead */
+.navbar-sidebar__items--show-secondary {
+  transform: none !important;
+}
+
 /* Toggle between primary and secondary menus on docs pages */
 .navbar-sidebar__item[inert] {
   display: none !important;
