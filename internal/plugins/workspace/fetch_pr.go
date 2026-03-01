@@ -66,7 +66,13 @@ func (p *Plugin) fetchAndCreateWorktree(pr PRListItem) tea.Cmd {
 				dirName = repoName + "-" + branch
 			}
 		}
-		parentDir := filepath.Dir(workDir)
+		// Use projectRoot (the main worktree) rather than workDir so that
+		// starting from a subfolder doesn't place the worktree inside the repo. Fixes #174.
+		mainRepoDir := projectRoot
+		if mainRepoDir == "" {
+			mainRepoDir = workDir
+		}
+		parentDir := filepath.Dir(mainRepoDir)
 		wtPath := filepath.Join(parentDir, dirName)
 
 		// Create worktree tracking the remote branch

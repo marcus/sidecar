@@ -274,8 +274,15 @@ func (p *Plugin) doCreateWorktree(name, baseBranch, taskID, taskTitle string, ag
 		}
 	}
 
-	// Determine worktree path (sibling to main repo)
-	parentDir := filepath.Dir(p.ctx.WorkDir)
+	// Determine worktree path (sibling to main repo).
+	// Use ProjectRoot (the main worktree path, resolved from git) rather than
+	// WorkDir so that starting sidecar from a subfolder doesn't place the new
+	// worktree inside the repository instead of beside it. Fixes #174.
+	mainRepoDir := p.ctx.ProjectRoot
+	if mainRepoDir == "" {
+		mainRepoDir = p.ctx.WorkDir
+	}
+	parentDir := filepath.Dir(mainRepoDir)
 	wtPath := filepath.Join(parentDir, dirName)
 
 	// Ensure parent directory exists for paths with slashes (e.g., feat/ui)
