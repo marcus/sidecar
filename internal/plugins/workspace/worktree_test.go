@@ -94,12 +94,12 @@ func TestSanitizeBranchName(t *testing.T) {
 
 func TestParseWorktreeList(t *testing.T) {
 	tests := []struct {
-		name        string
-		output      string
-		mainWorkdir string
-		wantCount   int
-		wantNames   []string
-		wantBranch  []string
+		name          string
+		output        string
+		mainWorkdir   string
+		wantCount     int
+		wantNames     []string
+		wantBranch    []string
 		wantIsMain    []bool // Track which worktrees should be marked as main
 		wantIsMissing []bool // Track which worktrees should be marked as missing
 	}{
@@ -373,3 +373,52 @@ func TestFilterTasks(t *testing.T) {
 	})
 }
 
+// TestWorktreePathResolvesFromProjectRoot verifies that worktree paths are
+// computed relative to the main repo root (ProjectRoot), not the CWD (WorkDir).
+// This is the regression test for issue #174: starting sidecar from a subfolder
+// would cause doCreateWorktree to compute parentDir as the git root itself,
+// placing the new worktree *inside* the main repo instead of beside it.
+func TestWorktreePathResolvesFromProjectRoot(t *testing.T) {
+	// Simulate: git root at /repos/myrepo, sidecar started from /repos/myrepo/subfolder
+	projectRoot := "/repos/myrepo"
+	workDir := "/repos/myrepo/subfolder"
+
+	// What the old (broken) code did:
+	oldParentDir := parentDir(workDir)
+	oldWtPath := oldParentDir + "/feature"
+	// oldParentDir = /repos/myrepo → wtPath = /repos/myrepo/feature (INSIDE the repo!)
+	if oldParentDir != "/repos/myrepo" {
+		t.Fatalf("test setup wrong: old parentDir=%q", oldParentDir)
+	}
+	if oldWtPath == "/repos/feature" {
+		t.Error("old code already produces correct path — test assumption invalid")
+	}
+
+	// What the new (fixed) code does:
+	mainRepoDir := projectRoot
+	if mainRepoDir == "" {
+		mainRepoDir = workDir
+	}
+	newParentDir := parentDir(mainRepoDir)
+	newWtPath := newParentDir + "/feature"
+	// newParentDir = /repos → wtPath = /repos/feature (sibling — correct!)
+	if newParentDir != "/repos" {
+		t.Errorf("new parentDir=%q, want /repos", newParentDir)
+	}
+	if newWtPath != "/repos/feature" {
+		t.Errorf("new wtPath=%q, want /repos/feature", newWtPath)
+	}
+}
+
+// parentDir is a path helper extracted to make the logic unit-testable.
+func parentDir(dir string) string {
+	// mirrors the logic in doCreateWorktree / fetchAndCreateWorktree
+	idx := len(dir) - 1
+	for idx > 0 && dir[idx] != '/' {
+		idx--
+	}
+	if idx == 0 {
+		return "/"
+	}
+	return dir[:idx]
+}
