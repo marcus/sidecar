@@ -278,6 +278,7 @@ make fmt-check    # Verify formatting for changed Go files
 make fmt-check-all # Verify formatting across full codebase
 make lint         # Lint new issues only (merge-base with main)
 make lint-all     # Lint entire codebase (includes legacy debt)
+make install-hooks # Install pre-commit hooks (gofmt, go vet, go build)
 ```
 
 ### Go Lint Baseline

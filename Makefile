@@ -103,3 +103,9 @@ build-all:
 # Test GoReleaser locally (creates snapshot build without publishing)
 goreleaser-snapshot:
 	goreleaser release --snapshot --clean
+
+# Install pre-commit hooks
+install-hooks:
+	@chmod +x scripts/pre-commit.sh
+	@ln -sf ../../scripts/pre-commit.sh .git/hooks/pre-commit
+	@echo "✅ pre-commit hook installed"
