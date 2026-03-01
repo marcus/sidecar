@@ -166,7 +166,7 @@ func (a *Adapter) Sessions(projectRoot string) ([]adapter.Session, error) {
 	entries, err := os.ReadDir(a.stateDir)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return []adapter.Session{}, nil
+			return nil, nil
 		}
 		return nil, fmt.Errorf("failed to read session directory: %w", err)
 	}
@@ -281,7 +281,7 @@ func (a *Adapter) Messages(sessionID string) ([]adapter.Message, error) {
 	if !ok {
 		sessionDir = filepath.Join(a.stateDir, sessionID)
 		if _, err := os.Stat(sessionDir); err != nil {
-			return nil, fmt.Errorf("session not found: %s", sessionID)
+			return nil, nil
 		}
 
 		a.mu.Lock()
@@ -292,7 +292,10 @@ func (a *Adapter) Messages(sessionID string) ([]adapter.Message, error) {
 	eventsFile := filepath.Join(sessionDir, "events.jsonl")
 	info, err := os.Stat(eventsFile)
 	if err != nil {
-		return nil, fmt.Errorf("failed to stat events file: %w", err)
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, err
 	}
 
 	// 3-way cache decision

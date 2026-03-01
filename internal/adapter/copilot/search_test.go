@@ -31,10 +31,13 @@ func TestSearchMessages(t *testing.T) {
 		t.Errorf("SearchMessages with empty query failed: %v", err)
 	}
 
-	// Test nonexistent session
-	_, err = a.SearchMessages("nonexistent-session-id", "test", opts)
-	if err == nil {
-		t.Error("expected error for nonexistent session")
+	// Test nonexistent session — returns nil, nil (no error) per upstream convention
+	results, err = a.SearchMessages("nonexistent-session-id", "test", opts)
+	if err != nil {
+		t.Errorf("expected no error for nonexistent session, got: %v", err)
+	}
+	if results != nil {
+		t.Errorf("expected nil results for nonexistent session, got %d", len(results))
 	}
 }
 
