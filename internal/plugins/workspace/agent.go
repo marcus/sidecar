@@ -368,6 +368,9 @@ func (p *Plugin) StartAgent(wt *Worktree, agentType AgentType) tea.Cmd {
 			return AgentStartedMsg{Epoch: epoch, Err: fmt.Errorf("create session: %w", err)}
 		}
 
+		// Ensure server persists when all sessions are killed
+		ensureTmuxServerConfig()
+
 		// Set history limit for scrollback capture
 		_ = exec.Command("tmux", "set-option", "-t", sessionName, "history-limit",
 			strconv.Itoa(tmuxHistoryLimit)).Run()
@@ -579,6 +582,9 @@ func (p *Plugin) StartAgentWithOptions(wt *Worktree, agentType AgentType, skipPe
 			return AgentStartedMsg{Epoch: epoch, Err: fmt.Errorf("create session: %w", err)}
 		}
 
+		// Ensure server persists when all sessions are killed
+		ensureTmuxServerConfig()
+
 		// Set history limit for scrollback capture
 		_ = exec.Command("tmux", "set-option", "-t", sessionName, "history-limit",
 			strconv.Itoa(tmuxHistoryLimit)).Run()
@@ -646,6 +652,9 @@ func (p *Plugin) AttachToWorktreeDir(wt *Worktree) tea.Cmd {
 				return TmuxAttachFinishedMsg{WorkspaceName: wt.Name, Err: fmt.Errorf("create session: %w", err)}
 			}
 		}
+
+		// Ensure server persists when all sessions are killed
+		ensureTmuxServerConfig()
 
 		// Track as managed session
 		p.managedSessions[sessionName] = true

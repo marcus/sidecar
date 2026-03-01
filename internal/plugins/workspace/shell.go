@@ -36,7 +36,19 @@ var (
 
 	tmuxPrefixOnce   sync.Once
 	tmuxPrefixCached string
+
+	tmuxServerConfigOnce sync.Once
 )
+
+// ensureTmuxServerConfig sets server-level options on the tmux server.
+// Called once per process before the first session is created.
+// Sets exit-empty off so the server persists even when all sessions are killed,
+// preventing the server from dying between sidecar operations.
+func ensureTmuxServerConfig() {
+	tmuxServerConfigOnce.Do(func() {
+		_ = exec.Command("tmux", "set-option", "-s", "exit-empty", "off").Run()
+	})
+}
 
 // isTmuxInstalled returns true if tmux is available in PATH.
 // Result is cached after first check.
@@ -538,6 +550,9 @@ func (p *Plugin) createNewShell(customName string) tea.Cmd {
 			}
 		}
 
+		// Ensure server persists when all sessions are killed
+		ensureTmuxServerConfig()
+
 		// Capture pane ID for interactive mode support
 		paneID := getPaneID(sessionName)
 
@@ -596,6 +611,9 @@ func (p *Plugin) createShellWithAgent() tea.Cmd {
 			}
 		}
 
+		// Ensure server persists when all sessions are killed
+		ensureTmuxServerConfig()
+
 		// Capture pane ID for interactive mode support
 		paneID := getPaneID(sessionName)
 
@@ -639,6 +657,9 @@ func (p *Plugin) recreateOrphanedShell(idx int) tea.Cmd {
 				Err:         fmt.Errorf("recreate shell session: %w", err),
 			}
 		}
+
+		// Ensure server persists when all sessions are killed
+		ensureTmuxServerConfig()
 
 		tty.SetWindowSizeManual(sessionName)
 
@@ -746,6 +767,7 @@ func (p *Plugin) ensureShellAndAttachByIndex(idx int) tea.Cmd {
 					Err:         fmt.Errorf("recreate shell session: %w", err),
 				}
 			}
+			ensureTmuxServerConfig()
 			tty.SetWindowSizeManual(sessionName)
 			// Capture pane ID for interactive mode support
 			paneID := getPaneID(sessionName)
