@@ -528,7 +528,7 @@ func (p *Plugin) handleMouseClick(action mouse.MouseAction) tea.Cmd {
 						p.previewOffset = 0
 						p.autoScrollOutput = true
 						p.resetScrollBaseLineCount() // td-f7c8be: clear snapshot for new selection
-						p.taskLoading = false // Reset task loading on selection change (td-3668584f)
+						p.taskLoading = false        // Reset task loading on selection change (td-3668584f)
 						// Exit interactive mode when switching selection (td-fc758e88)
 						p.exitInteractiveMode()
 						p.saveSelectionState()
@@ -544,7 +544,7 @@ func (p *Plugin) handleMouseClick(action mouse.MouseAction) tea.Cmd {
 					p.previewOffset = 0
 					p.autoScrollOutput = true
 					p.resetScrollBaseLineCount() // td-f7c8be: clear snapshot for new selection
-					p.taskLoading = false // Reset task loading on selection change (td-3668584f)
+					p.taskLoading = false        // Reset task loading on selection change (td-3668584f)
 					// Exit interactive mode when switching selection (td-fc758e88)
 					p.exitInteractiveMode()
 					p.saveSelectionState()
@@ -875,7 +875,7 @@ func (p *Plugin) scrollPreview(delta int) tea.Cmd {
 			if p.previewOffset > 0 {
 				p.previewOffset--
 				if p.previewOffset == 0 {
-					p.autoScrollOutput = true // Resume auto-scroll when at bottom
+					p.autoScrollOutput = true    // Resume auto-scroll when at bottom
 					p.resetScrollBaseLineCount() // td-f7c8be: clear snapshot
 				}
 			}
@@ -892,11 +892,11 @@ func (p *Plugin) scrollPreview(delta int) tea.Cmd {
 
 // scrollKanban scrolls within the current Kanban column.
 func (p *Plugin) scrollKanban(delta int) tea.Cmd {
-	columns := p.getKanbanColumns()
 	if p.kanbanCol < 0 || p.kanbanCol >= kanbanColumnCount() {
 		return nil
 	}
-	count := p.kanbanColumnItemCount(p.kanbanCol, columns)
+	kd := p.buildKanbanData()
+	count := kd.columnItemCount(p.kanbanCol)
 
 	if count == 0 {
 		return nil

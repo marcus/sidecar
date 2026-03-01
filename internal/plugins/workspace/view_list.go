@@ -707,7 +707,16 @@ func (p *Plugin) renderShellEntryForSession(shell *ShellSession, selected bool, 
 			agentAbbrev = string(shell.ChosenAgent)
 		}
 		if shell.Agent != nil {
-			statusText = fmt.Sprintf("%s · running", agentAbbrev)
+			statusLabel := "active"
+			switch shell.Agent.Status {
+			case AgentStatusWaiting:
+				statusLabel = "waiting"
+			case AgentStatusDone:
+				statusLabel = "done"
+			case AgentStatusError:
+				statusLabel = "error"
+			}
+			statusText = fmt.Sprintf("%s · %s", agentAbbrev, statusLabel)
 		} else {
 			statusText = fmt.Sprintf("%s · stopped", agentAbbrev)
 		}

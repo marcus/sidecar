@@ -493,7 +493,7 @@ func (p *Plugin) handleListKeys(msg tea.KeyMsg) tea.Cmd {
 		if p.previewOffset > 0 {
 			p.previewOffset--
 			if p.previewOffset == 0 {
-				p.autoScrollOutput = true // Resume auto-scroll when at bottom
+				p.autoScrollOutput = true    // Resume auto-scroll when at bottom
 				p.resetScrollBaseLineCount() // td-f7c8be: clear snapshot
 			}
 		}
@@ -538,12 +538,12 @@ func (p *Plugin) handleListKeys(msg tea.KeyMsg) tea.Cmd {
 		// Go to top (oldest content) - pause auto-scroll
 		p.autoScrollOutput = false
 		p.captureScrollBaseLineCount() // td-f7c8be: prevent bounce on poll
-		p.previewOffset = math.MaxInt // Will be clamped in render
+		p.previewOffset = math.MaxInt  // Will be clamped in render
 	case "G":
 		if p.viewMode == ViewModeKanban {
 			// Kanban mode: jump cursor to bottom of current column
-			columns := p.getKanbanColumns()
-			count := p.kanbanColumnItemCount(p.kanbanCol, columns)
+			kd := p.buildKanbanData()
+			count := kd.columnItemCount(p.kanbanCol)
 			if count > 0 {
 				p.kanbanRow = count - 1
 			}
@@ -576,8 +576,8 @@ func (p *Plugin) handleListKeys(msg tea.KeyMsg) tea.Cmd {
 		p.typeSelectorNameInput.Prompt = ""
 		p.typeSelectorNameInput.Width = 30
 		p.typeSelectorNameInput.CharLimit = 50
-		p.typeSelectorModal = nil      // Force rebuild
-		p.typeSelectorModalWidth = 0   // Force rebuild
+		p.typeSelectorModal = nil    // Force rebuild
+		p.typeSelectorModalWidth = 0 // Force rebuild
 		return nil
 	case "D":
 		// Check if deleting a shell session
@@ -803,9 +803,9 @@ func (p *Plugin) handleListKeys(msg tea.KeyMsg) tea.Cmd {
 		}
 	// Agent control keys
 	case "s":
-		// Start agent on selected worktree
+		// Start agent on selected worktree (not main — sidecar doesn't manage agents there, td-37f9c7)
 		wt := p.selectedWorktree()
-		if wt == nil {
+		if wt == nil || wt.IsMain {
 			return nil
 		}
 		if wt.Agent == nil {

@@ -180,6 +180,9 @@ type (
 		TmuxName string // Session name (stable identifier)
 		Output   string
 		Changed  bool
+		// Agent status detected from session files (td-6b350b)
+		Status     AgentStatus
+		WaitingFor string
 		// Cursor position captured atomically with output (only set in interactive mode)
 		CursorRow     int
 		CursorCol     int
@@ -474,6 +477,7 @@ func (p *Plugin) restoreShellDisplayNames() {
 		_ = state.SetWorkspaceState(p.ctx.ProjectRoot, wtState)
 	}
 }
+
 // nextShellIndex returns the next available shell index based on existing sessions.
 func (p *Plugin) nextShellIndex() int {
 	projectName := filepath.Base(p.ctx.WorkDir)
@@ -841,6 +845,8 @@ func (p *Plugin) pollShellSessionByName(tmuxName string) tea.Cmd {
 	// Capture references before spawning closure to avoid data races
 	outputBuf := shell.Agent.OutputBuf
 	maxBytes := p.tmuxCaptureMaxBytes
+	chosenAgent := shell.ChosenAgent // td-6b350b: agent type for session file detection
+	workDir := p.ctx.WorkDir         // td-6b350b: project root for session file lookup
 	selectedShell := p.getSelectedShell()
 	interactiveCapture := p.viewMode == ViewModeInteractive &&
 		p.interactiveState != nil &&
@@ -910,10 +916,31 @@ func (p *Plugin) pollShellSessionByName(tmuxName string) tea.Cmd {
 		// Update buffer and check if content changed
 		changed := outputBuf.Update(output)
 
+		// Detect agent status via session files (td-6b350b).
+		// Same approach as worktrees: session files are authoritative for active/waiting.
+		var agentStatus AgentStatus
+		var waitingFor string
+		if chosenAgent != AgentNone && chosenAgent != "" {
+			if ws, ok := detectAgentSessionStatus(chosenAgent, workDir); ok {
+				switch ws {
+				case StatusWaiting:
+					agentStatus = AgentStatusWaiting
+					waitingFor = extractPrompt(output)
+					if waitingFor == "" {
+						waitingFor = "Waiting for input"
+					}
+				case StatusActive:
+					agentStatus = AgentStatusRunning
+				}
+			}
+		}
+
 		return ShellOutputMsg{
 			TmuxName:      tmuxName,
 			Output:        output,
 			Changed:       changed,
+			Status:        agentStatus,
+			WaitingFor:    waitingFor,
 			CursorRow:     cursorRow,
 			CursorCol:     cursorCol,
 			CursorVisible: cursorVisible,

@@ -851,10 +851,17 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 		}
 
 	case ShellOutputMsg:
-		// Update last output time if content changed
+		// Update last output time and agent status (td-6b350b)
 		shell := p.findShellByName(msg.TmuxName)
-		if shell != nil && msg.Changed && shell.Agent != nil {
-			shell.Agent.LastOutput = time.Now()
+		if shell != nil && shell.Agent != nil {
+			if msg.Changed {
+				shell.Agent.LastOutput = time.Now()
+			}
+			// Apply session-file-detected status (runs every poll, not just on change)
+			if shell.ChosenAgent != AgentNone && shell.ChosenAgent != "" && msg.Status != 0 {
+				shell.Agent.Status = msg.Status
+				shell.Agent.WaitingFor = msg.WaitingFor
+			}
 		}
 		// Update bracketed paste mode and cursor position if in interactive mode (td-79ab6163)
 		if p.viewMode == ViewModeInteractive && p.shellSelected {
