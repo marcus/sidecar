@@ -384,10 +384,11 @@ Press `n` to open the create modal:
 
 1. Git creates a workspace in a sibling directory (e.g., `../feature-auth`)
 2. A new branch is created from the base branch
-3. If a task is linked, a `.sidecar-task` file is created and `td start` runs
-4. If an agent is selected, it launches in a tmux session named `sidecar-ws-<name>`
-5. If a prompt is selected, it's passed as the initial instruction to the agent
-6. The workspace appears in the list with "Active" status (if agent running)
+3. Env files (`.env`, `.env.local`, etc.) are copied from the main worktree — see [Worktree Setup Hooks](./worktree-setup.md)
+4. If a task is linked, a `.sidecar-task` file is created and `td start` runs
+5. If an agent is selected, it launches in a tmux session named `sidecar-ws-<name>`
+6. If a prompt is selected, it's passed as the initial instruction to the agent
+7. The workspace appears in the list with "Active" status (if agent running)
 
 #### Reusable Prompts
 
