@@ -58,8 +58,8 @@ func (c *Cache[T]) Get(key string, size int64, modTime time.Time) (T, bool) {
 // Returns (data, offset, true) if cached entry exists with matching key.
 // Caller should check if file grew (newSize > cachedSize) to decide on incremental parse.
 func (c *Cache[T]) GetWithOffset(key string) (T, int64, int64, time.Time, bool) {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
+	c.mu.Lock()
+	defer c.mu.Unlock()
 
 	entry, ok := c.entries[key]
 	if !ok {
@@ -67,6 +67,8 @@ func (c *Cache[T]) GetWithOffset(key string) (T, int64, int64, time.Time, bool) 
 		return zero, 0, 0, time.Time{}, false
 	}
 
+	entry.LastAccess = time.Now()
+	c.entries[key] = entry
 	return entry.Data, entry.ByteOffset, entry.Size, entry.ModTime, true
 }
 

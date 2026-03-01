@@ -65,6 +65,41 @@ func TestCache_GetWithOffset(t *testing.T) {
 	}
 }
 
+func TestCache_GetWithOffset_UpdatesLastAccess(t *testing.T) {
+	c := New[int](3)
+	baseTime := time.Now()
+
+	// Add 3 entries
+	c.Set("key1", 1, 100, baseTime, 0)
+	time.Sleep(time.Millisecond)
+	c.Set("key2", 2, 100, baseTime, 0)
+	time.Sleep(time.Millisecond)
+	c.Set("key3", 3, 100, baseTime, 0)
+
+	// Access key1 via GetWithOffset to bump its LRU position
+	c.GetWithOffset("key1")
+	time.Sleep(time.Millisecond)
+
+	// Add key4, should evict key2 (oldest by lastAccess), NOT key1
+	c.Set("key4", 4, 100, baseTime, 0)
+
+	if c.Len() != 3 {
+		t.Errorf("expected 3 entries, got %d", c.Len())
+	}
+
+	// key2 should be evicted (oldest access)
+	_, _, _, _, ok := c.GetWithOffset("key2")
+	if ok {
+		t.Error("expected key2 to be evicted")
+	}
+
+	// key1 should remain (GetWithOffset bumped its access time)
+	_, _, _, _, ok = c.GetWithOffset("key1")
+	if !ok {
+		t.Error("expected key1 to remain after GetWithOffset bumped its access time")
+	}
+}
+
 func TestCache_Delete(t *testing.T) {
 	c := New[string](10)
 	now := time.Now()

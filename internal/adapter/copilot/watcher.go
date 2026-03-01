@@ -2,6 +2,7 @@ package copilot
 
 import (
 	"io"
+	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -59,6 +60,14 @@ func (a *Adapter) Watch(projectRoot string) (<-chan adapter.Event, io.Closer, er
 			case event, ok := <-watcher.Events:
 				if !ok {
 					return
+				}
+
+				// Handle new session directory creation
+				if event.Op&fsnotify.Create != 0 {
+					if info, err := os.Stat(event.Name); err == nil && info.IsDir() {
+						_ = watcher.Add(event.Name)
+						continue
+					}
 				}
 
 				// Only watch for events.jsonl or workspace.yaml changes

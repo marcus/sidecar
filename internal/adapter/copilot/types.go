@@ -22,18 +22,3 @@ type WorkspaceYAML struct {
 	CreatedAt    time.Time `yaml:"created_at"`
 	UpdatedAt    time.Time `yaml:"updated_at"`
 }
-
-// ToolRequest represents a tool call in an assistant message
-type ToolRequest struct {
-	ToolCallID string                 `json:"toolCallId"`
-	Name       string                 `json:"name"`
-	Arguments  map[string]interface{} `json:"arguments"`
-	Type       string                 `json:"type"`
-}
-
-// ToolResult represents the result of a tool execution
-type ToolResult struct {
-	Content         string                 `json:"content"`
-	DetailedContent string                 `json:"detailedContent"`
-	Extra           map[string]interface{} `json:"-"` // Catch-all for other fields
-}

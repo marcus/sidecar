@@ -33,9 +33,10 @@ type messageCacheEntry struct {
 
 // metaCacheEntry holds cached workspace.yaml metadata.
 type metaCacheEntry struct {
-	ws      WorkspaceYAML
-	modTime time.Time
-	size    int64
+	ws         WorkspaceYAML
+	modTime    time.Time
+	size       int64
+	lastAccess time.Time
 }
 
 // Adapter implements the adapter.Adapter interface for GitHub Copilot CLI sessions.
@@ -109,6 +110,10 @@ func (a *Adapter) readWorkspaceCached(path string) (WorkspaceYAML, error) {
 	a.metaMu.RUnlock()
 
 	if ok && cached.size == info.Size() && cached.modTime.Equal(info.ModTime()) {
+		a.metaMu.Lock()
+		cached.lastAccess = time.Now()
+		a.metaCache[path] = cached
+		a.metaMu.Unlock()
 		return cached.ws, nil
 	}
 
@@ -123,15 +128,15 @@ func (a *Adapter) readWorkspaceCached(path string) (WorkspaceYAML, error) {
 	}
 
 	a.metaMu.Lock()
-	a.metaCache[path] = metaCacheEntry{ws: ws, modTime: info.ModTime(), size: info.Size()}
+	a.metaCache[path] = metaCacheEntry{ws: ws, modTime: info.ModTime(), size: info.Size(), lastAccess: time.Now()}
 	// Evict oldest if over limit
 	if len(a.metaCache) > metaCacheMaxEntries {
 		var oldestKey string
 		var oldestTime time.Time
 		for k, v := range a.metaCache {
-			if oldestKey == "" || v.modTime.Before(oldestTime) {
+			if oldestKey == "" || v.lastAccess.Before(oldestTime) {
 				oldestKey = k
-				oldestTime = v.modTime
+				oldestTime = v.lastAccess
 			}
 		}
 		delete(a.metaCache, oldestKey)
@@ -300,7 +305,7 @@ func (a *Adapter) Messages(sessionID string) ([]adapter.Message, error) {
 			}
 
 			// File grew: incremental parse from saved offset
-			if info.Size() > cachedSize && offset > 0 {
+			if info.Size() > cachedSize && offset > 0 && !info.ModTime().Equal(cachedModTime) {
 				messages, entry, err := a.parseMessagesIncremental(eventsFile, cached, offset)
 				if err == nil {
 					a.msgCache.Set(eventsFile, entry, info.Size(), info.ModTime(), entry.byteOffset)
@@ -343,7 +348,7 @@ func (a *Adapter) parseMessagesFull(path string) ([]adapter.Message, messageCach
 
 	for scanner.Scan() {
 		line := scanner.Bytes()
-		bytesRead += int64(len(line)) + 1
+		bytesRead += int64(len(line)) + 1 // +1 for newline (LF) stripped by bufio.Scanner
 
 		var event CopilotEvent
 		if err := json.Unmarshal(line, &event); err != nil {
