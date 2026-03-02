@@ -142,6 +142,11 @@ func (p *Plugin) handleCreateModalMouse(msg tea.MouseMsg) tea.Cmd {
 		p.createSkipPermissions = !p.createSkipPermissions
 		p.syncCreateModalFocus()
 		return nil
+	case createPlanModeID:
+		p.createFocus = 6
+		p.createPlanMode = !p.createPlanMode
+		p.syncCreateModalFocus()
+		return nil
 	}
 
 	if idx, ok := parseIndexedID(createBranchItemPrefix, action); ok && idx < len(p.branchFiltered) {
@@ -663,9 +668,9 @@ func (p *Plugin) handleMouseClick(action mouse.MouseAction) tea.Cmd {
 		// Click on button
 		if idx, ok := action.Region.Data.(int); ok {
 			switch idx {
-			case 6:
-				return p.createWorktree()
 			case 7:
+				return p.createWorktree()
+			case 8:
 				p.viewMode = ViewModeList
 				p.clearCreateModal()
 			}

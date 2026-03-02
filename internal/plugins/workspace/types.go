@@ -146,6 +146,11 @@ var SkipPermissionsFlags = map[AgentType]string{
 	AgentAmp:      "--dangerously-allow-all",
 }
 
+// PlanModeFlags maps agent types to their plan-mode CLI flags.
+var PlanModeFlags = map[AgentType]string{
+	AgentClaude: "--permission-mode=plan",
+}
+
 // AgentDisplayNames provides human-readable names for agent types.
 var AgentDisplayNames = map[AgentType]string{
 	AgentNone:     "None (attach only)",

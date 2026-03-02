@@ -423,14 +423,21 @@ func getAgentCommand(agentType AgentType) string {
 	return "claude" // Default to claude
 }
 
-// buildAgentCommand builds the agent command with optional skip permissions and task context.
+// buildAgentCommand builds the agent command with optional skip permissions, plan mode, and task context.
 // If there's task context, it writes a launcher script to avoid shell escaping issues.
-func (p *Plugin) buildAgentCommand(agentType AgentType, wt *Worktree, skipPerms bool, prompt *Prompt) string {
+func (p *Plugin) buildAgentCommand(agentType AgentType, wt *Worktree, skipPerms bool, planMode bool, prompt *Prompt) string {
 	baseCmd := getAgentCommand(agentType)
 
 	// Apply skip permissions flag if requested
 	if skipPerms {
 		if flag := SkipPermissionsFlags[agentType]; flag != "" {
+			baseCmd = baseCmd + " " + flag
+		}
+	}
+
+	// Apply plan mode flag if requested
+	if planMode {
+		if flag := PlanModeFlags[agentType]; flag != "" {
 			baseCmd = baseCmd + " " + flag
 		}
 	}
@@ -541,12 +548,12 @@ rm -f %q
 
 // getAgentCommandWithContext returns the agent command with optional task context (legacy, no skip perms).
 func (p *Plugin) getAgentCommandWithContext(agentType AgentType, wt *Worktree) string {
-	return p.buildAgentCommand(agentType, wt, false, nil)
+	return p.buildAgentCommand(agentType, wt, false, false, nil)
 }
 
 // StartAgentWithOptions creates a tmux session and starts an agent with options.
 // If a session already exists, it reconnects to it instead of failing.
-func (p *Plugin) StartAgentWithOptions(wt *Worktree, agentType AgentType, skipPerms bool, prompt *Prompt) tea.Cmd {
+func (p *Plugin) StartAgentWithOptions(wt *Worktree, agentType AgentType, skipPerms bool, planMode bool, prompt *Prompt) tea.Cmd {
 	epoch := p.ctx.Epoch // Capture epoch for stale detection
 	return func() tea.Msg {
 		sessionName := tmuxSessionPrefix + sanitizeName(wt.Name)
@@ -602,8 +609,8 @@ func (p *Plugin) StartAgentWithOptions(wt *Worktree, agentType AgentType, skipPe
 		// Small delay to ensure env is set
 		time.Sleep(100 * time.Millisecond)
 
-		// Build the agent command with skip permissions and prompt if enabled
-		agentCmd := p.buildAgentCommand(agentType, wt, skipPerms, prompt)
+		// Build the agent command with skip permissions, plan mode, and prompt if enabled
+		agentCmd := p.buildAgentCommand(agentType, wt, skipPerms, planMode, prompt)
 
 		// Send the agent command to start it
 		sendCmd := exec.Command("tmux", "send-keys", "-t", sessionName, agentCmd, "Enter")

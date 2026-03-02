@@ -920,7 +920,7 @@ func (p *Plugin) handleListKeys(msg tea.KeyMsg) tea.Cmd {
 }
 
 // handleCreateKeys handles keys in create modal.
-// createFocus: 0=name, 1=base, 2=prompt, 3=task, 4=agent, 5=skipPerms, 6=create button, 7=cancel button
+// createFocus: 0=name, 1=base, 2=prompt, 3=task, 4=agent, 5=skipPerms, 6=planMode, 7=create button, 8=cancel button
 func (p *Plugin) handleCreateKeys(msg tea.KeyMsg) tea.Cmd {
 	p.ensureCreateModal()
 	if p.createModal == nil {
@@ -936,15 +936,21 @@ func (p *Plugin) handleCreateKeys(msg tea.KeyMsg) tea.Cmd {
 		return nil
 	case "tab":
 		p.blurCreateInputs()
-		p.createFocus = (p.createFocus + 1) % 8
+		p.createFocus = (p.createFocus + 1) % 9
 		p.normalizeCreateFocus()
+		if p.createFocus == 6 {
+			p.createFocus = 7 // Skip planMode in tab cycle
+		}
 		p.focusCreateInput()
 		p.syncCreateModalFocus()
 		return nil
 	case "shift+tab":
 		p.blurCreateInputs()
-		p.createFocus = (p.createFocus + 7) % 8
+		p.createFocus = (p.createFocus + 8) % 9
 		p.normalizeCreateFocus()
+		if p.createFocus == 6 {
+			p.createFocus = 5 // Skip planMode in shift+tab cycle
+		}
 		p.focusCreateInput()
 		p.syncCreateModalFocus()
 		return nil
@@ -964,6 +970,10 @@ func (p *Plugin) handleCreateKeys(msg tea.KeyMsg) tea.Cmd {
 			p.createSkipPermissions = !p.createSkipPermissions
 			return nil
 		}
+		if p.createFocus == 6 {
+			p.createPlanMode = !p.createPlanMode
+			return nil
+		}
 	case "up":
 		if p.createFocus == 1 && len(p.branchFiltered) > 0 {
 			if p.branchIdx > 0 {
@@ -977,6 +987,11 @@ func (p *Plugin) handleCreateKeys(msg tea.KeyMsg) tea.Cmd {
 			}
 			return nil
 		}
+		if p.createFocus == 6 {
+			p.createFocus = 5
+			p.syncCreateModalFocus()
+			return nil
+		}
 	case "down":
 		if p.createFocus == 1 && len(p.branchFiltered) > 0 {
 			if p.branchIdx < len(p.branchFiltered)-1 {
@@ -988,6 +1003,11 @@ func (p *Plugin) handleCreateKeys(msg tea.KeyMsg) tea.Cmd {
 			if p.taskSearchIdx < len(p.taskSearchFiltered)-1 {
 				p.taskSearchIdx++
 			}
+			return nil
+		}
+		if p.createFocus == 5 && p.shouldShowPlanMode() {
+			p.createFocus = 6
+			p.syncCreateModalFocus()
 			return nil
 		}
 	case "enter":
@@ -1043,10 +1063,10 @@ func (p *Plugin) handleCreateKeys(msg tea.KeyMsg) tea.Cmd {
 			p.syncCreateModalFocus()
 			return nil
 		}
-		if p.createFocus == 6 {
+		if p.createFocus == 7 {
 			return p.validateAndCreateWorktree()
 		}
-		if p.createFocus == 7 {
+		if p.createFocus == 8 {
 			p.viewMode = ViewModeList
 			p.clearCreateModal()
 			return nil
@@ -1143,7 +1163,7 @@ func (p *Plugin) blurCreateInputs() {
 }
 
 // focusCreateInput focuses the appropriate textinput based on createFocus.
-// createFocus: 0=name, 1=base, 2=prompt (no textinput), 3=task, 4+=non-inputs
+// createFocus: 0=name, 1=base, 2=prompt (no textinput), 3=task, 4+=non-inputs (agent, checkboxes, buttons)
 func (p *Plugin) focusCreateInput() {
 	switch p.createFocus {
 	case 0:
