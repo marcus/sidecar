@@ -12,7 +12,7 @@ import (
 	"github.com/atotto/clipboard"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/marcus/sidecar/internal/app"
-	"github.com/marcus/sidecar/internal/msg"
+	appmsg "github.com/marcus/sidecar/internal/msg"
 	"github.com/marcus/sidecar/internal/plugins/gitstatus"
 )
 
@@ -596,22 +596,27 @@ func parsePRGenerationOutput(output string) (title, body string) {
 		return "", ""
 	}
 
-	// Extract title
 	afterTitle := output[titleIdx+len("PR_TITLE:"):]
-	titleEnd := strings.Index(afterTitle, "\n")
-	if titleEnd == -1 {
-		title = strings.TrimSpace(afterTitle)
-		return title, ""
-	}
-	title = strings.TrimSpace(afterTitle[:titleEnd])
+	bodyMarkerIdx := strings.Index(afterTitle, "PR_BODY:")
+	newlineIdx := strings.Index(afterTitle, "\n")
 
-	// Find PR_BODY marker
-	bodyIdx := strings.Index(afterTitle, "PR_BODY:")
-	if bodyIdx == -1 {
-		// Everything after the title line is the body
-		body = strings.TrimSpace(afterTitle[titleEnd:])
-	} else {
-		body = strings.TrimSpace(afterTitle[bodyIdx+len("PR_BODY:"):])
+	switch {
+	case bodyMarkerIdx != -1 && (newlineIdx == -1 || bodyMarkerIdx <= newlineIdx):
+		// PR_BODY: appears before the first newline (or on a single line with no newline).
+		// Title is everything between PR_TITLE: and PR_BODY:.
+		title = strings.TrimSpace(afterTitle[:bodyMarkerIdx])
+		body = strings.TrimSpace(afterTitle[bodyMarkerIdx+len("PR_BODY:"):])
+	case newlineIdx != -1:
+		// Title is the first line after PR_TITLE:.
+		title = strings.TrimSpace(afterTitle[:newlineIdx])
+		if bodyMarkerIdx != -1 {
+			body = strings.TrimSpace(afterTitle[bodyMarkerIdx+len("PR_BODY:"):])
+		} else {
+			body = strings.TrimSpace(afterTitle[newlineIdx:])
+		}
+	default:
+		// Single line, no body marker, no newline.
+		title = strings.TrimSpace(afterTitle)
 	}
 
 	return title, body
@@ -1364,9 +1369,9 @@ func (p *Plugin) yankMergeErrorToClipboard() tea.Cmd {
 		return nil
 	}
 	if err := clipboard.WriteAll(p.mergeState.ErrorDetail); err != nil {
-		return msg.ShowToast("Copy failed: "+err.Error(), 2*time.Second)
+		return appmsg.ShowToast("Copy failed: "+err.Error(), 2*time.Second)
 	}
-	return msg.ShowToast("Copied error to clipboard", 2*time.Second)
+	return appmsg.ShowToast("Copied error to clipboard", 2*time.Second)
 }
 
 // yankPRURLToClipboard copies the PR URL to the system clipboard.
@@ -1375,9 +1380,9 @@ func (p *Plugin) yankPRURLToClipboard() tea.Cmd {
 		return nil
 	}
 	if err := clipboard.WriteAll(p.mergeState.PRURL); err != nil {
-		return msg.ShowToast("Copy failed: "+err.Error(), 2*time.Second)
+		return appmsg.ShowToast("Copy failed: "+err.Error(), 2*time.Second)
 	}
-	return msg.ShowToast("Copied PR URL to clipboard", 2*time.Second)
+	return appmsg.ShowToast("Copied PR URL to clipboard", 2*time.Second)
 }
 
 // checkCleanupComplete decrements pending ops counter and advances to done step when all complete.

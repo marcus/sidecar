@@ -374,6 +374,12 @@ func TestParsePRGenerationOutput(t *testing.T) {
 			wantTitle: "Feature X",
 			wantBody:  "## Summary\n- Change 1\n- Change 2\n\n## Details\nMore info here.",
 		},
+		{
+			name:      "title and body on same line",
+			output:    "PR_TITLE: foo PR_BODY: bar",
+			wantTitle: "foo",
+			wantBody:  "bar",
+		},
 	}
 
 	for _, tt := range tests {
@@ -477,6 +483,8 @@ func TestParsePRGenerationOutput_EmptyTitleFallback(t *testing.T) {
 		{"shrike/td-2abc-fix-auth-flow", "shrike td 2abc fix auth flow"},
 		{"feature/my_branch-name", "feature my branch name"},
 		{"simple", "simple"},
+		{"---", ""},
+		{"/_-/", ""},
 	}
 	for _, tt := range branchTests {
 		t.Run("fallback_"+tt.branch, func(t *testing.T) {
