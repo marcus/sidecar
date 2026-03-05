@@ -1,6 +1,7 @@
 package workspace
 
 import (
+	"context"
 	"os/exec"
 	"strings"
 	"sync"
@@ -84,6 +85,39 @@ func getDiffStatFromBase(workdir, baseBranch string) (string, error) {
 	}
 
 	cmd := exec.Command("git", args...)
+	cmd.Dir = workdir
+	output, err := cmd.Output()
+	if err != nil {
+		return "", err
+	}
+
+	return strings.TrimSpace(string(output)), nil
+}
+
+// getDiffStatFromBaseContext is like getDiffStatFromBase but propagates context
+// so cancellation (e.g. from the PR generation timeout) is respected.
+func getDiffStatFromBaseContext(ctx context.Context, workdir, baseBranch string) (string, error) {
+	if baseBranch == "" {
+		baseBranch = detectDefaultBranch(workdir)
+	}
+
+	mbCmd := exec.CommandContext(ctx, "git", "merge-base", baseBranch, "HEAD")
+	mbCmd.Dir = workdir
+	mbOutput, err := mbCmd.Output()
+
+	var args []string
+	if err == nil {
+		mbHash := strings.TrimSpace(string(mbOutput))
+		if len(mbHash) >= 40 {
+			args = []string{"diff", "--stat", mbHash[:40] + "..HEAD"}
+		} else {
+			args = []string{"diff", "--stat", baseBranch + "..HEAD"}
+		}
+	} else {
+		args = []string{"diff", "--stat", baseBranch + "..HEAD"}
+	}
+
+	cmd := exec.CommandContext(ctx, "git", args...)
 	cmd.Dir = workdir
 	output, err := cmd.Output()
 	if err != nil {

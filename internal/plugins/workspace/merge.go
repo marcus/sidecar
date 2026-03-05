@@ -452,9 +452,9 @@ func (p *Plugin) generatePRDescription(wt *Worktree, targetBranch string) tea.Cm
 		defer cancel()
 
 		// Gather git context
-		commitLog := getCommitLogForPR(wtPath, targetBranch)
-		diffStat := getDiffStatForPR(wtPath, targetBranch)
-		diff := getDiffForPR(wtPath, targetBranch)
+		commitLog := getCommitLogForPR(ctx, wtPath, targetBranch)
+		diffStat := getDiffStatForPR(ctx, wtPath, targetBranch)
+		diff := getDiffForPR(ctx, wtPath, targetBranch)
 
 		// Check if agent supports print mode
 		printArgs, supported := PrintModeArgs[agentType]
@@ -495,13 +495,15 @@ func (p *Plugin) generatePRDescription(wt *Worktree, targetBranch string) tea.Cm
 
 		err := cmd.Run()
 		if err != nil {
-			// Agent failed — fall back to commit-based description
+			// Agent failed — fall back to commit-based description.
+			// Include stderr so diagnostic detail isn't silently discarded.
 			title, body := buildFallbackPRDescription(branch, commitLog, diffStat)
+			errMsg := fmt.Errorf("agent %s failed: %s: %w", agentCmd, strings.TrimSpace(stderr.String()), err)
 			return PRGenerationDoneMsg{
 				WorkspaceName: wtName,
 				Title:         title,
 				Body:          body,
-				Err:           fmt.Errorf("agent %s failed: %w", agentCmd, err),
+				Err:           errMsg,
 			}
 		}
 
@@ -629,11 +631,8 @@ func buildFallbackPRDescription(branch, commitLog, diffStat string) (title, body
 	title = strings.ReplaceAll(branch, "-", " ")
 	title = strings.ReplaceAll(title, "_", " ")
 	title = strings.ReplaceAll(title, "/", " ")
-	// Collapse multiple spaces and trim
-	for strings.Contains(title, "  ") {
-		title = strings.ReplaceAll(title, "  ", " ")
-	}
-	title = strings.TrimSpace(title)
+	// Collapse multiple spaces and trim in one pass
+	title = strings.Join(strings.Fields(title), " ")
 
 	var sb strings.Builder
 	sb.WriteString("## Summary\n\n")
@@ -662,11 +661,11 @@ func buildFallbackPRDescription(branch, commitLog, diffStat string) (title, body
 }
 
 // getCommitLogForPR returns the commit log for PR description generation.
-func getCommitLogForPR(workdir, baseBranch string) string {
+func getCommitLogForPR(ctx context.Context, workdir, baseBranch string) string {
 	if baseBranch == "" {
 		baseBranch = detectDefaultBranch(workdir)
 	}
-	cmd := exec.Command("git", "log", baseBranch+"..HEAD", "--oneline", "--no-merges")
+	cmd := exec.CommandContext(ctx, "git", "log", baseBranch+"..HEAD", "--oneline", "--no-merges")
 	cmd.Dir = workdir
 	output, err := cmd.Output()
 	if err != nil {
@@ -676,8 +675,8 @@ func getCommitLogForPR(workdir, baseBranch string) string {
 }
 
 // getDiffStatForPR returns the diff stat for PR description generation.
-func getDiffStatForPR(workdir, baseBranch string) string {
-	stat, err := getDiffStatFromBase(workdir, baseBranch)
+func getDiffStatForPR(ctx context.Context, workdir, baseBranch string) string {
+	stat, err := getDiffStatFromBaseContext(ctx, workdir, baseBranch)
 	if err != nil {
 		return ""
 	}
@@ -685,13 +684,13 @@ func getDiffStatForPR(workdir, baseBranch string) string {
 }
 
 // getDiffForPR returns the full diff for PR description generation.
-func getDiffForPR(workdir, baseBranch string) string {
+func getDiffForPR(ctx context.Context, workdir, baseBranch string) string {
 	if baseBranch == "" {
 		baseBranch = detectDefaultBranch(workdir)
 	}
 
 	// Try merge-base for accurate diff
-	mbCmd := exec.Command("git", "merge-base", baseBranch, "HEAD")
+	mbCmd := exec.CommandContext(ctx, "git", "merge-base", baseBranch, "HEAD")
 	mbCmd.Dir = workdir
 	mbOutput, err := mbCmd.Output()
 
@@ -707,7 +706,7 @@ func getDiffForPR(workdir, baseBranch string) string {
 		args = []string{"diff", baseBranch + "..HEAD"}
 	}
 
-	cmd := exec.Command("git", args...)
+	cmd := exec.CommandContext(ctx, "git", args...)
 	cmd.Dir = workdir
 	output, err := cmd.Output()
 	if err != nil {
@@ -1254,11 +1253,7 @@ func (p *Plugin) advanceMergeStep() tea.Cmd {
 		if title == "" {
 			title, _ = buildFallbackPRDescription(p.mergeState.Worktree.Branch, "", "")
 		}
-		body := p.mergeState.PRBody
-		if body == "" {
-			body = "Created from worktree manager"
-		}
-		return p.createPR(p.mergeState.Worktree, title, body, p.mergeState.TargetBranch)
+		return p.createPR(p.mergeState.Worktree, title, p.mergeState.PRBody, p.mergeState.TargetBranch)
 
 	case MergeStepCreatePR:
 		// Mark CreatePR as done, move to waiting for merge
