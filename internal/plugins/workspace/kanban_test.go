@@ -320,8 +320,8 @@ func TestMoveKanbanColumnClampsRow(t *testing.T) {
 func TestSyncListToKanbanShellSelected(t *testing.T) {
 	p := &Plugin{
 		shells: []*ShellSession{
-			{Name: "Shell 1"},
-			{Name: "Shell 2"},
+			{Name: "Shell 1", TmuxName: "shell-1"},
+			{Name: "Shell 2", TmuxName: "shell-2"},
 		},
 		shellSelected:    true,
 		selectedShellIdx: 1,
@@ -340,7 +340,7 @@ func TestSyncListToKanbanShellSelected(t *testing.T) {
 func TestSyncKanbanToListShells(t *testing.T) {
 	p := &Plugin{
 		shells: []*ShellSession{
-			{Name: "Shell 1"},
+			{Name: "Shell 1", TmuxName: "shell-1"},
 		},
 		kanbanCol: 0,
 		kanbanRow: 0,
