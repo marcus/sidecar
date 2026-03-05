@@ -26,7 +26,7 @@ func TestSearchMessages(t *testing.T) {
 	t.Logf("Found %d message matches for 'help'", len(results))
 
 	// Test empty query
-	results, err = a.SearchMessages(sessionID, "", opts)
+	_, err = a.SearchMessages(sessionID, "", opts)
 	if err != nil {
 		t.Errorf("SearchMessages with empty query failed: %v", err)
 	}

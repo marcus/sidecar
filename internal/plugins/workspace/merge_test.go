@@ -14,6 +14,7 @@ func TestMergeWorkflowStepString(t *testing.T) {
 	}{
 		{MergeStepReviewDiff, "Review Diff"},
 		{MergeStepPush, "Push Branch"},
+		{MergeStepGeneratePR, "Generate PR"},
 		{MergeStepCreatePR, "Create PR"},
 		{MergeStepWaitingMerge, "Waiting for Merge"},
 		{MergeStepPostMergeConfirmation, "Confirm Cleanup"},
@@ -310,6 +311,202 @@ func TestParseExistingPRURL(t *testing.T) {
 				t.Errorf("parseExistingPRURL() found = %v, want %v", gotFound, tt.wantFound)
 			}
 		})
+	}
+}
+
+func TestParsePRGenerationOutput(t *testing.T) {
+	tests := []struct {
+		name      string
+		output    string
+		wantTitle string
+		wantBody  string
+	}{
+		{
+			name:      "clean output with both markers",
+			output:    "PR_TITLE: Fix authentication bug\nPR_BODY:\n## Summary\nFixed the auth flow.",
+			wantTitle: "Fix authentication bug",
+			wantBody:  "## Summary\nFixed the auth flow.",
+		},
+		{
+			name:      "output with preamble before markers",
+			output:    "Here is the PR description:\n\nPR_TITLE: Add user dashboard\nPR_BODY:\nNew dashboard feature.",
+			wantTitle: "Add user dashboard",
+			wantBody:  "New dashboard feature.",
+		},
+		{
+			name:      "title only no body marker",
+			output:    "PR_TITLE: Quick fix\nSome body text here.",
+			wantTitle: "Quick fix",
+			wantBody:  "Some body text here.",
+		},
+		{
+			name:      "empty output",
+			output:    "",
+			wantTitle: "",
+			wantBody:  "",
+		},
+		{
+			name:      "no markers at all",
+			output:    "This is just some random text without markers.",
+			wantTitle: "",
+			wantBody:  "",
+		},
+		{
+			name:      "title with empty body",
+			output:    "PR_TITLE: Some title\nPR_BODY:\n",
+			wantTitle: "Some title",
+			wantBody:  "",
+		},
+		{
+			name:      "title only on last line",
+			output:    "PR_TITLE: Solo title",
+			wantTitle: "Solo title",
+			wantBody:  "",
+		},
+		{
+			name:      "whitespace around markers",
+			output:    "  \n PR_TITLE:   Trimmed title  \n PR_BODY: \n  Body with spaces  \n",
+			wantTitle: "Trimmed title",
+			wantBody:  "Body with spaces",
+		},
+		{
+			name:      "multiline body",
+			output:    "PR_TITLE: Feature X\nPR_BODY:\n## Summary\n- Change 1\n- Change 2\n\n## Details\nMore info here.",
+			wantTitle: "Feature X",
+			wantBody:  "## Summary\n- Change 1\n- Change 2\n\n## Details\nMore info here.",
+		},
+		{
+			name:      "title and body on same line",
+			output:    "PR_TITLE: foo PR_BODY: bar",
+			wantTitle: "foo",
+			wantBody:  "bar",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gotTitle, gotBody := parsePRGenerationOutput(tt.output)
+			if gotTitle != tt.wantTitle {
+				t.Errorf("parsePRGenerationOutput() title = %q, want %q", gotTitle, tt.wantTitle)
+			}
+			if gotBody != tt.wantBody {
+				t.Errorf("parsePRGenerationOutput() body = %q, want %q", gotBody, tt.wantBody)
+			}
+		})
+	}
+}
+
+func TestBuildFallbackPRDescription(t *testing.T) {
+	tests := []struct {
+		name        string
+		branch      string
+		commitLog   string
+		diffStat    string
+		wantTitle   string
+		wantBodyHas []string
+	}{
+		{
+			name:      "basic branch name cleanup",
+			branch:    "feature/add-user-auth",
+			commitLog: "abc1234 Add login endpoint\ndef5678 Add logout",
+			diffStat:  " 3 files changed, 50 insertions(+)",
+			wantTitle: "feature add user auth",
+			wantBodyHas: []string{"Add login endpoint", "Add logout", "Files Changed"},
+		},
+		{
+			name:      "underscore and dash cleanup",
+			branch:    "fix_the-broken_thing",
+			commitLog: "",
+			diffStat:  "",
+			wantTitle: "fix the broken thing",
+			wantBodyHas: []string{"## Summary"},
+		},
+		{
+			name:      "empty everything",
+			branch:    "",
+			commitLog: "",
+			diffStat:  "",
+			wantTitle: "",
+			wantBodyHas: []string{"## Summary"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gotTitle, gotBody := buildFallbackPRDescription(tt.branch, tt.commitLog, tt.diffStat)
+			if gotTitle != tt.wantTitle {
+				t.Errorf("buildFallbackPRDescription() title = %q, want %q", gotTitle, tt.wantTitle)
+			}
+			for _, substr := range tt.wantBodyHas {
+				if !strings.Contains(gotBody, substr) {
+					t.Errorf("buildFallbackPRDescription() body missing %q", substr)
+				}
+			}
+		})
+	}
+}
+
+func TestParsePRGenerationOutput_EmptyTitleFallback(t *testing.T) {
+	// When agent output has PR_TITLE marker but no actual title text,
+	// parsePRGenerationOutput returns "" so the caller uses the cleaned branch name.
+	tests := []struct {
+		name      string
+		output    string
+		wantTitle string
+	}{
+		{
+			name:      "empty title after marker",
+			output:    "PR_TITLE: \nPR_BODY:\nSome body text.",
+			wantTitle: "",
+		},
+		{
+			name:      "whitespace-only title",
+			output:    "PR_TITLE:    \nPR_BODY:\nBody.",
+			wantTitle: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gotTitle, _ := parsePRGenerationOutput(tt.output)
+			if gotTitle != tt.wantTitle {
+				t.Errorf("parsePRGenerationOutput() title = %q, want %q", gotTitle, tt.wantTitle)
+			}
+		})
+	}
+
+	// Verify that buildFallbackPRDescription cleans branch names properly
+	// when used as a title fallback (matches the logic in generatePRDescription).
+	branchTests := []struct {
+		branch    string
+		wantTitle string
+	}{
+		{"shrike/td-2abc-fix-auth-flow", "shrike td 2abc fix auth flow"},
+		{"feature/my_branch-name", "feature my branch name"},
+		{"simple", "simple"},
+		{"---", ""},
+		{"/_-/", ""},
+	}
+	for _, tt := range branchTests {
+		t.Run("fallback_"+tt.branch, func(t *testing.T) {
+			gotTitle, _ := buildFallbackPRDescription(tt.branch, "", "")
+			if gotTitle != tt.wantTitle {
+				t.Errorf("buildFallbackPRDescription(%q) title = %q, want %q", tt.branch, gotTitle, tt.wantTitle)
+			}
+		})
+	}
+}
+
+func TestPrintModeArgsEntries(t *testing.T) {
+	// Verify all PrintModeArgs entries have corresponding AgentCommands
+	for agentType, args := range PrintModeArgs {
+		if len(args) == 0 {
+			t.Errorf("PrintModeArgs[%q] is empty", agentType)
+		}
+		cmd, ok := AgentCommands[agentType]
+		if !ok || cmd == "" {
+			t.Errorf("PrintModeArgs has %q but AgentCommands does not", agentType)
+		}
 	}
 }
 

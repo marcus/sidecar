@@ -253,7 +253,7 @@ func (a *Adapter) countMessages(eventsFile string) int {
 	if err != nil {
 		return 0
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	count := 0
 	scanner, buf := cache.NewScanner(f)
@@ -338,7 +338,7 @@ func (a *Adapter) parseMessagesFull(path string) ([]adapter.Message, messageCach
 	if err != nil {
 		return nil, messageCacheEntry{}, fmt.Errorf("failed to open events file: %w", err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	var messages []adapter.Message
 	toolResults := make(map[string]string)

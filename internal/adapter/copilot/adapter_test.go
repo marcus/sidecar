@@ -238,7 +238,7 @@ func TestMalformedEvents(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to open fixture: %v", err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	messages, err := a.parseMessages(f)
 	if err != nil {
@@ -258,7 +258,7 @@ func TestEmptyEvents(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to open fixture: %v", err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	messages, err := a.parseMessages(f)
 	if err != nil {
@@ -333,10 +333,10 @@ func TestIncrementalParsing(t *testing.T) {
 	}
 	newEvent := `{"type":"user.message","id":"msg-005","timestamp":"2025-01-15T10:02:00Z","data":{"content":"Thanks for the help!"}}` + "\n"
 	if _, err := f.WriteString(newEvent); err != nil {
-		f.Close()
+		_ = f.Close()
 		t.Fatalf("failed to append event: %v", err)
 	}
-	f.Close()
+	_ = f.Close()
 
 	// Second call: should trigger incremental parse
 	messages2, err := a.Messages(sessionID)
@@ -394,7 +394,7 @@ func TestWatch(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Watch error: %v", err)
 	}
-	defer closer.Close()
+	defer func() { _ = closer.Close() }()
 
 	if eventChan == nil {
 		t.Error("event channel should not be nil")
