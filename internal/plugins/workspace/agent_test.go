@@ -143,6 +143,7 @@ func TestGetAgentCommand(t *testing.T) {
 		{AgentGemini, "gemini"},
 		{AgentCursor, "cursor-agent"},
 		{AgentOpenCode, "opencode"},
+		{AgentGoose, "goose"},
 		{AgentPi, "pi"},
 		{AgentAmp, "amp"},
 		{AgentCustom, "claude"}, // Falls back to claude
@@ -1253,43 +1254,43 @@ func TestExtractLastNLines(t *testing.T) {
 // Precedence: exact agentType key → "*" wildcard → "default" key.
 func TestResolveConfigAgentStart_WildcardFallbackChain(t *testing.T) {
 	tests := []struct {
-		name      string
+		name       string
 		agentStart map[string]string
 		agentType  AgentType
 		want       string
 	}{
 		{
-			name:      "exact match wins",
+			name:       "exact match wins",
 			agentStart: map[string]string{"claude": "my-claude", "*": "wildcard-agent", "default": "default-agent"},
 			agentType:  AgentClaude,
 			want:       "my-claude",
 		},
 		{
-			name:      "miss on exact falls through to wildcard",
+			name:       "miss on exact falls through to wildcard",
 			agentStart: map[string]string{"*": "wildcard-agent", "default": "default-agent"},
 			agentType:  AgentCodex,
 			want:       "wildcard-agent",
 		},
 		{
-			name:      "miss on exact and wildcard falls through to default",
+			name:       "miss on exact and wildcard falls through to default",
 			agentStart: map[string]string{"default": "default-agent"},
 			agentType:  AgentCodex,
 			want:       "default-agent",
 		},
 		{
-			name:      "all miss returns empty",
+			name:       "all miss returns empty",
 			agentStart: map[string]string{"gemini": "gemini-agent"},
 			agentType:  AgentCodex,
 			want:       "",
 		},
 		{
-			name:      "nil map returns empty",
+			name:       "nil map returns empty",
 			agentStart: nil,
 			agentType:  AgentClaude,
 			want:       "",
 		},
 		{
-			name:      "empty map returns empty",
+			name:       "empty map returns empty",
 			agentStart: map[string]string{},
 			agentType:  AgentClaude,
 			want:       "",
