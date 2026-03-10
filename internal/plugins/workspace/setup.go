@@ -12,19 +12,6 @@ const (
 	setupScriptName = ".worktree-setup.sh"
 )
 
-// Sidecar files that should be in .gitignore
-var sidecarGitignoreEntries = []string{
-	".sidecar/",
-	".sidecar-agent",
-	".sidecar-agent-start",
-	".sidecar-task",
-	".sidecar-pr",
-	".sidecar-start.sh",
-	".sidecar-base",
-	".td-root",
-}
-
-
 var (
 	// Default env files to copy
 	defaultEnvFiles = []string{".env", ".env.local", ".env.development", ".env.development.local"}

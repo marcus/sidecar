@@ -164,23 +164,23 @@ func TestSearchFilters_Matches_CategoryPassthrough(t *testing.T) {
 }
 
 func TestSearchFilters_Matches_DateRange(t *testing.T) {
-	now := time.Now()
-	session := adapter.Session{
-		UpdatedAt: now.Add(-2 * time.Hour), // 2 hours ago
-	}
-
 	f := &SearchFilters{}
 	f.SetDateRange("today")
 
-	if !f.Matches(session) {
-		t.Error("session from 2 hours ago should match 'today' range")
+	// Use a time anchored to the filter's own Start boundary so the test is
+	// timezone-agnostic. "2 hours ago" can cross UTC midnight in CI.
+	withinToday := adapter.Session{
+		UpdatedAt: f.DateRange.Start.Add(time.Minute), // 1 minute after today's start
+	}
+	if !f.Matches(withinToday) {
+		t.Error("session 1 minute after today's start should match 'today' range")
 	}
 
-	oldSession := adapter.Session{
-		UpdatedAt: now.Add(-48 * time.Hour), // 2 days ago
+	outsideToday := adapter.Session{
+		UpdatedAt: f.DateRange.Start.Add(-24 * time.Hour), // clearly yesterday
 	}
-	if f.Matches(oldSession) {
-		t.Error("session from 2 days ago should not match 'today' range")
+	if f.Matches(outsideToday) {
+		t.Error("session from yesterday should not match 'today' range")
 	}
 }
 
