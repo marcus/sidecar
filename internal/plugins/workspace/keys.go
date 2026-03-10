@@ -542,8 +542,8 @@ func (p *Plugin) handleListKeys(msg tea.KeyMsg) tea.Cmd {
 	case "G":
 		if p.viewMode == ViewModeKanban {
 			// Kanban mode: jump cursor to bottom of current column
-			columns := p.getKanbanColumns()
-			count := p.kanbanColumnItemCount(p.kanbanCol, columns)
+			kd := p.buildKanbanData()
+			count := kd.columnItemCount(p.kanbanCol)
 			if count > 0 {
 				p.kanbanRow = count - 1
 			}
@@ -797,9 +797,9 @@ func (p *Plugin) handleListKeys(msg tea.KeyMsg) tea.Cmd {
 		}
 	// Agent control keys
 	case "s":
-		// Start agent on selected worktree
+		// Start agent on selected worktree (not main — sidecar doesn't manage agents there, td-37f9c7)
 		wt := p.selectedWorktree()
-		if wt == nil {
+		if wt == nil || wt.IsMain {
 			return nil
 		}
 		if wt.Agent == nil {
