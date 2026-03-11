@@ -104,10 +104,13 @@ func (p *Plugin) Commands() []plugin.Command {
 				// Add diff view toggle when on Diff tab
 				if p.previewTab == PreviewTabDiff {
 					diffViewName := "Split"
-					if p.diffViewMode == DiffViewSideBySide {
+					switch p.diffViewMode {
+					case DiffViewSideBySide:
+						diffViewName = "Full"
+					case DiffViewFullFile:
 						diffViewName = "Unified"
 					}
-					cmds = append(cmds, plugin.Command{ID: "toggle-diff-view", Name: diffViewName, Description: "Toggle unified/side-by-side diff", Context: "workspace-preview", Priority: 5})
+					cmds = append(cmds, plugin.Command{ID: "toggle-diff-view", Name: diffViewName, Description: "Cycle diff view mode", Context: "workspace-preview", Priority: 5})
 					// Add file navigation commands when viewing diff with multiple files
 					if p.multiFileDiff != nil && len(p.multiFileDiff.Files) > 1 {
 						cmds = append(cmds,

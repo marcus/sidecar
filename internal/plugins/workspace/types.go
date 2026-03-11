@@ -63,6 +63,17 @@ type DiffViewMode int
 const (
 	DiffViewUnified    DiffViewMode = iota // Line-by-line unified view
 	DiffViewSideBySide                     // Side-by-side split view
+	DiffViewFullFile                       // Full-file side-by-side view (like VS Code diff)
+)
+
+// DiffTabFocus represents which sub-pane is focused within the diff tab.
+type DiffTabFocus int
+
+const (
+	DiffTabFocusFileList    DiffTabFocus = iota // File list navigation (files + commits)
+	DiffTabFocusDiff                            // Per-file diff viewing
+	DiffTabFocusCommitFiles                     // Commit file list (drilled into a commit)
+	DiffTabFocusCommitDiff                      // Commit file diff viewing
 )
 
 // WorktreeStatus represents the current state of a worktree.
