@@ -623,9 +623,14 @@ func (p *Plugin) renderDiffPane(visibleHeight int) string {
 	}
 
 	// Header with view mode and scroll indicators
-	viewModeStr := "unified"
-	if p.diffPaneViewMode == DiffViewSideBySide {
+	var viewModeStr string
+	switch p.diffPaneViewMode {
+	case DiffViewSideBySide:
 		viewModeStr = "split"
+	case DiffViewFullFile:
+		viewModeStr = "full-file"
+	default:
+		viewModeStr = "unified"
 	}
 	header := "Diff"
 	if p.selectedDiffFile != "" {
@@ -663,11 +668,6 @@ func (p *Plugin) renderDiffPane(visibleHeight int) string {
 		return sb.String()
 	}
 
-	if p.diffPaneParsedDiff == nil {
-		sb.WriteString(styles.Muted.Render("Loading diff..."))
-		return sb.String()
-	}
-
 	// Render the diff content
 	contentHeight := visibleHeight - 2 // Account for header
 	if contentHeight < 1 {
@@ -677,9 +677,16 @@ func (p *Plugin) renderDiffPane(visibleHeight int) string {
 	// Render diff based on view mode
 	highlighter := p.getHighlighter(p.selectedDiffFile)
 	var diffContent string
-	if p.diffPaneViewMode == DiffViewSideBySide {
+	switch p.diffPaneViewMode {
+	case DiffViewFullFile:
+		if p.diffPaneFullFileDiff != nil {
+			diffContent = RenderFullFileSideBySide(p.diffPaneFullFileDiff, diffWidth, p.diffPaneScroll, contentHeight, p.diffPaneHorizScroll, highlighter, p.diffWrapEnabled)
+		} else {
+			diffContent = styles.Muted.Render("Loading full file...")
+		}
+	case DiffViewSideBySide:
 		diffContent = RenderSideBySide(p.diffPaneParsedDiff, diffWidth, p.diffPaneScroll, contentHeight, p.diffPaneHorizScroll, highlighter, p.diffWrapEnabled)
-	} else {
+	default:
 		diffContent = RenderLineDiff(p.diffPaneParsedDiff, diffWidth, p.diffPaneScroll, contentHeight, p.diffPaneHorizScroll, highlighter, p.diffWrapEnabled)
 	}
 	// Force truncate each line to prevent wrapping (skip when wrap is enabled)
