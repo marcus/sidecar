@@ -518,6 +518,33 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 					}
 				}
 			}
+			// Auto-load full-file content when in full-file view mode.
+			// Always reload (not just when nil) so content refreshes after stage/unstage/discard.
+			// The old diffPaneFullFileDiff is kept until the new one arrives to avoid flicker.
+			if p.diffPaneViewMode == DiffViewFullFile {
+				entries := p.tree.AllEntries()
+				for _, entry := range entries {
+					if entry.Path == msg.File {
+						return p, p.loadFullFileDiff(entry.Path, entry.Staged, entry.Status, "", true)
+					}
+				}
+			}
+		}
+		return p, nil
+
+	case FullFileDiffLoadedMsg:
+		if plugin.IsStale(p.ctx, msg) {
+			return p, nil
+		}
+		ffd := BuildFullFileDiff(msg.OldContent, msg.NewContent, msg.Parsed)
+		if msg.ForInline {
+			if msg.File == p.selectedDiffFile {
+				p.diffPaneFullFileDiff = ffd
+			}
+		} else {
+			if msg.File == p.diffFile {
+				p.fullFileDiff = ffd
+			}
 		}
 		return p, nil
 
