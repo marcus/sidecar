@@ -69,10 +69,43 @@ func (p *Plugin) renderDiffContent(width, height int) string {
 	p.clampDiffTabCursor()
 
 	// Two-pane layout dimensions
-	fileListWidth := diffTabFileListWidth(width)
+	fileListWidth := p.diffTabListWidth
+	if fileListWidth <= 0 {
+		fileListWidth = diffTabFileListWidth(width)
+	}
+	// Clamp to available space
+	if fileListWidth < 20 {
+		fileListWidth = 20
+	}
+	maxW := width - 30
+	if maxW < 20 {
+		maxW = 20
+	}
+	if fileListWidth > maxW {
+		fileListWidth = maxW
+	}
 	diffPaneWidth := width - fileListWidth - 1 // -1 for divider
 	if diffPaneWidth < 10 {
 		diffPaneWidth = 10
+	}
+
+	// Register hit region for the diff tab divider (for drag-to-resize).
+	// Calculate absolute X position: preview content starts after sidebar + main divider + panel border/padding.
+	if !p.sidebarVisible {
+		// Full-width preview: content starts at panelOverhead/2
+		absX := panelOverhead/2 + fileListWidth
+		p.mouseHandler.HitMap.AddRect(regionDiffTabDivider, absX, 0, dividerHitWidth, p.height, nil)
+	} else {
+		available := p.width - dividerWidth
+		sidebarW := (available * p.sidebarWidth) / 100
+		if sidebarW < 25 {
+			sidebarW = 25
+		}
+		if sidebarW > available-40 {
+			sidebarW = available - 40
+		}
+		absX := sidebarW + dividerWidth + panelOverhead/2 + fileListWidth
+		p.mouseHandler.HitMap.AddRect(regionDiffTabDivider, absX, 0, dividerHitWidth, p.height, nil)
 	}
 
 	var leftPane, rightPane string
