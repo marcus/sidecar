@@ -146,6 +146,52 @@ func (p *Plugin) loadCommitFileDiff(hash, path, parentHash string) tea.Cmd {
 }
 
 
+// loadFullFileDiff loads the full file content (old + new) for full-file diff view.
+// forInline indicates whether this is for the inline diff pane or the full-screen diff view.
+func (p *Plugin) loadFullFileDiff(path string, staged bool, status FileStatus, commitHash string, forInline bool) tea.Cmd {
+	epoch := p.ctx.Epoch
+	workDir := p.repoRoot
+	return func() tea.Msg {
+		var oldContent, newContent, rawDiff string
+
+		if commitHash != "" {
+			// Viewing a file in a commit: old = parent, new = commit
+			oldContent, _ = GetFileContentAtRef(workDir, path, commitHash+"~1")
+			newContent, _ = GetFileContentAtRef(workDir, path, commitHash)
+			rawDiff, _ = GetCommitDiff(workDir, commitHash, path, "")
+		} else if status == StatusUntracked {
+			// Untracked file: old is empty, new is working tree
+			oldContent = ""
+			newContent, _ = GetWorkingTreeFileContent(workDir, path)
+			rawDiff, _ = GetNewFileDiff(workDir, path)
+		} else if staged {
+			// Staged file: old = HEAD, new = index
+			oldContent, _ = GetFileContentAtRef(workDir, path, "HEAD")
+			newContent, _ = GetFileContentFromIndex(workDir, path)
+			rawDiff, _ = GetDiff(workDir, path, true)
+		} else {
+			// Modified file: old = index (or HEAD if not staged), new = working tree
+			oldContent, _ = GetFileContentFromIndex(workDir, path)
+			if oldContent == "" {
+				oldContent, _ = GetFileContentAtRef(workDir, path, "HEAD")
+			}
+			newContent, _ = GetWorkingTreeFileContent(workDir, path)
+			rawDiff, _ = GetDiff(workDir, path, false)
+		}
+
+		parsed, _ := ParseUnifiedDiff(rawDiff)
+
+		return FullFileDiffLoadedMsg{
+			Epoch:      epoch,
+			File:       path,
+			OldContent: oldContent,
+			NewContent: newContent,
+			Parsed:     parsed,
+			ForInline:  forInline,
+		}
+	}
+}
+
 // loadCommitDetailForPreview loads commit detail for inline preview.
 func (p *Plugin) loadCommitDetailForPreview(hash string) tea.Cmd {
 	epoch := p.ctx.Epoch

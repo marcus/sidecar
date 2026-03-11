@@ -24,9 +24,9 @@ func (p *Plugin) renderDiffModal() string {
 
 	var sb strings.Builder
 
-	// Calculate scroll indicators for side-by-side mode
+	// Calculate scroll indicators for side-by-side and full-file modes
 	scrollIndicator := ""
-	if p.diffViewMode == DiffViewSideBySide && p.parsedDiff != nil {
+	if (p.diffViewMode == DiffViewSideBySide || p.diffViewMode == DiffViewFullFile) && p.parsedDiff != nil {
 		panelWidth := (contentWidth - 3) / 2
 		lineNoWidth := 5
 		sideContentWidth := panelWidth - lineNoWidth - 2
@@ -55,9 +55,10 @@ func (p *Plugin) renderDiffModal() string {
 	sb.WriteString("\n")
 
 	// Content
-	if p.diffContent == "" && !p.diffLoaded {
+	hasFullFileContent := p.diffViewMode == DiffViewFullFile && p.fullFileDiff != nil
+	if p.diffContent == "" && !p.diffLoaded && !hasFullFileContent {
 		sb.WriteString(styles.Muted.Render("Loading diff..."))
-	} else if p.diffContent == "" && p.diffLoaded {
+	} else if p.diffContent == "" && p.diffLoaded && !hasFullFileContent {
 		sb.WriteString(styles.Muted.Render("No changes"))
 	} else {
 		// Visible lines = pane height - header (2 lines)
@@ -67,7 +68,14 @@ func (p *Plugin) renderDiffModal() string {
 		}
 
 		highlighter := p.getHighlighter(p.diffFile)
-		if p.diffViewMode == DiffViewSideBySide {
+		switch p.diffViewMode {
+		case DiffViewFullFile:
+			if p.fullFileDiff != nil {
+				sb.WriteString(RenderFullFileSideBySide(p.fullFileDiff, contentWidth, p.diffScroll, visibleLines, p.diffHorizOff, highlighter, p.diffWrapEnabled))
+			} else {
+				sb.WriteString(styles.Muted.Render("Loading full file..."))
+			}
+		case DiffViewSideBySide:
 			parsed := p.parsedDiff
 			if parsed == nil {
 				parsed, _ = ParseUnifiedDiff(p.diffRaw)
@@ -77,7 +85,7 @@ func (p *Plugin) renderDiffModal() string {
 			} else {
 				sb.WriteString(styles.Muted.Render("Unable to parse diff for side-by-side view"))
 			}
-		} else {
+		default:
 			// Unified view
 			if p.parsedDiff != nil {
 				sb.WriteString(RenderLineDiff(p.parsedDiff, contentWidth, p.diffScroll, visibleLines, p.diffHorizOff, highlighter, p.diffWrapEnabled))
@@ -170,9 +178,9 @@ func (p *Plugin) renderFullDiffContent(visibleHeight int) string {
 		diffWidth = 40
 	}
 
-	// Calculate scroll indicators for side-by-side mode
+	// Calculate scroll indicators for side-by-side and full-file modes
 	scrollIndicator := ""
-	if p.diffViewMode == DiffViewSideBySide && p.parsedDiff != nil {
+	if (p.diffViewMode == DiffViewSideBySide || p.diffViewMode == DiffViewFullFile) && p.parsedDiff != nil {
 		panelWidth := (diffWidth - 3) / 2
 		lineNoWidth := 5
 		contentWidth := panelWidth - lineNoWidth - 2
@@ -196,7 +204,8 @@ func (p *Plugin) renderFullDiffContent(visibleHeight int) string {
 	sb.WriteString(breadcrumb)
 	sb.WriteString("\n\n")
 
-	if p.diffContent == "" && p.diffRaw == "" {
+	hasFullFileContent := p.diffViewMode == DiffViewFullFile && p.fullFileDiff != nil
+	if p.diffContent == "" && p.diffRaw == "" && !hasFullFileContent {
 		if p.diffLoaded {
 			sb.WriteString(styles.Muted.Render("No changes"))
 		} else {
@@ -214,7 +223,14 @@ func (p *Plugin) renderFullDiffContent(visibleHeight int) string {
 	// Render diff based on view mode
 	highlighter := p.getHighlighter(p.diffFile)
 	var diffContent string
-	if p.diffViewMode == DiffViewSideBySide {
+	switch p.diffViewMode {
+	case DiffViewFullFile:
+		if p.fullFileDiff != nil {
+			diffContent = RenderFullFileSideBySide(p.fullFileDiff, diffWidth, p.diffScroll, contentHeight, p.diffHorizOff, highlighter, p.diffWrapEnabled)
+		} else {
+			diffContent = styles.Muted.Render("Loading full file...")
+		}
+	case DiffViewSideBySide:
 		parsed := p.parsedDiff
 		if parsed == nil {
 			parsed, _ = ParseUnifiedDiff(p.diffRaw)
@@ -222,7 +238,7 @@ func (p *Plugin) renderFullDiffContent(visibleHeight int) string {
 		if parsed != nil {
 			diffContent = RenderSideBySide(parsed, diffWidth, p.diffScroll, contentHeight, p.diffHorizOff, highlighter, p.diffWrapEnabled)
 		}
-	} else {
+	default:
 		if p.parsedDiff != nil {
 			diffContent = RenderLineDiff(p.parsedDiff, diffWidth, p.diffScroll, contentHeight, p.diffHorizOff, highlighter, p.diffWrapEnabled)
 		}
@@ -279,9 +295,14 @@ func (p *Plugin) renderDiffBreadcrumb(maxWidth int, scrollIndicator string) (str
 	sep := styles.Muted.Render(" · ")
 	sepWidth := lipgloss.Width(sep)
 
-	viewModeStr := "unified"
-	if p.diffViewMode == DiffViewSideBySide {
+	var viewModeStr string
+	switch p.diffViewMode {
+	case DiffViewSideBySide:
 		viewModeStr = "side-by-side"
+	case DiffViewFullFile:
+		viewModeStr = "full-file"
+	default:
+		viewModeStr = "unified"
 	}
 	modePart := styles.Muted.Render("[" + viewModeStr + "]")
 	modeWidth := lipgloss.Width(modePart) + lipgloss.Width(scrollIndicator)
