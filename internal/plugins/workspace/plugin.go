@@ -87,6 +87,9 @@ const (
 	regionShellsPlusButton     = "shells-plus-button"
 	regionWorkspacesPlusButton = "workspaces-plus-button"
 
+	// Diff tab pane divider (for drag-to-resize file list vs diff viewer)
+	regionDiffTabDivider = "diff-tab-divider"
+
 	// Type selector modal element IDs
 	typeSelectorListID       = "type-selector-list"
 	typeSelectorInputID      = "type-selector-name-input"
@@ -166,6 +169,8 @@ type Plugin struct {
 	fullFileDiff  *gitstatus.FullFileDiff  // Full-file diff for current file (loaded on demand)
 
 	// Diff tab two-pane state (hierarchical file list + per-file diff)
+	diffTabListWidth   int                   // Persisted file list pane width in pixels (0 = use default)
+	lastDragRegion     string                // Region ID of last drag operation (EndDrag clears handler before DragEnd)
 	diffTabFocus       DiffTabFocus          // Which sub-pane in diff tab is focused
 	diffTabCursor      int                   // Cursor position in file list
 	diffTabScroll      int                   // Scroll offset in file list
@@ -469,6 +474,11 @@ func (p *Plugin) Init(ctx *plugin.Context) error {
 	// Load saved sidebar width
 	if savedWidth := state.GetWorkspaceSidebarWidth(); savedWidth > 0 {
 		p.sidebarWidth = savedWidth
+	}
+
+	// Load saved diff tab file list width
+	if savedWidth := state.GetDiffTabFileListWidth(); savedWidth > 0 {
+		p.diffTabListWidth = savedWidth
 	}
 
 	// Load saved diff view mode

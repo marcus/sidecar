@@ -26,7 +26,8 @@ func isBackgroundRegion(regionID string) bool {
 	case regionSidebar, regionPreviewPane, regionPaneDivider,
 		regionWorktreeItem, regionPreviewTab,
 		regionCreateWorktreeButton, regionShellsPlusButton, regionWorkspacesPlusButton,
-		regionKanbanCard, regionKanbanColumn, regionViewToggle:
+		regionKanbanCard, regionKanbanColumn, regionViewToggle,
+		regionDiffTabDivider:
 		return true
 	default:
 		return false
@@ -515,6 +516,14 @@ func (p *Plugin) handleMouseClick(action mouse.MouseAction) tea.Cmd {
 	case regionPaneDivider:
 		// Start drag for pane resizing
 		p.mouseHandler.StartDrag(action.X, action.Y, regionPaneDivider, p.sidebarWidth)
+	case regionDiffTabDivider:
+		// Start drag for diff tab file list resizing (pixel-based width).
+		// If no saved width, compute the effective default so drag starts from the actual position.
+		startWidth := p.diffTabListWidth
+		if startWidth <= 0 {
+			startWidth = diffTabFileListWidth(p.width)
+		}
+		p.mouseHandler.StartDrag(action.X, action.Y, regionDiffTabDivider, startWidth)
 	case regionWorktreeItem:
 		// Click on worktree or shell entry - select it
 		if idx, ok := action.Region.Data.(int); ok {
@@ -930,7 +939,10 @@ func (p *Plugin) handleMouseDrag(action mouse.MouseAction) tea.Cmd {
 		return nil
 	}
 
-	switch p.mouseHandler.DragRegion() {
+	dragRegion := p.mouseHandler.DragRegion()
+	p.lastDragRegion = dragRegion // Save for handleMouseDragEnd (EndDrag clears before DragEnd)
+
+	switch dragRegion {
 	case regionPaneDivider:
 		// Calculate new sidebar width based on drag
 		startValue := p.mouseHandler.DragStartValue()
@@ -944,6 +956,23 @@ func (p *Plugin) handleMouseDrag(action mouse.MouseAction) tea.Cmd {
 			newWidth = 60
 		}
 		p.sidebarWidth = newWidth
+	case regionDiffTabDivider:
+		// Calculate new diff tab file list width based on drag (pixel-based)
+		startValue := p.mouseHandler.DragStartValue()
+		newWidth := startValue + action.DragDX
+
+		// Clamp to reasonable bounds
+		if newWidth < 20 {
+			newWidth = 20
+		}
+		maxW := p.width - 30
+		if maxW < 20 {
+			maxW = 20
+		}
+		if newWidth > maxW {
+			newWidth = maxW
+		}
+		p.diffTabListWidth = newWidth
 	case regionPreviewPane:
 		if p.viewMode == ViewModeInteractive && p.interactiveState != nil && p.interactiveState.Active &&
 			!p.interactiveState.MouseReportingEnabled {
@@ -964,8 +993,14 @@ func (p *Plugin) handleMouseDragEnd() tea.Cmd {
 		return p.finishInteractiveSelection()
 	}
 
-	// Persist sidebar width
-	_ = state.SetWorkspaceSidebarWidth(p.sidebarWidth)
+	// Persist widths based on what was being dragged
+	switch p.lastDragRegion {
+	case regionDiffTabDivider:
+		_ = state.SetDiffTabFileListWidth(p.diffTabListWidth)
+	default:
+		_ = state.SetWorkspaceSidebarWidth(p.sidebarWidth)
+	}
+	p.lastDragRegion = ""
 	if p.viewMode == ViewModeInteractive && p.interactiveState != nil && p.interactiveState.Active {
 		// Poll captures cursor atomically - no separate query needed
 		return tea.Batch(p.resizeInteractivePaneCmd(), p.pollInteractivePaneImmediate())
