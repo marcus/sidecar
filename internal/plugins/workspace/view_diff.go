@@ -46,7 +46,13 @@ func (p *Plugin) clampDiffTabCursor() {
 	}
 }
 
-// renderDiffContent renders git diff using a two-pane layout: file list + per-file diff.
+// diffTabCollapseThreshold is the minimum width (in columns) for the two-pane diff layout.
+// Below this, the diff tab collapses to a single-pane hierarchical view where l/enter
+// drills down one level and h/esc goes back up.
+const diffTabCollapseThreshold = 120
+
+// renderDiffContent renders git diff using a two-pane layout (or collapsed single-pane
+// when width is below diffTabCollapseThreshold).
 func (p *Plugin) renderDiffContent(width, height int) string {
 	wt := p.selectedWorktree()
 	if wt == nil {
@@ -67,6 +73,11 @@ func (p *Plugin) renderDiffContent(width, height int) string {
 
 	// Clamp cursor before rendering (avoid state mutation during View)
 	p.clampDiffTabCursor()
+
+	// Collapsed single-pane mode for narrow terminals
+	if width < diffTabCollapseThreshold {
+		return p.renderDiffContentCollapsed(width, height)
+	}
 
 	// Two-pane layout dimensions
 	fileListWidth := p.diffTabListWidth
@@ -127,6 +138,25 @@ func (p *Plugin) renderDiffContent(width, height int) string {
 	rightPane = padToHeight(rightPane, height, diffPaneWidth)
 
 	return lipgloss.JoinHorizontal(lipgloss.Top, leftPane, divider, rightPane)
+}
+
+// renderDiffContentCollapsed renders the diff tab as a single full-width pane.
+// The current diffTabFocus determines which level is shown:
+//   - FileList: file list + commits (l/enter drills into diff or commit)
+//   - Diff: per-file diff (h/esc goes back to file list)
+//   - CommitFiles: commit file list (h/esc goes back to file list)
+//   - CommitDiff: commit file diff (h/esc goes back to commit files)
+func (p *Plugin) renderDiffContentCollapsed(width, height int) string {
+	switch p.diffTabFocus {
+	case DiffTabFocusDiff:
+		return p.renderDiffTabDiffPane(width, height)
+	case DiffTabFocusCommitFiles:
+		return p.renderCommitFileList(width, height)
+	case DiffTabFocusCommitDiff:
+		return p.renderCommitFileDiffPane(width, height)
+	default:
+		return p.renderDiffTabFileList(width, height)
+	}
 }
 
 // padToHeight ensures content has exactly `height` lines, padding with empty lines
