@@ -39,8 +39,9 @@ func (p *Plugin) loadDiff(path, name string) tea.Cmd {
 	}
 }
 
-// getDiff returns the diff for a worktree.
+// getDiff returns the diff for a worktree, including untracked files.
 func getDiff(workdir string) (content, raw string, err error) {
+	// Get combined staged and unstaged diff for tracked files
 	cmd := exec.Command("git", "diff", "HEAD")
 	cmd.Dir = workdir
 	output, err := cmd.Output()
@@ -52,8 +53,50 @@ func getDiff(workdir string) (content, raw string, err error) {
 	}
 
 	raw = string(output)
+
+	// Also include untracked files as synthetic diffs (new file additions)
+	untrackedDiffs := getUntrackedFileDiffs(workdir)
+	if untrackedDiffs != "" {
+		if raw != "" && !strings.HasSuffix(raw, "\n") {
+			raw += "\n"
+		}
+		raw += untrackedDiffs
+	}
+
 	content = raw
 	return content, raw, nil
+}
+
+// getUntrackedFileDiffs returns synthetic diff output for untracked files in the worktree.
+// Each untracked file is shown as a new file with all lines as additions.
+func getUntrackedFileDiffs(workdir string) string {
+	cmd := exec.Command("git", "ls-files", "--others", "--exclude-standard")
+	cmd.Dir = workdir
+	output, err := cmd.Output()
+	if err != nil {
+		return ""
+	}
+
+	files := strings.Split(strings.TrimSpace(string(output)), "\n")
+	if len(files) == 0 || (len(files) == 1 && files[0] == "") {
+		return ""
+	}
+
+	var sb strings.Builder
+	for _, file := range files {
+		if file == "" {
+			continue
+		}
+		diff, err := gitstatus.GetNewFileDiff(workdir, file)
+		if err != nil {
+			continue
+		}
+		if sb.Len() > 0 {
+			sb.WriteString("\n")
+		}
+		sb.WriteString(diff)
+	}
+	return sb.String()
 }
 
 // getDiffStatFromBase returns the --stat output compared to the base branch.
