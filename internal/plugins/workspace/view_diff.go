@@ -439,7 +439,14 @@ func (p *Plugin) renderDiffTabDiffPane(width, height int) string {
 	switch p.diffViewMode {
 	case DiffViewFullFile:
 		if p.fullFileDiff != nil {
-			diffContent = gitstatus.RenderFullFileSideBySide(p.fullFileDiff, width, p.diffTabDiffScroll, contentHeight, p.diffTabHorizScroll, highlighter, false)
+			diffW := width - gitstatus.MinimapWidth
+			mmStr := gitstatus.RenderMinimap(p.fullFileDiff, p.diffTabDiffScroll, contentHeight, contentHeight)
+			if mmStr != "" && diffW >= 30 {
+				diffContent = gitstatus.RenderFullFileSideBySide(p.fullFileDiff, diffW, p.diffTabDiffScroll, contentHeight, p.diffTabHorizScroll, highlighter, false)
+				diffContent = lipgloss.JoinHorizontal(lipgloss.Top, diffContent, mmStr)
+			} else {
+				diffContent = gitstatus.RenderFullFileSideBySide(p.fullFileDiff, width, p.diffTabDiffScroll, contentHeight, p.diffTabHorizScroll, highlighter, false)
+			}
 		} else {
 			diffContent = dimText("Loading full file...")
 		}
