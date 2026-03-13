@@ -260,7 +260,6 @@ func (p *Plugin) renderDiffTabFileList(width, height int) string {
 				}
 			}
 		}
-
 		if selected && fileListActive {
 			plainLine := fmt.Sprintf("%s %s %s", statusIcon, fileName, statsStr)
 			lineWidth := lipgloss.Width(plainLine)

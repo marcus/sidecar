@@ -387,6 +387,8 @@ func DefaultBindings() []Binding {
 		{Key: "F", Command: "fetch-pr", Context: "workspace-list"},
 		{Key: "+", Command: "resize-pane-grow", Context: "workspace-list"},
 		{Key: "-", Command: "resize-pane-shrink", Context: "workspace-list"},
+		{Key: "ctrl+t", Command: "toggle-terminal", Context: "workspace-list"},
+		{Key: "alt+t", Command: "switch-terminal-layout", Context: "workspace-list"},
 
 		// Workspace fetch PR context
 		{Key: "esc", Command: "cancel", Context: "workspace-fetch-pr"},
@@ -414,6 +416,8 @@ func DefaultBindings() []Binding {
 		{Key: "ctrl+u", Command: "page-up", Context: "workspace-preview"},
 		{Key: "+", Command: "resize-pane-grow", Context: "workspace-preview"},
 		{Key: "-", Command: "resize-pane-shrink", Context: "workspace-preview"},
+		{Key: "ctrl+t", Command: "toggle-terminal", Context: "workspace-preview"},
+		{Key: "alt+t", Command: "switch-terminal-layout", Context: "workspace-preview"},
 
 		// Workspace merge error context
 		{Key: "esc", Command: "dismiss-merge-error", Context: "workspace-merge-error"},

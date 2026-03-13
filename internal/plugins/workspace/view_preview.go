@@ -29,7 +29,12 @@ func (p *Plugin) renderPreviewContent(width, height int) string {
 	// When shell is selected, show shell content directly without tabs
 	// (Output/Diff/Task tabs are not relevant for the project shell)
 	if p.shellSelected {
-		content := p.renderShellOutput(width, height)
+		var content string
+		if p.termPanelVisible {
+			content = p.renderShellWithTermPanel(width, height)
+		} else {
+			content = p.renderShellOutput(width, height)
+		}
 		if interactive && !p.flashPreviewTime.IsZero() && time.Since(p.flashPreviewTime) < flashDuration {
 			p.interactiveState.ContentRowOffset++
 		}
@@ -53,11 +58,21 @@ func (p *Plugin) renderPreviewContent(width, height int) string {
 	var content string
 	switch p.previewTab {
 	case PreviewTabOutput:
-		content = p.renderOutputContent(width, contentHeight)
-		if interactive {
-			p.interactiveState.ContentRowOffset += 2
-			if !p.flashPreviewTime.IsZero() && time.Since(p.flashPreviewTime) < flashDuration {
-				p.interactiveState.ContentRowOffset++
+		if p.termPanelVisible {
+			content = p.renderOutputWithTermPanel(width, contentHeight)
+			if interactive {
+				p.interactiveState.ContentRowOffset += 2
+				if !p.flashPreviewTime.IsZero() && time.Since(p.flashPreviewTime) < flashDuration {
+					p.interactiveState.ContentRowOffset++
+				}
+			}
+		} else {
+			content = p.renderOutputContent(width, contentHeight)
+			if interactive {
+				p.interactiveState.ContentRowOffset += 2
+				if !p.flashPreviewTime.IsZero() && time.Since(p.flashPreviewTime) < flashDuration {
+					p.interactiveState.ContentRowOffset++
+				}
 			}
 		}
 	case PreviewTabDiff:
@@ -221,12 +236,21 @@ func (p *Plugin) renderOutputContent(width, height int) string {
 
 	// Hint depends on mode - interactive mode shows exit hints
 	var hint string
-	if p.viewMode == ViewModeInteractive && p.interactiveState != nil && p.interactiveState.Active {
-		// Interactive mode - show exit hint with highlight
+	if p.viewMode == ViewModeInteractive && p.interactiveState != nil && p.interactiveState.Active && !p.interactiveState.TermPanel {
+		// Interactive mode targeting this agent pane - show exit hint with highlight
 		interactiveStyle := lipgloss.NewStyle().
 			Foreground(lipgloss.Color(styles.GetCurrentTheme().Colors.Warning)).
 			Bold(true)
 		hint = interactiveStyle.Render("INTERACTIVE") + " " + dimText(p.getInteractiveExitKey()+" exit • "+p.getInteractiveAttachKey()+" attach")
+	} else if p.termPanelVisible && !p.termPanelFocused && p.activePane == PanePreview {
+		// Terminal panel visible and agent sub-pane is focused
+		focusStyle := lipgloss.NewStyle().
+			Foreground(styles.Primary).
+			Bold(true)
+		hint = focusStyle.Render("▸ Agent") + " " + dimText("enter interactive")
+	} else if p.termPanelVisible && p.termPanelFocused && p.activePane == PanePreview {
+		// Terminal panel visible but terminal sub-pane is focused
+		hint = dimText("Agent")
 	} else {
 		// Only show "E for interactive" hint if feature flag is enabled
 		detach := getTmuxDetachHint()
@@ -247,7 +271,8 @@ func (p *Plugin) renderOutputContent(width, height int) string {
 		return hint + "\n" + dimText("No output yet")
 	}
 
-	interactive := p.viewMode == ViewModeInteractive && p.interactiveState != nil && p.interactiveState.Active
+	// Only treat as interactive for this (agent) pane if interactive mode is NOT targeting the terminal panel.
+	interactive := p.viewMode == ViewModeInteractive && p.interactiveState != nil && p.interactiveState.Active && !p.interactiveState.TermPanel
 	var cursorRow, cursorCol, paneHeight, paneWidth int
 	var cursorVisible bool
 	if interactive {
@@ -424,12 +449,19 @@ func (p *Plugin) renderShellOutput(width, height int) string {
 
 	// Hint depends on mode - interactive mode shows exit hints
 	var hint string
-	if p.viewMode == ViewModeInteractive && p.interactiveState != nil && p.interactiveState.Active {
-		// Interactive mode - show exit hint with highlight
+	if p.viewMode == ViewModeInteractive && p.interactiveState != nil && p.interactiveState.Active && !p.interactiveState.TermPanel {
+		// Interactive mode targeting this shell pane
 		interactiveStyle := lipgloss.NewStyle().
 			Foreground(lipgloss.Color(styles.GetCurrentTheme().Colors.Warning)).
 			Bold(true)
 		hint = interactiveStyle.Render("INTERACTIVE") + " " + dimText(p.getInteractiveExitKey()+" exit")
+	} else if p.termPanelVisible && !p.termPanelFocused && p.activePane == PanePreview {
+		focusStyle := lipgloss.NewStyle().
+			Foreground(styles.Primary).
+			Bold(true)
+		hint = focusStyle.Render("▸ Shell") + " " + dimText("enter interactive")
+	} else if p.termPanelVisible && p.termPanelFocused && p.activePane == PanePreview {
+		hint = dimText("Shell")
 	} else {
 		// Only show "E for interactive" hint if feature flag is enabled
 		detach := getTmuxDetachHint()
@@ -450,7 +482,8 @@ func (p *Plugin) renderShellOutput(width, height int) string {
 		return hint + "\n" + dimText("No output yet")
 	}
 
-	interactive := p.viewMode == ViewModeInteractive && p.interactiveState != nil && p.interactiveState.Active
+	// Only treat as interactive for this (shell/agent) pane if interactive mode is NOT targeting the terminal panel.
+	interactive := p.viewMode == ViewModeInteractive && p.interactiveState != nil && p.interactiveState.Active && !p.interactiveState.TermPanel
 	var cursorRow, cursorCol, paneHeight, paneWidth int
 	var cursorVisible bool
 	if interactive {
