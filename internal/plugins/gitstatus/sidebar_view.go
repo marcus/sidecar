@@ -776,7 +776,7 @@ func (p *Plugin) renderCommitPreview(visibleHeight int) string {
 
 	// Author with icon-like prefix
 	authorStr := c.Author
-	if len(authorStr) > maxWidth-12 {
+	if maxWidth > 15 && len(authorStr) > maxWidth-12 {
 		authorStr = authorStr[:maxWidth-15] + "..."
 	}
 	sb.WriteString(labelStyle.Render("󰀄 ")) // Author icon
@@ -792,7 +792,7 @@ func (p *Plugin) renderCommitPreview(visibleHeight int) string {
 
 	// Subject in bold
 	subject := c.Subject
-	if len(subject) > maxWidth-2 {
+	if maxWidth > 5 && len(subject) > maxWidth-2 {
 		subject = subject[:maxWidth-5] + "..."
 	}
 	subjectStyle := lipgloss.NewStyle().
@@ -815,7 +815,7 @@ func (p *Plugin) renderCommitPreview(visibleHeight int) string {
 				currentY++
 				break
 			}
-			if len(line) > maxWidth-2 {
+			if maxWidth > 5 && len(line) > maxWidth-2 {
 				line = line[:maxWidth-5] + "..."
 			}
 			sb.WriteString(styles.Muted.Render(line))
