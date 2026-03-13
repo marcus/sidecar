@@ -228,6 +228,58 @@ func (p *Plugin) clampDiffHorizScroll() {
 	}
 }
 
+// clampDiffScroll clamps the full-screen diff scroll to valid range.
+func (p *Plugin) clampDiffScroll() {
+	if p.diffViewMode == DiffViewFullFile && p.fullFileDiff != nil {
+		lines := p.fullFileDiff.TotalLines()
+		maxScroll := lines - (p.height - 4) // paneHeight-2 (header) = (height-2)-2 = height-4
+		if maxScroll < 0 {
+			maxScroll = 0
+		}
+		if p.diffScroll > maxScroll {
+			p.diffScroll = maxScroll
+		}
+	} else {
+		lines := countLines(p.diffContent)
+		maxScroll := lines - (p.height - 4)
+		if maxScroll < 0 {
+			maxScroll = 0
+		}
+		if p.diffScroll > maxScroll {
+			p.diffScroll = maxScroll
+		}
+	}
+	if p.diffScroll < 0 {
+		p.diffScroll = 0
+	}
+}
+
+// clampDiffPaneScroll clamps the sidebar diff pane scroll to valid range.
+func (p *Plugin) clampDiffPaneScroll() {
+	if p.diffPaneViewMode == DiffViewFullFile && p.diffPaneFullFileDiff != nil {
+		lines := p.diffPaneFullFileDiff.TotalLines()
+		maxScroll := lines - (p.height - 4) // visibleHeight-2 (header) = (paneHeight-2)-2 = height-4
+		if maxScroll < 0 {
+			maxScroll = 0
+		}
+		if p.diffPaneScroll > maxScroll {
+			p.diffPaneScroll = maxScroll
+		}
+	} else if p.diffPaneParsedDiff != nil {
+		lines := countParsedDiffLines(p.diffPaneParsedDiff)
+		maxScroll := lines - (p.height - 4)
+		if maxScroll < 0 {
+			maxScroll = 0
+		}
+		if p.diffPaneScroll > maxScroll {
+			p.diffPaneScroll = maxScroll
+		}
+	}
+	if p.diffPaneScroll < 0 {
+		p.diffPaneScroll = 0
+	}
+}
+
 // clampDiffPaneHorizScroll clamps diffPaneHorizScroll to valid range.
 func (p *Plugin) clampDiffPaneHorizScroll() {
 	if p.diffPaneParsedDiff == nil {

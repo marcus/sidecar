@@ -680,7 +680,27 @@ func (p *Plugin) renderDiffPane(visibleHeight int) string {
 	switch p.diffPaneViewMode {
 	case DiffViewFullFile:
 		if p.diffPaneFullFileDiff != nil {
-			diffContent = RenderFullFileSideBySide(p.diffPaneFullFileDiff, diffWidth, p.diffPaneScroll, contentHeight, p.diffPaneHorizScroll, highlighter, p.diffWrapEnabled)
+			diffW := diffWidth - MinimapWidth
+			mmStr := ""
+			if !p.diffWrapEnabled {
+				mmStr = RenderMinimap(p.diffPaneFullFileDiff, p.diffPaneScroll, contentHeight, contentHeight)
+			}
+			if mmStr != "" && diffW >= 30 {
+				diffContent = RenderFullFileSideBySide(p.diffPaneFullFileDiff, diffW, p.diffPaneScroll, contentHeight, p.diffPaneHorizScroll, highlighter, p.diffWrapEnabled)
+				diffContent = lipgloss.JoinHorizontal(lipgloss.Top, diffContent, mmStr)
+				diffX := 0
+				if p.sidebarVisible {
+					diffX = p.sidebarWidth + dividerWidth
+				}
+				mmH := contentHeight
+				if total := len(p.diffPaneFullFileDiff.Lines); total < mmH {
+					mmH = total
+				}
+				mmX := diffX + 2 + diffWidth - MinimapWidth
+				p.mouseHandler.HitMap.AddRect(regionMinimap, mmX, 3, MinimapWidth, mmH, nil)
+			} else {
+				diffContent = RenderFullFileSideBySide(p.diffPaneFullFileDiff, diffWidth, p.diffPaneScroll, contentHeight, p.diffPaneHorizScroll, highlighter, p.diffWrapEnabled)
+			}
 		} else {
 			diffContent = styles.Muted.Render("Loading full file...")
 		}
@@ -689,8 +709,8 @@ func (p *Plugin) renderDiffPane(visibleHeight int) string {
 	default:
 		diffContent = RenderLineDiff(p.diffPaneParsedDiff, diffWidth, p.diffPaneScroll, contentHeight, p.diffPaneHorizScroll, highlighter, p.diffWrapEnabled)
 	}
-	// Force truncate each line to prevent wrapping (skip when wrap is enabled)
-	if !p.diffWrapEnabled {
+	// Force truncate each line to prevent wrapping (skip when wrap is enabled and not full-file with minimap)
+	if !p.diffWrapEnabled && p.diffPaneViewMode != DiffViewFullFile {
 		lines := strings.Split(diffContent, "\n")
 		for i, line := range lines {
 			if lipgloss.Width(line) > diffWidth {

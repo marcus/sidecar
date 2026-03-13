@@ -648,6 +648,20 @@ func renderDiffContentWithOffset(line DiffLine, maxWidth, horizontalOffset int, 
 
 // renderDiffContent renders line content with word-level and syntax highlighting.
 func renderDiffContent(line DiffLine, maxWidth int, highlighter *SyntaxHighlighter) string {
+	// Strip carriage returns (\r) from diff content. Files with Windows-style
+	// line endings (CRLF) preserve \r in the diff output. When rendered in a
+	// JoinHorizontal layout, \r moves the terminal cursor back to column 0,
+	// causing the right pane to overwrite the left pane on the same line.
+	// Also expand tabs to spaces so lipgloss.Width matches terminal rendering.
+	if strings.ContainsAny(line.Content, "\r\t") {
+		line.Content = strings.ReplaceAll(line.Content, "\r", "")
+		line.Content = strings.ReplaceAll(line.Content, "\t", "    ")
+		for i := range line.WordDiff {
+			line.WordDiff[i].Text = strings.ReplaceAll(line.WordDiff[i].Text, "\r", "")
+			line.WordDiff[i].Text = strings.ReplaceAll(line.WordDiff[i].Text, "\t", "    ")
+		}
+	}
+
 	var baseStyle lipgloss.Style
 	switch line.Type {
 	case LineAdd:
@@ -720,6 +734,15 @@ func renderDiffContent(line DiffLine, maxWidth int, highlighter *SyntaxHighlight
 // renderSideBySideContent renders content for side-by-side view with syntax highlighting.
 // Returns styled content that should then be padded with padToWidth for alignment.
 func renderSideBySideContent(content string, lineType LineType, maxWidth int, highlighter *SyntaxHighlighter) string {
+	// Strip carriage returns and expand tabs (same as renderDiffContent).
+	// CRLF files preserve \r which moves the terminal cursor to column 0,
+	// corrupting JoinHorizontal layouts. Tabs have runewidth 0 but render
+	// as 1-8 columns, causing width miscalculation.
+	if strings.ContainsAny(content, "\r\t") {
+		content = strings.ReplaceAll(content, "\r", "")
+		content = strings.ReplaceAll(content, "\t", "    ")
+	}
+
 	var baseStyle lipgloss.Style
 	switch lineType {
 	case LineAdd:
