@@ -25,10 +25,23 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 		p.height = msg.Height
 		if p.viewMode == ViewModeInteractive && p.interactiveState != nil && p.interactiveState.Active {
 			// Poll captures cursor atomically - no separate query needed
-			return p, tea.Batch(p.resizeInteractivePaneCmd(), p.pollInteractivePaneImmediate())
+			resizeCmds := []tea.Cmd{p.resizeInteractivePaneCmd(), p.pollInteractivePaneImmediate()}
+			// Also resize the non-interactive pane so both sides match the new window dimensions
+			if p.termPanelVisible {
+				if p.interactiveState.TermPanel {
+					resizeCmds = append(resizeCmds, p.resizeSelectedPaneCmd())
+				} else {
+					resizeCmds = append(resizeCmds, p.resizeTermPanelPaneCmd())
+				}
+			}
+			return p, tea.Batch(resizeCmds...)
 		}
-		// Resize selected pane in background so capture-pane output matches preview width
-		return p, p.resizeSelectedPaneCmd()
+		// Resize selected pane and terminal panel so capture-pane output matches preview width
+		resizeCmds := []tea.Cmd{p.resizeSelectedPaneCmd()}
+		if p.termPanelVisible {
+			resizeCmds = append(resizeCmds, p.resizeTermPanelPaneCmd())
+		}
+		return p, tea.Batch(resizeCmds...)
 
 	case app.PluginFocusedMsg:
 		if p.focused {
@@ -87,6 +100,18 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 				// and if there are items to select
 				if selectedName == "" && (len(p.worktrees) > 0 || len(p.shells) > 0) {
 					p.restoreSelectionState()
+				}
+
+				// Restore terminal panel: if it was visible last session, create the
+				// tmux session now that worktrees/shells are loaded and selection is
+				// restored (so termPanelSessionName() can resolve).
+				if p.termPanelVisible && p.termPanelSession == "" {
+					sessionName := p.termPanelSessionName()
+					if sessionName != "" {
+						p.termPanelSession = sessionName
+						p.termPanelOutput = NewOutputBuffer(outputBufferCap)
+						cmds = append(cmds, p.createTermPanelSession(sessionName))
+					}
 				}
 
 				// Migrate legacy per-project and per-worktree files to the
@@ -1438,6 +1463,66 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 			}
 		}
 		cmds = append(cmds, p.pollInteractivePaneImmediate())
+
+	case TermPanelSessionCreatedMsg:
+		p.ctx.Logger.Debug("termPanel: SessionCreatedMsg", "session", msg.SessionName, "pane", msg.PaneID, "err", msg.Err, "current", p.termPanelSession)
+		if msg.Err != nil {
+			p.termPanelVisible = false
+			p.termPanelFocused = false
+			return p, appmsg.ShowToast("Terminal: "+msg.Err.Error(), 3*time.Second)
+		}
+		if msg.SessionName == p.termPanelSession {
+			p.termPanelPaneID = msg.PaneID
+			// Session ready — resize to match split dimensions and start polling
+			return p, tea.Batch(
+				p.resizeTermPanelPaneCmd(),
+				p.resizeSelectedPaneCmd(),
+				p.scheduleTermPanelPoll(0),
+			)
+		}
+
+	case TermPanelCaptureMsg:
+		if msg.SessionName != p.termPanelSession || !p.termPanelVisible {
+			p.ctx.Logger.Debug("termPanel: CaptureMsg DROPPED", "session", msg.SessionName, "current", p.termPanelSession, "visible", p.termPanelVisible)
+			return p, nil
+		}
+		contentChanged := false
+		if msg.Err == nil && p.termPanelOutput != nil {
+			contentChanged = p.termPanelOutput.Update(msg.Output)
+			p.ctx.Logger.Debug("termPanel: CaptureMsg OK", "session", msg.SessionName, "outputLen", len(msg.Output), "lines", p.termPanelOutput.LineCount(), "changed", contentChanged)
+		} else if msg.Err != nil {
+			p.ctx.Logger.Debug("termPanel: CaptureMsg ERROR", "err", msg.Err)
+		}
+		// Update cursor position when interactive mode targets the terminal panel
+		if msg.HasCursor && p.interactiveState != nil && p.interactiveState.Active && p.interactiveState.TermPanel {
+			p.interactiveState.CursorRow = msg.CursorRow
+			p.interactiveState.CursorCol = msg.CursorCol
+			p.interactiveState.CursorVisible = msg.CursorVisible
+			p.interactiveState.PaneHeight = msg.PaneHeight
+			p.interactiveState.PaneWidth = msg.PaneWidth
+		}
+		// In interactive mode targeting terminal panel, use the same adaptive
+		// decay polling as agent/shell panes (pollingDecayFast=50ms) for
+		// responsive keystroke feedback.
+		if p.viewMode == ViewModeInteractive && p.interactiveState != nil && p.interactiveState.Active && p.interactiveState.TermPanel {
+			return p, p.pollInteractivePane()
+		}
+		// Non-interactive: adaptive polling based on content changes
+		interval := termPanelPollIdle
+		if contentChanged {
+			interval = termPanelPollActive
+		}
+		// Slow down when plugin is not focused
+		if !p.focused && interval < termPanelPollUnfocus {
+			interval = termPanelPollUnfocus
+		}
+		return p, p.scheduleTermPanelPoll(interval)
+
+	case termPanelPollMsg:
+		if msg.SessionName != p.termPanelSession || !p.termPanelVisible || msg.Generation != p.termPanelGeneration {
+			return p, nil // Stale timer or panel hidden
+		}
+		return p, p.handleTermPanelPoll(msg.SessionName)
 
 	case tea.KeyMsg:
 		cmd := p.handleKeyPress(msg)

@@ -76,6 +76,14 @@ const (
 	DiffTabFocusCommitDiff                      // Commit file diff viewing
 )
 
+// TermPanelLayout represents the terminal panel split orientation.
+type TermPanelLayout int
+
+const (
+	TermPanelBottom TermPanelLayout = iota // Terminal below output (horizontal divider)
+	TermPanelRight                         // Terminal to the right of output (vertical divider)
+)
+
 // WorktreeStatus represents the current state of a worktree.
 type WorktreeStatus int
 
@@ -308,6 +316,10 @@ type InteractiveState struct {
 
 	// TargetSession is the tmux session name for the active pane.
 	TargetSession string
+
+	// TermPanel is true when interactive mode targets the terminal panel session
+	// (rather than the main agent/shell session).
+	TermPanel bool
 
 	// LastKeyTime tracks when the last key was sent for polling decay.
 	LastKeyTime time.Time

@@ -454,7 +454,13 @@ func (p *Plugin) enterInteractiveMode() tea.Cmd {
 		target = sessionName // Fall back to session name if pane ID not available
 	}
 	if target != "" {
-		previewWidth, previewHeight := p.calculatePreviewDimensions()
+		// When terminal panel is visible, agent pane only gets a portion
+		var previewWidth, previewHeight int
+		if p.termPanelVisible {
+			previewWidth, previewHeight = p.calculateAgentPaneDimensions()
+		} else {
+			previewWidth, previewHeight = p.calculatePreviewDimensions()
+		}
 		tty.SetWindowSizeManual(sessionName)
 		p.resizeTmuxPane(target, previewWidth, previewHeight)
 		// Verify and retry once if resize didn't take effect
@@ -497,6 +503,49 @@ func (p *Plugin) enterInteractiveMode() tea.Cmd {
 		})
 	}
 	return tea.Batch(cmds...)
+}
+
+// enterTermPanelInteractiveMode enters interactive mode targeting the terminal panel's tmux session.
+func (p *Plugin) enterTermPanelInteractiveMode() tea.Cmd {
+	if !features.IsEnabled(features.TmuxInteractiveInput.Name) {
+		return nil
+	}
+	if p.termPanelSession == "" || !p.termPanelVisible {
+		return nil
+	}
+
+	sessionName := p.termPanelSession
+	paneID := p.termPanelPaneID
+	target := paneID
+	if target == "" {
+		target = sessionName
+	}
+
+	// Resize terminal panel pane to match its split dimensions
+	w, h := p.calculateTermPanelDimensions()
+	tty.SetWindowSizeManual(sessionName)
+	p.resizeTmuxPane(target, w, h)
+	if aw, ah, ok := queryPaneSize(target); ok && (aw != w || ah != h) {
+		p.resizeTmuxPane(target, w, h)
+	}
+
+	p.termPanelScroll = 0 // Reset scroll so output aligns with cursor position
+	p.interactiveState = &InteractiveState{
+		Active:        true,
+		TargetPane:    paneID,
+		TargetSession: sessionName,
+		TermPanel:     true,
+		LastKeyTime:   time.Now(),
+		CursorVisible: true,
+	}
+	p.selection.Clear()
+	p.viewMode = ViewModeInteractive
+
+	// Invalidate the background poll chain so only the interactive poll loop runs.
+	// The interactive chain captures the same pane and updates termPanelOutput,
+	// so background polling is redundant during interactive mode.
+	p.termPanelGeneration++
+	return p.pollInteractivePane()
 }
 
 // calculatePreviewDimensions returns the content width and height for the preview pane.
@@ -580,7 +629,17 @@ func (p *Plugin) resizeTmuxTargetCmd(target string) tea.Cmd {
 		return nil
 	}
 
-	previewWidth, previewHeight := p.calculatePreviewDimensions()
+	// Determine dimensions: terminal panel target gets terminal panel dims,
+	// agent target gets split-aware dims, or full dims if no panel.
+	var previewWidth, previewHeight int
+	isTermPanel := p.termPanelVisible && (target == p.termPanelPaneID || target == p.termPanelSession)
+	if isTermPanel {
+		previewWidth, previewHeight = p.calculateTermPanelDimensions()
+	} else if p.termPanelVisible {
+		previewWidth, previewHeight = p.calculateAgentPaneDimensions()
+	} else {
+		previewWidth, previewHeight = p.calculatePreviewDimensions()
+	}
 	return func() tea.Msg {
 		if actualWidth, actualHeight, ok := queryPaneSize(target); ok {
 			if actualWidth == previewWidth && actualHeight == previewHeight {
@@ -605,7 +664,15 @@ func (p *Plugin) maybeResizeInteractivePane(paneWidth, paneHeight int) tea.Cmd {
 		return nil
 	}
 
-	previewWidth, previewHeight := p.calculatePreviewDimensions()
+	var previewWidth, previewHeight int
+	isTermPanel := p.interactiveState.TermPanel
+	if isTermPanel && p.termPanelVisible {
+		previewWidth, previewHeight = p.calculateTermPanelDimensions()
+	} else if p.termPanelVisible {
+		previewWidth, previewHeight = p.calculateAgentPaneDimensions()
+	} else {
+		previewWidth, previewHeight = p.calculatePreviewDimensions()
+	}
 	if paneWidth == previewWidth && paneHeight == previewHeight {
 		return nil
 	}
@@ -743,6 +810,8 @@ func (p *Plugin) previewResizeTarget() string {
 // exitInteractiveMode exits interactive mode and returns to list view.
 func (p *Plugin) exitInteractiveMode() {
 	if p.interactiveState != nil {
+		// Preserve focus on whichever sub-pane was interactive
+		p.termPanelFocused = p.interactiveState.TermPanel
 		p.interactiveState.Active = false
 	}
 	p.interactiveState = nil
@@ -766,10 +835,37 @@ func (p *Plugin) handleInteractiveKeys(msg tea.KeyMsg) tea.Cmd {
 		return nil
 	}
 
+	// Terminal panel toggle: intercept before forwarding to tmux
+	if msg.String() == "ctrl+t" {
+		cmd := p.toggleTermPanel()
+		// If interactive mode survived the toggle (agent pane still active),
+		// keep focus on agent pane and resize the interactive pane.
+		if p.interactiveState != nil && p.interactiveState.Active && !p.interactiveState.TermPanel {
+			p.termPanelFocused = false
+			return tea.Batch(cmd, p.resizeInteractivePaneCmd())
+		}
+		return cmd
+	}
+	if msg.String() == "alt+t" {
+		cmd := p.switchTermPanelLayout()
+		if p.interactiveState != nil && p.interactiveState.Active {
+			return tea.Batch(cmd, p.resizeInteractivePaneCmd())
+		}
+		return cmd
+	}
+
 	// Attach shortcut: exit interactive and attach to full session (td-fd68d1)
 	if msg.String() == p.getInteractiveAttachKey() {
+		isTermPanel := p.interactiveState != nil && p.interactiveState.TermPanel
 		p.exitInteractiveMode()
-		// Attach to the appropriate session
+		// Terminal panel: attach to its tmux session
+		if isTermPanel && p.termPanelSession != "" {
+			sessionName := p.termPanelSession
+			return p.attachWithResize(sessionName, sessionName, "terminal", func(err error) tea.Msg {
+				return TmuxAttachFinishedMsg{Err: err}
+			})
+		}
+		// Attach to the appropriate agent/shell session
 		if p.shellSelected {
 			if idx := p.selectedShellIdx; idx >= 0 && idx < len(p.shells) {
 				return p.ensureShellAndAttachByIndex(idx)
@@ -1043,6 +1139,18 @@ func (p *Plugin) forwardScrollToTmux(delta int) tea.Cmd {
 	}
 	p.lastScrollTime = now
 
+	// When interactive mode targets the terminal panel, scroll terminal panel output
+	if p.interactiveState != nil && p.interactiveState.TermPanel {
+		if delta < 0 {
+			p.termPanelScroll++
+		} else {
+			if p.termPanelScroll > 0 {
+				p.termPanelScroll--
+			}
+		}
+		return nil
+	}
+
 	if delta < 0 {
 		// Scroll up: pause auto-scroll, show older content
 		p.autoScrollOutput = false
@@ -1140,6 +1248,36 @@ func (p *Plugin) interactiveMouseCoords(x, y int) (col, row int, ok bool) {
 	}
 	contentY++ // hint line
 
+	// When interactive mode targets the terminal panel, adjust content origin
+	// to account for the terminal panel's position within the preview area.
+	targetingTermPanel := p.interactiveState != nil && p.interactiveState.Active && p.interactiveState.TermPanel && p.termPanelVisible
+	if targetingTermPanel {
+		previewWidth, previewHeight := p.calculatePreviewDimensions()
+		size := p.termPanelEffectiveSize()
+		if p.termPanelLayout == TermPanelRight {
+			termWidth := previewWidth * size / 100
+			if termWidth < 10 {
+				termWidth = 10
+			}
+			outputWidth := previewWidth - termWidth - 1
+			if outputWidth < 10 {
+				outputWidth = 10
+			}
+			contentX += outputWidth + 1 // skip agent output + divider
+		} else {
+			termHeight := previewHeight * size / 100
+			if termHeight < 3 {
+				termHeight = 3
+			}
+			outputHeight := previewHeight - termHeight - 1
+			if outputHeight < 3 {
+				outputHeight = 3
+			}
+			contentY += outputHeight + 1 // skip agent output + divider
+		}
+		contentY++ // terminal panel hint/label line
+	}
+
 	relX := x - contentX
 	relY := y - contentY
 	if relX < 0 || relY < 0 {
@@ -1147,6 +1285,9 @@ func (p *Plugin) interactiveMouseCoords(x, y int) (col, row int, ok bool) {
 	}
 
 	paneWidth, paneHeight := p.calculatePreviewDimensions()
+	if targetingTermPanel {
+		paneWidth, paneHeight = p.calculateTermPanelDimensions()
+	}
 	if p.interactiveState != nil {
 		if p.interactiveState.PaneWidth > 0 && p.interactiveState.PaneWidth < paneWidth {
 			paneWidth = p.interactiveState.PaneWidth
@@ -1198,6 +1339,11 @@ func (p *Plugin) pollInteractivePane() tea.Cmd {
 		interval = pollingDecayMedium
 	}
 
+	// When interactive mode targets the terminal panel, use terminal panel polling
+	if p.interactiveState.TermPanel {
+		return p.scheduleTermPanelPoll(interval)
+	}
+
 	// Use existing shell or worktree polling mechanism
 	// Worktrees use scheduleInteractivePoll to skip stagger (td-8856c9)
 	if p.shellSelected && p.selectedShellIdx >= 0 && p.selectedShellIdx < len(p.shells) {
@@ -1214,6 +1360,14 @@ func (p *Plugin) pollInteractivePane() tea.Cmd {
 func (p *Plugin) scheduleDebouncedPoll(delay time.Duration) tea.Cmd {
 	if p.interactiveState == nil || !p.interactiveState.Active {
 		return nil
+	}
+
+	// When interactive mode targets the terminal panel, use terminal panel polling.
+	// Increment generation to invalidate stale timers from previous keystrokes,
+	// preventing poll chain accumulation during rapid typing.
+	if p.interactiveState.TermPanel {
+		p.termPanelGeneration++
+		return p.scheduleTermPanelPoll(delay)
 	}
 
 	// Use shell or worktree polling mechanism based on current selection.
@@ -1245,6 +1399,11 @@ func (p *Plugin) pollInteractivePaneImmediate() tea.Cmd {
 	// td-3b15ee: Skip polling during active scroll bursts.
 	if time.Since(p.lastScrollTime) < scrollBurstTimeout && p.scrollBurstCount > 0 {
 		return nil
+	}
+
+	// When interactive mode targets the terminal panel, use terminal panel polling
+	if p.interactiveState.TermPanel {
+		return p.scheduleTermPanelPoll(0)
 	}
 
 	// Schedule with 0ms delay for immediate capture (td-8856c9: no stagger for worktrees)
