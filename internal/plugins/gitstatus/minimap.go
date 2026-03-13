@@ -1,6 +1,7 @@
 package gitstatus
 
 import (
+	"log/slog"
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
@@ -8,7 +9,7 @@ import (
 )
 
 // MinimapWidth is the total character width of the minimap column (rail + map).
-const MinimapWidth = 3 // "▐▀▀"
+const MinimapWidth = 3 // "█▀▀" or "▀▀▀" etc.
 
 // Minimap palette — dim for outside viewport, bright for inside.
 var (
@@ -62,7 +63,22 @@ func RenderMinimap(fullDiff *FullFileDiff, scrollPos, visibleLines, height int) 
 	totalSlots := height * 2
 	linesPerSlot := float64(totalLines) / float64(totalSlots)
 
-	railStyle := lipgloss.NewStyle().Foreground(styles.Primary)
+	slog.Debug("minimap render",
+		"totalLines", totalLines,
+		"scrollPos", scrollPos,
+		"visibleLines", visibleLines,
+		"viewEnd", viewEnd,
+		"height", height,
+		"totalSlots", totalSlots,
+		"linesPerSlot", linesPerSlot,
+	)
+
+	railColor := styles.Primary
+
+	// Track rail rows for debug logging.
+	railCount := 0
+	firstRailRow := -1
+	lastRailRow := -1
 
 	var sb strings.Builder
 	for row := 0; row < height; row++ {
@@ -79,10 +95,35 @@ func RenderMinimap(fullDiff *FullFileDiff, scrollPos, visibleLines, height int) 
 		topInView := rangesOverlap(topStart, topEnd, scrollPos, viewEnd)
 		bottomInView := rangesOverlap(bottomStart, bottomEnd, scrollPos, viewEnd)
 
-		// --- Viewport rail: derived from the same slot overlap as the map ---
-		if topInView || bottomInView {
-			sb.WriteString(railStyle.Render("▐"))
-		} else {
+		// --- Viewport rail: half-block precision matching the map ---
+		// Uses ▀/▄/█ so the rail boundary aligns exactly with the
+		// bright/dim boundary of the map cells.
+		switch {
+		case topInView && bottomInView:
+			// Full row in viewport — solid block.
+			sb.WriteString(lipgloss.NewStyle().Foreground(railColor).Render("█"))
+			if firstRailRow < 0 {
+				firstRailRow = row
+			}
+			lastRailRow = row
+			railCount++
+		case topInView:
+			// Only top half in viewport.
+			sb.WriteString(lipgloss.NewStyle().Foreground(railColor).Render("▀"))
+			if firstRailRow < 0 {
+				firstRailRow = row
+			}
+			lastRailRow = row
+			railCount++
+		case bottomInView:
+			// Only bottom half in viewport.
+			sb.WriteString(lipgloss.NewStyle().Foreground(railColor).Render("▄"))
+			if firstRailRow < 0 {
+				firstRailRow = row
+			}
+			lastRailRow = row
+			railCount++
+		default:
 			sb.WriteString(" ")
 		}
 
@@ -96,6 +137,13 @@ func RenderMinimap(fullDiff *FullFileDiff, scrollPos, visibleLines, height int) 
 		// Trailing newline on every row (matches diff renderer format).
 		sb.WriteString("\n")
 	}
+
+	slog.Debug("minimap rail",
+		"railRows", railCount,
+		"firstRow", firstRailRow,
+		"lastRow", lastRailRow,
+		"totalRows", height,
+	)
 
 	return sb.String()
 }

@@ -1,6 +1,7 @@
 package gitstatus
 
 import (
+	"log/slog"
 	"strings"
 	"time"
 
@@ -813,6 +814,15 @@ func (p *Plugin) updateDiff(msg tea.KeyMsg) (plugin.Plugin, tea.Cmd) {
 		if p.diffFile != "" {
 			return p, p.openInFileBrowser(p.diffFile)
 		}
+	}
+
+	if p.diffViewMode == DiffViewFullFile && p.fullFileDiff != nil {
+		slog.Debug("minimap scroll state",
+			"key", msg.String(),
+			"diffScroll", p.diffScroll,
+			"totalLines", len(p.fullFileDiff.Lines),
+			"height", p.height,
+		)
 	}
 
 	return p, nil

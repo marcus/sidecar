@@ -1,6 +1,8 @@
 package gitstatus
 
 import (
+	"log/slog"
+
 	tea "github.com/charmbracelet/bubbletea"
 )
 
@@ -236,8 +238,18 @@ func (p *Plugin) clampDiffScroll() {
 		if maxScroll < 0 {
 			maxScroll = 0
 		}
+		before := p.diffScroll
 		if p.diffScroll > maxScroll {
 			p.diffScroll = maxScroll
+		}
+		if before != p.diffScroll {
+			slog.Debug("clampDiffScroll clamped",
+				"before", before,
+				"after", p.diffScroll,
+				"maxScroll", maxScroll,
+				"totalLines", lines,
+				"height", p.height,
+			)
 		}
 	} else {
 		lines := countLines(p.diffContent)

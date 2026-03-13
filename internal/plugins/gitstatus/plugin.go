@@ -504,25 +504,7 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 			// In full-file view mode, clamp against the full-file line count (which includes
 			// all context lines), not the parsed hunk-only count. Otherwise the watcher
 			// refresh cycle snaps scroll back to a much smaller value.
-			if p.diffPaneViewMode == DiffViewFullFile && p.diffPaneFullFileDiff != nil {
-				lines := p.diffPaneFullFileDiff.TotalLines()
-				maxScroll := lines - (p.height - 6)
-				if maxScroll < 0 {
-					maxScroll = 0
-				}
-				if p.diffPaneScroll > maxScroll {
-					p.diffPaneScroll = maxScroll
-				}
-			} else if p.diffPaneParsedDiff != nil {
-				lines := countParsedDiffLines(p.diffPaneParsedDiff)
-				maxScroll := lines - (p.height - 6)
-				if maxScroll < 0 {
-					maxScroll = 0
-				}
-				if p.diffPaneScroll > maxScroll {
-					p.diffPaneScroll = maxScroll
-				}
-			}
+			p.clampDiffPaneScroll()
 			// Auto-load full-file content when in full-file view mode.
 			// Always reload (not just when nil) so content refreshes after stage/unstage/discard.
 			// The old diffPaneFullFileDiff is kept until the new one arrives to avoid flicker.

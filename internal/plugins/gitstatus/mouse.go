@@ -301,30 +301,7 @@ func (p *Plugin) scrollDiffPane(delta int) (*Plugin, tea.Cmd) {
 
 	// Otherwise scroll the diff content
 	p.diffPaneScroll += delta
-	if p.diffPaneScroll < 0 {
-		p.diffPaneScroll = 0
-	}
-
-	// Clamp to max if we have diff content
-	if p.diffPaneViewMode == DiffViewFullFile && p.diffPaneFullFileDiff != nil {
-		lines := p.diffPaneFullFileDiff.TotalLines()
-		maxScroll := lines - (p.height - 6)
-		if maxScroll < 0 {
-			maxScroll = 0
-		}
-		if p.diffPaneScroll > maxScroll {
-			p.diffPaneScroll = maxScroll
-		}
-	} else if p.diffPaneParsedDiff != nil {
-		lines := countParsedDiffLines(p.diffPaneParsedDiff)
-		maxScroll := lines - (p.height - 6)
-		if maxScroll < 0 {
-			maxScroll = 0
-		}
-		if p.diffPaneScroll > maxScroll {
-			p.diffPaneScroll = maxScroll
-		}
-	}
+	p.clampDiffPaneScroll()
 
 	return p, nil
 }
@@ -566,29 +543,7 @@ func (p *Plugin) handleDiffMouse(msg tea.MouseMsg) (*Plugin, tea.Cmd) {
 
 	case mouse.ActionScrollUp, mouse.ActionScrollDown:
 		p.diffScroll += action.Delta
-		if p.diffScroll < 0 {
-			p.diffScroll = 0
-		}
-		// Clamp to max based on content
-		if p.diffViewMode == DiffViewFullFile && p.fullFileDiff != nil {
-			lines := p.fullFileDiff.TotalLines()
-			maxScroll := lines - (p.height - 4)
-			if maxScroll < 0 {
-				maxScroll = 0
-			}
-			if p.diffScroll > maxScroll {
-				p.diffScroll = maxScroll
-			}
-		} else {
-			lines := countLines(p.diffContent)
-			maxScroll := lines - (p.height - 4) // Account for header + border
-			if maxScroll < 0 {
-				maxScroll = 0
-			}
-			if p.diffScroll > maxScroll {
-				p.diffScroll = maxScroll
-			}
-		}
+		p.clampDiffScroll()
 
 	case mouse.ActionScrollLeft, mouse.ActionScrollRight:
 		// Horizontal scroll for side-by-side view
