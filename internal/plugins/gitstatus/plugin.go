@@ -90,6 +90,8 @@ type Plugin struct {
 	previewCommit       *Commit // Commit being previewed in right pane
 	previewCommitCursor int     // Cursor for file list in preview
 	previewCommitScroll int     // Scroll offset for preview content
+	commitBodyExpanded  bool    // Whether full commit message is shown
+	commitBodyScroll    int     // Scroll offset within expanded commit body
 
 	// Diff state (for full-screen diff view)
 	diffContent         string
@@ -661,6 +663,8 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 		p.previewCommit = msg.Commit
 		p.previewCommitCursor = 0
 		p.previewCommitScroll = 0
+		p.commitBodyExpanded = false
+		p.commitBodyScroll = 0
 		// Copy stats to the commit in the list for inline display
 		if msg.Commit != nil {
 			for _, c := range p.recentCommits {
