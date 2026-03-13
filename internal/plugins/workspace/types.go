@@ -176,15 +176,6 @@ var PrintModeArgs = map[AgentType][]string{
 	AgentCodex:  {"exec", "-"},         // codex exec -: "-" reads prompt from stdin (convention), prints to stdout
 }
 
-// PrintModeArgs maps agent types to their non-interactive/print mode CLI arguments.
-// Agents with print mode can generate output to stdout without an interactive session.
-// Only agents that support true non-interactive one-shot output are included.
-// Values are passed as arguments to exec.Command after the agent binary name.
-var PrintModeArgs = map[AgentType][]string{
-	AgentClaude: {"-p"},
-	AgentCodex:  {"exec", "-"},
-}
-
 // AgentDisplayNames provides human-readable names for agent types.
 var AgentDisplayNames = map[AgentType]string{
 	AgentNone:     "None (attach only)",
