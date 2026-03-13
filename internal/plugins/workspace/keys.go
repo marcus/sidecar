@@ -655,21 +655,23 @@ func (p *Plugin) handleListKeys(msg tea.KeyMsg) tea.Cmd {
 			p.applyKanbanSelectionChange(oldShellSelected, oldShellIdx, oldWorktreeIdx)
 		}
 		// Enter interactive mode (tmux input passthrough) - feature gated
-		// Works from sidebar for selected shell/worktree with active session
-		// Handle orphaned worktrees: start new agent instead of silently returning nil
-		if !p.shellSelected {
-			wt := p.selectedWorktree()
-			if wt != nil && wt.IsOrphaned && wt.Agent == nil {
-				wt.IsOrphaned = false
-				agentType := p.resolveWorktreeAgentType(wt)
-				return p.StartAgent(wt, agentType)
+		// Only from Output tab or sidebar — Diff/Task tabs have no terminal to attach to.
+		if p.activePane != PanePreview || p.previewTab == PreviewTabOutput {
+			// Handle orphaned worktrees: start new agent instead of silently returning nil
+			if !p.shellSelected {
+				wt := p.selectedWorktree()
+				if wt != nil && wt.IsOrphaned && wt.Agent == nil {
+					wt.IsOrphaned = false
+					agentType := p.resolveWorktreeAgentType(wt)
+					return p.StartAgent(wt, agentType)
+				}
 			}
+			if cmd := p.enterInteractiveMode(); cmd != nil {
+				return cmd
+			}
+			// Interactive mode couldn't start — at least load content for the selection
+			return p.loadSelectedContent()
 		}
-		if cmd := p.enterInteractiveMode(); cmd != nil {
-			return cmd
-		}
-		// Interactive mode couldn't start — at least load content for the selection
-		return p.loadSelectedContent()
 	case "t":
 		// Attach to tmux session
 		// Shell entry: attach to selected shell session
@@ -780,7 +782,10 @@ func (p *Plugin) handleListKeys(msg tea.KeyMsg) tea.Cmd {
 		return func() tea.Msg { return RefreshMsg{} }
 	case "i":
 		// Legacy shortcut for interactive mode (enter is now primary)
-		return p.enterInteractiveMode()
+		// Only from Output tab or sidebar — Diff/Task tabs have no terminal.
+		if p.activePane != PanePreview || p.previewTab == PreviewTabOutput {
+			return p.enterInteractiveMode()
+		}
 	case "v":
 		// In preview pane on diff tab: cycle view mode
 		if p.activePane == PanePreview && p.previewTab == PreviewTabDiff {
@@ -958,8 +963,9 @@ func (p *Plugin) handleListKeys(msg tea.KeyMsg) tea.Cmd {
 		}
 	default:
 		// Unhandled key in preview pane - flash to indicate attach is needed
-		// Only flash if there's something to attach to (shell or worktree with agent)
-		if p.activePane == PanePreview {
+		// Only flash on the Output tab where there's a terminal to attach to.
+		// Diff and Task tabs have no interactive terminal.
+		if p.activePane == PanePreview && p.previewTab == PreviewTabOutput {
 			canAttach := p.shellSelected || (p.selectedWorktree() != nil && p.selectedWorktree().Agent != nil)
 			if canAttach {
 				p.flashPreviewTime = time.Now()
