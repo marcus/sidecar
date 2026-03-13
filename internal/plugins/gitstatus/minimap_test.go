@@ -250,7 +250,7 @@ func TestSlotLineRange(t *testing.T) {
 	}
 
 	// Edge: slot beyond file — should clamp.
-	s, e = slotLineRange(25, 5.0, 100)
+	s, _ = slotLineRange(25, 5.0, 100)
 	if s >= 100 {
 		t.Errorf("slot 25: start=%d should be clamped < 100", s)
 	}
