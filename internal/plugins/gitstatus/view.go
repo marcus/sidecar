@@ -71,7 +71,23 @@ func (p *Plugin) renderDiffModal() string {
 		switch p.diffViewMode {
 		case DiffViewFullFile:
 			if p.fullFileDiff != nil {
-				sb.WriteString(RenderFullFileSideBySide(p.fullFileDiff, contentWidth, p.diffScroll, visibleLines, p.diffHorizOff, highlighter, p.diffWrapEnabled))
+				diffW := contentWidth - MinimapWidth
+				mmStr := ""
+				if !p.diffWrapEnabled {
+					mmStr = RenderMinimap(p.fullFileDiff, p.diffScroll, visibleLines, visibleLines)
+				}
+				if mmStr != "" && diffW >= 30 {
+					diffStr := RenderFullFileSideBySide(p.fullFileDiff, diffW, p.diffScroll, visibleLines, p.diffHorizOff, highlighter, p.diffWrapEnabled)
+					sb.WriteString(lipgloss.JoinHorizontal(lipgloss.Top, diffStr, mmStr))
+					mmX := 2 + contentWidth - MinimapWidth
+					mmH := visibleLines
+					if total := len(p.fullFileDiff.Lines); total < mmH {
+						mmH = total
+					}
+					p.mouseHandler.HitMap.AddRect(regionMinimap, mmX, 3, MinimapWidth, mmH, nil)
+				} else {
+					sb.WriteString(RenderFullFileSideBySide(p.fullFileDiff, contentWidth, p.diffScroll, visibleLines, p.diffHorizOff, highlighter, p.diffWrapEnabled))
+				}
 			} else {
 				sb.WriteString(styles.Muted.Render("Loading full file..."))
 			}
@@ -226,7 +242,24 @@ func (p *Plugin) renderFullDiffContent(visibleHeight int) string {
 	switch p.diffViewMode {
 	case DiffViewFullFile:
 		if p.fullFileDiff != nil {
-			diffContent = RenderFullFileSideBySide(p.fullFileDiff, diffWidth, p.diffScroll, contentHeight, p.diffHorizOff, highlighter, p.diffWrapEnabled)
+			diffW := diffWidth - MinimapWidth
+			mmStr := ""
+			if !p.diffWrapEnabled {
+				mmStr = RenderMinimap(p.fullFileDiff, p.diffScroll, contentHeight, contentHeight)
+			}
+			if mmStr != "" && diffW >= 30 {
+				diffContent = RenderFullFileSideBySide(p.fullFileDiff, diffW, p.diffScroll, contentHeight, p.diffHorizOff, highlighter, p.diffWrapEnabled)
+				diffContent = lipgloss.JoinHorizontal(lipgloss.Top, diffContent, mmStr)
+				diffX := p.sidebarWidth + dividerWidth
+				mmX := diffX + 2 + diffWidth - MinimapWidth
+				mmH := contentHeight
+				if total := len(p.fullFileDiff.Lines); total < mmH {
+					mmH = total
+				}
+				p.mouseHandler.HitMap.AddRect(regionMinimap, mmX, 3, MinimapWidth, mmH, nil)
+			} else {
+				diffContent = RenderFullFileSideBySide(p.fullFileDiff, diffWidth, p.diffScroll, contentHeight, p.diffHorizOff, highlighter, p.diffWrapEnabled)
+			}
 		} else {
 			diffContent = styles.Muted.Render("Loading full file...")
 		}
@@ -244,8 +277,8 @@ func (p *Plugin) renderFullDiffContent(visibleHeight int) string {
 		}
 	}
 
-	// Truncate lines to prevent wrapping (skip when wrap is enabled)
-	if !p.diffWrapEnabled {
+	// Truncate lines to prevent wrapping (skip when wrap is enabled and not full-file with minimap)
+	if !p.diffWrapEnabled && p.diffViewMode != DiffViewFullFile {
 		lines := strings.Split(diffContent, "\n")
 		for i, line := range lines {
 			if lipgloss.Width(line) > diffWidth {

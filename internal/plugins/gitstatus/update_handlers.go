@@ -469,6 +469,7 @@ func (p *Plugin) updateStatusDiffPane(msg tea.KeyMsg) (plugin.Plugin, tea.Cmd) {
 
 	case "j", "down":
 		p.diffPaneScroll++
+		p.clampDiffPaneScroll()
 
 	case "k", "up":
 		if p.diffPaneScroll > 0 {
@@ -724,6 +725,7 @@ func (p *Plugin) updateDiff(msg tea.KeyMsg) (plugin.Plugin, tea.Cmd) {
 
 	case "j", "down":
 		p.diffScroll++
+		p.clampDiffScroll()
 
 	case "k", "up":
 		if p.diffScroll > 0 {

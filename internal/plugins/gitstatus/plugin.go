@@ -500,8 +500,20 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 		// Only update if this is still the selected file
 		if msg.File == p.selectedDiffFile {
 			p.diffPaneParsedDiff = msg.Parsed
-			// Clamp scroll to new content length (diff may have shrunk after stage/unstage)
-			if p.diffPaneParsedDiff != nil {
+			// Clamp scroll to new content length (diff may have shrunk after stage/unstage).
+			// In full-file view mode, clamp against the full-file line count (which includes
+			// all context lines), not the parsed hunk-only count. Otherwise the watcher
+			// refresh cycle snaps scroll back to a much smaller value.
+			if p.diffPaneViewMode == DiffViewFullFile && p.diffPaneFullFileDiff != nil {
+				lines := p.diffPaneFullFileDiff.TotalLines()
+				maxScroll := lines - (p.height - 6)
+				if maxScroll < 0 {
+					maxScroll = 0
+				}
+				if p.diffPaneScroll > maxScroll {
+					p.diffPaneScroll = maxScroll
+				}
+			} else if p.diffPaneParsedDiff != nil {
 				lines := countParsedDiffLines(p.diffPaneParsedDiff)
 				maxScroll := lines - (p.height - 6)
 				if maxScroll < 0 {
@@ -533,10 +545,30 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 		if msg.ForInline {
 			if msg.File == p.selectedDiffFile {
 				p.diffPaneFullFileDiff = ffd
+				// Clamp scroll if new content is shorter (file changed during reload)
+				if ffd != nil {
+					maxScroll := ffd.TotalLines() - (p.height - 6)
+					if maxScroll < 0 {
+						maxScroll = 0
+					}
+					if p.diffPaneScroll > maxScroll {
+						p.diffPaneScroll = maxScroll
+					}
+				}
 			}
 		} else {
 			if msg.File == p.diffFile {
 				p.fullFileDiff = ffd
+				// Clamp scroll if new content is shorter
+				if ffd != nil {
+					maxScroll := ffd.TotalLines() - (p.height - 2)
+					if maxScroll < 0 {
+						maxScroll = 0
+					}
+					if p.diffScroll > maxScroll {
+						p.diffScroll = maxScroll
+					}
+				}
 			}
 		}
 		return p, nil
