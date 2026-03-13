@@ -27,7 +27,7 @@ func isBackgroundRegion(regionID string) bool {
 		regionWorktreeItem, regionPreviewTab,
 		regionCreateWorktreeButton, regionShellsPlusButton, regionWorkspacesPlusButton,
 		regionKanbanCard, regionKanbanColumn, regionViewToggle,
-		regionDiffTabDivider:
+		regionDiffTabDivider, regionTermPanelDivider, regionTermPanelContent:
 		return true
 	default:
 		return false
@@ -470,17 +470,38 @@ func (p *Plugin) handleMouseClick(action mouse.MouseAction) tea.Cmd {
 		return nil
 	}
 
-	// Exit interactive mode when clicking outside preview pane (td-80d96956)
-	if p.viewMode == ViewModeInteractive && action.Region.ID != regionPreviewPane {
-		p.exitInteractiveMode()
-		// Continue to handle the click normally
-	}
-	if p.viewMode == ViewModeInteractive && action.Region.ID == regionPreviewPane {
-		p.activePane = PanePreview
-		if p.interactiveState != nil && p.interactiveState.Active && !p.interactiveState.MouseReportingEnabled {
-			return p.prepareInteractiveDrag(action)
+	// Interactive mode: seamless pane switching between agent and terminal panel
+	if p.viewMode == ViewModeInteractive {
+		switch action.Region.ID {
+		case regionTermPanelContent:
+			p.activePane = PanePreview
+			if p.interactiveState != nil && !p.interactiveState.TermPanel {
+				// Switch from agent pane to terminal panel
+				p.exitInteractiveMode()
+				return p.enterTermPanelInteractiveMode()
+			}
+			// Already targeting terminal panel — forward click
+			if p.interactiveState != nil && p.interactiveState.Active && !p.interactiveState.MouseReportingEnabled {
+				return p.prepareInteractiveDrag(action)
+			}
+			return tea.Batch(p.forwardClickToTmux(action.X, action.Y), p.pollInteractivePaneImmediate())
+		case regionPreviewPane:
+			p.activePane = PanePreview
+			if p.interactiveState != nil && p.interactiveState.TermPanel {
+				// Switch from terminal panel to agent pane
+				p.exitInteractiveMode()
+				return p.enterInteractiveMode()
+			}
+			// Already targeting agent pane — forward click
+			if p.interactiveState != nil && p.interactiveState.Active && !p.interactiveState.MouseReportingEnabled {
+				return p.prepareInteractiveDrag(action)
+			}
+			return tea.Batch(p.forwardClickToTmux(action.X, action.Y), p.pollInteractivePaneImmediate())
+		default:
+			// Click outside both panes — exit interactive mode
+			p.exitInteractiveMode()
+			// Continue to handle the click normally
 		}
-		return tea.Batch(p.forwardClickToTmux(action.X, action.Y), p.pollInteractivePaneImmediate())
 	}
 
 	switch action.Region.ID {
@@ -497,10 +518,14 @@ func (p *Plugin) handleMouseClick(action mouse.MouseAction) tea.Cmd {
 		p.activePane = PaneSidebar
 	case regionPreviewPane:
 		p.activePane = PanePreview
-		// Single click in preview pane: enter interactive mode if Output tab active (td-7c2016)
-		// This provides seamless terminal integration - click to interact
+		// When terminal panel is visible, single click focuses the agent sub-pane
+		// (double-click enters interactive mode instead)
+		if p.termPanelVisible {
+			p.termPanelFocused = false
+			return nil
+		}
+		// No terminal panel: single click enters interactive mode if Output tab active (td-7c2016)
 		if p.previewTab == PreviewTabOutput {
-			// Check for active session (worktree or shell)
 			if p.shellSelected {
 				shell := p.getSelectedShell()
 				if shell != nil && shell.Agent != nil {
@@ -524,6 +549,14 @@ func (p *Plugin) handleMouseClick(action mouse.MouseAction) tea.Cmd {
 			startWidth = diffTabFileListWidth(p.width)
 		}
 		p.mouseHandler.StartDrag(action.X, action.Y, regionDiffTabDivider, startWidth)
+	case regionTermPanelContent:
+		// Click in terminal panel area - focus the terminal sub-pane (double-click enters interactive)
+		p.activePane = PanePreview
+		p.termPanelFocused = true
+	case regionTermPanelDivider:
+		// Start drag for terminal panel resizing (percentage-based).
+		startSize := p.termPanelEffectiveSize()
+		p.mouseHandler.StartDrag(action.X, action.Y, regionTermPanelDivider, startSize)
 	case regionWorktreeItem:
 		// Click on worktree or shell entry - select it
 		if idx, ok := action.Region.Data.(int); ok {
@@ -569,6 +602,7 @@ func (p *Plugin) handleMouseClick(action mouse.MouseAction) tea.Cmd {
 			prevTab := p.previewTab
 			p.previewTab = PreviewTab(idx)
 			p.previewOffset = 0
+			p.termPanelFocused = false // Reset terminal panel focus when switching tabs
 			p.autoScrollOutput = true
 			p.resetScrollBaseLineCount() // td-f7c8be: clear snapshot when switching tabs
 			if prevTab == PreviewTabOutput && p.previewTab != PreviewTabOutput {
@@ -705,10 +739,16 @@ func (p *Plugin) handleMouseDoubleClick(action mouse.MouseAction) tea.Cmd {
 	}
 
 	switch action.Region.ID {
+	case regionTermPanelContent:
+		// Double-click in terminal panel: enter terminal panel interactive mode
+		p.activePane = PanePreview
+		p.termPanelFocused = true
+		return p.enterTermPanelInteractiveMode()
 	case regionPreviewPane:
 		// Double-click in preview pane: enter interactive mode if Output tab active (td-80d96956)
 		// This provides seamless terminal integration without detaching from sidecar
 		if p.previewTab == PreviewTabOutput {
+			p.termPanelFocused = false
 			// Check for active session (worktree or shell)
 			if p.shellSelected {
 				shell := p.getSelectedShell()
@@ -801,6 +841,16 @@ func (p *Plugin) handleMouseScroll(action mouse.MouseAction) tea.Cmd {
 	switch regionID {
 	case regionSidebar, regionWorktreeItem:
 		return p.scrollSidebar(delta)
+	case regionTermPanelContent:
+		// Scroll terminal panel output directly (position-based, not focus-based)
+		if delta < 0 {
+			p.termPanelScroll++
+		} else {
+			if p.termPanelScroll > 0 {
+				p.termPanelScroll--
+			}
+		}
+		return nil
 	case regionPreviewPane:
 		return p.scrollPreview(delta)
 	case regionKanbanCard, regionKanbanColumn:
@@ -973,6 +1023,30 @@ func (p *Plugin) handleMouseDrag(action mouse.MouseAction) tea.Cmd {
 			newWidth = maxW
 		}
 		p.diffTabListWidth = newWidth
+	case regionTermPanelDivider:
+		// Calculate new terminal panel size based on drag (percentage-based).
+		startValue := p.mouseHandler.DragStartValue()
+		if p.termPanelLayout == TermPanelRight && p.width > 0 {
+			// Right layout: drag horizontally, delta in X affects width %
+			newSize := startValue - (action.DragDX * 100 / p.width)
+			if newSize < termPanelMinSize {
+				newSize = termPanelMinSize
+			}
+			if newSize > termPanelMaxSize {
+				newSize = termPanelMaxSize
+			}
+			p.termPanelSize = newSize
+		} else if p.termPanelLayout != TermPanelRight && p.height > 0 {
+			// Bottom layout: drag vertically, delta in Y affects height %
+			newSize := startValue - (action.DragDY * 100 / p.height)
+			if newSize < termPanelMinSize {
+				newSize = termPanelMinSize
+			}
+			if newSize > termPanelMaxSize {
+				newSize = termPanelMaxSize
+			}
+			p.termPanelSize = newSize
+		}
 	case regionPreviewPane:
 		if p.viewMode == ViewModeInteractive && p.interactiveState != nil && p.interactiveState.Active &&
 			!p.interactiveState.MouseReportingEnabled {
@@ -997,6 +1071,10 @@ func (p *Plugin) handleMouseDragEnd() tea.Cmd {
 	switch p.lastDragRegion {
 	case regionDiffTabDivider:
 		_ = state.SetDiffTabFileListWidth(p.diffTabListWidth)
+	case regionTermPanelDivider:
+		_ = state.SetTermPanelSize(p.termPanelSize)
+		// Resize both panes after drag-to-resize
+		return tea.Batch(p.resizeTermPanelPaneCmd(), p.resizeSelectedPaneCmd())
 	default:
 		_ = state.SetWorkspaceSidebarWidth(p.sidebarWidth)
 	}

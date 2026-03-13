@@ -90,6 +90,10 @@ const (
 	// Diff tab pane divider (for drag-to-resize file list vs diff viewer)
 	regionDiffTabDivider = "diff-tab-divider"
 
+	// Terminal panel divider (for drag-to-resize output vs terminal panel)
+	regionTermPanelDivider  = "term-panel-divider"
+	regionTermPanelContent  = "term-panel-content"
+
 	// Type selector modal element IDs
 	typeSelectorListID       = "type-selector-list"
 	typeSelectorInputID      = "type-selector-name-input"
@@ -184,6 +188,17 @@ type Plugin struct {
 	commitFileScroll   int                     // Scroll offset in commit file list
 	commitFileDiffRaw  string                  // Raw diff for selected commit file
 	commitFileParsed   *gitstatus.ParsedDiff   // Parsed diff for selected commit file
+
+	// Terminal panel state (Ctrl+T toggle)
+	termPanelVisible    bool            // Whether the terminal panel is shown
+	termPanelLayout     TermPanelLayout // Bottom or right split
+	termPanelSize       int             // Split size in percentage (0 = use default 50%)
+	termPanelSession    string          // Tmux session name for the terminal panel
+	termPanelPaneID     string          // Tmux pane ID for resize operations
+	termPanelOutput     *OutputBuffer   // Captured output from the terminal session
+	termPanelScroll     int             // Scroll offset in terminal panel output
+	termPanelGeneration int             // Incremented on toggle to invalidate stale poll timers
+	termPanelFocused    bool            // Whether the terminal panel sub-pane is focused (vs agent output)
 
 	// File picker modal state (gf command)
 	filePickerIdx int // Selected file index in picker
@@ -400,6 +415,10 @@ func (p *Plugin) Init(ctx *plugin.Context) error {
 		p.tmuxCaptureMaxBytes = ctx.Config.Plugins.Workspace.TmuxCaptureMaxBytes
 	}
 
+	// Reset terminal panel state for reinit (sessions are preserved in tmux)
+	p.cleanupTermPanelSession()
+	p.termPanelGeneration++
+
 	// Reset agent-related state for clean reinit (important for project switching)
 	// Without this, reconnectAgents() won't run again after switching projects
 	p.initialReconnectDone = false
@@ -481,6 +500,18 @@ func (p *Plugin) Init(ctx *plugin.Context) error {
 		p.diffTabListWidth = savedWidth
 	}
 
+	// Load saved terminal panel preferences
+	if savedSize := state.GetTermPanelSize(); savedSize > 0 {
+		p.termPanelSize = savedSize
+	}
+	if layout := state.GetTermPanelLayout(); layout == "right" {
+		p.termPanelLayout = TermPanelRight
+	}
+	// Restore terminal panel visibility from last session
+	if state.GetTermPanelVisible() {
+		p.termPanelVisible = true
+	}
+
 	// Load saved diff view mode
 	switch state.GetWorkspaceDiffMode() {
 	case "side-by-side":
@@ -545,6 +576,9 @@ func (p *Plugin) listenForShellManifestChanges() tea.Cmd {
 
 // Stop cleans up plugin resources.
 func (p *Plugin) Stop() {
+	// Clean up terminal panel tmux session
+	p.cleanupTermPanelSession()
+
 	// Stop shell watcher (td-f88fdd)
 	if p.shellWatcher != nil {
 		p.shellWatcher.Stop()
@@ -1045,6 +1079,7 @@ func (p *Plugin) cyclePreviewTab(delta int) tea.Cmd {
 	prevTab := p.previewTab
 	p.previewTab = PreviewTab((int(p.previewTab) + delta + 3) % 3)
 	p.previewOffset = 0
+	p.termPanelFocused = false   // Reset terminal panel focus when switching tabs
 	p.autoScrollOutput = true    // Reset auto-scroll when switching tabs
 	p.resetScrollBaseLineCount() // td-f7c8be: clear snapshot when switching tabs
 
@@ -1104,6 +1139,17 @@ func (p *Plugin) loadSelectedContent() tea.Cmd {
 	if cmd := p.pollSelectedAgentNowIfVisible(); cmd != nil {
 		cmds = append(cmds, cmd)
 	}
+
+	// Refresh terminal panel session if selection changed, and resize it
+	if cmd := p.refreshTermPanelForSelection(); cmd != nil {
+		cmds = append(cmds, cmd)
+	} else if p.termPanelVisible {
+		// Session unchanged — still resize to match current split dimensions
+		if cmd := p.resizeTermPanelPaneCmd(); cmd != nil {
+			cmds = append(cmds, cmd)
+		}
+	}
+
 	if len(cmds) == 0 {
 		return nil
 	}

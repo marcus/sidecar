@@ -159,6 +159,25 @@ func (p *Plugin) Commands() []plugin.Command {
 					)
 				}
 			}
+			// Terminal panel toggle (show on Output tab when an agent or shell is active)
+			if p.previewTab == PreviewTabOutput || p.shellSelected {
+				termName := "Term"
+				if p.termPanelVisible {
+					termName = "Hide"
+				}
+				cmds = append(cmds,
+					plugin.Command{ID: "toggle-terminal", Name: termName, Description: "Toggle terminal panel", Context: "workspace-preview", Priority: 16},
+				)
+				if p.termPanelVisible {
+					layoutName := "Right"
+					if p.termPanelLayout == TermPanelRight {
+						layoutName = "Bottom"
+					}
+					cmds = append(cmds,
+						plugin.Command{ID: "switch-terminal-layout", Name: layoutName, Description: "Switch terminal layout", Context: "workspace-preview", Priority: 17},
+					)
+				}
+			}
 			return cmds
 		}
 
@@ -230,6 +249,23 @@ func (p *Plugin) Commands() []plugin.Command {
 					plugin.Command{ID: "link-task", Name: "Task", Description: "Link task", Context: "workspace-list", Priority: 8},
 				)
 			}
+		}
+		// Terminal panel toggle (available from sidebar too)
+		termName := "Term"
+		if p.termPanelVisible {
+			termName = "Hide"
+		}
+		cmds = append(cmds,
+			plugin.Command{ID: "toggle-terminal", Name: termName, Description: "Toggle terminal panel", Context: "workspace-list", Priority: 17},
+		)
+		if p.termPanelVisible {
+			layoutName := "Right"
+			if p.termPanelLayout == TermPanelRight {
+				layoutName = "Bottom"
+			}
+			cmds = append(cmds,
+				plugin.Command{ID: "switch-terminal-layout", Name: layoutName, Description: "Switch terminal layout", Context: "workspace-list", Priority: 18},
+			)
 		}
 		return cmds
 	}
