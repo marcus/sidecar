@@ -1,6 +1,7 @@
 package gitstatus
 
 import (
+	"log/slog"
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
@@ -78,6 +79,17 @@ func (p *Plugin) renderDiffModal() string {
 				}
 				if mmStr != "" && diffW >= 30 {
 					diffStr := RenderFullFileSideBySide(p.fullFileDiff, diffW, p.diffScroll, visibleLines, p.diffHorizOff, highlighter, p.diffWrapEnabled)
+					diffLines := strings.Count(diffStr, "\n")
+					mmLines := strings.Count(mmStr, "\n")
+					slog.Debug("minimap join modal",
+						"diffLines", diffLines,
+						"mmLines", mmLines,
+						"visibleLines", visibleLines,
+						"diffScroll", p.diffScroll,
+						"totalLines", len(p.fullFileDiff.Lines),
+						"paneHeight", paneHeight,
+						"height", p.height,
+					)
 					sb.WriteString(lipgloss.JoinHorizontal(lipgloss.Top, diffStr, mmStr))
 					mmX := 2 + contentWidth - MinimapWidth
 					mmH := visibleLines
@@ -249,6 +261,18 @@ func (p *Plugin) renderFullDiffContent(visibleHeight int) string {
 			}
 			if mmStr != "" && diffW >= 30 {
 				diffContent = RenderFullFileSideBySide(p.fullFileDiff, diffW, p.diffScroll, contentHeight, p.diffHorizOff, highlighter, p.diffWrapEnabled)
+				diffLines := strings.Count(diffContent, "\n")
+				mmLines := strings.Count(mmStr, "\n")
+				slog.Debug("minimap join twopane",
+					"diffLines", diffLines,
+					"mmLines", mmLines,
+					"contentHeight", contentHeight,
+					"diffScroll", p.diffScroll,
+					"totalLines", len(p.fullFileDiff.Lines),
+					"visibleHeight", visibleHeight,
+					"diffW", diffW,
+					"diffPaneWidth", p.diffPaneWidth,
+				)
 				diffContent = lipgloss.JoinHorizontal(lipgloss.Top, diffContent, mmStr)
 				diffX := p.sidebarWidth + dividerWidth
 				mmX := diffX + 2 + diffWidth - MinimapWidth
