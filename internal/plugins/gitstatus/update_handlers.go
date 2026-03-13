@@ -481,42 +481,17 @@ func (p *Plugin) updateStatusDiffPane(msg tea.KeyMsg) (plugin.Plugin, tea.Cmd) {
 		p.diffPaneHorizScroll = 0
 
 	case "G":
+		// Jump to end — set scroll high and let clamp fix it.
 		if p.diffPaneViewMode == DiffViewFullFile && p.diffPaneFullFileDiff != nil {
-			lines := p.diffPaneFullFileDiff.TotalLines()
-			maxScroll := lines - (p.height - 6)
-			if maxScroll > 0 {
-				p.diffPaneScroll = maxScroll
-			}
+			p.diffPaneScroll = p.diffPaneFullFileDiff.TotalLines()
 		} else if p.diffPaneParsedDiff != nil {
-			lines := countParsedDiffLines(p.diffPaneParsedDiff)
-			maxScroll := lines - (p.height - 6)
-			if maxScroll > 0 {
-				p.diffPaneScroll = maxScroll
-			}
+			p.diffPaneScroll = countParsedDiffLines(p.diffPaneParsedDiff)
 		}
+		p.clampDiffPaneScroll()
 
 	case "ctrl+d":
 		p.diffPaneScroll += 10
-		// Clamp to max
-		if p.diffPaneViewMode == DiffViewFullFile && p.diffPaneFullFileDiff != nil {
-			lines := p.diffPaneFullFileDiff.TotalLines()
-			maxScroll := lines - (p.height - 6)
-			if maxScroll < 0 {
-				maxScroll = 0
-			}
-			if p.diffPaneScroll > maxScroll {
-				p.diffPaneScroll = maxScroll
-			}
-		} else if p.diffPaneParsedDiff != nil {
-			lines := countParsedDiffLines(p.diffPaneParsedDiff)
-			maxScroll := lines - (p.height - 6)
-			if maxScroll < 0 {
-				maxScroll = 0
-			}
-			if p.diffPaneScroll > maxScroll {
-				p.diffPaneScroll = maxScroll
-			}
-		}
+		p.clampDiffPaneScroll()
 
 	case "ctrl+u":
 		p.diffPaneScroll -= 10
@@ -737,19 +712,13 @@ func (p *Plugin) updateDiff(msg tea.KeyMsg) (plugin.Plugin, tea.Cmd) {
 		p.diffHorizOff = 0
 
 	case "G":
+		// Jump to end — set scroll high and let clamp fix it.
 		if p.diffViewMode == DiffViewFullFile && p.fullFileDiff != nil {
-			lines := p.fullFileDiff.TotalLines()
-			maxScroll := lines - (p.height - 2)
-			if maxScroll > 0 {
-				p.diffScroll = maxScroll
-			}
+			p.diffScroll = p.fullFileDiff.TotalLines()
 		} else {
-			lines := countLines(p.diffContent)
-			maxScroll := lines - (p.height - 2)
-			if maxScroll > 0 {
-				p.diffScroll = maxScroll
-			}
+			p.diffScroll = countLines(p.diffContent)
 		}
+		p.clampDiffScroll()
 
 	case "v":
 		// Cycle view mode (unified → side-by-side → full-file)
@@ -830,26 +799,7 @@ func (p *Plugin) updateDiff(msg tea.KeyMsg) (plugin.Plugin, tea.Cmd) {
 	case "ctrl+d":
 		// Page down (~10 lines)
 		p.diffScroll += 10
-		// Clamp to max
-		if p.diffViewMode == DiffViewFullFile && p.fullFileDiff != nil {
-			lines := p.fullFileDiff.TotalLines()
-			maxScroll := lines - (p.height - 2)
-			if maxScroll < 0 {
-				maxScroll = 0
-			}
-			if p.diffScroll > maxScroll {
-				p.diffScroll = maxScroll
-			}
-		} else {
-			lines := countLines(p.diffContent)
-			maxScroll := lines - (p.height - 2)
-			if maxScroll < 0 {
-				maxScroll = 0
-			}
-			if p.diffScroll > maxScroll {
-				p.diffScroll = maxScroll
-			}
-		}
+		p.clampDiffScroll()
 
 	case "ctrl+u":
 		// Page up (~10 lines)
