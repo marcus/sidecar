@@ -594,6 +594,11 @@ func (p *Plugin) updateCommitPreviewPane(msg tea.KeyMsg) (plugin.Plugin, tea.Cmd
 		return p, nil
 	}
 
+	// When commit body is expanded, handle scrolling within it
+	if p.commitBodyExpanded {
+		return p.updateCommitBodyExpanded(msg)
+	}
+
 	switch msg.String() {
 	case "esc", "h", "left":
 		// Return to sidebar
@@ -610,6 +615,10 @@ func (p *Plugin) updateCommitPreviewPane(msg tea.KeyMsg) (plugin.Plugin, tea.Cmd
 		if p.previewCommitCursor > 0 {
 			p.previewCommitCursor--
 			p.ensurePreviewCursorVisible()
+		} else if c.Body != "" {
+			// At top of file list — expand commit body
+			p.commitBodyExpanded = true
+			p.commitBodyScroll = 0
 		}
 
 	case "g":
@@ -668,6 +677,51 @@ func (p *Plugin) updateCommitPreviewPane(msg tea.KeyMsg) (plugin.Plugin, tea.Cmd
 		if p.previewCommitCursor < len(c.Files) {
 			file := c.Files[p.previewCommitCursor]
 			return p, p.openInFileBrowser(file.Path)
+		}
+	}
+
+	return p, nil
+}
+
+// updateCommitBodyExpanded handles keys when the full commit message is expanded.
+func (p *Plugin) updateCommitBodyExpanded(msg tea.KeyMsg) (plugin.Plugin, tea.Cmd) {
+	c := p.previewCommit
+	bodyLines := strings.Split(strings.TrimSpace(c.Body), "\n")
+	totalLines := len(bodyLines)
+	bodyHeight := p.commitBodyHeight()
+
+	maxScroll := totalLines - bodyHeight
+	if maxScroll < 0 {
+		maxScroll = 0
+	}
+
+	switch msg.String() {
+	case "esc", "j", "down":
+		// Collapse and return to file list
+		p.commitBodyExpanded = false
+		p.commitBodyScroll = 0
+
+	case "k", "up":
+		if p.commitBodyScroll > 0 {
+			p.commitBodyScroll--
+		}
+
+	case "g":
+		p.commitBodyScroll = 0
+
+	case "G":
+		p.commitBodyScroll = maxScroll
+
+	case "ctrl+u":
+		p.commitBodyScroll -= bodyHeight / 2
+		if p.commitBodyScroll < 0 {
+			p.commitBodyScroll = 0
+		}
+
+	case "ctrl+d":
+		p.commitBodyScroll += bodyHeight / 2
+		if p.commitBodyScroll > maxScroll {
+			p.commitBodyScroll = maxScroll
 		}
 	}
 

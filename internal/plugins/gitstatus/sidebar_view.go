@@ -823,15 +823,63 @@ func (p *Plugin) renderCommitPreview(visibleHeight int) string {
 	sb.WriteString("\n")
 	currentY++
 
-	// Body (if present, truncated)
+	// Body (if present)
 	if c.Body != "" {
 		sb.WriteString("\n")
 		currentY++
 		bodyLines := strings.Split(strings.TrimSpace(c.Body), "\n")
+
+		if p.commitBodyExpanded {
+			// Expanded: show full body with scrolling, same style/position
+			bodyHeight := visibleHeight - currentY + 1
+			if bodyHeight < 3 {
+				bodyHeight = 3
+			}
+
+			// Clamp scroll
+			maxScroll := len(bodyLines) - bodyHeight
+			if maxScroll < 0 {
+				maxScroll = 0
+			}
+			if p.commitBodyScroll > maxScroll {
+				p.commitBodyScroll = maxScroll
+			}
+
+			start := p.commitBodyScroll
+			end := start + bodyHeight
+			if end > len(bodyLines) {
+				end = len(bodyLines)
+			}
+
+			for i := start; i < end; i++ {
+				line := bodyLines[i]
+				if maxWidth > 5 && len(line) > maxWidth-2 {
+					line = line[:maxWidth-5] + "..."
+				}
+				sb.WriteString(styles.Muted.Render(line))
+				sb.WriteString("\n")
+				currentY++
+			}
+
+			// Separator + hint at bottom
+			separator := lipgloss.NewStyle().Foreground(styles.BorderNormal)
+			sb.WriteString(separator.Render(strings.Repeat("─", maxWidth)))
+			sb.WriteString("\n")
+			if len(bodyLines) > bodyHeight {
+				scrollInfo := fmt.Sprintf("[%d-%d / %d] esc/j to close", start+1, end, len(bodyLines))
+				sb.WriteString(styles.Muted.Render(scrollInfo))
+			} else {
+				sb.WriteString(styles.Muted.Render("esc/j to close"))
+			}
+
+			return sb.String()
+		}
+
+		// Collapsed: show first 3 lines
 		maxBodyLines := 3
 		for i, line := range bodyLines {
 			if i >= maxBodyLines {
-				sb.WriteString(styles.Muted.Render("..."))
+				sb.WriteString(styles.Muted.Render("... ↑ for full message"))
 				sb.WriteString("\n")
 				currentY++
 				break

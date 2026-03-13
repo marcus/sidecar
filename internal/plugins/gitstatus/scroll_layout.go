@@ -7,6 +7,25 @@ import (
 )
 
 
+// commitBodyHeight returns the number of visible lines available for the expanded
+// commit body, matching the calculation in renderCommitPreview.
+func (p *Plugin) commitBodyHeight() int {
+	// renderCommitPreview receives visibleHeight = p.height - 2 (pane borders only)
+	visibleHeight := p.height - 2
+	if visibleHeight < 6 {
+		visibleHeight = 6
+	}
+	// currentY at the point body starts rendering:
+	// 1 (initial) + 2 (hash + blank) + 1 (author) + 2 (date + blank) + 1 (subject) + 1 (blank before body)
+	headerLines := 8
+	// bodyHeight = visibleHeight - currentY + 1
+	h := visibleHeight - headerLines + 1
+	if h < 3 {
+		h = 3
+	}
+	return h
+}
+
 // ensurePreviewCursorVisible adjusts scroll to keep commit preview cursor visible.
 func (p *Plugin) ensurePreviewCursorVisible() {
 	// Estimate visible file rows (rough - matches renderCommitPreview calculation)
