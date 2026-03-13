@@ -270,7 +270,12 @@ func (p *Plugin) renderDiffTabFileList(width, height int) string {
 			sb.WriteString(styles.ListItemSelected.Render(plainLine))
 		} else if selected {
 			// Selected but file list not focused - subtle highlight
-			sb.WriteString(styles.Muted.Render(statusIcon+" ") + styles.Body.Render(fileName) + " " + styles.Muted.Render(statsStr))
+			styledLine := styles.Muted.Render(statusIcon+" ") + styles.Body.Render(fileName) + " " + styles.Muted.Render(statsStr)
+			lineWidth := lipgloss.Width(styledLine)
+			if lineWidth < maxWidth {
+				styledLine += strings.Repeat(" ", maxWidth-lineWidth)
+			}
+			sb.WriteString(styledLine)
 		} else {
 			var statusStyle lipgloss.Style
 			switch statusIcon {
@@ -281,7 +286,12 @@ func (p *Plugin) renderDiffTabFileList(width, height int) string {
 			default:
 				statusStyle = styles.StatusModified
 			}
-			sb.WriteString(statusStyle.Render(statusIcon) + " " + fileName + " " + styles.Muted.Render(statsStr))
+			styledLine := statusStyle.Render(statusIcon) + " " + fileName + " " + styles.Muted.Render(statsStr)
+			lineWidth := lipgloss.Width(styledLine)
+			if lineWidth < maxWidth {
+				styledLine += strings.Repeat(" ", maxWidth-lineWidth)
+			}
+			sb.WriteString(styledLine)
 		}
 		sb.WriteString("\n")
 		linesUsed++
@@ -310,14 +320,6 @@ func (p *Plugin) renderDiffTabFileList(width, height int) string {
 
 			selected := (len(files) + i) == p.diffTabCursor
 
-			// Push indicator
-			var indicator string
-			if commit.Pushed {
-				indicator = styles.DiffAdd.Render("↑") + " "
-			} else {
-				indicator = styles.Muted.Render("○") + " "
-			}
-
 			// Hash + subject
 			hash := commit.Hash
 			if len(hash) > 7 {
@@ -345,7 +347,18 @@ func (p *Plugin) renderDiffTabFileList(width, height int) string {
 				}
 				sb.WriteString(styles.ListItemSelected.Render(plainLine))
 			} else {
-				sb.WriteString(fmt.Sprintf("%s%s %s", indicator, styles.Code.Render(hash), subject))
+				var indicator string
+				if commit.Pushed {
+					indicator = styles.DiffAdd.Render("↑") + " "
+				} else {
+					indicator = styles.Muted.Render("○") + " "
+				}
+				styledLine := fmt.Sprintf("%s%s %s", indicator, styles.Code.Render(hash), subject)
+				lineWidth := lipgloss.Width(styledLine)
+				if lineWidth < maxWidth {
+					styledLine += strings.Repeat(" ", maxWidth-lineWidth)
+				}
+				sb.WriteString(styledLine)
 			}
 			sb.WriteString("\n")
 			linesUsed++
@@ -503,7 +516,12 @@ func (p *Plugin) renderDiffTabCommitPreview(commit CommitStatusInfo, width, heig
 					fileName = "…" + string(fileRunes[len(fileRunes)-keep:])
 				}
 			}
-			sb.WriteString(statusStyle.Render(statusIcon) + " " + fileName)
+			plainLine := fmt.Sprintf("%s %s", statusIcon, fileName)
+			lineWidth := lipgloss.Width(plainLine)
+			if lineWidth < maxWidth {
+				plainLine += strings.Repeat(" ", maxWidth-lineWidth)
+			}
+			sb.WriteString(statusStyle.Render(plainLine))
 			sb.WriteString("\n")
 		}
 		sb.WriteString("\n")
@@ -628,7 +646,12 @@ func (p *Plugin) renderCommitFileList(width, height int) string {
 			default:
 				statusStyle = styles.StatusModified
 			}
-			sb.WriteString(statusStyle.Render(statusIcon) + " " + fileName + " " + styles.Muted.Render(statsStr))
+			plainLine := fmt.Sprintf("%s %s %s", statusIcon, fileName, statsStr)
+			lineWidth := lipgloss.Width(plainLine)
+			if lineWidth < maxWidth {
+				plainLine += strings.Repeat(" ", maxWidth-lineWidth)
+			}
+			sb.WriteString(statusStyle.Render(plainLine))
 		}
 		sb.WriteString("\n")
 	}
