@@ -332,11 +332,22 @@ func (p *Plugin) renderSidebarEntry(entry *FileEntry, selected bool, maxWidth in
 
 	status := statusStyle.Render(string(entry.Status))
 
+	// Build stats string for files with changes
+	statsStr := ""
+	statsPlain := ""
+	if entry.DiffStats.Additions > 0 || entry.DiffStats.Deletions > 0 {
+		statsPlain = fmt.Sprintf("+%d/-%d", entry.DiffStats.Additions, entry.DiffStats.Deletions)
+		statsStr = styles.Muted.Render(statsPlain)
+	}
+
 	// Handle folder entries specially
 	if entry.IsFolder {
 		folderName := entry.Path
 		fileCount := len(entry.Children)
 		countStr := fmt.Sprintf("(%d)", fileCount)
+		if statsPlain != "" {
+			countStr += " " + statsPlain
+		}
 
 		// Only show expand/collapse indicator if folder has children
 		indicator := ""
@@ -365,22 +376,32 @@ func (p *Plugin) renderSidebarEntry(entry *FileEntry, selected bool, maxWidth in
 		return styles.ListItemNormal.Render(fmt.Sprintf("%s %s%s %s", status, indicator, displayName, styles.Muted.Render(countStr)))
 	}
 
-	// Path - truncate if needed
+	// Path - truncate if needed, accounting for stats width
 	path := entry.Path
 	availableWidth := maxWidth - 2 // status + space
+	if statsPlain != "" {
+		availableWidth -= len(statsPlain) + 1 // stats + space before stats
+	}
 	if len(path) > availableWidth && availableWidth > 3 {
 		path = "…" + path[len(path)-availableWidth+1:]
 	}
 
 	if selected {
 		plainLine := fmt.Sprintf("%s %s", string(entry.Status), path)
+		if statsPlain != "" {
+			plainLine += " " + statsPlain
+		}
 		if len(plainLine) < maxWidth {
 			plainLine += strings.Repeat(" ", maxWidth-len(plainLine))
 		}
 		return styles.ListItemSelected.Render(plainLine)
 	}
 
-	return styles.ListItemNormal.Render(fmt.Sprintf("%s %s", status, path))
+	line := fmt.Sprintf("%s %s", status, path)
+	if statsStr != "" {
+		line += " " + statsStr
+	}
+	return styles.ListItemNormal.Render(line)
 }
 
 // renderRecentCommits renders the recent commits section in the sidebar.
@@ -905,22 +926,40 @@ func (p *Plugin) renderCommitPreviewFile(file CommitFile, selected bool, maxWidt
 	}
 	status := statusStyle.Render(string(file.Status))
 
-	// Path - truncate if needed
+	// Build stats string
+	statsStr := ""
+	statsPlain := ""
+	if file.Additions > 0 || file.Deletions > 0 {
+		statsPlain = fmt.Sprintf("+%d/-%d", file.Additions, file.Deletions)
+		statsStr = styles.Muted.Render(statsPlain)
+	}
+
+	// Path - truncate if needed, accounting for stats width
 	path := file.Path
 	pathWidth := maxWidth - 4 // status + spacing
+	if statsPlain != "" {
+		pathWidth -= len(statsPlain) + 1 // stats + space
+	}
 	if len(path) > pathWidth && pathWidth > 3 {
 		path = "…" + path[len(path)-pathWidth+1:]
 	}
 
 	if selected {
 		plainLine := fmt.Sprintf("%s %s", string(file.Status), path)
+		if statsPlain != "" {
+			plainLine += " " + statsPlain
+		}
 		if len(plainLine) < maxWidth {
 			plainLine += strings.Repeat(" ", maxWidth-len(plainLine))
 		}
 		return styles.ListItemSelected.Render(plainLine)
 	}
 
-	return styles.ListItemNormal.Render(fmt.Sprintf("%s %s", status, path))
+	line := fmt.Sprintf("%s %s", status, path)
+	if statsStr != "" {
+		line += " " + statsStr
+	}
+	return styles.ListItemNormal.Render(line)
 }
 
 // truncateStr truncates a string to maxLen characters with ellipsis.
