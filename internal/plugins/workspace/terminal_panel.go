@@ -726,32 +726,6 @@ func (p *Plugin) cleanupTermPanelSession() {
 	p.termPanelOutput = nil
 }
 
-// sendKeyToTermPanel sends a key to the terminal panel's tmux session.
-func (p *Plugin) sendKeyToTermPanel(key string) tea.Cmd {
-	if p.termPanelSession == "" {
-		return nil
-	}
-	sessionName := p.termPanelSession
-	return func() tea.Msg {
-		cmd := exec.Command("tmux", "send-keys", "-t", sessionName, key)
-		_ = cmd.Run()
-		return nil
-	}
-}
-
-// sendLiteralToTermPanel sends literal text to the terminal panel's tmux session.
-func (p *Plugin) sendLiteralToTermPanel(text string) tea.Cmd {
-	if p.termPanelSession == "" {
-		return nil
-	}
-	sessionName := p.termPanelSession
-	return func() tea.Msg {
-		cmd := exec.Command("tmux", "send-keys", "-l", "-t", sessionName, text)
-		_ = cmd.Run()
-		return nil
-	}
-}
-
 // enforceLineWidths ensures every line in content is exactly targetWidth
 // printable characters wide (accounting for ANSI escape sequences).
 // Lines shorter than targetWidth are padded with spaces; lines longer are
