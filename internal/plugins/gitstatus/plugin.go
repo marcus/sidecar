@@ -540,30 +540,14 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 		if msg.ForInline {
 			if msg.File == p.selectedDiffFile {
 				p.diffPaneFullFileDiff = ffd
-				// Clamp scroll if new content is shorter (file changed during reload)
-				if ffd != nil {
-					maxScroll := ffd.TotalLines() - (p.height - 6)
-					if maxScroll < 0 {
-						maxScroll = 0
-					}
-					if p.diffPaneScroll > maxScroll {
-						p.diffPaneScroll = maxScroll
-					}
-				}
+				// Clamp scroll if new content is shorter
+				p.clampDiffPaneScroll()
 			}
 		} else {
 			if msg.File == p.diffFile {
 				p.fullFileDiff = ffd
 				// Clamp scroll if new content is shorter
-				if ffd != nil {
-					maxScroll := ffd.TotalLines() - (p.height - 2)
-					if maxScroll < 0 {
-						maxScroll = 0
-					}
-					if p.diffScroll > maxScroll {
-						p.diffScroll = maxScroll
-					}
-				}
+				p.clampDiffScroll()
 			}
 		}
 		return p, nil
