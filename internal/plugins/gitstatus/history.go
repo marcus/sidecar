@@ -124,7 +124,60 @@ func GetCommitDetail(workDir, hash string) (*Commit, error) {
 		commit.Body = strings.TrimSpace(lines[7])
 	}
 
-	// Get file stats — for merge commits, diff against first parent to avoid empty combined diff
+	// Get file statuses via --name-status (gives us A/D/M/R/C letters)
+	var nameStatusCmd *exec.Cmd
+	if commit.IsMerge && len(commit.ParentHashes) > 0 {
+		nameStatusCmd = gitReadOnly("diff", "--name-status", commit.ParentHashes[0], hash)
+	} else {
+		nameStatusCmd = gitReadOnly("show", "--name-status", "--format=", hash)
+	}
+	nameStatusCmd.Dir = workDir
+	nameStatusOutput, _ := nameStatusCmd.Output()
+
+	// Build path → status map from --name-status output
+	// Format: "M\tpath" or "R100\told\tnew"
+	statusMap := make(map[string]FileStatus)
+	oldPathMap := make(map[string]string)
+	for _, line := range strings.Split(strings.TrimSpace(string(nameStatusOutput)), "\n") {
+		if line == "" {
+			continue
+		}
+		fields := strings.Split(line, "\t")
+		if len(fields) < 2 {
+			continue
+		}
+		statusLetter := fields[0]
+		var filePath string
+		switch {
+		case strings.HasPrefix(statusLetter, "R") || strings.HasPrefix(statusLetter, "C"):
+			// Rename/Copy: "R100\told\tnew" — key by new path
+			if len(fields) >= 3 {
+				filePath = fields[2]
+				oldPathMap[filePath] = fields[1]
+				if statusLetter[0] == 'R' {
+					statusMap[filePath] = StatusRenamed
+				} else {
+					statusMap[filePath] = StatusCopied
+				}
+			}
+		default:
+			filePath = fields[1]
+			switch statusLetter {
+			case "A":
+				statusMap[filePath] = StatusAdded
+			case "D":
+				statusMap[filePath] = StatusDeleted
+			case "M":
+				statusMap[filePath] = StatusModified
+			case "U":
+				statusMap[filePath] = StatusUnmerged
+			default:
+				statusMap[filePath] = StatusModified
+			}
+		}
+	}
+
+	// Get file stats via --numstat (gives us +/- line counts)
 	if commit.IsMerge && len(commit.ParentHashes) > 0 {
 		cmd = gitReadOnly("diff", "--numstat", commit.ParentHashes[0], hash)
 	} else {
@@ -154,17 +207,14 @@ func GetCommitDetail(workDir, hash string) (*Commit, error) {
 			dels, _ = strconv.Atoi(parts[1])
 		}
 
-		// Handle renames: path format is "oldpath => newpath" or "{old => new}path"
+		// Handle renames: numstat path format is "oldpath => newpath" or "{old => new}path"
 		path := parts[2]
 		oldPath := ""
 		status := StatusModified
 
 		if strings.Contains(path, " => ") {
 			status = StatusRenamed
-			// Could be "a => b" or "{a => b}/path"
 			if strings.Contains(path, "{") {
-				// Format: prefix/{old => new}/suffix
-				// For now, just take the whole thing
 				oldPath = path
 			} else {
 				pathParts := strings.Split(path, " => ")
@@ -173,6 +223,14 @@ func GetCommitDetail(workDir, hash string) (*Commit, error) {
 					path = pathParts[1]
 				}
 			}
+		}
+
+		// Override status from --name-status if available (more accurate)
+		if s, ok := statusMap[path]; ok {
+			status = s
+		}
+		if op, ok := oldPathMap[path]; ok {
+			oldPath = op
 		}
 
 		commit.Files = append(commit.Files, CommitFile{
