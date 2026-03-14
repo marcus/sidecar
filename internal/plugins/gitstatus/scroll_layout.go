@@ -1,9 +1,30 @@
 package gitstatus
 
 import (
+	"log/slog"
+
 	tea "github.com/charmbracelet/bubbletea"
 )
 
+
+// commitBodyHeight returns the number of visible lines available for the expanded
+// commit body, matching the calculation in renderCommitPreview.
+func (p *Plugin) commitBodyHeight() int {
+	// renderCommitPreview receives visibleHeight = p.height - 2 (pane borders only)
+	visibleHeight := p.height - 2
+	if visibleHeight < 6 {
+		visibleHeight = 6
+	}
+	// currentY at the point body starts rendering:
+	// 1 (initial) + 2 (hash + blank) + 1 (author) + 2 (date + blank) + 1 (subject) + 1 (blank before body)
+	headerLines := 8
+	// bodyHeight = visibleHeight - currentY + 1
+	h := visibleHeight - headerLines + 1
+	if h < 3 {
+		h = 3
+	}
+	return h
+}
 
 // ensurePreviewCursorVisible adjusts scroll to keep commit preview cursor visible.
 func (p *Plugin) ensurePreviewCursorVisible() {
@@ -207,6 +228,14 @@ func (p *Plugin) ensureCommitVisible(commitIdx int) {
 
 // clampDiffHorizScroll clamps diffHorizOff to valid range based on content width.
 func (p *Plugin) clampDiffHorizScroll() {
+	// In full-file mode, don't clamp using side-by-side metrics — the content
+	// widths are completely different. Let the renderer handle truncation.
+	if p.diffViewMode == DiffViewFullFile {
+		if p.diffHorizOff < 0 {
+			p.diffHorizOff = 0
+		}
+		return
+	}
 	if p.parsedDiff == nil {
 		return
 	}
@@ -228,8 +257,77 @@ func (p *Plugin) clampDiffHorizScroll() {
 	}
 }
 
+// clampDiffScroll clamps the full-screen diff scroll to valid range.
+func (p *Plugin) clampDiffScroll() {
+	if p.diffViewMode == DiffViewFullFile && p.fullFileDiff != nil {
+		lines := p.fullFileDiff.TotalLines()
+		maxScroll := lines - (p.height - 4) // paneHeight-2 (header) = (height-2)-2 = height-4
+		if maxScroll < 0 {
+			maxScroll = 0
+		}
+		before := p.diffScroll
+		if p.diffScroll > maxScroll {
+			p.diffScroll = maxScroll
+		}
+		if before != p.diffScroll {
+			slog.Debug("clampDiffScroll clamped",
+				"before", before,
+				"after", p.diffScroll,
+				"maxScroll", maxScroll,
+				"totalLines", lines,
+				"height", p.height,
+			)
+		}
+	} else {
+		lines := countLines(p.diffContent)
+		maxScroll := lines - (p.height - 4)
+		if maxScroll < 0 {
+			maxScroll = 0
+		}
+		if p.diffScroll > maxScroll {
+			p.diffScroll = maxScroll
+		}
+	}
+	if p.diffScroll < 0 {
+		p.diffScroll = 0
+	}
+}
+
+// clampDiffPaneScroll clamps the sidebar diff pane scroll to valid range.
+func (p *Plugin) clampDiffPaneScroll() {
+	if p.diffPaneViewMode == DiffViewFullFile && p.diffPaneFullFileDiff != nil {
+		lines := p.diffPaneFullFileDiff.TotalLines()
+		maxScroll := lines - (p.height - 4) // visibleHeight-2 (header) = (paneHeight-2)-2 = height-4
+		if maxScroll < 0 {
+			maxScroll = 0
+		}
+		if p.diffPaneScroll > maxScroll {
+			p.diffPaneScroll = maxScroll
+		}
+	} else if p.diffPaneParsedDiff != nil {
+		lines := countParsedDiffLines(p.diffPaneParsedDiff)
+		maxScroll := lines - (p.height - 4)
+		if maxScroll < 0 {
+			maxScroll = 0
+		}
+		if p.diffPaneScroll > maxScroll {
+			p.diffPaneScroll = maxScroll
+		}
+	}
+	if p.diffPaneScroll < 0 {
+		p.diffPaneScroll = 0
+	}
+}
+
 // clampDiffPaneHorizScroll clamps diffPaneHorizScroll to valid range.
 func (p *Plugin) clampDiffPaneHorizScroll() {
+	// In full-file mode, don't clamp using side-by-side metrics.
+	if p.diffPaneViewMode == DiffViewFullFile {
+		if p.diffPaneHorizScroll < 0 {
+			p.diffPaneHorizScroll = 0
+		}
+		return
+	}
 	if p.diffPaneParsedDiff == nil {
 		return
 	}

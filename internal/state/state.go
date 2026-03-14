@@ -19,6 +19,7 @@ type State struct {
 	GitStatusSidebarWidth  int `json:"gitStatusSidebarWidth,omitempty"`
 	ConversationsSideWidth int `json:"conversationsSideWidth,omitempty"`
 	WorkspaceSidebarWidth  int `json:"workspaceSidebarWidth,omitempty"`
+	DiffTabFileListWidth   int `json:"diffTabFileListWidth,omitempty"`
 
 	// Plugin-specific state (keyed by working directory path)
 	FileBrowser  map[string]FileBrowserState `json:"fileBrowser,omitempty"`
@@ -297,6 +298,28 @@ func SetWorkspaceSidebarWidth(width int) error {
 		current = &State{}
 	}
 	current.WorkspaceSidebarWidth = width
+	mu.Unlock()
+	return Save()
+}
+
+// GetDiffTabFileListWidth returns the saved diff tab file list width (in pixels).
+// Returns 0 if no preference is saved (use default).
+func GetDiffTabFileListWidth() int {
+	mu.RLock()
+	defer mu.RUnlock()
+	if current == nil {
+		return 0
+	}
+	return current.DiffTabFileListWidth
+}
+
+// SetDiffTabFileListWidth saves the diff tab file list width (in pixels).
+func SetDiffTabFileListWidth(width int) error {
+	mu.Lock()
+	if current == nil {
+		current = &State{}
+	}
+	current.DiffTabFileListWidth = width
 	mu.Unlock()
 	return Save()
 }

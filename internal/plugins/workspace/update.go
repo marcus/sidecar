@@ -167,11 +167,36 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 			p.diffRaw = msg.Raw
 			// Parse multi-file diff for file headers and navigation
 			p.multiFileDiff = gitstatus.ParseMultiFileDiff(msg.Raw)
+			// Invalidate full-file diff since diff content changed
+			p.fullFileDiff = nil
+			// Clamp cursor if total items changed
+			totalItems := p.diffTabFileCount() + len(p.commitStatusList)
+			if totalItems > 0 && p.diffTabCursor >= totalItems {
+				p.diffTabCursor = totalItems - 1
+			} else if totalItems == 0 {
+				p.diffTabCursor = 0
+			}
+			// Update cached parsed diff AFTER clamping cursor
+			p.diffTabParsedDiff = p.parsedDiffForCurrentFile()
+			// Reload full-file diff if in full-file mode and cursor is on a file
+			if p.diffViewMode == DiffViewFullFile && p.diffTabCursor < p.diffTabFileCount() {
+				cmds = append(cmds, p.loadFullFileDiffForWorkspace())
+			}
 			// Also load commit status for this worktree
 			// Reload if worktree changed OR if cached list is empty (stale/failed previous load)
 			if p.commitStatusWorktree != msg.WorkspaceName || len(p.commitStatusList) == 0 {
 				cmds = append(cmds, p.loadCommitStatus(p.selectedWorktree()))
 			}
+		}
+
+	case FullFileDiffLoadedMsg:
+		if plugin.IsStale(p.ctx, msg) {
+			return p, nil
+		}
+		// Verify both workspace and file match to prevent stale data from a previous cursor position
+		if p.selectedWorktree() != nil && p.selectedWorktree().Name == msg.WorkspaceName &&
+			msg.FilePath == p.selectedDiffTabFile() {
+			p.fullFileDiff = gitstatus.BuildFullFileDiff(msg.OldContent, msg.NewContent, msg.Parsed)
 		}
 
 	case CommitStatusLoadedMsg:
@@ -182,6 +207,47 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 		if msg.Err == nil && p.selectedWorktree() != nil && p.selectedWorktree().Name == msg.WorkspaceName {
 			p.commitStatusList = msg.Commits
 			p.commitStatusWorktree = msg.WorkspaceName
+			// Clamp diff tab cursor if total items changed
+			totalItems := p.diffTabFileCount() + len(p.commitStatusList)
+			if totalItems > 0 && p.diffTabCursor >= totalItems {
+				p.diffTabCursor = totalItems - 1
+			}
+		}
+
+	case CommitDetailLoadedMsg:
+		if plugin.IsStale(p.ctx, msg) {
+			return p, nil
+		}
+		if msg.Err == nil && msg.Commit != nil && p.selectedWorktree() != nil &&
+			p.selectedWorktree().Name == msg.WorkspaceName {
+			p.commitDetail = msg.Commit
+			p.commitFileCursor = 0
+			p.commitFileScroll = 0
+			p.commitFileDiffRaw = ""
+			p.commitFileParsed = nil
+			// Auto-load diff for first file if any
+			if len(msg.Commit.Files) > 0 {
+				parentHash := ""
+				if msg.Commit.IsMerge && len(msg.Commit.ParentHashes) > 0 {
+					parentHash = msg.Commit.ParentHashes[0]
+				}
+				cmds = append(cmds, p.loadCommitFileDiff(msg.Commit.Hash, msg.Commit.Files[0].Path, parentHash))
+			}
+		}
+
+	case CommitFileDiffLoadedMsg:
+		if plugin.IsStale(p.ctx, msg) {
+			return p, nil
+		}
+		if msg.Err == nil && p.selectedWorktree() != nil &&
+			p.selectedWorktree().Name == msg.WorkspaceName && p.commitDetail != nil &&
+			p.commitDetail.Hash == msg.CommitHash {
+			// Verify file path matches current selection
+			if p.commitFileCursor >= 0 && p.commitFileCursor < len(p.commitDetail.Files) &&
+				p.commitDetail.Files[p.commitFileCursor].Path == msg.FilePath {
+				p.commitFileDiffRaw = msg.Raw
+				p.commitFileParsed, _ = gitstatus.ParseUnifiedDiff(msg.Raw)
+			}
 		}
 
 	case CreateDoneMsg:

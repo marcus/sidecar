@@ -2,6 +2,7 @@ package gitstatus
 
 import (
 	"fmt"
+	"log/slog"
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
@@ -331,11 +332,22 @@ func (p *Plugin) renderSidebarEntry(entry *FileEntry, selected bool, maxWidth in
 
 	status := statusStyle.Render(string(entry.Status))
 
+	// Build stats string for files with changes
+	statsStr := ""
+	statsPlain := ""
+	if entry.DiffStats.Additions > 0 || entry.DiffStats.Deletions > 0 {
+		statsPlain = fmt.Sprintf("+%d/-%d", entry.DiffStats.Additions, entry.DiffStats.Deletions)
+		statsStr = styles.Muted.Render(statsPlain)
+	}
+
 	// Handle folder entries specially
 	if entry.IsFolder {
 		folderName := entry.Path
 		fileCount := len(entry.Children)
 		countStr := fmt.Sprintf("(%d)", fileCount)
+		if statsPlain != "" {
+			countStr += " " + statsPlain
+		}
 
 		// Only show expand/collapse indicator if folder has children
 		indicator := ""
@@ -364,22 +376,32 @@ func (p *Plugin) renderSidebarEntry(entry *FileEntry, selected bool, maxWidth in
 		return styles.ListItemNormal.Render(fmt.Sprintf("%s %s%s %s", status, indicator, displayName, styles.Muted.Render(countStr)))
 	}
 
-	// Path - truncate if needed
+	// Path - truncate if needed, accounting for stats width
 	path := entry.Path
 	availableWidth := maxWidth - 2 // status + space
+	if statsPlain != "" {
+		availableWidth -= len(statsPlain) + 1 // stats + space before stats
+	}
 	if len(path) > availableWidth && availableWidth > 3 {
 		path = "…" + path[len(path)-availableWidth+1:]
 	}
 
 	if selected {
 		plainLine := fmt.Sprintf("%s %s", string(entry.Status), path)
+		if statsPlain != "" {
+			plainLine += " " + statsPlain
+		}
 		if len(plainLine) < maxWidth {
 			plainLine += strings.Repeat(" ", maxWidth-len(plainLine))
 		}
 		return styles.ListItemSelected.Render(plainLine)
 	}
 
-	return styles.ListItemNormal.Render(fmt.Sprintf("%s %s", status, path))
+	line := fmt.Sprintf("%s %s", status, path)
+	if statsStr != "" {
+		line += " " + statsStr
+	}
+	return styles.ListItemNormal.Render(line)
 }
 
 // renderRecentCommits renders the recent commits section in the sidebar.
@@ -623,9 +645,14 @@ func (p *Plugin) renderDiffPane(visibleHeight int) string {
 	}
 
 	// Header with view mode and scroll indicators
-	viewModeStr := "unified"
-	if p.diffPaneViewMode == DiffViewSideBySide {
+	var viewModeStr string
+	switch p.diffPaneViewMode {
+	case DiffViewSideBySide:
 		viewModeStr = "split"
+	case DiffViewFullFile:
+		viewModeStr = "full-file"
+	default:
+		viewModeStr = "unified"
 	}
 	header := "Diff"
 	if p.selectedDiffFile != "" {
@@ -663,11 +690,6 @@ func (p *Plugin) renderDiffPane(visibleHeight int) string {
 		return sb.String()
 	}
 
-	if p.diffPaneParsedDiff == nil {
-		sb.WriteString(styles.Muted.Render("Loading diff..."))
-		return sb.String()
-	}
-
 	// Render the diff content
 	contentHeight := visibleHeight - 2 // Account for header
 	if contentHeight < 1 {
@@ -677,13 +699,51 @@ func (p *Plugin) renderDiffPane(visibleHeight int) string {
 	// Render diff based on view mode
 	highlighter := p.getHighlighter(p.selectedDiffFile)
 	var diffContent string
-	if p.diffPaneViewMode == DiffViewSideBySide {
+	switch p.diffPaneViewMode {
+	case DiffViewFullFile:
+		if p.diffPaneFullFileDiff != nil {
+			diffW := diffWidth - MinimapWidth
+			mmStr := ""
+			if !p.diffWrapEnabled {
+				mmStr = RenderMinimap(p.diffPaneFullFileDiff, p.diffPaneScroll, contentHeight, contentHeight)
+			}
+			if mmStr != "" && diffW >= 30 {
+				diffContent = RenderFullFileSideBySide(p.diffPaneFullFileDiff, diffW, p.diffPaneScroll, contentHeight, p.diffPaneHorizScroll, highlighter, p.diffWrapEnabled)
+				diffLines := strings.Count(diffContent, "\n")
+				mmLines := strings.Count(mmStr, "\n")
+				slog.Debug("minimap join sidebar",
+					"diffLines", diffLines,
+					"mmLines", mmLines,
+					"contentHeight", contentHeight,
+					"diffPaneScroll", p.diffPaneScroll,
+					"totalLines", len(p.diffPaneFullFileDiff.Lines),
+					"visibleHeight", visibleHeight,
+					"height", p.height,
+				)
+				diffContent = lipgloss.JoinHorizontal(lipgloss.Top, diffContent, mmStr)
+				diffX := 0
+				if p.sidebarVisible {
+					diffX = p.sidebarWidth + dividerWidth
+				}
+				mmH := contentHeight
+				if total := len(p.diffPaneFullFileDiff.Lines); total < mmH {
+					mmH = total
+				}
+				mmX := diffX + 2 + diffWidth - MinimapWidth
+				p.mouseHandler.HitMap.AddRect(regionMinimap, mmX, 3, MinimapWidth, mmH, nil)
+			} else {
+				diffContent = RenderFullFileSideBySide(p.diffPaneFullFileDiff, diffWidth, p.diffPaneScroll, contentHeight, p.diffPaneHorizScroll, highlighter, p.diffWrapEnabled)
+			}
+		} else {
+			diffContent = styles.Muted.Render("Loading full file...")
+		}
+	case DiffViewSideBySide:
 		diffContent = RenderSideBySide(p.diffPaneParsedDiff, diffWidth, p.diffPaneScroll, contentHeight, p.diffPaneHorizScroll, highlighter, p.diffWrapEnabled)
-	} else {
+	default:
 		diffContent = RenderLineDiff(p.diffPaneParsedDiff, diffWidth, p.diffPaneScroll, contentHeight, p.diffPaneHorizScroll, highlighter, p.diffWrapEnabled)
 	}
-	// Force truncate each line to prevent wrapping (skip when wrap is enabled)
-	if !p.diffWrapEnabled {
+	// Force truncate each line to prevent wrapping (skip when wrap is enabled and not full-file with minimap)
+	if !p.diffWrapEnabled && p.diffPaneViewMode != DiffViewFullFile {
 		lines := strings.Split(diffContent, "\n")
 		for i, line := range lines {
 			if lipgloss.Width(line) > diffWidth {
@@ -737,7 +797,7 @@ func (p *Plugin) renderCommitPreview(visibleHeight int) string {
 
 	// Author with icon-like prefix
 	authorStr := c.Author
-	if len(authorStr) > maxWidth-12 {
+	if maxWidth > 15 && len(authorStr) > maxWidth-12 {
 		authorStr = authorStr[:maxWidth-15] + "..."
 	}
 	sb.WriteString(labelStyle.Render("󰀄 ")) // Author icon
@@ -753,7 +813,7 @@ func (p *Plugin) renderCommitPreview(visibleHeight int) string {
 
 	// Subject in bold
 	subject := c.Subject
-	if len(subject) > maxWidth-2 {
+	if maxWidth > 5 && len(subject) > maxWidth-2 {
 		subject = subject[:maxWidth-5] + "..."
 	}
 	subjectStyle := lipgloss.NewStyle().
@@ -763,20 +823,68 @@ func (p *Plugin) renderCommitPreview(visibleHeight int) string {
 	sb.WriteString("\n")
 	currentY++
 
-	// Body (if present, truncated)
+	// Body (if present)
 	if c.Body != "" {
 		sb.WriteString("\n")
 		currentY++
 		bodyLines := strings.Split(strings.TrimSpace(c.Body), "\n")
+
+		if p.commitBodyExpanded {
+			// Expanded: show full body with scrolling, same style/position
+			bodyHeight := visibleHeight - currentY + 1
+			if bodyHeight < 3 {
+				bodyHeight = 3
+			}
+
+			// Clamp scroll
+			maxScroll := len(bodyLines) - bodyHeight
+			if maxScroll < 0 {
+				maxScroll = 0
+			}
+			if p.commitBodyScroll > maxScroll {
+				p.commitBodyScroll = maxScroll
+			}
+
+			start := p.commitBodyScroll
+			end := start + bodyHeight
+			if end > len(bodyLines) {
+				end = len(bodyLines)
+			}
+
+			for i := start; i < end; i++ {
+				line := bodyLines[i]
+				if maxWidth > 5 && len(line) > maxWidth-2 {
+					line = line[:maxWidth-5] + "..."
+				}
+				sb.WriteString(styles.Muted.Render(line))
+				sb.WriteString("\n")
+				currentY++
+			}
+
+			// Separator + hint at bottom
+			separator := lipgloss.NewStyle().Foreground(styles.BorderNormal)
+			sb.WriteString(separator.Render(strings.Repeat("─", maxWidth)))
+			sb.WriteString("\n")
+			if len(bodyLines) > bodyHeight {
+				scrollInfo := fmt.Sprintf("[%d-%d / %d] esc/j to close", start+1, end, len(bodyLines))
+				sb.WriteString(styles.Muted.Render(scrollInfo))
+			} else {
+				sb.WriteString(styles.Muted.Render("esc/j to close"))
+			}
+
+			return sb.String()
+		}
+
+		// Collapsed: show first 3 lines
 		maxBodyLines := 3
 		for i, line := range bodyLines {
 			if i >= maxBodyLines {
-				sb.WriteString(styles.Muted.Render("..."))
+				sb.WriteString(styles.Muted.Render("... ↑ for full message"))
 				sb.WriteString("\n")
 				currentY++
 				break
 			}
-			if len(line) > maxWidth-2 {
+			if maxWidth > 5 && len(line) > maxWidth-2 {
 				line = line[:maxWidth-5] + "..."
 			}
 			sb.WriteString(styles.Muted.Render(line))
@@ -866,22 +974,40 @@ func (p *Plugin) renderCommitPreviewFile(file CommitFile, selected bool, maxWidt
 	}
 	status := statusStyle.Render(string(file.Status))
 
-	// Path - truncate if needed
+	// Build stats string
+	statsStr := ""
+	statsPlain := ""
+	if file.Additions > 0 || file.Deletions > 0 {
+		statsPlain = fmt.Sprintf("+%d/-%d", file.Additions, file.Deletions)
+		statsStr = styles.Muted.Render(statsPlain)
+	}
+
+	// Path - truncate if needed, accounting for stats width
 	path := file.Path
 	pathWidth := maxWidth - 4 // status + spacing
+	if statsPlain != "" {
+		pathWidth -= len(statsPlain) + 1 // stats + space
+	}
 	if len(path) > pathWidth && pathWidth > 3 {
 		path = "…" + path[len(path)-pathWidth+1:]
 	}
 
 	if selected {
 		plainLine := fmt.Sprintf("%s %s", string(file.Status), path)
+		if statsPlain != "" {
+			plainLine += " " + statsPlain
+		}
 		if len(plainLine) < maxWidth {
 			plainLine += strings.Repeat(" ", maxWidth-len(plainLine))
 		}
 		return styles.ListItemSelected.Render(plainLine)
 	}
 
-	return styles.ListItemNormal.Render(fmt.Sprintf("%s %s", status, path))
+	line := fmt.Sprintf("%s %s", status, path)
+	if statsStr != "" {
+		line += " " + statsStr
+	}
+	return styles.ListItemNormal.Render(line)
 }
 
 // truncateStr truncates a string to maxLen characters with ellipsis.

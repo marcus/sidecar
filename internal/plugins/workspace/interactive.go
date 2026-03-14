@@ -755,7 +755,9 @@ func (p *Plugin) exitInteractiveMode() {
 func (p *Plugin) handleInteractiveKeys(msg tea.KeyMsg) tea.Cmd {
 	if p.interactiveState == nil || !p.interactiveState.Active {
 		p.exitInteractiveMode()
-		return nil
+		p.previewOffset = 0
+		p.autoScrollOutput = true
+		return p.pollSelectedAgentNowIfVisible()
 	}
 
 	// Check for exit keys
@@ -763,7 +765,12 @@ func (p *Plugin) handleInteractiveKeys(msg tea.KeyMsg) tea.Cmd {
 	// Primary exit: Configurable key (default: Ctrl+\)
 	if msg.String() == p.getInteractiveExitKey() {
 		p.exitInteractiveMode()
-		return nil
+		// Reset scroll to bottom so we see the current terminal state,
+		// not stale scrollback from before interactive mode.
+		p.previewOffset = 0
+		p.autoScrollOutput = true
+		// Trigger an immediate poll to capture fresh tmux pane content.
+		return p.pollSelectedAgentNowIfVisible()
 	}
 
 	// Attach shortcut: exit interactive and attach to full session (td-fd68d1)
@@ -791,7 +798,9 @@ func (p *Plugin) handleInteractiveKeys(msg tea.KeyMsg) tea.Cmd {
 			p.interactiveState.EscapePressed = false
 			p.interactiveState.EscapeTimerPending = false // Cancel pending timer
 			p.exitInteractiveMode()
-			return nil
+			p.previewOffset = 0
+			p.autoScrollOutput = true
+			return p.pollSelectedAgentNowIfVisible()
 		}
 		// First Escape: mark pending and start delay timer
 		// Do NOT forward to tmux yet - wait for timer or next key

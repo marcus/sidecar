@@ -1,6 +1,7 @@
 package gitstatus
 
 import (
+	"log/slog"
 	"strings"
 	"time"
 
@@ -454,12 +455,17 @@ func (p *Plugin) updateStatusDiffPane(msg tea.KeyMsg) (plugin.Plugin, tea.Cmd) {
 		p.activePane = PaneSidebar
 
 	case "h", "left":
-		// Horizontal scroll left (use ESC or Tab to switch panes)
+		// Horizontal scroll left, or return to sidebar if already at leftmost
 		if p.diffPaneHorizScroll > 0 {
 			p.diffPaneHorizScroll -= 10
 			if p.diffPaneHorizScroll < 0 {
 				p.diffPaneHorizScroll = 0
 			}
+		} else {
+			if !p.sidebarVisible {
+				p.sidebarVisible = true
+			}
+			p.activePane = PaneSidebar
 		}
 
 	case "l", "right":
@@ -469,6 +475,7 @@ func (p *Plugin) updateStatusDiffPane(msg tea.KeyMsg) (plugin.Plugin, tea.Cmd) {
 
 	case "j", "down":
 		p.diffPaneScroll++
+		p.clampDiffPaneScroll()
 
 	case "k", "up":
 		if p.diffPaneScroll > 0 {
@@ -480,27 +487,17 @@ func (p *Plugin) updateStatusDiffPane(msg tea.KeyMsg) (plugin.Plugin, tea.Cmd) {
 		p.diffPaneHorizScroll = 0
 
 	case "G":
-		if p.diffPaneParsedDiff != nil {
-			lines := countParsedDiffLines(p.diffPaneParsedDiff)
-			maxScroll := lines - (p.height - 6)
-			if maxScroll > 0 {
-				p.diffPaneScroll = maxScroll
-			}
+		// Jump to end — set scroll high and let clamp fix it.
+		if p.diffPaneViewMode == DiffViewFullFile && p.diffPaneFullFileDiff != nil {
+			p.diffPaneScroll = p.diffPaneFullFileDiff.TotalLines()
+		} else if p.diffPaneParsedDiff != nil {
+			p.diffPaneScroll = countParsedDiffLines(p.diffPaneParsedDiff)
 		}
+		p.clampDiffPaneScroll()
 
 	case "ctrl+d":
 		p.diffPaneScroll += 10
-		// Clamp to max
-		if p.diffPaneParsedDiff != nil {
-			lines := countParsedDiffLines(p.diffPaneParsedDiff)
-			maxScroll := lines - (p.height - 6)
-			if maxScroll < 0 {
-				maxScroll = 0
-			}
-			if p.diffPaneScroll > maxScroll {
-				p.diffPaneScroll = maxScroll
-			}
-		}
+		p.clampDiffPaneScroll()
 
 	case "ctrl+u":
 		p.diffPaneScroll -= 10
@@ -513,11 +510,46 @@ func (p *Plugin) updateStatusDiffPane(msg tea.KeyMsg) (plugin.Plugin, tea.Cmd) {
 		p.diffPaneHorizScroll = 0
 
 	case "v":
-		// Toggle view mode (unified/side-by-side) for inline diff pane
-		if p.diffPaneViewMode == DiffViewUnified {
+		// Cycle view mode (unified → side-by-side → full-file) for inline diff pane
+		switch p.diffPaneViewMode {
+		case DiffViewUnified:
 			p.diffPaneViewMode = DiffViewSideBySide
-		} else {
+		case DiffViewSideBySide:
+			p.diffPaneViewMode = DiffViewFullFile
+			// Load full-file content if not already loaded
+			if p.diffPaneFullFileDiff == nil && p.selectedDiffFile != "" {
+				entries := p.tree.AllEntries()
+				for _, entry := range entries {
+					if entry.Path == p.selectedDiffFile {
+						return p, p.loadFullFileDiff(entry.Path, entry.Staged, entry.Status, "", true)
+					}
+				}
+			}
+		default:
+			// Switching from full-file back to unified: map scroll position
+			if p.diffPaneFullFileDiff != nil && p.diffPaneParsedDiff != nil && p.diffPaneScroll > 0 {
+				p.diffPaneScroll = p.diffPaneFullFileDiff.FullFileLineToHunkLine(p.diffPaneScroll, p.diffPaneParsedDiff)
+			}
 			p.diffPaneViewMode = DiffViewUnified
+			p.diffPaneFullFileDiff = nil // Free memory
+		}
+
+	case "n":
+		// Jump to next change in full-file view
+		if p.diffPaneViewMode == DiffViewFullFile && p.diffPaneFullFileDiff != nil {
+			next := p.diffPaneFullFileDiff.NextChange(p.diffPaneScroll)
+			if next >= 0 {
+				p.diffPaneScroll = next
+			}
+		}
+
+	case "N":
+		// Jump to previous change in full-file view
+		if p.diffPaneViewMode == DiffViewFullFile && p.diffPaneFullFileDiff != nil {
+			prev := p.diffPaneFullFileDiff.PrevChange(p.diffPaneScroll)
+			if prev >= 0 {
+				p.diffPaneScroll = prev
+			}
 		}
 
 	case "w":
@@ -567,6 +599,11 @@ func (p *Plugin) updateCommitPreviewPane(msg tea.KeyMsg) (plugin.Plugin, tea.Cmd
 		return p, nil
 	}
 
+	// When commit body is expanded, handle scrolling within it
+	if p.commitBodyExpanded {
+		return p.updateCommitBodyExpanded(msg)
+	}
+
 	switch msg.String() {
 	case "esc", "h", "left":
 		// Return to sidebar
@@ -583,6 +620,10 @@ func (p *Plugin) updateCommitPreviewPane(msg tea.KeyMsg) (plugin.Plugin, tea.Cmd
 		if p.previewCommitCursor > 0 {
 			p.previewCommitCursor--
 			p.ensurePreviewCursorVisible()
+		} else if c.Body != "" {
+			// At top of file list — expand commit body
+			p.commitBodyExpanded = true
+			p.commitBodyScroll = 0
 		}
 
 	case "g":
@@ -595,7 +636,7 @@ func (p *Plugin) updateCommitPreviewPane(msg tea.KeyMsg) (plugin.Plugin, tea.Cmd
 			p.ensurePreviewCursorVisible()
 		}
 
-	case "enter", "d":
+	case "enter", "d", "l", "right":
 		// Open full-screen diff for selected file in commit
 		if p.previewCommitCursor < len(c.Files) {
 			file := c.Files[p.previewCommitCursor]
@@ -647,11 +688,57 @@ func (p *Plugin) updateCommitPreviewPane(msg tea.KeyMsg) (plugin.Plugin, tea.Cmd
 	return p, nil
 }
 
+// updateCommitBodyExpanded handles keys when the full commit message is expanded.
+func (p *Plugin) updateCommitBodyExpanded(msg tea.KeyMsg) (plugin.Plugin, tea.Cmd) {
+	c := p.previewCommit
+	bodyLines := strings.Split(strings.TrimSpace(c.Body), "\n")
+	totalLines := len(bodyLines)
+	bodyHeight := p.commitBodyHeight()
+
+	maxScroll := totalLines - bodyHeight
+	if maxScroll < 0 {
+		maxScroll = 0
+	}
+
+	switch msg.String() {
+	case "esc", "j", "down":
+		// Collapse and return to file list
+		p.commitBodyExpanded = false
+		p.commitBodyScroll = 0
+
+	case "k", "up":
+		if p.commitBodyScroll > 0 {
+			p.commitBodyScroll--
+		}
+
+	case "g":
+		p.commitBodyScroll = 0
+
+	case "G":
+		p.commitBodyScroll = maxScroll
+
+	case "ctrl+u":
+		p.commitBodyScroll -= bodyHeight / 2
+		if p.commitBodyScroll < 0 {
+			p.commitBodyScroll = 0
+		}
+
+	case "ctrl+d":
+		p.commitBodyScroll += bodyHeight / 2
+		if p.commitBodyScroll > maxScroll {
+			p.commitBodyScroll = maxScroll
+		}
+	}
+
+	return p, nil
+}
+
 // closeDiffView clears diff state and returns to the previous view mode.
 func (p *Plugin) closeDiffView() {
 	p.diffContent = ""
 	p.diffRaw = ""
 	p.parsedDiff = nil
+	p.fullFileDiff = nil
 	p.diffLoaded = false
 	p.diffHorizOff = 0
 	p.diffCommit = ""
@@ -673,6 +760,7 @@ func (p *Plugin) updateDiff(msg tea.KeyMsg) (plugin.Plugin, tea.Cmd) {
 
 	case "j", "down":
 		p.diffScroll++
+		p.clampDiffScroll()
 
 	case "k", "up":
 		if p.diffScroll > 0 {
@@ -684,22 +772,64 @@ func (p *Plugin) updateDiff(msg tea.KeyMsg) (plugin.Plugin, tea.Cmd) {
 		p.diffHorizOff = 0
 
 	case "G":
-		lines := countLines(p.diffContent)
-		maxScroll := lines - (p.height - 2)
-		if maxScroll > 0 {
-			p.diffScroll = maxScroll
+		// Jump to end — set scroll high and let clamp fix it.
+		if p.diffViewMode == DiffViewFullFile && p.fullFileDiff != nil {
+			p.diffScroll = p.fullFileDiff.TotalLines()
+		} else {
+			p.diffScroll = countLines(p.diffContent)
 		}
+		p.clampDiffScroll()
 
 	case "v":
-		// Toggle between unified and side-by-side view
-		if p.diffViewMode == DiffViewUnified {
+		// Cycle view mode (unified → side-by-side → full-file)
+		switch p.diffViewMode {
+		case DiffViewUnified:
 			p.diffViewMode = DiffViewSideBySide
 			_ = state.SetGitDiffMode("side-by-side")
-		} else {
+		case DiffViewSideBySide:
+			p.diffViewMode = DiffViewFullFile
+			_ = state.SetGitDiffMode("full-file")
+			// Load full-file content if not already loaded
+			if p.fullFileDiff == nil && p.diffFile != "" {
+				entries := p.tree.AllEntries()
+				for _, entry := range entries {
+					if entry.Path == p.diffFile {
+						return p, p.loadFullFileDiff(entry.Path, entry.Staged, entry.Status, p.diffCommit, false)
+					}
+				}
+				// For commit diffs where file isn't in tree
+				if p.diffCommit != "" {
+					return p, p.loadFullFileDiff(p.diffFile, false, "", p.diffCommit, false)
+				}
+			}
+		default:
+			// Switching from full-file back to unified: map scroll position
+			if p.fullFileDiff != nil && p.parsedDiff != nil && p.diffScroll > 0 {
+				p.diffScroll = p.fullFileDiff.FullFileLineToHunkLine(p.diffScroll, p.parsedDiff)
+			}
 			p.diffViewMode = DiffViewUnified
 			_ = state.SetGitDiffMode("unified")
+			p.fullFileDiff = nil // Free memory
 		}
 		p.diffHorizOff = 0
+
+	case "n":
+		// Jump to next change in full-file view
+		if p.diffViewMode == DiffViewFullFile && p.fullFileDiff != nil {
+			next := p.fullFileDiff.NextChange(p.diffScroll)
+			if next >= 0 {
+				p.diffScroll = next
+			}
+		}
+
+	case "N":
+		// Jump to previous change in full-file view
+		if p.diffViewMode == DiffViewFullFile && p.fullFileDiff != nil {
+			prev := p.fullFileDiff.PrevChange(p.diffScroll)
+			if prev >= 0 {
+				p.diffScroll = prev
+			}
+		}
 
 	case "w":
 		// Toggle line wrapping
@@ -713,12 +843,14 @@ func (p *Plugin) updateDiff(msg tea.KeyMsg) (plugin.Plugin, tea.Cmd) {
 		p.toggleSidebar()
 
 	case "h", "left", "<", "H":
-		// Horizontal scroll left
+		// Horizontal scroll left, or exit diff view if already at leftmost
 		if p.diffHorizOff > 0 {
 			p.diffHorizOff -= 10
 			if p.diffHorizOff < 0 {
 				p.diffHorizOff = 0
 			}
+		} else {
+			p.closeDiffView()
 		}
 
 	case "l", "right", ">", "L":
@@ -729,15 +861,7 @@ func (p *Plugin) updateDiff(msg tea.KeyMsg) (plugin.Plugin, tea.Cmd) {
 	case "ctrl+d":
 		// Page down (~10 lines)
 		p.diffScroll += 10
-		// Clamp to max
-		lines := countLines(p.diffContent)
-		maxScroll := lines - (p.height - 2)
-		if maxScroll < 0 {
-			maxScroll = 0
-		}
-		if p.diffScroll > maxScroll {
-			p.diffScroll = maxScroll
-		}
+		p.clampDiffScroll()
 
 	case "ctrl+u":
 		// Page up (~10 lines)
@@ -751,6 +875,15 @@ func (p *Plugin) updateDiff(msg tea.KeyMsg) (plugin.Plugin, tea.Cmd) {
 		if p.diffFile != "" {
 			return p, p.openInFileBrowser(p.diffFile)
 		}
+	}
+
+	if p.diffViewMode == DiffViewFullFile && p.fullFileDiff != nil {
+		slog.Debug("minimap scroll state",
+			"key", msg.String(),
+			"diffScroll", p.diffScroll,
+			"totalLines", len(p.fullFileDiff.Lines),
+			"height", p.height,
+		)
 	}
 
 	return p, nil

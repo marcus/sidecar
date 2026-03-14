@@ -6,6 +6,7 @@ import (
 	"sync"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/marcus/sidecar/internal/plugins/gitstatus"
 )
 
 // loadSelectedDiff returns a command to load diff for the selected worktree.
@@ -38,9 +39,9 @@ func (p *Plugin) loadDiff(path, name string) tea.Cmd {
 	}
 }
 
-// getDiff returns the diff for a worktree.
+// getDiff returns the diff for a worktree, including untracked files.
 func getDiff(workdir string) (content, raw string, err error) {
-	// Get combined staged and unstaged diff
+	// Get combined staged and unstaged diff for tracked files
 	cmd := exec.Command("git", "diff", "HEAD")
 	cmd.Dir = workdir
 	output, err := cmd.Output()
@@ -53,11 +54,49 @@ func getDiff(workdir string) (content, raw string, err error) {
 
 	raw = string(output)
 
-	// For now, content is same as raw
-	// Later can add syntax highlighting or delta processing
-	content = raw
+	// Also include untracked files as synthetic diffs (new file additions)
+	untrackedDiffs := getUntrackedFileDiffs(workdir)
+	if untrackedDiffs != "" {
+		if raw != "" && !strings.HasSuffix(raw, "\n") {
+			raw += "\n"
+		}
+		raw += untrackedDiffs
+	}
 
+	content = raw
 	return content, raw, nil
+}
+
+// getUntrackedFileDiffs returns synthetic diff output for untracked files in the worktree.
+// Each untracked file is shown as a new file with all lines as additions.
+func getUntrackedFileDiffs(workdir string) string {
+	cmd := exec.Command("git", "ls-files", "--others", "--exclude-standard")
+	cmd.Dir = workdir
+	output, err := cmd.Output()
+	if err != nil {
+		return ""
+	}
+
+	files := strings.Split(strings.TrimSpace(string(output)), "\n")
+	if len(files) == 0 || (len(files) == 1 && files[0] == "") {
+		return ""
+	}
+
+	var sb strings.Builder
+	for _, file := range files {
+		if file == "" {
+			continue
+		}
+		diff, err := gitstatus.GetNewFileDiff(workdir, file)
+		if err != nil {
+			continue
+		}
+		if sb.Len() > 0 {
+			sb.WriteString("\n")
+		}
+		sb.WriteString(diff)
+	}
+	return sb.String()
 }
 
 // getDiffStatFromBase returns the --stat output compared to the base branch.
@@ -91,6 +130,68 @@ func getDiffStatFromBase(workdir, baseBranch string) (string, error) {
 	}
 
 	return strings.TrimSpace(string(output)), nil
+}
+
+// FullFileDiffLoadedMsg is sent when full-file content is loaded for workspace diff view.
+type FullFileDiffLoadedMsg struct {
+	Epoch         uint64
+	WorkspaceName string
+	OldContent    string
+	NewContent    string
+	Parsed        *gitstatus.ParsedDiff
+	FilePath      string
+}
+
+// GetEpoch implements plugin.EpochMessage.
+func (m FullFileDiffLoadedMsg) GetEpoch() uint64 { return m.Epoch }
+
+// loadFullFileDiffForWorkspace loads full-file content for the current file in the workspace diff view.
+func (p *Plugin) loadFullFileDiffForWorkspace() tea.Cmd {
+	wt := p.selectedWorktree()
+	if wt == nil || p.multiFileDiff == nil {
+		return nil
+	}
+
+	// Use diff tab cursor position to determine the selected file
+	fileIdx := p.diffTabCursor
+	if fileIdx < 0 || fileIdx >= len(p.multiFileDiff.Files) {
+		if len(p.multiFileDiff.Files) > 0 {
+			fileIdx = 0
+		} else {
+			return nil
+		}
+	}
+
+	file := p.multiFileDiff.Files[fileIdx]
+	filePath := file.FileName()
+	workdir := wt.Path
+	epoch := p.ctx.Epoch
+	name := wt.Name
+
+	return func() tea.Msg {
+		// Get old content (HEAD version)
+		oldContent, _ := gitstatus.GetFileContentAtRef(workdir, filePath, "HEAD")
+		// Get new content (working tree)
+		newContent, _ := gitstatus.GetWorkingTreeFileContent(workdir, filePath)
+
+		// Use HEAD-to-working-tree diff to match old/new content sources.
+		// This captures both staged and unstaged changes consistently.
+		rawDiff, _ := gitstatus.GetDiffFromHead(workdir, filePath)
+		if rawDiff == "" {
+			// New file (not yet in HEAD) — generate new file diff
+			rawDiff, _ = gitstatus.GetNewFileDiff(workdir, filePath)
+		}
+		parsed, _ := gitstatus.ParseUnifiedDiff(rawDiff)
+
+		return FullFileDiffLoadedMsg{
+			Epoch:         epoch,
+			WorkspaceName: name,
+			OldContent:    oldContent,
+			NewContent:    newContent,
+			Parsed:        parsed,
+			FilePath:      filePath,
+		}
+	}
 }
 
 // splitLines splits a string into lines, handling various line endings.
@@ -289,4 +390,72 @@ func getUnpushedCommits(workdir, remoteBranch string) map[string]bool {
 		}
 	}
 	return result
+}
+
+// CommitDetailLoadedMsg is sent when commit detail (file list) is loaded.
+type CommitDetailLoadedMsg struct {
+	Epoch         uint64
+	WorkspaceName string
+	CommitHash    string
+	Commit        *gitstatus.Commit
+	Err           error
+}
+
+// GetEpoch implements plugin.EpochMessage.
+func (m CommitDetailLoadedMsg) GetEpoch() uint64 { return m.Epoch }
+
+// loadCommitDetail loads the file list for a specific commit.
+func (p *Plugin) loadCommitDetail(hash string) tea.Cmd {
+	wt := p.selectedWorktree()
+	if wt == nil {
+		return nil
+	}
+	epoch := p.ctx.Epoch
+	name := wt.Name
+	workdir := wt.Path
+	return func() tea.Msg {
+		commit, err := gitstatus.GetCommitDetail(workdir, hash)
+		return CommitDetailLoadedMsg{
+			Epoch:         epoch,
+			WorkspaceName: name,
+			CommitHash:    hash,
+			Commit:        commit,
+			Err:           err,
+		}
+	}
+}
+
+// CommitFileDiffLoadedMsg is sent when a commit file's diff is loaded.
+type CommitFileDiffLoadedMsg struct {
+	Epoch         uint64
+	WorkspaceName string
+	CommitHash    string
+	FilePath      string
+	Raw           string
+	Err           error
+}
+
+// GetEpoch implements plugin.EpochMessage.
+func (m CommitFileDiffLoadedMsg) GetEpoch() uint64 { return m.Epoch }
+
+// loadCommitFileDiff loads the diff for a specific file in a commit.
+func (p *Plugin) loadCommitFileDiff(hash, filePath, parentHash string) tea.Cmd {
+	wt := p.selectedWorktree()
+	if wt == nil {
+		return nil
+	}
+	epoch := p.ctx.Epoch
+	name := wt.Name
+	workdir := wt.Path
+	return func() tea.Msg {
+		raw, err := gitstatus.GetCommitDiff(workdir, hash, filePath, parentHash)
+		return CommitFileDiffLoadedMsg{
+			Epoch:         epoch,
+			WorkspaceName: name,
+			CommitHash:    hash,
+			FilePath:      filePath,
+			Raw:           raw,
+			Err:           err,
+		}
+	}
 }
