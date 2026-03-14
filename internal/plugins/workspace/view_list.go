@@ -137,8 +137,8 @@ func (p *Plugin) renderListView(width, height int) string {
 	// RenderPanel handles borders internally, so only subtract divider from available space
 	available := width - dividerWidth
 	sidebarW := (available * p.sidebarWidth) / 100
-	if sidebarW < 25 {
-		sidebarW = 25
+	if sidebarW < 15 {
+		sidebarW = 15
 	}
 	if sidebarW > available-40 {
 		sidebarW = available - 40

@@ -1187,8 +1187,8 @@ func TestCalculatePreviewDimensions_WidthConsistency(t *testing.T) {
 				// Sidebar visible: same calculation as in renderListView
 				available := tt.totalWidth - dividerWidth
 				sidebarW := (available * p.sidebarWidth) / 100
-				if sidebarW < 25 {
-					sidebarW = 25
+				if sidebarW < 15 {
+					sidebarW = 15
 				}
 				if sidebarW > available-40 {
 					sidebarW = available - 40

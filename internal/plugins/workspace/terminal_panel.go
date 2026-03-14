@@ -521,8 +521,8 @@ func (p *Plugin) renderOutputWithTermPanel(width, height int) string {
 	if p.sidebarVisible {
 		available := p.width - dividerWidth
 		sidebarW := (available * p.sidebarWidth) / 100
-		if sidebarW < 25 {
-			sidebarW = 25
+		if sidebarW < 15 {
+			sidebarW = 15
 		}
 		if sidebarW > available-40 {
 			sidebarW = available - 40
@@ -620,8 +620,8 @@ func (p *Plugin) renderShellWithTermPanel(width, height int) string {
 	if p.sidebarVisible {
 		available := p.width - dividerWidth
 		sidebarW := (available * p.sidebarWidth) / 100
-		if sidebarW < 25 {
-			sidebarW = 25
+		if sidebarW < 15 {
+			sidebarW = 15
 		}
 		if sidebarW > available-40 {
 			sidebarW = available - 40
