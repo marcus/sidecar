@@ -10,6 +10,7 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	appmsg "github.com/marcus/sidecar/internal/msg"
+	"github.com/marcus/sidecar/internal/plugins/gitstatus"
 	"github.com/marcus/sidecar/internal/state"
 )
 
@@ -489,7 +490,11 @@ func (p *Plugin) handleListKeys(msg tea.KeyMsg) tea.Cmd {
 			p.moveCursor(1)
 			return p.loadSelectedContent()
 		}
-		// Scroll down toward newer content (decrease offset from bottom)
+		// Diff tab: route to internal two-pane navigation
+		if p.previewTab == PreviewTabDiff {
+			return p.handleDiffTabKey(msg)
+		}
+		// Shell/other tabs: scroll down toward newer content (decrease offset from bottom)
 		if p.previewOffset > 0 {
 			p.previewOffset--
 			if p.previewOffset == 0 {
@@ -507,7 +512,11 @@ func (p *Plugin) handleListKeys(msg tea.KeyMsg) tea.Cmd {
 			p.moveCursor(-1)
 			return p.loadSelectedContent()
 		}
-		// Scroll up toward older content (increase offset from bottom)
+		// Diff tab: route to internal two-pane navigation
+		if p.previewTab == PreviewTabDiff {
+			return p.handleDiffTabKey(msg)
+		}
+		// Shell/other tabs: scroll up toward older content (increase offset from bottom)
 		p.autoScrollOutput = false
 		p.captureScrollBaseLineCount() // td-f7c8be: prevent bounce on poll
 		p.previewOffset++
@@ -534,6 +543,10 @@ func (p *Plugin) handleListKeys(msg tea.KeyMsg) tea.Cmd {
 			}
 			p.scrollOffset = 0
 			return p.loadSelectedContent()
+		}
+		// Diff tab: route to internal two-pane navigation
+		if p.previewTab == PreviewTabDiff {
+			return p.handleDiffTabKey(msg)
 		}
 		// Go to top (oldest content) - pause auto-scroll
 		p.autoScrollOutput = false
@@ -563,11 +576,19 @@ func (p *Plugin) handleListKeys(msg tea.KeyMsg) tea.Cmd {
 			// No worktrees, stay on shell
 			return nil
 		}
+		// Diff tab: route to internal two-pane navigation
+		if p.previewTab == PreviewTabDiff {
+			return p.handleDiffTabKey(msg)
+		}
 		// Go to bottom (newest content) - resume auto-scroll
 		p.previewOffset = 0
 		p.autoScrollOutput = true
 		p.resetScrollBaseLineCount() // td-f7c8be: clear snapshot
 	case "n":
+		// In diff tab: handle internally (next change navigation)
+		if p.activePane == PanePreview && p.previewTab == PreviewTabDiff {
+			return p.handleDiffTabKey(msg)
+		}
 		// Open type selector modal to choose between Shell and Worktree
 		p.viewMode = ViewModeTypeSelector
 		p.typeSelectorIdx = 1 // Default to Worktree (more common)
@@ -617,8 +638,14 @@ func (p *Plugin) handleListKeys(msg tea.KeyMsg) tea.Cmd {
 		}
 		if p.activePane == PaneSidebar {
 			p.activePane = PanePreview
+		} else if p.activePane == PanePreview && p.previewTab == PreviewTabDiff {
+			return p.handleDiffTabKey(msg)
 		}
 	case "enter":
+		// In diff tab file list: drill into diff pane
+		if p.activePane == PanePreview && p.previewTab == PreviewTabDiff && p.diffTabFocus == DiffTabFocusFileList {
+			return p.handleDiffTabKey(msg)
+		}
 		// Kanban mode: sync cursor to selection, then fall through to activate
 		if p.viewMode == ViewModeKanban {
 			oldShellSelected := p.shellSelected
@@ -679,6 +706,9 @@ func (p *Plugin) handleListKeys(msg tea.KeyMsg) tea.Cmd {
 			p.moveKanbanColumn(-1)
 			return nil
 		}
+		if p.activePane == PanePreview && p.previewTab == PreviewTabDiff {
+			return p.handleDiffTabKey(msg)
+		}
 		if p.activePane == PanePreview {
 			p.activePane = PaneSidebar
 		}
@@ -686,6 +716,25 @@ func (p *Plugin) handleListKeys(msg tea.KeyMsg) tea.Cmd {
 		if !p.sidebarVisible {
 			p.toggleSidebar()
 			return p.resizeSelectedPaneCmd()
+		}
+		// In diff tab: handle hierarchical back navigation
+		if p.activePane == PanePreview && p.previewTab == PreviewTabDiff {
+			switch p.diffTabFocus {
+			case DiffTabFocusCommitDiff:
+				p.diffTabFocus = DiffTabFocusCommitFiles
+				p.diffTabDiffScroll = 0
+				p.diffTabHorizScroll = 0
+				return nil
+			case DiffTabFocusCommitFiles:
+				p.diffTabFocus = DiffTabFocusFileList
+				p.commitDetail = nil
+				p.commitFileDiffRaw = ""
+				p.commitFileParsed = nil
+				return nil
+			case DiffTabFocusDiff:
+				p.diffTabFocus = DiffTabFocusFileList
+				return nil
+			}
 		}
 		if p.activePane == PanePreview {
 			p.activePane = PaneSidebar
@@ -713,17 +762,17 @@ func (p *Plugin) handleListKeys(msg tea.KeyMsg) tea.Cmd {
 	case "]":
 		return p.cyclePreviewTab(1)
 	case "{":
-		// Jump to previous file in diff (when in preview pane on diff tab)
+		// Jump to previous file in diff tab
 		if p.activePane == PanePreview && p.previewTab == PreviewTabDiff {
 			return p.jumpToPrevFile()
 		}
 	case "}":
-		// Jump to next file in diff (when in preview pane on diff tab)
+		// Jump to next file in diff tab
 		if p.activePane == PanePreview && p.previewTab == PreviewTabDiff {
 			return p.jumpToNextFile()
 		}
 	case "f":
-		// Open file picker (when in preview pane on diff tab with multiple files)
+		// In diff tab with diff pane focused: open file picker (legacy support)
 		if p.activePane == PanePreview && p.previewTab == PreviewTabDiff {
 			return p.openFilePicker()
 		}
@@ -733,17 +782,9 @@ func (p *Plugin) handleListKeys(msg tea.KeyMsg) tea.Cmd {
 		// Legacy shortcut for interactive mode (enter is now primary)
 		return p.enterInteractiveMode()
 	case "v":
-		// In sidebar: toggle between list and kanban view
-		// In preview pane on diff tab: toggle unified/side-by-side diff view
+		// In preview pane on diff tab: cycle view mode
 		if p.activePane == PanePreview && p.previewTab == PreviewTabDiff {
-			if p.diffViewMode == DiffViewUnified {
-				p.diffViewMode = DiffViewSideBySide
-				_ = state.SetWorkspaceDiffMode("side-by-side")
-			} else {
-				p.diffViewMode = DiffViewUnified
-				_ = state.SetWorkspaceDiffMode("unified")
-			}
-			return nil
+			return p.handleDiffTabKey(msg)
 		} else if p.activePane == PaneSidebar || p.viewMode == ViewModeKanban {
 			switch p.viewMode {
 			case ViewModeList:
@@ -755,9 +796,17 @@ func (p *Plugin) handleListKeys(msg tea.KeyMsg) tea.Cmd {
 				return p.pollSelectedAgentNowIfVisible()
 			}
 		}
+	case "V":
+		// In preview pane on diff tab: cycle view mode (unified → side-by-side → full-file)
+		if p.activePane == PanePreview && p.previewTab == PreviewTabDiff {
+			return p.handleDiffTabKey(msg)
+		}
 	case "ctrl+d":
 		// Page down in preview pane
 		if p.activePane == PanePreview {
+			if p.previewTab == PreviewTabDiff {
+				return p.handleDiffTabKey(msg)
+			}
 			pageSize := p.height / 2
 			if pageSize < 5 {
 				pageSize = 5
@@ -778,6 +827,9 @@ func (p *Plugin) handleListKeys(msg tea.KeyMsg) tea.Cmd {
 	case "ctrl+u":
 		// Page up in preview pane
 		if p.activePane == PanePreview {
+			if p.previewTab == PreviewTabDiff {
+				return p.handleDiffTabKey(msg)
+			}
 			pageSize := p.height / 2
 			if pageSize < 5 {
 				pageSize = 5
@@ -848,6 +900,10 @@ func (p *Plugin) handleListKeys(msg tea.KeyMsg) tea.Cmd {
 		// Approve all pending prompts
 		return p.ApproveAll()
 	case "N":
+		// In diff tab: handle internally (prev change navigation)
+		if p.activePane == PanePreview && p.previewTab == PreviewTabDiff {
+			return p.handleDiffTabKey(msg)
+		}
 		// Reject pending prompt on selected worktree
 		wt := p.selectedWorktree()
 		if wt != nil && wt.Status == StatusWaiting && wt.Agent != nil {
@@ -1510,12 +1566,15 @@ func (p *Plugin) handleFilePickerKeys(msg tea.KeyMsg) tea.Cmd {
 		p.filePickerIdx = fileCount - 1
 		return nil
 	case "enter":
-		// Jump to selected file
+		// Jump to selected file in the diff tab file list
+		var cmd tea.Cmd
 		if p.filePickerIdx >= 0 && p.filePickerIdx < fileCount {
-			p.previewOffset = p.multiFileDiff.Files[p.filePickerIdx].StartLine
+			oldCursor := p.diffTabCursor
+			p.diffTabCursor = p.filePickerIdx
+			cmd = p.onDiffTabCursorChanged(oldCursor)
 		}
 		p.viewMode = ViewModeList
-		return nil
+		return cmd
 	}
 	return nil
 }
@@ -1526,12 +1585,389 @@ func (p *Plugin) openFilePicker() tea.Cmd {
 		return nil
 	}
 
-	// Set initial selection to current file
-	currentIdx := p.multiFileDiff.FileAtLine(p.previewOffset)
-	if currentIdx < 0 {
-		currentIdx = 0
+	// Set initial selection to current file, clamped to file list range
+	p.filePickerIdx = p.diffTabCursor
+	maxIdx := len(p.multiFileDiff.Files) - 1
+	if p.filePickerIdx > maxIdx {
+		p.filePickerIdx = maxIdx
 	}
-	p.filePickerIdx = currentIdx
+	if p.filePickerIdx < 0 {
+		p.filePickerIdx = 0
+	}
 	p.viewMode = ViewModeFilePicker
 	return nil
+}
+
+// handleDiffTabKey handles key events within the diff tab's two-pane layout.
+// Routes to file list navigation or diff pane scrolling based on diffTabFocus.
+func (p *Plugin) handleDiffTabKey(msg tea.KeyMsg) tea.Cmd {
+	switch p.diffTabFocus {
+	case DiffTabFocusDiff:
+		return p.handleDiffTabDiffPaneKey(msg)
+	case DiffTabFocusCommitFiles:
+		return p.handleCommitFilesKey(msg)
+	case DiffTabFocusCommitDiff:
+		return p.handleCommitDiffPaneKey(msg)
+	default:
+		return p.handleDiffTabFileListKey(msg)
+	}
+}
+
+// handleDiffTabFileListKey handles keys when the diff tab file list is focused.
+func (p *Plugin) handleDiffTabFileListKey(msg tea.KeyMsg) tea.Cmd {
+	totalItems := p.diffTabTotalItems()
+
+	switch msg.String() {
+	case "j", "down":
+		if p.diffTabCursor < totalItems-1 {
+			oldCursor := p.diffTabCursor
+			p.diffTabCursor++
+			return p.onDiffTabCursorChanged(oldCursor)
+		}
+	case "k", "up":
+		if p.diffTabCursor > 0 {
+			oldCursor := p.diffTabCursor
+			p.diffTabCursor--
+			return p.onDiffTabCursorChanged(oldCursor)
+		}
+	case "g":
+		if p.diffTabCursor != 0 {
+			oldCursor := p.diffTabCursor
+			p.diffTabCursor = 0
+			p.diffTabScroll = 0
+			return p.onDiffTabCursorChanged(oldCursor)
+		}
+	case "G":
+		if totalItems > 0 && p.diffTabCursor != totalItems-1 {
+			oldCursor := p.diffTabCursor
+			p.diffTabCursor = totalItems - 1
+			return p.onDiffTabCursorChanged(oldCursor)
+		}
+	case "l", "right", "enter":
+		if p.diffTabCursor < p.diffTabFileCount() {
+			// Drill into diff pane for a file
+			p.diffTabFocus = DiffTabFocusDiff
+		} else {
+			// Drill into a commit — load commit detail and show its files
+			commitIdx := p.diffTabCursor - p.diffTabFileCount()
+			if commitIdx >= 0 && commitIdx < len(p.commitStatusList) {
+				commit := p.commitStatusList[commitIdx]
+				p.diffTabFocus = DiffTabFocusCommitFiles
+				p.commitDetail = nil // Will be loaded async
+				p.commitFileCursor = 0
+				p.commitFileScroll = 0
+				p.commitFileDiffRaw = ""
+				p.commitFileParsed = nil
+				return p.loadCommitDetail(commit.Hash)
+			}
+		}
+	case "h", "left":
+		// Go back to workspace sidebar
+		p.activePane = PaneSidebar
+	case "v", "V":
+		return p.cycleDiffTabViewMode()
+	}
+	return nil
+}
+
+// handleDiffTabDiffPaneKey handles keys when the diff tab diff pane is focused.
+func (p *Plugin) handleDiffTabDiffPaneKey(msg tea.KeyMsg) tea.Cmd {
+	switch msg.String() {
+	case "j", "down":
+		p.diffTabDiffScroll++
+		// Clamp to max scroll position
+		lines := p.countDiffTabDiffLines()
+		maxScroll := lines - (p.height - 6)
+		if maxScroll < 0 {
+			maxScroll = 0
+		}
+		if p.diffTabDiffScroll > maxScroll {
+			p.diffTabDiffScroll = maxScroll
+		}
+	case "k", "up":
+		if p.diffTabDiffScroll > 0 {
+			p.diffTabDiffScroll--
+		}
+	case "g":
+		p.diffTabDiffScroll = 0
+		p.diffTabHorizScroll = 0
+	case "G":
+		lines := p.countDiffTabDiffLines()
+		maxScroll := lines - (p.height - 6)
+		if maxScroll < 0 {
+			maxScroll = 0
+		}
+		p.diffTabDiffScroll = maxScroll
+	case "ctrl+d":
+		p.diffTabDiffScroll += 10
+		// Clamp
+		lines := p.countDiffTabDiffLines()
+		maxScroll := lines - (p.height - 6)
+		if maxScroll < 0 {
+			maxScroll = 0
+		}
+		if p.diffTabDiffScroll > maxScroll {
+			p.diffTabDiffScroll = maxScroll
+		}
+	case "ctrl+u":
+		p.diffTabDiffScroll -= 10
+		if p.diffTabDiffScroll < 0 {
+			p.diffTabDiffScroll = 0
+		}
+	case "esc":
+		// Go back to file list
+		p.diffTabFocus = DiffTabFocusFileList
+	case "h", "left":
+		// Horizontal scroll left, or go back to file list if at leftmost
+		if p.diffTabHorizScroll > 0 {
+			p.diffTabHorizScroll -= 10
+			if p.diffTabHorizScroll < 0 {
+				p.diffTabHorizScroll = 0
+			}
+		} else {
+			p.diffTabFocus = DiffTabFocusFileList
+		}
+	case "l", "right":
+		// Horizontal scroll right
+		p.diffTabHorizScroll += 10
+	case "n":
+		// Jump to next change in full-file view
+		if p.diffViewMode == DiffViewFullFile && p.fullFileDiff != nil {
+			next := p.fullFileDiff.NextChange(p.diffTabDiffScroll)
+			if next >= 0 {
+				p.diffTabDiffScroll = next
+			}
+		}
+	case "N":
+		// Jump to previous change in full-file view
+		if p.diffViewMode == DiffViewFullFile && p.fullFileDiff != nil {
+			prev := p.fullFileDiff.PrevChange(p.diffTabDiffScroll)
+			if prev >= 0 {
+				p.diffTabDiffScroll = prev
+			}
+		}
+	case "v", "V":
+		return p.cycleDiffTabViewMode()
+	case "{":
+		// Previous file
+		return p.jumpToPrevFile()
+	case "}":
+		// Next file
+		return p.jumpToNextFile()
+	}
+	return nil
+}
+
+// cycleDiffTabViewMode cycles through diff view modes for the diff tab.
+func (p *Plugin) cycleDiffTabViewMode() tea.Cmd {
+	switch p.diffViewMode {
+	case DiffViewUnified:
+		p.diffViewMode = DiffViewSideBySide
+		_ = state.SetWorkspaceDiffMode("side-by-side")
+	case DiffViewSideBySide:
+		p.diffViewMode = DiffViewFullFile
+		_ = state.SetWorkspaceDiffMode("full-file")
+		// Load full-file content if needed
+		if p.fullFileDiff == nil {
+			return p.loadFullFileDiffForWorkspace()
+		}
+	default:
+		// Map scroll position from full-file back to hunk-based view
+		if p.fullFileDiff != nil && p.diffTabParsedDiff != nil && p.diffTabDiffScroll > 0 {
+			p.diffTabDiffScroll = p.fullFileDiff.FullFileLineToHunkLine(p.diffTabDiffScroll, p.diffTabParsedDiff)
+		}
+		p.diffViewMode = DiffViewUnified
+		_ = state.SetWorkspaceDiffMode("unified")
+		p.fullFileDiff = nil
+	}
+	p.diffTabHorizScroll = 0
+	return nil
+}
+
+// onDiffTabCursorChanged resets diff pane state when cursor changes in the file list.
+// Returns a tea.Cmd to reload full-file diff or commit detail if needed.
+func (p *Plugin) onDiffTabCursorChanged(oldCursor int) tea.Cmd {
+	if p.diffTabCursor == oldCursor {
+		return nil
+	}
+	p.diffTabDiffScroll = 0
+	p.diffTabHorizScroll = 0
+	p.fullFileDiff = nil
+
+	fileCount := p.diffTabFileCount()
+	if p.diffTabCursor < fileCount {
+		// Cursor on a file — update parsed diff and load full-file if needed
+		p.diffTabParsedDiff = p.parsedDiffForCurrentFile()
+		p.commitDetail = nil // Clear any previously loaded commit detail
+		if p.diffViewMode == DiffViewFullFile {
+			return p.loadFullFileDiffForWorkspace()
+		}
+	} else {
+		// Cursor on a commit — auto-load commit detail for preview
+		p.diffTabParsedDiff = nil
+		commitIdx := p.diffTabCursor - fileCount
+		if commitIdx >= 0 && commitIdx < len(p.commitStatusList) {
+			commit := p.commitStatusList[commitIdx]
+			p.commitDetail = nil
+			p.commitFileCursor = 0
+			p.commitFileScroll = 0
+			p.commitFileDiffRaw = ""
+			p.commitFileParsed = nil
+			return p.loadCommitDetail(commit.Hash)
+		}
+	}
+	return nil
+}
+
+// handleCommitFilesKey handles keys when viewing files within a commit.
+func (p *Plugin) handleCommitFilesKey(msg tea.KeyMsg) tea.Cmd {
+	if p.commitDetail == nil {
+		// Still loading — only allow escape
+		if msg.String() == "esc" || msg.String() == "h" || msg.String() == "left" {
+			p.diffTabFocus = DiffTabFocusFileList
+			p.commitDetail = nil
+		}
+		return nil
+	}
+
+	fileCount := len(p.commitDetail.Files)
+	switch msg.String() {
+	case "j", "down":
+		if p.commitFileCursor < fileCount-1 {
+			p.commitFileCursor++
+			p.commitFileDiffRaw = ""
+			p.commitFileParsed = nil
+			return p.loadSelectedCommitFileDiff()
+		}
+	case "k", "up":
+		if p.commitFileCursor > 0 {
+			p.commitFileCursor--
+			p.commitFileDiffRaw = ""
+			p.commitFileParsed = nil
+			return p.loadSelectedCommitFileDiff()
+		}
+	case "g":
+		if p.commitFileCursor != 0 {
+			p.commitFileCursor = 0
+			p.commitFileScroll = 0
+			p.commitFileDiffRaw = ""
+			p.commitFileParsed = nil
+			return p.loadSelectedCommitFileDiff()
+		}
+	case "G":
+		if fileCount > 0 && p.commitFileCursor != fileCount-1 {
+			p.commitFileCursor = fileCount - 1
+			p.commitFileDiffRaw = ""
+			p.commitFileParsed = nil
+			return p.loadSelectedCommitFileDiff()
+		}
+	case "l", "right", "enter":
+		// Drill into the commit file's diff
+		if fileCount > 0 {
+			p.diffTabFocus = DiffTabFocusCommitDiff
+			p.diffTabDiffScroll = 0
+			p.diffTabHorizScroll = 0
+		}
+	case "h", "left", "esc":
+		// Go back to main file+commit list
+		p.diffTabFocus = DiffTabFocusFileList
+		p.commitDetail = nil
+		p.commitFileDiffRaw = ""
+		p.commitFileParsed = nil
+	}
+	return nil
+}
+
+// handleCommitDiffPaneKey handles keys when viewing a commit file's diff.
+func (p *Plugin) handleCommitDiffPaneKey(msg tea.KeyMsg) tea.Cmd {
+	switch msg.String() {
+	case "j", "down":
+		p.diffTabDiffScroll++
+	case "k", "up":
+		if p.diffTabDiffScroll > 0 {
+			p.diffTabDiffScroll--
+		}
+	case "g":
+		p.diffTabDiffScroll = 0
+		p.diffTabHorizScroll = 0
+	case "G":
+		if p.commitFileParsed != nil {
+			lines := gitstatus.CountParsedDiffLines(p.commitFileParsed)
+			maxScroll := lines - (p.height - 6)
+			if maxScroll < 0 {
+				maxScroll = 0
+			}
+			p.diffTabDiffScroll = maxScroll
+		}
+	case "ctrl+d":
+		p.diffTabDiffScroll += 10
+	case "ctrl+u":
+		p.diffTabDiffScroll -= 10
+		if p.diffTabDiffScroll < 0 {
+			p.diffTabDiffScroll = 0
+		}
+	case "h", "left":
+		if p.diffTabHorizScroll > 0 {
+			p.diffTabHorizScroll -= 10
+			if p.diffTabHorizScroll < 0 {
+				p.diffTabHorizScroll = 0
+			}
+		} else {
+			// Go back to commit file list
+			p.diffTabFocus = DiffTabFocusCommitFiles
+			p.diffTabDiffScroll = 0
+			p.diffTabHorizScroll = 0
+		}
+	case "l", "right":
+		p.diffTabHorizScroll += 10
+	case "esc":
+		p.diffTabFocus = DiffTabFocusCommitFiles
+		p.diffTabDiffScroll = 0
+		p.diffTabHorizScroll = 0
+	case "{":
+		// Previous file in commit
+		if p.commitDetail != nil && p.commitFileCursor > 0 {
+			p.commitFileCursor--
+			p.diffTabDiffScroll = 0
+			p.diffTabHorizScroll = 0
+			p.commitFileDiffRaw = ""
+			p.commitFileParsed = nil
+			return p.loadSelectedCommitFileDiff()
+		}
+	case "}":
+		// Next file in commit
+		if p.commitDetail != nil && p.commitFileCursor < len(p.commitDetail.Files)-1 {
+			p.commitFileCursor++
+			p.diffTabDiffScroll = 0
+			p.diffTabHorizScroll = 0
+			p.commitFileDiffRaw = ""
+			p.commitFileParsed = nil
+			return p.loadSelectedCommitFileDiff()
+		}
+	case "v", "V":
+		// Cycle view mode (unified ↔ side-by-side for commit diffs)
+		p.diffTabDiffScroll = 0
+		p.diffTabHorizScroll = 0
+		if p.diffViewMode == DiffViewUnified {
+			p.diffViewMode = DiffViewSideBySide
+			_ = state.SetWorkspaceDiffMode("side-by-side")
+		} else {
+			p.diffViewMode = DiffViewUnified
+			_ = state.SetWorkspaceDiffMode("unified")
+		}
+	}
+	return nil
+}
+
+// loadSelectedCommitFileDiff loads the diff for the currently selected commit file.
+func (p *Plugin) loadSelectedCommitFileDiff() tea.Cmd {
+	if p.commitDetail == nil || p.commitFileCursor < 0 || p.commitFileCursor >= len(p.commitDetail.Files) {
+		return nil
+	}
+	file := p.commitDetail.Files[p.commitFileCursor]
+	parentHash := ""
+	if p.commitDetail.IsMerge && len(p.commitDetail.ParentHashes) > 0 {
+		parentHash = p.commitDetail.ParentHashes[0]
+	}
+	return p.loadCommitFileDiff(p.commitDetail.Hash, file.Path, parentHash)
 }

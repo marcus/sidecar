@@ -87,6 +87,9 @@ const (
 	regionShellsPlusButton     = "shells-plus-button"
 	regionWorkspacesPlusButton = "workspaces-plus-button"
 
+	// Diff tab pane divider (for drag-to-resize file list vs diff viewer)
+	regionDiffTabDivider = "diff-tab-divider"
+
 	// Type selector modal element IDs
 	typeSelectorListID       = "type-selector-list"
 	typeSelectorInputID      = "type-selector-name-input"
@@ -161,8 +164,26 @@ type Plugin struct {
 	// Diff state
 	diffContent   string
 	diffRaw       string
-	diffViewMode  DiffViewMode             // Unified or side-by-side
+	diffViewMode  DiffViewMode             // Unified, side-by-side, or full-file
 	multiFileDiff *gitstatus.MultiFileDiff // Parsed multi-file diff with positions
+	fullFileDiff  *gitstatus.FullFileDiff  // Full-file diff for current file (loaded on demand)
+
+	// Diff tab two-pane state (hierarchical file list + per-file diff)
+	diffTabListWidth   int                   // Persisted file list pane width in pixels (0 = use default)
+	lastDragRegion     string                // Region ID of last drag operation (EndDrag clears handler before DragEnd)
+	diffTabFocus       DiffTabFocus          // Which sub-pane in diff tab is focused
+	diffTabCursor      int                   // Cursor position in file list
+	diffTabScroll      int                   // Scroll offset in file list
+	diffTabDiffScroll  int                   // Scroll offset in per-file diff
+	diffTabHorizScroll int                   // Horizontal scroll in per-file diff
+	diffTabParsedDiff  *gitstatus.ParsedDiff // Parsed diff for selected file
+
+	// Commit drill-down state (when viewing files within a commit)
+	commitDetail       *gitstatus.Commit      // Loaded commit detail with file list
+	commitFileCursor   int                     // Cursor in commit file list
+	commitFileScroll   int                     // Scroll offset in commit file list
+	commitFileDiffRaw  string                  // Raw diff for selected commit file
+	commitFileParsed   *gitstatus.ParsedDiff   // Parsed diff for selected commit file
 
 	// File picker modal state (gf command)
 	filePickerIdx int // Selected file index in picker
@@ -455,9 +476,17 @@ func (p *Plugin) Init(ctx *plugin.Context) error {
 		p.sidebarWidth = savedWidth
 	}
 
+	// Load saved diff tab file list width
+	if savedWidth := state.GetDiffTabFileListWidth(); savedWidth > 0 {
+		p.diffTabListWidth = savedWidth
+	}
+
 	// Load saved diff view mode
-	if state.GetWorkspaceDiffMode() == "side-by-side" {
+	switch state.GetWorkspaceDiffMode() {
+	case "side-by-side":
 		p.diffViewMode = DiffViewSideBySide
+	case "full-file":
+		p.diffViewMode = DiffViewFullFile
 	}
 
 	return nil
@@ -965,6 +994,21 @@ func (p *Plugin) moveCursor(delta int) {
 		p.autoScrollOutput = true
 		p.resetScrollBaseLineCount() // td-f7c8be: clear snapshot for new selection
 		p.taskLoading = false        // Reset task loading state for new selection (td-3668584f)
+		p.multiFileDiff = nil        // Clear stale multi-file diff from previous worktree
+		p.fullFileDiff = nil         // Clear stale full-file diff from previous worktree
+		p.commitStatusList = nil     // Clear stale commit list from previous worktree
+		p.commitStatusWorktree = ""
+		p.diffTabCursor = 0          // Reset diff tab file selection
+		p.diffTabScroll = 0
+		p.diffTabDiffScroll = 0
+		p.diffTabHorizScroll = 0
+		p.diffTabFocus = DiffTabFocusFileList
+		p.diffTabParsedDiff = nil
+		p.commitDetail = nil
+		p.commitFileCursor = 0
+		p.commitFileScroll = 0
+		p.commitFileDiffRaw = ""
+		p.commitFileParsed = nil
 		// Exit interactive mode when switching selection (td-fc758e88)
 		p.exitInteractiveMode()
 		// Persist selection to disk

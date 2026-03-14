@@ -78,33 +78,37 @@ type Plugin struct {
 	moreCommitsAvailable bool      // Whether more commits are available to load
 
 	// Inline diff state (for three-pane view)
-	selectedDiffFile    string       // File being previewed in diff pane
-	forceNextDiffReload bool         // Bypass dedup on next autoLoadDiff call
-	diffPaneScroll      int          // Vertical scroll for inline diff
-	diffPaneHorizScroll int          // Horizontal scroll for inline diff
-	diffPaneParsedDiff  *ParsedDiff  // Parsed diff for inline view
-	diffPaneViewMode    DiffViewMode // Unified or side-by-side for inline diff
+	selectedDiffFile     string        // File being previewed in diff pane
+	forceNextDiffReload  bool          // Bypass dedup on next autoLoadDiff call
+	diffPaneScroll       int           // Vertical scroll for inline diff
+	diffPaneHorizScroll  int           // Horizontal scroll for inline diff
+	diffPaneParsedDiff   *ParsedDiff   // Parsed diff for inline view
+	diffPaneViewMode     DiffViewMode  // Unified, side-by-side, or full-file for inline diff
+	diffPaneFullFileDiff *FullFileDiff // Full-file diff for inline view (loaded on demand)
 
 	// Commit preview state (for three-pane view when on commit)
 	previewCommit       *Commit // Commit being previewed in right pane
 	previewCommitCursor int     // Cursor for file list in preview
 	previewCommitScroll int     // Scroll offset for preview content
+	commitBodyExpanded  bool    // Whether full commit message is shown
+	commitBodyScroll    int     // Scroll offset within expanded commit body
 
 	// Diff state (for full-screen diff view)
 	diffContent         string
 	diffFile            string
 	diffScroll          int
-	diffRaw             string       // Raw diff before delta processing
-	diffCommit          string       // Commit hash if viewing commit diff
-	diffCommitSubject   string       // Subject of commit being diffed (for breadcrumb)
-	diffCommitShortHash string       // Short hash of commit being diffed (for breadcrumb)
-	diffViewMode        DiffViewMode // Line or side-by-side
-	diffHorizOff        int          // Horizontal scroll for side-by-side
-	parsedDiff          *ParsedDiff  // Parsed diff for enhanced rendering
-	diffReturnMode      ViewMode     // View mode to return to on esc
-	diffLoaded          bool         // True once diff load completes (distinguishes loading vs empty)
-	diffWrapEnabled     bool         // Wrap long lines instead of truncating
-	diffBackWidth       int          // Width of back button for hit region (set during render)
+	diffRaw             string        // Raw diff before delta processing
+	diffCommit          string        // Commit hash if viewing commit diff
+	diffCommitSubject   string        // Subject of commit being diffed (for breadcrumb)
+	diffCommitShortHash string        // Short hash of commit being diffed (for breadcrumb)
+	diffViewMode        DiffViewMode  // Unified, side-by-side, or full-file
+	diffHorizOff        int           // Horizontal scroll for side-by-side
+	parsedDiff          *ParsedDiff   // Parsed diff for enhanced rendering
+	diffReturnMode      ViewMode      // View mode to return to on esc
+	diffLoaded          bool          // True once diff load completes (distinguishes loading vs empty)
+	diffWrapEnabled     bool          // Wrap long lines instead of truncating
+	diffBackWidth       int           // Width of back button for hit region (set during render)
+	fullFileDiff        *FullFileDiff // Full-file diff for full-screen view (loaded on demand)
 
 	// Push status state
 	pushStatus              *PushStatus
@@ -280,8 +284,13 @@ func (p *Plugin) Init(ctx *plugin.Context) error {
 	p.tree = NewFileTree(ctx.WorkDir)
 
 	// Load user preferences from state
-	if state.GetGitDiffMode() == "side-by-side" {
+	switch state.GetGitDiffMode() {
+	case "side-by-side":
 		p.diffViewMode = DiffViewSideBySide
+		p.diffPaneViewMode = DiffViewSideBySide
+	case "full-file":
+		p.diffViewMode = DiffViewFullFile
+		p.diffPaneViewMode = DiffViewFullFile
 	}
 	if saved := state.GetGitStatusSidebarWidth(); saved > 0 {
 		p.sidebarWidth = saved
@@ -456,6 +465,19 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 		// Always parse diff for built-in rendering (even if delta is available)
 		// This allows toggling between delta and built-in rendering at runtime
 		p.parsedDiff, _ = ParseUnifiedDiff(msg.Raw)
+		// Auto-load full-file content when in full-file view mode
+		if p.diffViewMode == DiffViewFullFile && p.diffFile != "" {
+			p.fullFileDiff = nil // Invalidate stale data
+			entries := p.tree.AllEntries()
+			for _, entry := range entries {
+				if entry.Path == p.diffFile {
+					return p, p.loadFullFileDiff(entry.Path, entry.Staged, entry.Status, p.diffCommit, false)
+				}
+			}
+			if p.diffCommit != "" {
+				return p, p.loadFullFileDiff(p.diffFile, false, "", p.diffCommit, false)
+			}
+		}
 		return p, nil
 
 	case CommitSuccessMsg:
@@ -480,16 +502,41 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 		// Only update if this is still the selected file
 		if msg.File == p.selectedDiffFile {
 			p.diffPaneParsedDiff = msg.Parsed
-			// Clamp scroll to new content length (diff may have shrunk after stage/unstage)
-			if p.diffPaneParsedDiff != nil {
-				lines := countParsedDiffLines(p.diffPaneParsedDiff)
-				maxScroll := lines - (p.height - 6)
-				if maxScroll < 0 {
-					maxScroll = 0
+			// Clamp scroll to new content length (diff may have shrunk after stage/unstage).
+			// In full-file view mode, clamp against the full-file line count (which includes
+			// all context lines), not the parsed hunk-only count. Otherwise the watcher
+			// refresh cycle snaps scroll back to a much smaller value.
+			p.clampDiffPaneScroll()
+			// Auto-load full-file content when in full-file view mode.
+			// Always reload (not just when nil) so content refreshes after stage/unstage/discard.
+			// The old diffPaneFullFileDiff is kept until the new one arrives to avoid flicker.
+			if p.diffPaneViewMode == DiffViewFullFile {
+				entries := p.tree.AllEntries()
+				for _, entry := range entries {
+					if entry.Path == msg.File {
+						return p, p.loadFullFileDiff(entry.Path, entry.Staged, entry.Status, "", true)
+					}
 				}
-				if p.diffPaneScroll > maxScroll {
-					p.diffPaneScroll = maxScroll
-				}
+			}
+		}
+		return p, nil
+
+	case FullFileDiffLoadedMsg:
+		if plugin.IsStale(p.ctx, msg) {
+			return p, nil
+		}
+		ffd := BuildFullFileDiff(msg.OldContent, msg.NewContent, msg.Parsed)
+		if msg.ForInline {
+			if msg.File == p.selectedDiffFile {
+				p.diffPaneFullFileDiff = ffd
+				// Clamp scroll if new content is shorter
+				p.clampDiffPaneScroll()
+			}
+		} else {
+			if msg.File == p.diffFile {
+				p.fullFileDiff = ffd
+				// Clamp scroll if new content is shorter
+				p.clampDiffScroll()
 			}
 		}
 		return p, nil
@@ -616,6 +663,8 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 		p.previewCommit = msg.Commit
 		p.previewCommitCursor = 0
 		p.previewCommitScroll = 0
+		p.commitBodyExpanded = false
+		p.commitBodyScroll = 0
 		// Copy stats to the commit in the list for inline display
 		if msg.Commit != nil {
 			for _, c := range p.recentCommits {
@@ -842,6 +891,11 @@ type CommitPreviewLoadedMsg struct {
 
 // GetEpoch implements plugin.EpochMessage.
 func (m CommitPreviewLoadedMsg) GetEpoch() uint64 { return m.Epoch }
+
+// CountParsedDiffLines counts total lines in a parsed diff (exported for use by workspace plugin).
+func CountParsedDiffLines(diff *ParsedDiff) int {
+	return countParsedDiffLines(diff)
+}
 
 // countParsedDiffLines counts total lines in a parsed diff.
 func countParsedDiffLines(diff *ParsedDiff) int {
@@ -1216,6 +1270,19 @@ type CommitSuccessMsg struct {
 type CommitErrorMsg struct {
 	Err error
 }
+
+// FullFileDiffLoadedMsg is sent when full-file content is loaded for the full-file diff view.
+type FullFileDiffLoadedMsg struct {
+	Epoch      uint64
+	File       string
+	OldContent string
+	NewContent string
+	Parsed     *ParsedDiff
+	ForInline  bool // True if this is for the inline diff pane, false for full-screen
+}
+
+// GetEpoch implements plugin.EpochMessage.
+func (m FullFileDiffLoadedMsg) GetEpoch() uint64 { return m.Epoch }
 
 // InlineDiffLoadedMsg is sent when an inline diff finishes loading.
 type InlineDiffLoadedMsg struct {

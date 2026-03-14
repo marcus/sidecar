@@ -542,3 +542,260 @@ func TestRenderLineDiff_WrapVeryLongLine(t *testing.T) {
 		t.Errorf("expected at least 10 wrapped lines for 1500 char content, got %d", len(lines))
 	}
 }
+
+func TestRenderFullFileSideBySide_Nil(t *testing.T) {
+	result := RenderFullFileSideBySide(nil, 80, 0, 20, 0, nil, false)
+	if !strings.Contains(result, "No diff content") {
+		t.Error("expected 'No diff content' for nil FullFileDiff")
+	}
+}
+
+func TestRenderFullFileSideBySide_Empty(t *testing.T) {
+	ffd := &FullFileDiff{}
+	result := RenderFullFileSideBySide(ffd, 80, 0, 20, 0, nil, false)
+	if !strings.Contains(result, "No diff content") {
+		t.Error("expected 'No diff content' for empty FullFileDiff")
+	}
+}
+
+func TestRenderFullFileSideBySide_ContextOnly(t *testing.T) {
+	ffd := &FullFileDiff{
+		Lines: []FullFileLine{
+			{Type: LineContext, OldLineNo: 1, NewLineNo: 1, OldText: "same", NewText: "same"},
+			{Type: LineContext, OldLineNo: 2, NewLineNo: 2, OldText: "line2", NewText: "line2"},
+		},
+	}
+
+	result := RenderFullFileSideBySide(ffd, 100, 0, 20, 0, nil, false)
+	if result == "" {
+		t.Fatal("expected non-empty result")
+	}
+	if !strings.Contains(result, "│") {
+		t.Error("expected separator in side-by-side output")
+	}
+	// Should contain line numbers
+	if !strings.Contains(result, "1") || !strings.Contains(result, "2") {
+		t.Error("expected line numbers in output")
+	}
+}
+
+func TestRenderFullFileSideBySide_WithChanges(t *testing.T) {
+	ffd := &FullFileDiff{
+		Lines: []FullFileLine{
+			{Type: LineContext, OldLineNo: 1, NewLineNo: 1, OldText: "same", NewText: "same"},
+			{Type: LineRemove, OldLineNo: 2, OldText: "old"},
+			{Type: LineAdd, NewLineNo: 2, NewText: "new"},
+			{Type: LineContext, OldLineNo: 3, NewLineNo: 3, OldText: "end", NewText: "end"},
+		},
+	}
+
+	result := RenderFullFileSideBySide(ffd, 100, 0, 20, 0, nil, false)
+	if result == "" {
+		t.Fatal("expected non-empty result")
+	}
+
+	lines := strings.Split(result, "\n")
+	// Should have 4 rendered lines (+ trailing empty from final \n)
+	nonEmpty := 0
+	for _, l := range lines {
+		if strings.TrimSpace(l) != "" {
+			nonEmpty++
+		}
+	}
+	if nonEmpty != 4 {
+		t.Errorf("expected 4 non-empty lines, got %d", nonEmpty)
+	}
+}
+
+func TestRenderFullFileSideBySide_Scrolling(t *testing.T) {
+	var lines []FullFileLine
+	for i := 0; i < 50; i++ {
+		lines = append(lines, FullFileLine{
+			Type:      LineContext,
+			OldLineNo: i + 1,
+			NewLineNo: i + 1,
+			OldText:   "line",
+			NewText:   "line",
+		})
+	}
+	ffd := &FullFileDiff{Lines: lines}
+
+	// Render from line 10, max 5 lines
+	result := RenderFullFileSideBySide(ffd, 100, 10, 5, 0, nil, false)
+	rendered := strings.Split(strings.TrimSuffix(result, "\n"), "\n")
+	if len(rendered) != 5 {
+		t.Errorf("expected 5 lines with startLine=10, maxLines=5, got %d", len(rendered))
+	}
+}
+
+func TestRenderFullFileSideBySide_WrapEnabled(t *testing.T) {
+	ffd := &FullFileDiff{
+		Lines: []FullFileLine{
+			{Type: LineContext, OldLineNo: 1, NewLineNo: 1,
+				OldText: strings.Repeat("X", 200), NewText: strings.Repeat("Y", 200)},
+		},
+	}
+
+	result := RenderFullFileSideBySide(ffd, 80, 0, 50, 0, nil, true)
+	if result == "" {
+		t.Fatal("expected non-empty result with wrap enabled")
+	}
+	lines := strings.Split(result, "\n")
+	// Wrapped long lines should produce multiple rendered lines
+	if len(lines) < 2 {
+		t.Error("expected multiple wrapped lines")
+	}
+}
+
+func TestDiffViewMode_FullFileConstant(t *testing.T) {
+	// Verify the three constants are distinct
+	modes := []DiffViewMode{DiffViewUnified, DiffViewSideBySide, DiffViewFullFile}
+	seen := make(map[DiffViewMode]bool)
+	for _, m := range modes {
+		if seen[m] {
+			t.Errorf("duplicate DiffViewMode value: %d", m)
+		}
+		seen[m] = true
+	}
+}
+
+func TestRenderFullFileSideBySide_HorizontalOffset(t *testing.T) {
+	ffd := &FullFileDiff{
+		Lines: []FullFileLine{
+			{Type: LineContext, OldLineNo: 1, NewLineNo: 1,
+				OldText: "0123456789ABCDEF", NewText: "0123456789ABCDEF"},
+		},
+	}
+
+	result0 := RenderFullFileSideBySide(ffd, 100, 0, 20, 0, nil, false)
+	result5 := RenderFullFileSideBySide(ffd, 100, 0, 20, 5, nil, false)
+
+	// Both should produce output
+	if result0 == "" || result5 == "" {
+		t.Fatal("expected non-empty results")
+	}
+	// With offset, content should differ
+	if result0 == result5 {
+		t.Error("horizontal offset should produce different output")
+	}
+}
+
+func TestFullFileDiff_NextChange(t *testing.T) {
+	ffd := &FullFileDiff{
+		Lines: []FullFileLine{
+			{Type: LineContext, OldLineNo: 1, NewLineNo: 1},  // 0
+			{Type: LineContext, OldLineNo: 2, NewLineNo: 2},  // 1
+			{Type: LineRemove, OldLineNo: 3},                 // 2
+			{Type: LineAdd, NewLineNo: 3},                    // 3
+			{Type: LineContext, OldLineNo: 4, NewLineNo: 4},  // 4
+			{Type: LineContext, OldLineNo: 5, NewLineNo: 5},  // 5
+			{Type: LineAdd, NewLineNo: 6},                    // 6
+			{Type: LineContext, OldLineNo: 6, NewLineNo: 7},  // 7
+		},
+	}
+
+	// From start, should find first change at line 2
+	if got := ffd.NextChange(0); got != 2 {
+		t.Errorf("NextChange(0) = %d, want 2", got)
+	}
+
+	// From within first change block, should skip to next change at line 6
+	if got := ffd.NextChange(2); got != 6 {
+		t.Errorf("NextChange(2) = %d, want 6", got)
+	}
+
+	// From last change, no more changes
+	if got := ffd.NextChange(6); got != -1 {
+		t.Errorf("NextChange(6) = %d, want -1", got)
+	}
+
+	// Nil diff
+	var nilFfd *FullFileDiff
+	if got := nilFfd.NextChange(0); got != -1 {
+		t.Errorf("NextChange on nil = %d, want -1", got)
+	}
+}
+
+func TestFullFileDiff_PrevChange(t *testing.T) {
+	ffd := &FullFileDiff{
+		Lines: []FullFileLine{
+			{Type: LineContext, OldLineNo: 1, NewLineNo: 1},  // 0
+			{Type: LineRemove, OldLineNo: 2},                 // 1
+			{Type: LineAdd, NewLineNo: 2},                    // 2
+			{Type: LineContext, OldLineNo: 3, NewLineNo: 3},  // 3
+			{Type: LineContext, OldLineNo: 4, NewLineNo: 4},  // 4
+			{Type: LineRemove, OldLineNo: 5},                 // 5
+			{Type: LineAdd, NewLineNo: 5},                    // 6
+			{Type: LineContext, OldLineNo: 6, NewLineNo: 6},  // 7
+		},
+	}
+
+	// From after second change block, should find it at line 5
+	if got := ffd.PrevChange(7); got != 5 {
+		t.Errorf("PrevChange(7) = %d, want 5", got)
+	}
+
+	// From second change block, should find first at line 1
+	if got := ffd.PrevChange(5); got != 1 {
+		t.Errorf("PrevChange(5) = %d, want 1", got)
+	}
+
+	// From first change, no previous
+	if got := ffd.PrevChange(1); got != -1 {
+		t.Errorf("PrevChange(1) = %d, want -1", got)
+	}
+
+	// Nil diff
+	var nilFfd *FullFileDiff
+	if got := nilFfd.PrevChange(5); got != -1 {
+		t.Errorf("PrevChange on nil = %d, want -1", got)
+	}
+}
+
+func TestFullFileDiff_FullFileLineToHunkLine(t *testing.T) {
+	// Build a simple parsed diff with one hunk at old line 3
+	parsed := &ParsedDiff{
+		Hunks: []Hunk{
+			{
+				OldStart: 3, OldCount: 2, NewStart: 3, NewCount: 2,
+				Lines: []DiffLine{
+					{Type: LineRemove, OldLineNo: 3, Content: "old"},
+					{Type: LineAdd, NewLineNo: 3, Content: "new"},
+					{Type: LineContext, OldLineNo: 4, NewLineNo: 4, Content: "ctx"},
+				},
+			},
+		},
+	}
+
+	ffd := &FullFileDiff{
+		Lines: []FullFileLine{
+			{Type: LineContext, OldLineNo: 1, NewLineNo: 1}, // 0
+			{Type: LineContext, OldLineNo: 2, NewLineNo: 2}, // 1
+			{Type: LineRemove, OldLineNo: 3},                // 2
+			{Type: LineAdd, NewLineNo: 3},                   // 3
+			{Type: LineContext, OldLineNo: 4, NewLineNo: 4}, // 4
+			{Type: LineContext, OldLineNo: 5, NewLineNo: 5}, // 5
+		},
+	}
+
+	// Line 0 (context, old line 1): before any hunk, should map to 0
+	if got := ffd.FullFileLineToHunkLine(0, parsed); got != 0 {
+		t.Errorf("FullFileLineToHunkLine(0) = %d, want 0", got)
+	}
+
+	// Line 2 (remove, old line 3): should map to hunk header (0) + 1 = line 1
+	if got := ffd.FullFileLineToHunkLine(2, parsed); got != 1 {
+		t.Errorf("FullFileLineToHunkLine(2) = %d, want 1", got)
+	}
+
+	// Line 3 (add, new line 3): should map to hunk header (0) + 2 = line 2
+	if got := ffd.FullFileLineToHunkLine(3, parsed); got != 2 {
+		t.Errorf("FullFileLineToHunkLine(3) = %d, want 2", got)
+	}
+
+	// Nil full-file diff
+	var nilFfd *FullFileDiff
+	if got := nilFfd.FullFileLineToHunkLine(0, parsed); got != 0 {
+		t.Errorf("FullFileLineToHunkLine on nil = %d, want 0", got)
+	}
+}
