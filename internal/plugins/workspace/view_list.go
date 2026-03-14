@@ -2,11 +2,13 @@ package workspace
 
 import (
 	"fmt"
+	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/marcus/sidecar/internal/config"
 	"github.com/marcus/sidecar/internal/styles"
 	"github.com/marcus/sidecar/internal/ui"
 )
@@ -445,6 +447,13 @@ func (p *Plugin) renderWorktreeItem(wt *Worktree, selected bool, width int) stri
 
 	// Name and time
 	name := wt.Name
+	// Strip repo prefix from non-main worktrees when configured
+	if !wt.IsMain && p.ctx.Config != nil && p.ctx.Config.Plugins.Workspace.SidebarDisplay.HideRepoPrefix {
+		repoName := filepath.Base(p.ctx.ProjectRoot)
+		if repoName != "" && strings.HasPrefix(name, repoName+"-") {
+			name = name[len(repoName)+1:]
+		}
+	}
 	timeStr := formatRelativeTime(wt.UpdatedAt)
 
 	// Calculate max name width to prevent wrapping
@@ -479,9 +488,15 @@ func (p *Plugin) renderWorktreeItem(wt *Worktree, selected bool, width int) stri
 		}
 	}
 
+	// Sidebar display settings
+	var sdCfg config.SidebarDisplayConfig
+	if p.ctx.Config != nil {
+		sdCfg = p.ctx.Config.Plugins.Workspace.SidebarDisplay
+	}
+
 	// Stats if available
 	statsStr := ""
-	if wt.Stats != nil && (wt.Stats.Additions > 0 || wt.Stats.Deletions > 0) {
+	if !sdCfg.HideStats && wt.Stats != nil && (wt.Stats.Additions > 0 || wt.Stats.Deletions > 0) {
 		statsStr = fmt.Sprintf("+%d -%d", wt.Stats.Additions, wt.Stats.Deletions)
 	}
 
@@ -490,14 +505,16 @@ func (p *Plugin) renderWorktreeItem(wt *Worktree, selected bool, width int) stri
 	if wt.IsMain {
 		// For root workspace, show branch name instead of agent
 		parts = append(parts, wt.Branch)
-	} else if wt.Agent != nil {
-		parts = append(parts, string(wt.Agent.Type))
-	} else if wt.ChosenAgentType != "" && wt.ChosenAgentType != AgentNone {
-		parts = append(parts, string(wt.ChosenAgentType))
-	} else {
-		parts = append(parts, "—")
+	} else if !sdCfg.HideAgent {
+		if wt.Agent != nil {
+			parts = append(parts, string(wt.Agent.Type))
+		} else if wt.ChosenAgentType != "" && wt.ChosenAgentType != AgentNone {
+			parts = append(parts, string(wt.ChosenAgentType))
+		} else {
+			parts = append(parts, "—")
+		}
 	}
-	if wt.TaskID != "" {
+	if !sdCfg.HideTask && wt.TaskID != "" {
 		parts = append(parts, wt.TaskID)
 	}
 	if statsStr != "" {
@@ -596,14 +613,16 @@ func (p *Plugin) renderWorktreeItem(wt *Worktree, selected bool, width int) stri
 	if wt.IsMain {
 		// For root workspace, show branch name instead of agent
 		styledParts = append(styledParts, wt.Branch)
-	} else if wt.Agent != nil {
-		styledParts = append(styledParts, string(wt.Agent.Type))
-	} else if wt.ChosenAgentType != "" && wt.ChosenAgentType != AgentNone {
-		styledParts = append(styledParts, dimText(string(wt.ChosenAgentType)))
-	} else {
-		styledParts = append(styledParts, "—")
+	} else if !sdCfg.HideAgent {
+		if wt.Agent != nil {
+			styledParts = append(styledParts, string(wt.Agent.Type))
+		} else if wt.ChosenAgentType != "" && wt.ChosenAgentType != AgentNone {
+			styledParts = append(styledParts, dimText(string(wt.ChosenAgentType)))
+		} else {
+			styledParts = append(styledParts, "—")
+		}
 	}
-	if wt.TaskID != "" {
+	if !sdCfg.HideTask && wt.TaskID != "" {
 		styledParts = append(styledParts, wt.TaskID)
 	}
 	if statsStr != "" {
