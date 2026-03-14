@@ -228,6 +228,14 @@ func (p *Plugin) ensureCommitVisible(commitIdx int) {
 
 // clampDiffHorizScroll clamps diffHorizOff to valid range based on content width.
 func (p *Plugin) clampDiffHorizScroll() {
+	// In full-file mode, don't clamp using side-by-side metrics — the content
+	// widths are completely different. Let the renderer handle truncation.
+	if p.diffViewMode == DiffViewFullFile {
+		if p.diffHorizOff < 0 {
+			p.diffHorizOff = 0
+		}
+		return
+	}
 	if p.parsedDiff == nil {
 		return
 	}
@@ -313,6 +321,13 @@ func (p *Plugin) clampDiffPaneScroll() {
 
 // clampDiffPaneHorizScroll clamps diffPaneHorizScroll to valid range.
 func (p *Plugin) clampDiffPaneHorizScroll() {
+	// In full-file mode, don't clamp using side-by-side metrics.
+	if p.diffPaneViewMode == DiffViewFullFile {
+		if p.diffPaneHorizScroll < 0 {
+			p.diffPaneHorizScroll = 0
+		}
+		return
+	}
 	if p.diffPaneParsedDiff == nil {
 		return
 	}
