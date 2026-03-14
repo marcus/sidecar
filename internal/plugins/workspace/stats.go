@@ -39,51 +39,88 @@ func computeStats(workdir string) (*GitStats, error) {
 
 // getDiffStats computes additions/deletions from git diff.
 func getDiffStats(workdir string, stats *GitStats) error {
-	// Get stats for both staged and unstaged changes
-	cmd := exec.Command("git", "diff", "--stat", "HEAD")
+	// Use --numstat for reliable parsing of tracked file changes (staged + unstaged)
+	cmd := exec.Command("git", "diff", "--numstat", "HEAD")
 	cmd.Dir = workdir
 	output, err := cmd.Output()
 	if err != nil {
 		// No HEAD yet or other error, try without HEAD
-		cmd = exec.Command("git", "diff", "--stat")
+		cmd = exec.Command("git", "diff", "--numstat")
 		cmd.Dir = workdir
 		output, _ = cmd.Output()
 	}
 
-	// Parse stat output: " 3 files changed, 10 insertions(+), 5 deletions(-)"
-	lines := strings.Split(string(output), "\n")
-	for _, line := range lines {
-		line = strings.TrimSpace(line)
-		if strings.Contains(line, "files changed") || strings.Contains(line, "file changed") {
-			// Parse insertions
-			if idx := strings.Index(line, "insertion"); idx > 0 {
-				parts := strings.Split(line[:idx], " ")
-				for i := len(parts) - 1; i >= 0; i-- {
-					if n, err := strconv.Atoi(parts[i]); err == nil {
-						stats.Additions = n
-						break
-					}
-				}
+	// Parse numstat output: "<additions>\t<deletions>\t<path>"
+	for _, line := range strings.Split(strings.TrimSpace(string(output)), "\n") {
+		if line == "" {
+			continue
+		}
+		parts := strings.Split(line, "\t")
+		if len(parts) < 3 {
+			continue
+		}
+		// Binary files show "-" for counts
+		if adds, err := strconv.Atoi(parts[0]); err == nil {
+			stats.Additions += adds
+		}
+		if dels, err := strconv.Atoi(parts[1]); err == nil {
+			stats.Deletions += dels
+		}
+		stats.FilesChanged++
+	}
+
+	// Also count lines in untracked files (these are all additions)
+	untrackedCmd := exec.Command("git", "ls-files", "--others", "--exclude-standard")
+	untrackedCmd.Dir = workdir
+	untrackedOutput, err := untrackedCmd.Output()
+	if err != nil {
+		return nil
+	}
+
+	var untrackedPaths []string
+	for _, p := range strings.Split(strings.TrimSpace(string(untrackedOutput)), "\n") {
+		if p != "" {
+			untrackedPaths = append(untrackedPaths, p)
+		}
+	}
+
+	if len(untrackedPaths) == 0 {
+		return nil
+	}
+
+	// Count lines in untracked files using wc -l in batches
+	const batchSize = 500
+	for i := 0; i < len(untrackedPaths); i += batchSize {
+		end := i + batchSize
+		if end > len(untrackedPaths) {
+			end = len(untrackedPaths)
+		}
+		batch := untrackedPaths[i:end]
+
+		args := append([]string{"-l"}, batch...)
+		wcCmd := exec.Command("wc", args...)
+		wcCmd.Dir = workdir
+		wcOutput, err := wcCmd.Output()
+		if err != nil {
+			continue
+		}
+
+		for _, wcLine := range strings.Split(strings.TrimSpace(string(wcOutput)), "\n") {
+			wcLine = strings.TrimSpace(wcLine)
+			if wcLine == "" {
+				continue
 			}
-			// Parse deletions
-			if idx := strings.Index(line, "deletion"); idx > 0 {
-				parts := strings.Split(line[:idx], " ")
-				for i := len(parts) - 1; i >= 0; i-- {
-					if n, err := strconv.Atoi(parts[i]); err == nil {
-						stats.Deletions = n
-						break
-					}
-				}
+			fields := strings.Fields(wcLine)
+			if len(fields) < 2 {
+				continue
 			}
-			// Parse files changed
-			if idx := strings.Index(line, "file"); idx > 0 {
-				parts := strings.Split(line[:idx], " ")
-				for i := len(parts) - 1; i >= 0; i-- {
-					if n, err := strconv.Atoi(strings.TrimSpace(parts[i])); err == nil {
-						stats.FilesChanged = n
-						break
-					}
-				}
+			// Skip the "total" summary line from wc
+			if fields[len(fields)-1] == "total" {
+				continue
+			}
+			if count, err := strconv.Atoi(fields[0]); err == nil {
+				stats.Additions += count
+				stats.FilesChanged++
 			}
 		}
 	}
