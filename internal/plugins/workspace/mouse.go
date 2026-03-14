@@ -936,9 +936,9 @@ func (p *Plugin) handleMouseDrag(action mouse.MouseAction) tea.Cmd {
 		startValue := p.mouseHandler.DragStartValue()
 		newWidth := startValue + (action.DragDX * 100 / p.width) // Convert px delta to %
 
-		// Clamp to reasonable bounds (20% - 60%)
-		if newWidth < 20 {
-			newWidth = 20
+		// Clamp to reasonable bounds (10% - 60%)
+		if newWidth < 10 {
+			newWidth = 10
 		}
 		if newWidth > 60 {
 			newWidth = 60
