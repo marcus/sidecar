@@ -79,15 +79,23 @@ type rawPluginsConfig struct {
 }
 
 type rawWorkspaceConfig struct {
-	DirPrefix            *bool           `json:"dirPrefix"`
-	DefaultAgentType     string          `json:"defaultAgentType"`
-	LegacyDefaultAgent   string          `json:"defaultAgent"` // Backward compatibility
-	AgentStart           json.RawMessage `json:"agentStart"`
-	TmuxCaptureMaxBytes  *int            `json:"tmuxCaptureMaxBytes"`
-	InteractiveExitKey   string          `json:"interactiveExitKey"`
-	InteractiveAttachKey string          `json:"interactiveAttachKey"`
-	InteractiveCopyKey   string          `json:"interactiveCopyKey"`
-	InteractivePasteKey  string          `json:"interactivePasteKey"`
+	DirPrefix            *bool                    `json:"dirPrefix"`
+	DefaultAgentType     string                   `json:"defaultAgentType"`
+	LegacyDefaultAgent   string                   `json:"defaultAgent"` // Backward compatibility
+	AgentStart           json.RawMessage           `json:"agentStart"`
+	TmuxCaptureMaxBytes  *int                     `json:"tmuxCaptureMaxBytes"`
+	InteractiveExitKey   string                   `json:"interactiveExitKey"`
+	InteractiveAttachKey string                   `json:"interactiveAttachKey"`
+	InteractiveCopyKey   string                   `json:"interactiveCopyKey"`
+	InteractivePasteKey  string                   `json:"interactivePasteKey"`
+	SidebarDisplay       *rawSidebarDisplayConfig `json:"sidebarDisplay"`
+}
+
+type rawSidebarDisplayConfig struct {
+	HideRepoPrefix *bool `json:"hideRepoPrefix"`
+	HideAgent      *bool `json:"hideAgent"`
+	HideTask       *bool `json:"hideTask"`
+	HideStats      *bool `json:"hideStats"`
 }
 
 type rawGitStatusConfig struct {
@@ -244,6 +252,20 @@ func mergeConfig(cfg *Config, raw *rawConfig) {
 	}
 	if raw.Plugins.Workspace.InteractivePasteKey != "" {
 		cfg.Plugins.Workspace.InteractivePasteKey = raw.Plugins.Workspace.InteractivePasteKey
+	}
+	if sd := raw.Plugins.Workspace.SidebarDisplay; sd != nil {
+		if sd.HideRepoPrefix != nil {
+			cfg.Plugins.Workspace.SidebarDisplay.HideRepoPrefix = *sd.HideRepoPrefix
+		}
+		if sd.HideAgent != nil {
+			cfg.Plugins.Workspace.SidebarDisplay.HideAgent = *sd.HideAgent
+		}
+		if sd.HideTask != nil {
+			cfg.Plugins.Workspace.SidebarDisplay.HideTask = *sd.HideTask
+		}
+		if sd.HideStats != nil {
+			cfg.Plugins.Workspace.SidebarDisplay.HideStats = *sd.HideStats
+		}
 	}
 
 	// Keymap
