@@ -455,12 +455,17 @@ func (p *Plugin) updateStatusDiffPane(msg tea.KeyMsg) (plugin.Plugin, tea.Cmd) {
 		p.activePane = PaneSidebar
 
 	case "h", "left":
-		// Horizontal scroll left (use ESC or Tab to switch panes)
+		// Horizontal scroll left, or return to sidebar if already at leftmost
 		if p.diffPaneHorizScroll > 0 {
 			p.diffPaneHorizScroll -= 10
 			if p.diffPaneHorizScroll < 0 {
 				p.diffPaneHorizScroll = 0
 			}
+		} else {
+			if !p.sidebarVisible {
+				p.sidebarVisible = true
+			}
+			p.activePane = PaneSidebar
 		}
 
 	case "l", "right":
@@ -631,7 +636,7 @@ func (p *Plugin) updateCommitPreviewPane(msg tea.KeyMsg) (plugin.Plugin, tea.Cmd
 			p.ensurePreviewCursorVisible()
 		}
 
-	case "enter", "d":
+	case "enter", "d", "l", "right":
 		// Open full-screen diff for selected file in commit
 		if p.previewCommitCursor < len(c.Files) {
 			file := c.Files[p.previewCommitCursor]
@@ -838,12 +843,14 @@ func (p *Plugin) updateDiff(msg tea.KeyMsg) (plugin.Plugin, tea.Cmd) {
 		p.toggleSidebar()
 
 	case "h", "left", "<", "H":
-		// Horizontal scroll left
+		// Horizontal scroll left, or exit diff view if already at leftmost
 		if p.diffHorizOff > 0 {
 			p.diffHorizOff -= 10
 			if p.diffHorizOff < 0 {
 				p.diffHorizOff = 0
 			}
+		} else {
+			p.closeDiffView()
 		}
 
 	case "l", "right", ">", "L":
