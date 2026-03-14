@@ -924,7 +924,11 @@ func (p *Plugin) handlePollAgent(worktreeName string) tea.Cmd {
 	if !interactiveCapture && features.IsEnabled(features.TmuxInteractiveInput.Name) {
 		if selected := p.selectedWorktree(); selected != nil && selected.Name == worktreeName {
 			directCapture = true
-			previewWidth, previewHeight = p.calculatePreviewDimensions()
+			if p.termPanelVisible {
+				previewWidth, previewHeight = p.calculateAgentPaneDimensions()
+			} else {
+				previewWidth, previewHeight = p.calculatePreviewDimensions()
+			}
 			resizeTarget = p.previewResizeTarget()
 		}
 	}

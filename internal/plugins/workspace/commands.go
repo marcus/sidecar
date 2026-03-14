@@ -104,10 +104,13 @@ func (p *Plugin) Commands() []plugin.Command {
 				// Add diff view toggle when on Diff tab
 				if p.previewTab == PreviewTabDiff {
 					diffViewName := "Split"
-					if p.diffViewMode == DiffViewSideBySide {
+					switch p.diffViewMode {
+					case DiffViewSideBySide:
+						diffViewName = "Full"
+					case DiffViewFullFile:
 						diffViewName = "Unified"
 					}
-					cmds = append(cmds, plugin.Command{ID: "toggle-diff-view", Name: diffViewName, Description: "Toggle unified/side-by-side diff", Context: "workspace-preview", Priority: 5})
+					cmds = append(cmds, plugin.Command{ID: "toggle-diff-view", Name: diffViewName, Description: "Cycle diff view mode", Context: "workspace-preview", Priority: 5})
 					// Add file navigation commands when viewing diff with multiple files
 					if p.multiFileDiff != nil && len(p.multiFileDiff.Files) > 1 {
 						cmds = append(cmds,
@@ -153,6 +156,25 @@ func (p *Plugin) Commands() []plugin.Command {
 				if hasActiveSession {
 					cmds = append(cmds,
 						plugin.Command{ID: "interactive", Name: "Type", Description: "Enter interactive mode (E)", Context: "workspace-preview", Priority: 15},
+					)
+				}
+			}
+			// Terminal panel toggle (show on Output tab when an agent or shell is active)
+			if p.previewTab == PreviewTabOutput || p.shellSelected {
+				termName := "Term"
+				if p.termPanelVisible {
+					termName = "Hide"
+				}
+				cmds = append(cmds,
+					plugin.Command{ID: "toggle-terminal", Name: termName, Description: "Toggle terminal panel", Context: "workspace-preview", Priority: 16},
+				)
+				if p.termPanelVisible {
+					layoutName := "Right"
+					if p.termPanelLayout == TermPanelRight {
+						layoutName = "Bottom"
+					}
+					cmds = append(cmds,
+						plugin.Command{ID: "switch-terminal-layout", Name: layoutName, Description: "Switch terminal layout", Context: "workspace-preview", Priority: 17},
 					)
 				}
 			}
@@ -227,6 +249,23 @@ func (p *Plugin) Commands() []plugin.Command {
 					plugin.Command{ID: "link-task", Name: "Task", Description: "Link task", Context: "workspace-list", Priority: 8},
 				)
 			}
+		}
+		// Terminal panel toggle (available from sidebar too)
+		termName := "Term"
+		if p.termPanelVisible {
+			termName = "Hide"
+		}
+		cmds = append(cmds,
+			plugin.Command{ID: "toggle-terminal", Name: termName, Description: "Toggle terminal panel", Context: "workspace-list", Priority: 17},
+		)
+		if p.termPanelVisible {
+			layoutName := "Right"
+			if p.termPanelLayout == TermPanelRight {
+				layoutName = "Bottom"
+			}
+			cmds = append(cmds,
+				plugin.Command{ID: "switch-terminal-layout", Name: layoutName, Description: "Switch terminal layout", Context: "workspace-list", Priority: 18},
+			)
 		}
 		return cmds
 	}

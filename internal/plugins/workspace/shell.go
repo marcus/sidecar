@@ -867,7 +867,11 @@ func (p *Plugin) pollShellSessionByName(tmuxName string) tea.Cmd {
 	if !interactiveCapture && features.IsEnabled(features.TmuxInteractiveInput.Name) {
 		if selectedShell != nil && selectedShell.TmuxName == tmuxName {
 			directCapture = true
-			previewWidth, previewHeight = p.calculatePreviewDimensions()
+			if p.termPanelVisible {
+				previewWidth, previewHeight = p.calculateAgentPaneDimensions()
+			} else {
+				previewWidth, previewHeight = p.calculatePreviewDimensions()
+			}
 			resizeTarget = p.previewResizeTarget()
 		}
 	}

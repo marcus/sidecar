@@ -19,6 +19,10 @@ type State struct {
 	GitStatusSidebarWidth  int `json:"gitStatusSidebarWidth,omitempty"`
 	ConversationsSideWidth int `json:"conversationsSideWidth,omitempty"`
 	WorkspaceSidebarWidth  int `json:"workspaceSidebarWidth,omitempty"`
+	DiffTabFileListWidth   int    `json:"diffTabFileListWidth,omitempty"`
+	TermPanelSize          int    `json:"termPanelSize,omitempty"`          // Terminal panel split size (percentage, 0 = 50%)
+	TermPanelLayout        string `json:"termPanelLayout,omitempty"`        // "bottom" or "right"
+	TermPanelVisible       bool   `json:"termPanelVisible,omitempty"`       // Whether terminal panel was visible at exit
 
 	// Plugin-specific state (keyed by working directory path)
 	FileBrowser  map[string]FileBrowserState `json:"fileBrowser,omitempty"`
@@ -297,6 +301,91 @@ func SetWorkspaceSidebarWidth(width int) error {
 		current = &State{}
 	}
 	current.WorkspaceSidebarWidth = width
+	mu.Unlock()
+	return Save()
+}
+
+// GetDiffTabFileListWidth returns the saved diff tab file list width (in pixels).
+// Returns 0 if no preference is saved (use default).
+func GetDiffTabFileListWidth() int {
+	mu.RLock()
+	defer mu.RUnlock()
+	if current == nil {
+		return 0
+	}
+	return current.DiffTabFileListWidth
+}
+
+// SetDiffTabFileListWidth saves the diff tab file list width (in pixels).
+func SetDiffTabFileListWidth(width int) error {
+	mu.Lock()
+	if current == nil {
+		current = &State{}
+	}
+	current.DiffTabFileListWidth = width
+	mu.Unlock()
+	return Save()
+}
+
+// GetTermPanelSize returns the saved terminal panel split size (percentage).
+func GetTermPanelSize() int {
+	mu.RLock()
+	defer mu.RUnlock()
+	if current == nil {
+		return 0
+	}
+	return current.TermPanelSize
+}
+
+// SetTermPanelSize saves the terminal panel split size (percentage).
+func SetTermPanelSize(size int) error {
+	mu.Lock()
+	if current == nil {
+		current = &State{}
+	}
+	current.TermPanelSize = size
+	mu.Unlock()
+	return Save()
+}
+
+// GetTermPanelLayout returns the saved terminal panel layout ("bottom" or "right").
+func GetTermPanelLayout() string {
+	mu.RLock()
+	defer mu.RUnlock()
+	if current == nil {
+		return ""
+	}
+	return current.TermPanelLayout
+}
+
+// SetTermPanelLayout saves the terminal panel layout ("bottom" or "right").
+func SetTermPanelLayout(layout string) error {
+	mu.Lock()
+	if current == nil {
+		current = &State{}
+	}
+	current.TermPanelLayout = layout
+	mu.Unlock()
+	return Save()
+}
+
+// GetTermPanelVisible returns whether the terminal panel was visible at last exit.
+func GetTermPanelVisible() bool {
+	mu.RLock()
+	defer mu.RUnlock()
+	if current == nil {
+		return false
+	}
+	return current.TermPanelVisible
+}
+
+// SetTermPanelVisible saves the terminal panel visibility state.
+func SetTermPanelVisible(visible bool) error {
+	mu.Lock()
+	if current == nil {
+		current = &State{}
+	}
+	current.TermPanelVisible = visible
 	mu.Unlock()
 	return Save()
 }

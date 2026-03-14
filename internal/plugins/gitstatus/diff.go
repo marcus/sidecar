@@ -32,6 +32,26 @@ func GetDiff(workDir, path string, staged bool) (string, error) {
 	return strings.TrimSpace(string(output)), nil
 }
 
+// GetDiffFromHead returns the diff for a file comparing HEAD to working tree.
+// This captures both staged and unstaged changes in a single diff.
+func GetDiffFromHead(workDir, path string) (string, error) {
+	args := []string{"diff", "HEAD", "--", path}
+
+	cmd := gitReadOnly(args...)
+	cmd.Dir = workDir
+	output, err := cmd.Output()
+	if err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			if exitErr.ExitCode() == 1 {
+				return string(output), nil
+			}
+		}
+		return "", err
+	}
+
+	return strings.TrimSpace(string(output)), nil
+}
+
 // GetFullDiff returns the diff for all changes.
 func GetFullDiff(workDir string, staged bool) (string, error) {
 	args := []string{"diff"}
@@ -135,6 +155,41 @@ func GetNewFileDiff(workDir, path string) (string, error) {
 	}
 
 	return strings.TrimSuffix(sb.String(), "\n"), nil
+}
+
+// GetFileContentAtRef retrieves a file's content at a given git ref (e.g., "HEAD", a commit hash).
+// Returns empty string if the file doesn't exist at that ref.
+func GetFileContentAtRef(workDir, path, ref string) (string, error) {
+	cmd := gitReadOnly("show", ref+":"+path)
+	cmd.Dir = workDir
+	output, err := cmd.Output()
+	if err != nil {
+		// File doesn't exist at this ref — that's normal for new files
+		return "", nil
+	}
+	return string(output), nil
+}
+
+// GetFileContentFromIndex retrieves a file's content from the git index (staged version).
+// Returns empty string if the file is not in the index.
+func GetFileContentFromIndex(workDir, path string) (string, error) {
+	cmd := gitReadOnly("show", ":"+path)
+	cmd.Dir = workDir
+	output, err := cmd.Output()
+	if err != nil {
+		return "", nil
+	}
+	return string(output), nil
+}
+
+// GetWorkingTreeFileContent reads a file from the working tree.
+func GetWorkingTreeFileContent(workDir, path string) (string, error) {
+	fullPath := filepath.Join(workDir, path)
+	content, err := os.ReadFile(fullPath)
+	if err != nil {
+		return "", err
+	}
+	return string(content), nil
 }
 
 // isBinaryContent checks if content appears to be binary.

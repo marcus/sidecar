@@ -66,9 +66,14 @@ func (p *Plugin) autoLoadDiff() tea.Cmd {
 	p.selectedDiffFile = entry.Path
 	p.forceNextDiffReload = false
 	if isNewFile {
-		// Only reset scroll when switching to a different file
+		// Only reset scroll and clear full-file diff when switching to a different file
 		p.diffPaneScroll = 0
+		p.diffPaneFullFileDiff = nil
 	}
+	// Note: for force-reloads of the same file (stage/unstage/discard),
+	// we don't clear diffPaneFullFileDiff here to avoid flicker.
+	// The InlineDiffLoadedMsg handler will re-trigger the full-file load
+	// only if diffPaneFullFileDiff is nil (new file) or needs refresh.
 	// Clear commit preview when switching to file
 	p.previewCommit = nil
 

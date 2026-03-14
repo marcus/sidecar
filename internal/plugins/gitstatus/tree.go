@@ -77,7 +77,8 @@ func (t *FileTree) Refresh() error {
 	}
 
 	// Get diff stats for all files
-	_ = temp.loadDiffStats() // Non-fatal: continue without stats
+	_ = temp.loadDiffStats()        // Non-fatal: continue without stats
+	_ = temp.loadUntrackedStats()   // Non-fatal: continue without stats
 
 	// Group untracked files by folder
 	temp.groupUntrackedFolders()
@@ -310,6 +311,68 @@ func (t *FileTree) loadDiffStatsFor(staged bool) error {
 	return nil
 }
 
+// loadUntrackedStats counts lines in untracked files to show as additions.
+func (t *FileTree) loadUntrackedStats() error {
+	if len(t.Untracked) == 0 {
+		return nil
+	}
+
+	// Collect file paths (skip folders)
+	var paths []string
+	entryMap := make(map[string]*FileEntry)
+	for _, e := range t.Untracked {
+		if e.IsFolder {
+			continue
+		}
+		fullPath := filepath.Join(t.workDir, e.Path)
+		paths = append(paths, fullPath)
+		entryMap[fullPath] = e
+	}
+	if len(paths) == 0 {
+		return nil
+	}
+
+	// Batch wc calls to avoid ARG_MAX limits with many untracked files
+	const batchSize = 500
+	for i := 0; i < len(paths); i += batchSize {
+		end := i + batchSize
+		if end > len(paths) {
+			end = len(paths)
+		}
+		batch := paths[i:end]
+
+		args := append([]string{"-l"}, batch...)
+		cmd := exec.Command("wc", args...)
+		output, err := cmd.Output()
+		if err != nil {
+			continue // Skip failed batch, try next
+		}
+
+		// Parse wc output: "  123 /path/to/file"
+		scanner := bufio.NewScanner(bytes.NewReader(output))
+		for scanner.Scan() {
+			line := strings.TrimSpace(scanner.Text())
+			parts := strings.SplitN(line, " ", 2)
+			if len(parts) != 2 {
+				continue
+			}
+			count, err := strconv.Atoi(strings.TrimSpace(parts[0]))
+			if err != nil {
+				continue
+			}
+			path := strings.TrimSpace(parts[1])
+			// Skip the "total" summary line emitted by wc when given multiple files
+			if path == "total" {
+				continue
+			}
+			if e, ok := entryMap[path]; ok {
+				e.DiffStats = DiffStats{Additions: count, Deletions: 0}
+			}
+		}
+	}
+	return nil
+}
+
 // TotalCount returns the total number of changed files.
 func (t *FileTree) TotalCount() int {
 	return len(t.Staged) + len(t.Modified) + len(t.Untracked)
@@ -350,6 +413,12 @@ func (t *FileTree) groupUntrackedFolders() {
 	for _, folder := range folders {
 		files := folderMap[folder]
 		if len(files) >= 2 {
+			// Aggregate stats from children
+			var totalAdd, totalDel int
+			for _, f := range files {
+				totalAdd += f.DiffStats.Additions
+				totalDel += f.DiffStats.Deletions
+			}
 			// Create a folder entry with children
 			folderEntry := &FileEntry{
 				Path:       folder + "/",
@@ -358,6 +427,7 @@ func (t *FileTree) groupUntrackedFolders() {
 				IsFolder:   true,
 				IsExpanded: false,
 				Children:   files,
+				DiffStats:  DiffStats{Additions: totalAdd, Deletions: totalDel},
 			}
 			newUntracked = append(newUntracked, folderEntry)
 		} else {

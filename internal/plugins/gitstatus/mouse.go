@@ -16,6 +16,7 @@ const (
 	regionCommitFile   = "commit-file"   // Files in commit preview pane
 	regionDiffModal    = "diff-modal"    // Full-screen diff view
 	regionDiffBack     = "diff-back"     // Back button in diff breadcrumb
+	regionMinimap      = "minimap"       // Minimap in full-file diff view
 	regionCommitButton = "commit-button" // Commit modal button
 )
 
@@ -59,6 +60,23 @@ func (p *Plugin) handleMouseClick(action mouse.MouseAction) (*Plugin, tea.Cmd) {
 
 	case regionDiffPane:
 		p.activePane = PaneDiff
+		return p, nil
+
+	case regionMinimap:
+		p.activePane = PaneDiff
+		if p.diffPaneViewMode == DiffViewFullFile && p.diffPaneFullFileDiff != nil {
+			clickRow := action.Y - action.Region.Rect.Y
+			totalLines := p.diffPaneFullFileDiff.TotalLines()
+			contentHeight := p.height - 4
+			if contentHeight < 1 {
+				contentHeight = 1
+			}
+			mmH := contentHeight
+			if totalLines < mmH {
+				mmH = totalLines
+			}
+			p.diffPaneScroll = MinimapScrollTarget(clickRow, mmH, totalLines, contentHeight)
+		}
 		return p, nil
 
 	case regionPaneDivider:
@@ -283,21 +301,7 @@ func (p *Plugin) scrollDiffPane(delta int) (*Plugin, tea.Cmd) {
 
 	// Otherwise scroll the diff content
 	p.diffPaneScroll += delta
-	if p.diffPaneScroll < 0 {
-		p.diffPaneScroll = 0
-	}
-
-	// Clamp to max if we have parsed diff content
-	if p.diffPaneParsedDiff != nil {
-		lines := countParsedDiffLines(p.diffPaneParsedDiff)
-		maxScroll := lines - (p.height - 6)
-		if maxScroll < 0 {
-			maxScroll = 0
-		}
-		if p.diffPaneScroll > maxScroll {
-			p.diffPaneScroll = maxScroll
-		}
-	}
+	p.clampDiffPaneScroll()
 
 	return p, nil
 }
@@ -519,23 +523,27 @@ func (p *Plugin) handleDiffMouse(msg tea.MouseMsg) (*Plugin, tea.Cmd) {
 			case regionDiffBack:
 				p.closeDiffView()
 				return p, nil
+			case regionMinimap:
+				if p.diffViewMode == DiffViewFullFile && p.fullFileDiff != nil {
+					clickRow := action.Y - action.Region.Rect.Y
+					totalLines := p.fullFileDiff.TotalLines()
+					visibleLines := p.height - 4
+					if visibleLines < 1 {
+						visibleLines = 1
+					}
+					mmH := visibleLines
+					if totalLines < mmH {
+						mmH = totalLines
+					}
+					p.diffScroll = MinimapScrollTarget(clickRow, mmH, totalLines, visibleLines)
+				}
+				return p, nil
 			}
 		}
 
 	case mouse.ActionScrollUp, mouse.ActionScrollDown:
 		p.diffScroll += action.Delta
-		if p.diffScroll < 0 {
-			p.diffScroll = 0
-		}
-		// Clamp to max based on content
-		lines := countLines(p.diffContent)
-		maxScroll := lines - (p.height - 4) // Account for header + border
-		if maxScroll < 0 {
-			maxScroll = 0
-		}
-		if p.diffScroll > maxScroll {
-			p.diffScroll = maxScroll
-		}
+		p.clampDiffScroll()
 
 	case mouse.ActionScrollLeft, mouse.ActionScrollRight:
 		// Horizontal scroll for side-by-side view

@@ -12,8 +12,9 @@ import (
 type DiffViewMode int
 
 const (
-	DiffViewUnified   DiffViewMode = iota // Line-by-line unified view
+	DiffViewUnified    DiffViewMode = iota // Line-by-line unified view
 	DiffViewSideBySide                     // Side-by-side split view
+	DiffViewFullFile                       // Full-file side-by-side view (like VS Code diff)
 )
 
 // Additional styles for enhanced diff rendering
@@ -334,6 +335,241 @@ func RenderSideBySide(diff *ParsedDiff, width, startLine, maxLines, horizontalOf
 	return sb.String()
 }
 
+// RenderFullFileSideBySide renders a full-file diff in side-by-side format.
+// Unlike RenderSideBySide which only shows hunks, this shows the entire file
+// with changes highlighted in context (like VS Code's diff viewer).
+func RenderFullFileSideBySide(fullDiff *FullFileDiff, width, startLine, maxLines, horizontalOffset int, highlighter *SyntaxHighlighter, wrapEnabled bool) string {
+	if fullDiff == nil || len(fullDiff.Lines) == 0 {
+		return styles.Muted.Render(" No diff content")
+	}
+
+	var sb strings.Builder
+	rendered := 0
+
+	// Calculate panel widths (same layout as RenderSideBySide)
+	panelWidth := (width - 3) / 2 // -3 for center separator
+	lineNoWidth := 5
+	contentWidth := panelWidth - lineNoWidth - 2
+
+	lineNoStyle := lipgloss.NewStyle().
+		Foreground(styles.TextMuted).
+		Width(lineNoWidth).
+		Align(lipgloss.Right)
+
+	sep := sideBySideBorder.Render(" │ ")
+
+	for i, fl := range fullDiff.Lines {
+		if i < startLine {
+			continue
+		}
+		if rendered >= maxLines {
+			break
+		}
+
+		// Left side (old)
+		leftLineNo := " "
+		if fl.OldLineNo > 0 {
+			leftLineNo = fmt.Sprintf("%d", fl.OldLineNo)
+		}
+
+		// Right side (new)
+		rightLineNo := " "
+		if fl.NewLineNo > 0 {
+			rightLineNo = fmt.Sprintf("%d", fl.NewLineNo)
+		}
+
+		// Determine line types for each side
+		leftType := LineContext
+		rightType := LineContext
+		switch fl.Type {
+		case LineRemove:
+			leftType = LineRemove
+		case LineAdd:
+			rightType = LineAdd
+		}
+
+		// Render content for each side
+		var leftRendered, rightRendered string
+		if wrapEnabled {
+			leftRendered = renderSideBySideContent(fl.OldText, leftType, contentWidth*10, highlighter)
+			rightRendered = renderSideBySideContent(fl.NewText, rightType, contentWidth*10, highlighter)
+		} else {
+			leftRendered = renderSideBySideContent(fl.OldText, leftType, contentWidth+horizontalOffset, highlighter)
+			rightRendered = renderSideBySideContent(fl.NewText, rightType, contentWidth+horizontalOffset, highlighter)
+			if horizontalOffset > 0 {
+				leftRendered = truncateLeftCached(leftRendered, horizontalOffset)
+				rightRendered = truncateLeftCached(rightRendered, horizontalOffset)
+			}
+		}
+
+		if wrapEnabled {
+			wrapStyle := lipgloss.NewStyle().Width(contentWidth)
+			leftWrapped := wrapStyle.Render(leftRendered)
+			rightWrapped := wrapStyle.Render(rightRendered)
+			leftLines := strings.Split(leftWrapped, "\n")
+			rightLines := strings.Split(rightWrapped, "\n")
+			maxH := len(leftLines)
+			if len(rightLines) > maxH {
+				maxH = len(rightLines)
+			}
+			lineNoPad := strings.Repeat(" ", lineNoWidth)
+			for vi := 0; vi < maxH; vi++ {
+				if rendered >= maxLines {
+					break
+				}
+				lLine := ""
+				if vi < len(leftLines) {
+					lLine = leftLines[vi]
+				}
+				rLine := ""
+				if vi < len(rightLines) {
+					rLine = rightLines[vi]
+				}
+				lLine = padToWidth(lLine, contentWidth)
+				rLine = padToWidth(rLine, contentWidth)
+				if vi == 0 {
+					sb.WriteString(fmt.Sprintf("%s │%s", lineNoStyle.Render(leftLineNo), lLine))
+					sb.WriteString(sep)
+					sb.WriteString(fmt.Sprintf("%s │%s", lineNoStyle.Render(rightLineNo), rLine))
+				} else {
+					sb.WriteString(fmt.Sprintf("%s │%s", lineNoPad, lLine))
+					sb.WriteString(sep)
+					sb.WriteString(fmt.Sprintf("%s │%s", lineNoPad, rLine))
+				}
+				sb.WriteString("\n")
+				rendered++
+			}
+		} else {
+			leftRendered = padToWidth(leftRendered, contentWidth)
+			rightRendered = padToWidth(rightRendered, contentWidth)
+
+			sb.WriteString(fmt.Sprintf("%s │%s", lineNoStyle.Render(leftLineNo), leftRendered))
+			sb.WriteString(sep)
+			sb.WriteString(fmt.Sprintf("%s │%s", lineNoStyle.Render(rightLineNo), rightRendered))
+			sb.WriteString("\n")
+			rendered++
+		}
+	}
+
+	return sb.String()
+}
+
+// TotalFullFileLines returns the total number of lines in a full-file diff.
+func (ffd *FullFileDiff) TotalLines() int {
+	if ffd == nil {
+		return 0
+	}
+	return len(ffd.Lines)
+}
+
+// NextChange returns the line index of the next change (add/remove) after startLine.
+// Returns -1 if no more changes exist.
+func (ffd *FullFileDiff) NextChange(startLine int) int {
+	if ffd == nil {
+		return -1
+	}
+	// First, skip past any current change block we're already in
+	i := startLine
+	for i < len(ffd.Lines) && ffd.Lines[i].Type != LineContext {
+		i++
+	}
+	// Now find the next change
+	for i < len(ffd.Lines) {
+		if ffd.Lines[i].Type != LineContext {
+			return i
+		}
+		i++
+	}
+	return -1
+}
+
+// PrevChange returns the line index of the start of the previous change block before startLine.
+// Returns -1 if no previous changes exist.
+func (ffd *FullFileDiff) PrevChange(startLine int) int {
+	if ffd == nil {
+		return -1
+	}
+	i := startLine - 1
+	if i >= len(ffd.Lines) {
+		i = len(ffd.Lines) - 1
+	}
+	// If we're inside a change block, move to its start then go further back
+	if i >= 0 && ffd.Lines[i].Type != LineContext {
+		// We're in a change block — find its start
+		for i > 0 && ffd.Lines[i-1].Type != LineContext {
+			i--
+		}
+		// If startLine was already at the start of this block, skip past it
+		if i >= startLine {
+			// Move before this block
+			i--
+		} else {
+			return i
+		}
+	}
+	// Skip context lines backwards to find the previous change block
+	for i >= 0 && ffd.Lines[i].Type == LineContext {
+		i--
+	}
+	if i < 0 {
+		return -1
+	}
+	// We're at the end of a change block — find its start
+	for i > 0 && ffd.Lines[i-1].Type != LineContext {
+		i--
+	}
+	return i
+}
+
+// FullFileLineToHunkLine maps a full-file line index to the closest hunk line index
+// in the parsed diff. Returns the hunk line position suitable for unified/side-by-side scroll.
+// This allows scroll position sync when toggling between full-file and hunk-only views.
+func (ffd *FullFileDiff) FullFileLineToHunkLine(lineIdx int, parsed *ParsedDiff) int {
+	if ffd == nil || parsed == nil || lineIdx < 0 || lineIdx >= len(ffd.Lines) {
+		return 0
+	}
+
+	// Get the line info at the current scroll position
+	fl := ffd.Lines[lineIdx]
+
+	// Find which hunk contains this line number, or the closest hunk before it
+	totalLines := 0
+	bestHunkLine := 0
+
+	for _, hunk := range parsed.Hunks {
+		hunkStart := totalLines
+		totalLines++ // hunk header line
+
+		for j, dl := range hunk.Lines {
+			// Match by line type and line number
+			if fl.Type != LineContext {
+				// For changes, match by new line number (adds) or old line number (removes)
+				if fl.Type == LineAdd && dl.Type == LineAdd && dl.NewLineNo == fl.NewLineNo {
+					return hunkStart + 1 + j
+				}
+				if fl.Type == LineRemove && dl.Type == LineRemove && dl.OldLineNo == fl.OldLineNo {
+					return hunkStart + 1 + j
+				}
+			} else {
+				// For context, match by old line number
+				if dl.Type == LineContext && dl.OldLineNo == fl.OldLineNo && fl.OldLineNo > 0 {
+					return hunkStart + 1 + j
+				}
+			}
+			totalLines++
+		}
+
+		// Track closest hunk that starts before this line
+		if fl.OldLineNo > 0 && hunk.OldStart <= fl.OldLineNo {
+			bestHunkLine = hunkStart
+		} else if fl.NewLineNo > 0 && hunk.NewStart <= fl.NewLineNo {
+			bestHunkLine = hunkStart
+		}
+	}
+
+	return bestHunkLine
+}
+
 // linePair represents a pair of lines for side-by-side view.
 type linePair struct {
 	left  *DiffLine
@@ -412,6 +648,20 @@ func renderDiffContentWithOffset(line DiffLine, maxWidth, horizontalOffset int, 
 
 // renderDiffContent renders line content with word-level and syntax highlighting.
 func renderDiffContent(line DiffLine, maxWidth int, highlighter *SyntaxHighlighter) string {
+	// Strip carriage returns (\r) from diff content. Files with Windows-style
+	// line endings (CRLF) preserve \r in the diff output. When rendered in a
+	// JoinHorizontal layout, \r moves the terminal cursor back to column 0,
+	// causing the right pane to overwrite the left pane on the same line.
+	// Also expand tabs to spaces so lipgloss.Width matches terminal rendering.
+	if strings.ContainsAny(line.Content, "\r\t") {
+		line.Content = strings.ReplaceAll(line.Content, "\r", "")
+		line.Content = strings.ReplaceAll(line.Content, "\t", "    ")
+		for i := range line.WordDiff {
+			line.WordDiff[i].Text = strings.ReplaceAll(line.WordDiff[i].Text, "\r", "")
+			line.WordDiff[i].Text = strings.ReplaceAll(line.WordDiff[i].Text, "\t", "    ")
+		}
+	}
+
 	var baseStyle lipgloss.Style
 	switch line.Type {
 	case LineAdd:
@@ -484,6 +734,15 @@ func renderDiffContent(line DiffLine, maxWidth int, highlighter *SyntaxHighlight
 // renderSideBySideContent renders content for side-by-side view with syntax highlighting.
 // Returns styled content that should then be padded with padToWidth for alignment.
 func renderSideBySideContent(content string, lineType LineType, maxWidth int, highlighter *SyntaxHighlighter) string {
+	// Strip carriage returns and expand tabs (same as renderDiffContent).
+	// CRLF files preserve \r which moves the terminal cursor to column 0,
+	// corrupting JoinHorizontal layouts. Tabs have runewidth 0 but render
+	// as 1-8 columns, causing width miscalculation.
+	if strings.ContainsAny(content, "\r\t") {
+		content = strings.ReplaceAll(content, "\r", "")
+		content = strings.ReplaceAll(content, "\t", "    ")
+	}
+
 	var baseStyle lipgloss.Style
 	switch lineType {
 	case LineAdd:
@@ -742,10 +1001,16 @@ func renderSingleFileDiff(diff *ParsedDiff, mode DiffViewMode, width, startLine,
 		return ""
 	}
 
-	if mode == DiffViewSideBySide {
+	switch mode {
+	case DiffViewSideBySide:
 		return RenderSideBySide(diff, width, startLine, maxLines, horizontalOffset, highlighter, wrapEnabled)
+	case DiffViewFullFile:
+		// Full-file mode requires file content, which is not available here.
+		// Fall back to side-by-side hunk view in multi-file context.
+		return RenderSideBySide(diff, width, startLine, maxLines, horizontalOffset, highlighter, wrapEnabled)
+	default:
+		return RenderLineDiff(diff, width, startLine, maxLines, horizontalOffset, highlighter, wrapEnabled)
 	}
-	return RenderLineDiff(diff, width, startLine, maxLines, horizontalOffset, highlighter, wrapEnabled)
 }
 
 // TotalLines returns the total number of rendered lines for a multi-file diff.

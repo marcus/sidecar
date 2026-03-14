@@ -365,6 +365,157 @@ func computeWordSegments(source, target []string, isAdd bool) []WordSegment {
 	return segments
 }
 
+// FullFileLine represents a single line in the full-file diff view.
+type FullFileLine struct {
+	OldLineNo int      // 0 means no line on the old side (added line)
+	NewLineNo int      // 0 means no line on the new side (removed line)
+	OldText   string   // Text content on the old side
+	NewText   string   // Text content on the new side
+	Type      LineType // LineContext, LineAdd, or LineRemove
+}
+
+// FullFileDiff holds the complete aligned lines for a full-file side-by-side view.
+type FullFileDiff struct {
+	Lines   []FullFileLine // All aligned lines for rendering
+	OldFile string
+	NewFile string
+}
+
+// BuildFullFileDiff constructs a full-file diff from old/new file content and parsed hunks.
+// It interleaves unchanged regions (context) with hunk changes to produce a complete
+// side-by-side view of both files with changes highlighted.
+func BuildFullFileDiff(oldContent, newContent string, parsed *ParsedDiff) *FullFileDiff {
+	// Binary files can't be rendered as full-file diff
+	if parsed != nil && parsed.Binary {
+		return nil
+	}
+
+	oldLines := splitFileLines(oldContent)
+	newLines := splitFileLines(newContent)
+
+	result := &FullFileDiff{}
+	if parsed != nil {
+		result.OldFile = parsed.OldFile
+		result.NewFile = parsed.NewFile
+	}
+
+	if parsed == nil || len(parsed.Hunks) == 0 {
+		// No hunks — all lines are context (identical files or no diff provided)
+		maxLen := len(oldLines)
+		if len(newLines) > maxLen {
+			maxLen = len(newLines)
+		}
+		for i := 0; i < maxLen; i++ {
+			fl := FullFileLine{Type: LineContext}
+			if i < len(oldLines) {
+				fl.OldLineNo = i + 1
+				fl.OldText = oldLines[i]
+			}
+			if i < len(newLines) {
+				fl.NewLineNo = i + 1
+				fl.NewText = newLines[i]
+			}
+			result.Lines = append(result.Lines, fl)
+		}
+		return result
+	}
+
+	// Walk through hunks, emitting context between them
+	oldPos := 0 // 0-based index into oldLines
+	newPos := 0 // 0-based index into newLines
+
+	for _, hunk := range parsed.Hunks {
+		hunkOldStart := hunk.OldStart - 1 // Convert 1-based to 0-based
+		hunkNewStart := hunk.NewStart - 1
+
+		// Emit context lines before this hunk
+		for oldPos < hunkOldStart && newPos < hunkNewStart {
+			fl := FullFileLine{
+				Type:      LineContext,
+				OldLineNo: oldPos + 1,
+				NewLineNo: newPos + 1,
+				OldText:   safeIndex(oldLines, oldPos),
+				NewText:   safeIndex(newLines, newPos),
+			}
+			result.Lines = append(result.Lines, fl)
+			oldPos++
+			newPos++
+		}
+
+		// Process hunk lines
+		for _, line := range hunk.Lines {
+			switch line.Type {
+			case LineContext:
+				fl := FullFileLine{
+					Type:      LineContext,
+					OldLineNo: oldPos + 1,
+					NewLineNo: newPos + 1,
+					OldText:   line.Content,
+					NewText:   line.Content,
+				}
+				result.Lines = append(result.Lines, fl)
+				oldPos++
+				newPos++
+			case LineRemove:
+				fl := FullFileLine{
+					Type:      LineRemove,
+					OldLineNo: oldPos + 1,
+					OldText:   line.Content,
+				}
+				result.Lines = append(result.Lines, fl)
+				oldPos++
+			case LineAdd:
+				fl := FullFileLine{
+					Type:      LineAdd,
+					NewLineNo: newPos + 1,
+					NewText:   line.Content,
+				}
+				result.Lines = append(result.Lines, fl)
+				newPos++
+			}
+		}
+	}
+
+	// Emit remaining context lines after the last hunk
+	for oldPos < len(oldLines) || newPos < len(newLines) {
+		fl := FullFileLine{Type: LineContext}
+		if oldPos < len(oldLines) {
+			fl.OldLineNo = oldPos + 1
+			fl.OldText = oldLines[oldPos]
+			oldPos++
+		}
+		if newPos < len(newLines) {
+			fl.NewLineNo = newPos + 1
+			fl.NewText = newLines[newPos]
+			newPos++
+		}
+		result.Lines = append(result.Lines, fl)
+	}
+
+	return result
+}
+
+// splitFileLines splits file content into lines, handling empty content.
+func splitFileLines(content string) []string {
+	if content == "" {
+		return nil
+	}
+	lines := strings.Split(content, "\n")
+	// Remove trailing empty line from final newline
+	if len(lines) > 0 && lines[len(lines)-1] == "" {
+		lines = lines[:len(lines)-1]
+	}
+	return lines
+}
+
+// safeIndex returns the string at index i, or empty string if out of bounds.
+func safeIndex(lines []string, i int) string {
+	if i < 0 || i >= len(lines) {
+		return ""
+	}
+	return lines[i]
+}
+
 // TotalLines returns the total number of content lines in the diff.
 func (p *ParsedDiff) TotalLines() int {
 	total := 0
