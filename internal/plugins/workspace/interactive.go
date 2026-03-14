@@ -519,8 +519,8 @@ func (p *Plugin) calculatePreviewDimensions() (width, height int) {
 		// Account for sidebar and divider (same calculation as renderListView)
 		available := p.width - dividerWidth
 		sidebarW := (available * p.sidebarWidth) / 100
-		if sidebarW < 25 {
-			sidebarW = 25
+		if sidebarW < 15 {
+			sidebarW = 15
 		}
 		if sidebarW > available-40 {
 			sidebarW = available - 40
@@ -1121,8 +1121,8 @@ func (p *Plugin) interactiveMouseCoords(x, y int) (col, row int, ok bool) {
 	if p.sidebarVisible {
 		available := p.width - dividerWidth
 		sidebarW := (available * p.sidebarWidth) / 100
-		if sidebarW < 25 {
-			sidebarW = 25
+		if sidebarW < 15 {
+			sidebarW = 15
 		}
 		if sidebarW > available-40 {
 			sidebarW = available - 40
