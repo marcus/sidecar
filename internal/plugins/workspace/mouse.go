@@ -122,10 +122,7 @@ func (p *Plugin) handleCreateModalMouse(msg tea.MouseMsg) tea.Cmd {
 	case createPromptFieldID:
 		p.createFocus = 2
 		p.syncCreateModalFocus()
-		p.promptPickerReturnMode = ViewModeCreate
-		p.promptPicker = NewPromptPicker(p.createPrompts, p.width, p.height)
-		p.clearPromptPickerModal()
-		p.viewMode = ViewModePromptPicker
+		p.openPromptPicker(p.createPrompts, ViewModeCreate)
 		return nil
 	case createNameFieldID:
 		p.createFocus = 0
@@ -344,10 +341,7 @@ func (p *Plugin) handleAgentConfigModalMouse(msg tea.MouseMsg) tea.Cmd {
 		p.clearAgentConfigModal()
 		return nil
 	case agentConfigPromptFieldID:
-		p.promptPickerReturnMode = ViewModeAgentConfig
-		p.promptPicker = NewPromptPicker(p.agentConfigPrompts, p.width, p.height)
-		p.clearPromptPickerModal()
-		p.viewMode = ViewModePromptPicker
+		p.openPromptPicker(p.agentConfigPrompts, ViewModeAgentConfig)
 		return nil
 	case agentConfigSubmitID:
 		return p.executeAgentConfig()
@@ -667,10 +661,7 @@ func (p *Plugin) handleMouseClick(action mouse.MouseAction) tea.Cmd {
 
 			// If clicking prompt field, open the picker
 			if focusIdx == 2 {
-				p.promptPickerReturnMode = ViewModeCreate
-				p.promptPicker = NewPromptPicker(p.createPrompts, p.width, p.height)
-				p.clearPromptPickerModal()
-				p.viewMode = ViewModePromptPicker
+				p.openPromptPicker(p.createPrompts, ViewModeCreate)
 			}
 		}
 	case regionCreateDropdown:

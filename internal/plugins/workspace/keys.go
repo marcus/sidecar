@@ -3,9 +3,7 @@ package workspace
 import (
 	"fmt"
 	"math"
-	"os"
 	"os/exec"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -303,10 +301,7 @@ func (p *Plugin) handleAgentConfigKeys(msg tea.KeyMsg) tea.Cmd {
 		switch {
 		case focusID == agentConfigPromptFieldID:
 			// Open prompt picker
-			p.promptPickerReturnMode = ViewModeAgentConfig
-			p.promptPicker = NewPromptPicker(p.agentConfigPrompts, p.width, p.height)
-			p.clearPromptPickerModal()
-			p.viewMode = ViewModePromptPicker
+			p.openPromptPicker(p.agentConfigPrompts, ViewModeAgentConfig)
 			return nil
 		case focusID == agentConfigSubmitID:
 			return p.executeAgentConfig()
@@ -391,18 +386,7 @@ func (p *Plugin) executeAgentChoice() tea.Cmd {
 		return p.AttachToSession(wt)
 	}
 	// Restart agent: open config modal to choose options
-	home, _ := os.UserHomeDir()
-	configDir := filepath.Join(home, ".config", "sidecar")
-	p.agentConfigWorktree = wt
-	p.agentConfigIsRestart = true
-	p.agentConfigAgentType = p.resolveWorktreeAgentType(wt)
-	p.agentConfigAgentIdx = p.agentTypeIndex(p.agentConfigAgentType)
-	p.agentConfigSkipPerms = false
-	p.agentConfigPromptIdx = -1
-	p.agentConfigPrompts = LoadPrompts(configDir, p.ctx.ProjectRoot)
-	p.agentConfigModal = nil
-	p.agentConfigModalWidth = 0
-	p.viewMode = ViewModeAgentConfig
+	p.openAgentConfigModal(wt, true)
 	return nil
 }
 
@@ -906,18 +890,7 @@ func (p *Plugin) handleListKeys(msg tea.KeyMsg) tea.Cmd {
 		}
 		if wt.Agent == nil {
 			// No agent running - open agent config modal
-			home, _ := os.UserHomeDir()
-			configDir := filepath.Join(home, ".config", "sidecar")
-			p.agentConfigWorktree = wt
-			p.agentConfigIsRestart = false
-			p.agentConfigAgentType = p.resolveWorktreeAgentType(wt)
-			p.agentConfigAgentIdx = p.agentTypeIndex(p.agentConfigAgentType)
-			p.agentConfigSkipPerms = false
-			p.agentConfigPromptIdx = -1
-			p.agentConfigPrompts = LoadPrompts(configDir, p.ctx.ProjectRoot)
-			p.agentConfigModal = nil
-			p.agentConfigModalWidth = 0
-			p.viewMode = ViewModeAgentConfig
+			p.openAgentConfigModal(wt, false)
 			return nil
 		}
 		// Agent exists - show choice modal (attach or restart)
@@ -1115,10 +1088,7 @@ func (p *Plugin) handleCreateKeys(msg tea.KeyMsg) tea.Cmd {
 			return nil
 		}
 		if focusID == createPromptFieldID {
-			p.promptPickerReturnMode = ViewModeCreate
-			p.promptPicker = NewPromptPicker(p.createPrompts, p.width, p.height)
-			p.clearPromptPickerModal()
-			p.viewMode = ViewModePromptPicker
+			p.openPromptPicker(p.createPrompts, ViewModeCreate)
 			return nil
 		}
 		if focusID == createSubmitID {
@@ -1138,10 +1108,7 @@ func (p *Plugin) handleCreateKeys(msg tea.KeyMsg) tea.Cmd {
 			return nil
 		}
 		if p.createFocus == 2 {
-			p.promptPickerReturnMode = ViewModeCreate
-			p.promptPicker = NewPromptPicker(p.createPrompts, p.width, p.height)
-			p.clearPromptPickerModal()
-			p.viewMode = ViewModePromptPicker
+			p.openPromptPicker(p.createPrompts, ViewModeCreate)
 			return nil
 		}
 		if p.createFocus == 3 && len(p.taskSearchFiltered) > 0 {

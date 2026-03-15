@@ -256,7 +256,6 @@ type Plugin struct {
 	agentConfigPrompts    []Prompt
 	agentConfigModal      *modal.Modal
 	agentConfigModalWidth int
-	agentConfigFocusSet   bool
 
 	// Prompt picker return routing
 	promptPickerReturnMode ViewMode

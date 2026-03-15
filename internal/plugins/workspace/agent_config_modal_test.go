@@ -1,6 +1,10 @@
 package workspace
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/marcus/sidecar/internal/plugin"
+)
 
 func TestGetAgentConfigPrompt(t *testing.T) {
 	tests := []struct {
@@ -78,9 +82,6 @@ func TestClearAgentConfigModal(t *testing.T) {
 	if p.agentConfigModalWidth != 0 {
 		t.Error("modalWidth not cleared")
 	}
-	if p.agentConfigFocusSet {
-		t.Error("focusSet not cleared")
-	}
 }
 
 func TestShouldShowAgentConfigSkipPerms(t *testing.T) {
@@ -107,6 +108,7 @@ func TestShouldShowAgentConfigSkipPerms(t *testing.T) {
 func TestExecuteAgentConfig_FreshStart(t *testing.T) {
 	wt := &Worktree{Name: "test-wt", Path: "/tmp/test"}
 	p := &Plugin{
+		ctx:                  &plugin.Context{},
 		agentConfigWorktree:  wt,
 		agentConfigIsRestart: false,
 		agentConfigAgentType: AgentClaude,
@@ -131,6 +133,7 @@ func TestExecuteAgentConfig_FreshStart(t *testing.T) {
 func TestExecuteAgentConfig_Restart(t *testing.T) {
 	wt := &Worktree{Name: "test-wt", Path: "/tmp/test"}
 	p := &Plugin{
+		ctx:                  &plugin.Context{},
 		agentConfigWorktree:  wt,
 		agentConfigIsRestart: true,
 		agentConfigAgentType: AgentCodex,

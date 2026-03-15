@@ -2,6 +2,8 @@ package workspace
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/charmbracelet/x/ansi"
@@ -18,6 +20,22 @@ const (
 	agentConfigAgentItemPrefix   = "agent-config-agent-"
 )
 
+// openAgentConfigModal initializes and opens the agent config modal for a worktree.
+func (p *Plugin) openAgentConfigModal(wt *Worktree, isRestart bool) {
+	home, _ := os.UserHomeDir()
+	configDir := filepath.Join(home, ".config", "sidecar")
+	p.agentConfigWorktree = wt
+	p.agentConfigIsRestart = isRestart
+	p.agentConfigAgentType = p.resolveWorktreeAgentType(wt)
+	p.agentConfigAgentIdx = p.agentTypeIndex(p.agentConfigAgentType)
+	p.agentConfigSkipPerms = false
+	p.agentConfigPromptIdx = -1
+	p.agentConfigPrompts = LoadPrompts(configDir, p.ctx.ProjectRoot)
+	p.agentConfigModal = nil
+	p.agentConfigModalWidth = 0
+	p.viewMode = ViewModeAgentConfig
+}
+
 // clearAgentConfigModal resets all agent config modal state.
 func (p *Plugin) clearAgentConfigModal() {
 	p.agentConfigWorktree = nil
@@ -29,7 +47,14 @@ func (p *Plugin) clearAgentConfigModal() {
 	p.agentConfigPrompts = nil
 	p.agentConfigModal = nil
 	p.agentConfigModalWidth = 0
-	p.agentConfigFocusSet = false
+}
+
+// openPromptPicker opens the prompt picker overlay, routing return to the given mode.
+func (p *Plugin) openPromptPicker(prompts []Prompt, returnMode ViewMode) {
+	p.promptPickerReturnMode = returnMode
+	p.promptPicker = NewPromptPicker(prompts, p.width, p.height)
+	p.clearPromptPickerModal()
+	p.viewMode = ViewModePromptPicker
 }
 
 // getAgentConfigPrompt resolves the selected prompt index to a *Prompt.
@@ -100,17 +125,9 @@ func (p *Plugin) ensureAgentConfigModal() {
 			modal.Btn(" Start ", agentConfigSubmitID),
 			modal.Btn(" Cancel ", agentConfigCancelID),
 		))
-}
 
-// syncAgentConfigModalFocus sets initial focus if not already set.
-func (p *Plugin) syncAgentConfigModalFocus() {
-	if p.agentConfigModal == nil {
-		return
-	}
-	if !p.agentConfigFocusSet {
-		p.agentConfigModal.SetFocus(agentConfigAgentListID)
-		p.agentConfigFocusSet = true
-	}
+	// Set initial focus when modal is first built
+	p.agentConfigModal.SetFocus(agentConfigAgentListID)
 }
 
 // agentConfigPromptSection renders the prompt selector field.
@@ -206,7 +223,6 @@ func (p *Plugin) renderAgentConfigModal(width, height int) string {
 		return background
 	}
 
-	p.syncAgentConfigModalFocus()
 	modalContent := p.agentConfigModal.Render(width, height, p.mouseHandler)
 	return ui.OverlayModal(background, modalContent, width, height)
 }
