@@ -122,6 +122,7 @@ func (p *Plugin) handleCreateModalMouse(msg tea.MouseMsg) tea.Cmd {
 	case createPromptFieldID:
 		p.createFocus = 2
 		p.syncCreateModalFocus()
+		p.promptPickerReturnMode = ViewModeCreate
 		p.promptPicker = NewPromptPicker(p.createPrompts, p.width, p.height)
 		p.clearPromptPickerModal()
 		p.viewMode = ViewModePromptPicker
@@ -666,6 +667,7 @@ func (p *Plugin) handleMouseClick(action mouse.MouseAction) tea.Cmd {
 
 			// If clicking prompt field, open the picker
 			if focusIdx == 2 {
+				p.promptPickerReturnMode = ViewModeCreate
 				p.promptPicker = NewPromptPicker(p.createPrompts, p.width, p.height)
 				p.clearPromptPickerModal()
 				p.viewMode = ViewModePromptPicker

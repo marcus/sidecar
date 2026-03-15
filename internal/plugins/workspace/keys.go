@@ -1091,6 +1091,7 @@ func (p *Plugin) handleCreateKeys(msg tea.KeyMsg) tea.Cmd {
 			return nil
 		}
 		if focusID == createPromptFieldID {
+			p.promptPickerReturnMode = ViewModeCreate
 			p.promptPicker = NewPromptPicker(p.createPrompts, p.width, p.height)
 			p.clearPromptPickerModal()
 			p.viewMode = ViewModePromptPicker
@@ -1113,6 +1114,7 @@ func (p *Plugin) handleCreateKeys(msg tea.KeyMsg) tea.Cmd {
 			return nil
 		}
 		if p.createFocus == 2 {
+			p.promptPickerReturnMode = ViewModeCreate
 			p.promptPicker = NewPromptPicker(p.createPrompts, p.width, p.height)
 			p.clearPromptPickerModal()
 			p.viewMode = ViewModePromptPicker
