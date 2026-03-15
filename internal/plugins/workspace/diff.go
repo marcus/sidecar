@@ -140,6 +140,7 @@ type FullFileDiffLoadedMsg struct {
 	NewContent    string
 	Parsed        *gitstatus.ParsedDiff
 	FilePath      string
+	CommitHash    string // Non-empty when loaded for a commit file diff
 }
 
 // GetEpoch implements plugin.EpochMessage.
@@ -190,6 +191,49 @@ func (p *Plugin) loadFullFileDiffForWorkspace() tea.Cmd {
 			NewContent:    newContent,
 			Parsed:        parsed,
 			FilePath:      filePath,
+		}
+	}
+}
+
+// loadFullFileDiffForCommit loads full-file content for the currently selected commit file.
+func (p *Plugin) loadFullFileDiffForCommit() tea.Cmd {
+	wt := p.selectedWorktree()
+	if wt == nil || p.commitDetail == nil {
+		return nil
+	}
+	if p.commitFileCursor < 0 || p.commitFileCursor >= len(p.commitDetail.Files) {
+		return nil
+	}
+
+	file := p.commitDetail.Files[p.commitFileCursor]
+	filePath := file.Path
+	commitHash := p.commitDetail.Hash
+	parentHash := ""
+	if p.commitDetail.IsMerge && len(p.commitDetail.ParentHashes) > 0 {
+		parentHash = p.commitDetail.ParentHashes[0]
+	}
+	workdir := wt.Path
+	epoch := p.ctx.Epoch
+	name := wt.Name
+
+	return func() tea.Msg {
+		parentRef := commitHash + "~1"
+		if parentHash != "" {
+			parentRef = parentHash
+		}
+		oldContent, _ := gitstatus.GetFileContentAtRef(workdir, filePath, parentRef)
+		newContent, _ := gitstatus.GetFileContentAtRef(workdir, filePath, commitHash)
+		rawDiff, _ := gitstatus.GetCommitDiff(workdir, commitHash, filePath, parentHash)
+		parsed, _ := gitstatus.ParseUnifiedDiff(rawDiff)
+
+		return FullFileDiffLoadedMsg{
+			Epoch:         epoch,
+			WorkspaceName: name,
+			OldContent:    oldContent,
+			NewContent:    newContent,
+			Parsed:        parsed,
+			FilePath:      filePath,
+			CommitHash:    commitHash,
 		}
 	}
 }

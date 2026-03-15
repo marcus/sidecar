@@ -218,10 +218,22 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 		if plugin.IsStale(p.ctx, msg) {
 			return p, nil
 		}
-		// Verify both workspace and file match to prevent stale data from a previous cursor position
-		if p.selectedWorktree() != nil && p.selectedWorktree().Name == msg.WorkspaceName &&
-			msg.FilePath == p.selectedDiffTabFile() {
-			p.fullFileDiff = gitstatus.BuildFullFileDiff(msg.OldContent, msg.NewContent, msg.Parsed)
+		wt := p.selectedWorktree()
+		if wt == nil || wt.Name != msg.WorkspaceName {
+			return p, nil
+		}
+		if msg.CommitHash != "" {
+			// Commit file full-file diff: verify commit and file cursor match
+			if p.commitDetail != nil && p.commitDetail.Hash == msg.CommitHash &&
+				p.commitFileCursor >= 0 && p.commitFileCursor < len(p.commitDetail.Files) &&
+				p.commitDetail.Files[p.commitFileCursor].Path == msg.FilePath {
+				p.fullFileDiff = gitstatus.BuildFullFileDiff(msg.OldContent, msg.NewContent, msg.Parsed)
+			}
+		} else {
+			// Workspace file full-file diff: verify file matches current cursor
+			if msg.FilePath == p.selectedDiffTabFile() {
+				p.fullFileDiff = gitstatus.BuildFullFileDiff(msg.OldContent, msg.NewContent, msg.Parsed)
+			}
 		}
 
 	case CommitStatusLoadedMsg:
@@ -272,6 +284,11 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 				p.commitDetail.Files[p.commitFileCursor].Path == msg.FilePath {
 				p.commitFileDiffRaw = msg.Raw
 				p.commitFileParsed, _ = gitstatus.ParseUnifiedDiff(msg.Raw)
+				// Auto-load full-file content if already in full-file view mode
+				if p.diffViewMode == DiffViewFullFile {
+					p.fullFileDiff = nil
+					return p, p.loadFullFileDiffForCommit()
+				}
 			}
 		}
 
