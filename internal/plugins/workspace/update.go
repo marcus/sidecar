@@ -971,6 +971,13 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 		}
 		return p, nil
 
+	case restartAgentWithOptionsMsg:
+		// Start new agent after stop completed, with user-selected options
+		if msg.worktree != nil {
+			return p, p.StartAgentWithOptions(msg.worktree, msg.agentType, msg.skipPerms, msg.prompt)
+		}
+		return p, nil
+
 	case TmuxAttachFinishedMsg:
 		// Clear attached state
 		p.attachedSession = ""
