@@ -246,6 +246,21 @@ type Plugin struct {
 	agentChoiceModal      *modal.Modal // Modal instance
 	agentChoiceModalWidth int          // Cached width for rebuild detection
 
+	// Agent config modal state (start/restart with options)
+	agentConfigWorktree   *Worktree
+	agentConfigIsRestart  bool
+	agentConfigAgentType  AgentType
+	agentConfigAgentIdx   int
+	agentConfigSkipPerms  bool
+	agentConfigPromptIdx  int
+	agentConfigPrompts    []Prompt
+	agentConfigModal      *modal.Modal
+	agentConfigModalWidth int
+	agentConfigFocusSet   bool
+
+	// Prompt picker return routing
+	promptPickerReturnMode ViewMode
+
 	// Delete confirmation modal state
 	deleteConfirmWorktree   *Worktree // Worktree pending deletion
 	deleteLocalBranchOpt    bool      // Checkbox: delete local branch
