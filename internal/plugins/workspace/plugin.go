@@ -90,6 +90,17 @@ const (
 	// Diff tab pane divider (for drag-to-resize file list vs diff viewer)
 	regionDiffTabDivider = "diff-tab-divider"
 
+	// Diff tab mouse regions
+	regionDiffTabFile        = "diff-tab-file"          // File in left pane file list
+	regionDiffTabCommit      = "diff-tab-commit"        // Commit in left pane
+	regionDiffTabDiffPane    = "diff-tab-diff-pane"     // Right pane diff content area
+	regionDiffTabMinimap     = "diff-tab-minimap"       // Minimap in full-file view
+	regionCommitFileItem     = "commit-file-item"       // File in commit drill-down list
+	regionCommitFileBack     = "commit-file-back"       // Back button in commit drill-down
+	regionCommitFileDiffPane = "commit-file-diff-pane"  // Right pane for commit file diff
+	regionDiffTabPreviewFile  = "diff-tab-preview-file"  // File in commit preview (right pane)
+	regionDiffTabFileListPane = "diff-tab-filelist-pane"  // Left pane catch-all (for click-to-focus)
+
 	// Terminal panel divider (for drag-to-resize output vs terminal panel)
 	regionTermPanelDivider  = "term-panel-divider"
 	regionTermPanelContent  = "term-panel-content"

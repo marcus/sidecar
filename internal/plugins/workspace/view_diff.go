@@ -100,12 +100,11 @@ func (p *Plugin) renderDiffContent(width, height int) string {
 		diffPaneWidth = 10
 	}
 
-	// Register hit region for the diff tab divider (for drag-to-resize).
-	// Calculate absolute X position: preview content starts after sidebar + main divider + panel border/padding.
+	// Calculate absolute X position of diff tab content for hit region registration.
+	// Preview content starts after sidebar + main divider + panel border/padding.
+	var contentBaseX int
 	if !p.sidebarVisible {
-		// Full-width preview: content starts at panelOverhead/2
-		absX := panelOverhead/2 + fileListWidth
-		p.mouseHandler.HitMap.AddRect(regionDiffTabDivider, absX, 0, dividerHitWidth, p.height, nil)
+		contentBaseX = panelOverhead / 2
 	} else {
 		available := p.width - dividerWidth
 		sidebarW := (available * p.sidebarWidth) / 100
@@ -115,20 +114,27 @@ func (p *Plugin) renderDiffContent(width, height int) string {
 		if sidebarW > available-40 {
 			sidebarW = available - 40
 		}
-		absX := sidebarW + dividerWidth + panelOverhead/2 + fileListWidth
-		p.mouseHandler.HitMap.AddRect(regionDiffTabDivider, absX, 0, dividerHitWidth, p.height, nil)
+		contentBaseX = sidebarW + dividerWidth + panelOverhead/2
 	}
+	// baseY: panel border (1) + tab header (1) + blank line (1) = 3
+	baseY := 3
+
+	// Register hit region for the diff tab divider (for drag-to-resize).
+	absXDivider := contentBaseX + fileListWidth
+	p.mouseHandler.HitMap.AddRect(regionDiffTabDivider, absXDivider, 0, dividerHitWidth, p.height, nil)
+
+	rightPaneX := contentBaseX + fileListWidth + 1 // +1 for divider
 
 	var leftPane, rightPane string
 
 	if p.diffTabFocus == DiffTabFocusCommitFiles || p.diffTabFocus == DiffTabFocusCommitDiff {
 		// Commit drill-down: left=commit files, right=commit file diff
-		leftPane = p.renderCommitFileList(fileListWidth, height)
-		rightPane = p.renderCommitFileDiffPane(diffPaneWidth, height)
+		leftPane = p.renderCommitFileList(fileListWidth, height, contentBaseX, baseY)
+		rightPane = p.renderCommitFileDiffPane(diffPaneWidth, height, rightPaneX, baseY)
 	} else {
 		// Default: left=files+commits, right=per-file diff
-		leftPane = p.renderDiffTabFileList(fileListWidth, height)
-		rightPane = p.renderDiffTabDiffPane(diffPaneWidth, height)
+		leftPane = p.renderDiffTabFileList(fileListWidth, height, contentBaseX, baseY)
+		rightPane = p.renderDiffTabDiffPane(diffPaneWidth, height, rightPaneX, baseY)
 	}
 
 	divider := p.renderDiffTabDivider(height)
@@ -147,15 +153,16 @@ func (p *Plugin) renderDiffContent(width, height int) string {
 //   - CommitFiles: commit file list (h/esc goes back to file list)
 //   - CommitDiff: commit file diff (h/esc goes back to commit files)
 func (p *Plugin) renderDiffContentCollapsed(width, height int) string {
+	// Collapsed mode: no hit regions (single-pane, keyboard-only navigation)
 	switch p.diffTabFocus {
 	case DiffTabFocusDiff:
-		return p.renderDiffTabDiffPane(width, height)
+		return p.renderDiffTabDiffPane(width, height, 0, 0)
 	case DiffTabFocusCommitFiles:
-		return p.renderCommitFileList(width, height)
+		return p.renderCommitFileList(width, height, 0, 0)
 	case DiffTabFocusCommitDiff:
-		return p.renderCommitFileDiffPane(width, height)
+		return p.renderCommitFileDiffPane(width, height, 0, 0)
 	default:
-		return p.renderDiffTabFileList(width, height)
+		return p.renderDiffTabFileList(width, height, 0, 0)
 	}
 }
 
@@ -173,7 +180,7 @@ func padToHeight(content string, height, width int) string {
 }
 
 // renderDiffTabFileList renders the file list sidebar within the diff tab.
-func (p *Plugin) renderDiffTabFileList(width, height int) string {
+func (p *Plugin) renderDiffTabFileList(width, height, baseX, baseY int) string {
 	var sb strings.Builder
 
 	var files []gitstatus.FileDiffInfo
@@ -184,6 +191,11 @@ func (p *Plugin) renderDiffTabFileList(width, height int) string {
 
 	fileListActive := p.diffTabFocus == DiffTabFocusFileList
 	maxWidth := width - 2 // Padding
+
+	// Register catch-all region for the entire left pane (BEFORE per-item regions so items take priority)
+	if baseX > 0 {
+		p.mouseHandler.HitMap.AddRect(regionDiffTabFileListPane, baseX, baseY, width, height, nil)
+	}
 
 	// Header
 	headerText := fmt.Sprintf("Files (%d)", len(files))
@@ -235,6 +247,11 @@ func (p *Plugin) renderDiffTabFileList(width, height int) string {
 	for i := startIdx; i < endIdx; i++ {
 		file := files[i]
 		selected := i == p.diffTabCursor
+
+		// Register hit region for this file entry
+		if baseX > 0 {
+			p.mouseHandler.HitMap.AddRect(regionDiffTabFile, baseX, baseY+linesUsed, width, 1, i)
+		}
 
 		// File status icon based on diff type
 		statusIcon := "M"
@@ -319,6 +336,11 @@ func (p *Plugin) renderDiffTabFileList(width, height int) string {
 
 			selected := (len(files) + i) == p.diffTabCursor
 
+			// Register hit region for this commit entry (data = absolute cursor index)
+			if baseX > 0 {
+				p.mouseHandler.HitMap.AddRect(regionDiffTabCommit, baseX, baseY+linesUsed, width, 1, len(files)+i)
+			}
+
 			// Hash + subject
 			hash := commit.Hash
 			if len(hash) > 7 {
@@ -381,7 +403,7 @@ func (p *Plugin) renderDiffTabDivider(height int) string {
 }
 
 // renderDiffTabDiffPane renders the per-file diff pane within the diff tab.
-func (p *Plugin) renderDiffTabDiffPane(width, height int) string {
+func (p *Plugin) renderDiffTabDiffPane(width, height, baseX, baseY int) string {
 	var fileCount int
 	if p.multiFileDiff != nil {
 		fileCount = len(p.multiFileDiff.Files)
@@ -392,7 +414,7 @@ func (p *Plugin) renderDiffTabDiffPane(width, height int) string {
 		commitIdx := p.diffTabCursor - fileCount
 		if commitIdx >= 0 && commitIdx < len(p.commitStatusList) {
 			commit := p.commitStatusList[commitIdx]
-			return p.renderDiffTabCommitPreview(commit, width, height)
+			return p.renderDiffTabCommitPreview(commit, width, height, baseX, baseY)
 		}
 		return dimText("Select a file to view diff")
 	}
@@ -456,11 +478,27 @@ func (p *Plugin) renderDiffTabDiffPane(width, height int) string {
 	}
 
 	sb.WriteString(diffContent)
+
+	// Register hit regions for mouse support
+	if baseX > 0 {
+		// General diff pane region for scroll and click-to-focus
+		p.mouseHandler.HitMap.AddRect(regionDiffTabDiffPane, baseX, baseY, width, height, nil)
+		// Minimap region (when visible in full-file mode)
+		if p.diffViewMode == DiffViewFullFile && p.fullFileDiff != nil {
+			mmH := contentHeight
+			if total := p.fullFileDiff.TotalLines(); total < mmH {
+				mmH = total
+			}
+			mmX := baseX + width - gitstatus.MinimapWidth
+			p.mouseHandler.HitMap.AddRect(regionDiffTabMinimap, mmX, baseY+2, gitstatus.MinimapWidth, mmH, nil)
+		}
+	}
+
 	return sb.String()
 }
 
 // renderDiffTabCommitPreview renders commit info + file list when cursor is on a commit.
-func (p *Plugin) renderDiffTabCommitPreview(commit CommitStatusInfo, width, height int) string {
+func (p *Plugin) renderDiffTabCommitPreview(commit CommitStatusInfo, width, height, baseX, baseY int) string {
 	var sb strings.Builder
 
 	hashStyle := lipgloss.NewStyle().Foreground(styles.Warning)
@@ -495,6 +533,10 @@ func (p *Plugin) renderDiffTabCommitPreview(commit CommitStatusInfo, width, heig
 		for i, file := range files {
 			if i >= maxLines {
 				break
+			}
+			// Register hit region for this file in the commit preview
+			if baseX > 0 {
+				p.mouseHandler.HitMap.AddRect(regionDiffTabPreviewFile, baseX, baseY+linesUsed+i, width, 1, i)
 			}
 			statusIcon := "M"
 			switch file.Status {
@@ -540,7 +582,7 @@ func (p *Plugin) renderDiffTabCommitPreview(commit CommitStatusInfo, width, heig
 }
 
 // renderCommitFileList renders the file list for a drilled-into commit.
-func (p *Plugin) renderCommitFileList(width, height int) string {
+func (p *Plugin) renderCommitFileList(width, height, baseX, baseY int) string {
 	var sb strings.Builder
 	maxWidth := width - 2
 
@@ -552,6 +594,11 @@ func (p *Plugin) renderCommitFileList(width, height int) string {
 	files := p.commitDetail.Files
 	isActive := p.diffTabFocus == DiffTabFocusCommitFiles
 
+	// Register catch-all region for the entire left pane (BEFORE per-item regions)
+	if baseX > 0 {
+		p.mouseHandler.HitMap.AddRect(regionDiffTabFileListPane, baseX, baseY, width, height, nil)
+	}
+
 	// Commit info at the top
 	hash := p.commitDetail.ShortHash
 	if hash == "" && len(p.commitDetail.Hash) >= 7 {
@@ -559,6 +606,10 @@ func (p *Plugin) renderCommitFileList(width, height int) string {
 	}
 	hashStyle := lipgloss.NewStyle().Foreground(styles.Warning)
 	sb.WriteString(styles.Muted.Render("←") + " " + hashStyle.Render(hash))
+	// Register back button hit region
+	if baseX > 0 {
+		p.mouseHandler.HitMap.AddRect(regionCommitFileBack, baseX, baseY, width, 1, nil)
+	}
 	sb.WriteString("\n")
 	// Truncate subject to fit
 	subject := p.commitDetail.Subject
@@ -609,6 +660,12 @@ func (p *Plugin) renderCommitFileList(width, height int) string {
 	for i := startIdx; i < endIdx; i++ {
 		file := files[i]
 		selected := i == p.commitFileCursor
+
+		// Register hit region for this commit file entry
+		lineY := baseY + 4 + (i - startIdx) // 4 = hash + subject + separator + files header
+		if baseX > 0 {
+			p.mouseHandler.HitMap.AddRect(regionCommitFileItem, baseX, lineY, width, 1, i)
+		}
 
 		// Status icon
 		statusIcon := "M"
@@ -666,7 +723,7 @@ func (p *Plugin) renderCommitFileList(width, height int) string {
 }
 
 // renderCommitFileDiffPane renders the diff for the selected file in a commit.
-func (p *Plugin) renderCommitFileDiffPane(width, height int) string {
+func (p *Plugin) renderCommitFileDiffPane(width, height, baseX, baseY int) string {
 	if p.commitDetail == nil {
 		return dimText("Loading...")
 	}
@@ -682,9 +739,14 @@ func (p *Plugin) renderCommitFileDiffPane(width, height int) string {
 
 	// Header with view mode indicator
 	isActive := p.diffTabFocus == DiffTabFocusCommitDiff
-	viewModeStr := "unified"
-	if p.diffViewMode == DiffViewSideBySide {
+	var viewModeStr string
+	switch p.diffViewMode {
+	case DiffViewSideBySide:
 		viewModeStr = "split"
+	case DiffViewFullFile:
+		viewModeStr = "full-file"
+	default:
+		viewModeStr = "unified"
 	}
 	headerStr := fmt.Sprintf("%s [%s]", file.Path, viewModeStr)
 	if isActive {
@@ -711,12 +773,40 @@ func (p *Plugin) renderCommitFileDiffPane(width, height int) string {
 	// Render diff based on view mode
 	highlighter := gitstatus.NewSyntaxHighlighter(file.Path)
 	var diffContent string
-	if p.diffViewMode == DiffViewSideBySide {
+	switch p.diffViewMode {
+	case DiffViewFullFile:
+		if p.fullFileDiff != nil {
+			diffW := width - gitstatus.MinimapWidth
+			mmStr := gitstatus.RenderMinimap(p.fullFileDiff, p.diffTabDiffScroll, contentHeight, contentHeight)
+			if mmStr != "" && diffW >= 30 {
+				diffContent = gitstatus.RenderFullFileSideBySide(p.fullFileDiff, diffW, p.diffTabDiffScroll, contentHeight, p.diffTabHorizScroll, highlighter, false)
+				diffContent = lipgloss.JoinHorizontal(lipgloss.Top, diffContent, mmStr)
+			} else {
+				diffContent = gitstatus.RenderFullFileSideBySide(p.fullFileDiff, width, p.diffTabDiffScroll, contentHeight, p.diffTabHorizScroll, highlighter, false)
+			}
+		} else {
+			diffContent = dimText("Loading full file...")
+		}
+	case DiffViewSideBySide:
 		diffContent = gitstatus.RenderSideBySide(p.commitFileParsed, width, p.diffTabDiffScroll, contentHeight, p.diffTabHorizScroll, highlighter, false)
-	} else {
+	default:
 		diffContent = gitstatus.RenderLineDiff(p.commitFileParsed, width, p.diffTabDiffScroll, contentHeight, p.diffTabHorizScroll, highlighter, false)
 	}
 	sb.WriteString(diffContent)
+
+	// Register hit regions for mouse support
+	if baseX > 0 {
+		p.mouseHandler.HitMap.AddRect(regionCommitFileDiffPane, baseX, baseY, width, height, nil)
+		// Minimap region (when visible in full-file mode)
+		if p.diffViewMode == DiffViewFullFile && p.fullFileDiff != nil {
+			mmH := contentHeight
+			if total := p.fullFileDiff.TotalLines(); total < mmH {
+				mmH = total
+			}
+			mmX := baseX + width - gitstatus.MinimapWidth
+			p.mouseHandler.HitMap.AddRect(regionDiffTabMinimap, mmX, baseY+2, gitstatus.MinimapWidth, mmH, nil)
+		}
+	}
 
 	return sb.String()
 }

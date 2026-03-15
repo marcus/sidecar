@@ -867,6 +867,7 @@ func (p *Plugin) handleListKeys(msg tea.KeyMsg) tea.Cmd {
 				p.commitDetail = nil
 				p.commitFileDiffRaw = ""
 				p.commitFileParsed = nil
+				p.fullFileDiff = nil
 				return nil
 			case DiffTabFocusDiff:
 				p.diffTabFocus = DiffTabFocusFileList
@@ -2038,6 +2039,7 @@ func (p *Plugin) handleCommitFilesKey(msg tea.KeyMsg) tea.Cmd {
 			p.commitFileCursor++
 			p.commitFileDiffRaw = ""
 			p.commitFileParsed = nil
+			p.fullFileDiff = nil
 			return p.loadSelectedCommitFileDiff()
 		}
 	case "k", "up":
@@ -2045,6 +2047,7 @@ func (p *Plugin) handleCommitFilesKey(msg tea.KeyMsg) tea.Cmd {
 			p.commitFileCursor--
 			p.commitFileDiffRaw = ""
 			p.commitFileParsed = nil
+			p.fullFileDiff = nil
 			return p.loadSelectedCommitFileDiff()
 		}
 	case "g":
@@ -2053,6 +2056,7 @@ func (p *Plugin) handleCommitFilesKey(msg tea.KeyMsg) tea.Cmd {
 			p.commitFileScroll = 0
 			p.commitFileDiffRaw = ""
 			p.commitFileParsed = nil
+			p.fullFileDiff = nil
 			return p.loadSelectedCommitFileDiff()
 		}
 	case "G":
@@ -2060,6 +2064,7 @@ func (p *Plugin) handleCommitFilesKey(msg tea.KeyMsg) tea.Cmd {
 			p.commitFileCursor = fileCount - 1
 			p.commitFileDiffRaw = ""
 			p.commitFileParsed = nil
+			p.fullFileDiff = nil
 			return p.loadSelectedCommitFileDiff()
 		}
 	case "l", "right", "enter":
@@ -2075,6 +2080,7 @@ func (p *Plugin) handleCommitFilesKey(msg tea.KeyMsg) tea.Cmd {
 		p.commitDetail = nil
 		p.commitFileDiffRaw = ""
 		p.commitFileParsed = nil
+		p.fullFileDiff = nil
 	}
 	return nil
 }
@@ -2092,8 +2098,13 @@ func (p *Plugin) handleCommitDiffPaneKey(msg tea.KeyMsg) tea.Cmd {
 		p.diffTabDiffScroll = 0
 		p.diffTabHorizScroll = 0
 	case "G":
-		if p.commitFileParsed != nil {
-			lines := gitstatus.CountParsedDiffLines(p.commitFileParsed)
+		var lines int
+		if p.diffViewMode == DiffViewFullFile && p.fullFileDiff != nil {
+			lines = p.fullFileDiff.TotalLines()
+		} else if p.commitFileParsed != nil {
+			lines = gitstatus.CountParsedDiffLines(p.commitFileParsed)
+		}
+		if lines > 0 {
 			maxScroll := lines - (p.height - 6)
 			if maxScroll < 0 {
 				maxScroll = 0
@@ -2125,6 +2136,20 @@ func (p *Plugin) handleCommitDiffPaneKey(msg tea.KeyMsg) tea.Cmd {
 		p.diffTabFocus = DiffTabFocusCommitFiles
 		p.diffTabDiffScroll = 0
 		p.diffTabHorizScroll = 0
+	case "n":
+		if p.diffViewMode == DiffViewFullFile && p.fullFileDiff != nil {
+			next := p.fullFileDiff.NextChange(p.diffTabDiffScroll)
+			if next >= 0 {
+				p.diffTabDiffScroll = next
+			}
+		}
+	case "N":
+		if p.diffViewMode == DiffViewFullFile && p.fullFileDiff != nil {
+			prev := p.fullFileDiff.PrevChange(p.diffTabDiffScroll)
+			if prev >= 0 {
+				p.diffTabDiffScroll = prev
+			}
+		}
 	case "{":
 		// Previous file in commit
 		if p.commitDetail != nil && p.commitFileCursor > 0 {
@@ -2133,6 +2158,7 @@ func (p *Plugin) handleCommitDiffPaneKey(msg tea.KeyMsg) tea.Cmd {
 			p.diffTabHorizScroll = 0
 			p.commitFileDiffRaw = ""
 			p.commitFileParsed = nil
+			p.fullFileDiff = nil
 			return p.loadSelectedCommitFileDiff()
 		}
 	case "}":
@@ -2143,18 +2169,30 @@ func (p *Plugin) handleCommitDiffPaneKey(msg tea.KeyMsg) tea.Cmd {
 			p.diffTabHorizScroll = 0
 			p.commitFileDiffRaw = ""
 			p.commitFileParsed = nil
+			p.fullFileDiff = nil
 			return p.loadSelectedCommitFileDiff()
 		}
 	case "v", "V":
-		// Cycle view mode (unified ↔ side-by-side for commit diffs)
+		// Cycle view mode (unified → side-by-side → full-file)
 		p.diffTabDiffScroll = 0
 		p.diffTabHorizScroll = 0
-		if p.diffViewMode == DiffViewUnified {
+		switch p.diffViewMode {
+		case DiffViewUnified:
 			p.diffViewMode = DiffViewSideBySide
 			_ = state.SetWorkspaceDiffMode("side-by-side")
-		} else {
+		case DiffViewSideBySide:
+			p.diffViewMode = DiffViewFullFile
+			_ = state.SetWorkspaceDiffMode("full-file")
+			if p.fullFileDiff == nil {
+				return p.loadFullFileDiffForCommit()
+			}
+		default:
+			if p.fullFileDiff != nil && p.commitFileParsed != nil && p.diffTabDiffScroll > 0 {
+				p.diffTabDiffScroll = p.fullFileDiff.FullFileLineToHunkLine(p.diffTabDiffScroll, p.commitFileParsed)
+			}
 			p.diffViewMode = DiffViewUnified
 			_ = state.SetWorkspaceDiffMode("unified")
+			p.fullFileDiff = nil
 		}
 	}
 	return nil
