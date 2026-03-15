@@ -45,6 +45,11 @@ func (p *Plugin) Commands() []plugin.Command {
 			}
 		}
 		return cmds
+	case ViewModeAgentConfig:
+		return []plugin.Command{
+			{ID: "cancel", Name: "Cancel", Description: "Cancel agent config", Context: "workspace-agent-config", Priority: 1},
+			{ID: "confirm", Name: "Start", Description: "Start agent with config", Context: "workspace-agent-config", Priority: 2},
+		}
 	case ViewModeAgentChoice:
 		return []plugin.Command{
 			{ID: "cancel", Name: "Cancel", Description: "Cancel agent choice", Context: "workspace-agent-choice", Priority: 1},
@@ -246,6 +251,8 @@ func (p *Plugin) FocusContext() string {
 			return "workspace-merge-error"
 		}
 		return "workspace-merge"
+	case ViewModeAgentConfig:
+		return "workspace-agent-config"
 	case ViewModeAgentChoice:
 		return "workspace-agent-choice"
 	case ViewModeConfirmDelete:

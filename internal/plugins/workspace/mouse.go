@@ -64,6 +64,10 @@ func (p *Plugin) handleMouse(msg tea.MouseMsg) tea.Cmd {
 		return p.handleTypeSelectorModalMouse(msg)
 	}
 
+	if p.viewMode == ViewModeAgentConfig {
+		return p.handleAgentConfigModalMouse(msg)
+	}
+
 	if p.viewMode == ViewModeAgentChoice {
 		return p.handleAgentChoiceModalMouse(msg)
 	}
@@ -315,6 +319,41 @@ func (p *Plugin) handleAgentChoiceModalMouse(msg tea.MouseMsg) tea.Cmd {
 	return nil
 }
 
+func (p *Plugin) handleAgentConfigModalMouse(msg tea.MouseMsg) tea.Cmd {
+	p.ensureAgentConfigModal()
+	if p.agentConfigModal == nil {
+		return nil
+	}
+
+	prevAgentIdx := p.agentConfigAgentIdx
+	action := p.agentConfigModal.HandleMouse(msg, p.mouseHandler)
+
+	// Sync agent type when list selection changes via mouse
+	if p.agentConfigAgentIdx != prevAgentIdx {
+		if p.agentConfigAgentIdx >= 0 && p.agentConfigAgentIdx < len(AgentTypeOrder) {
+			p.agentConfigAgentType = AgentTypeOrder[p.agentConfigAgentIdx]
+		}
+	}
+
+	switch action {
+	case "":
+		return nil
+	case "cancel", agentConfigCancelID:
+		p.viewMode = ViewModeList
+		p.clearAgentConfigModal()
+		return nil
+	case agentConfigPromptFieldID:
+		p.promptPickerReturnMode = ViewModeAgentConfig
+		p.promptPicker = NewPromptPicker(p.agentConfigPrompts, p.width, p.height)
+		p.clearPromptPickerModal()
+		p.viewMode = ViewModePromptPicker
+		return nil
+	case agentConfigSubmitID:
+		return p.executeAgentConfig()
+	}
+	return nil
+}
+
 func (p *Plugin) handleFetchPRModalMouse(msg tea.MouseMsg) tea.Cmd {
 	p.ensureFetchPRModal()
 	if p.fetchPRModal == nil {
@@ -421,6 +460,9 @@ func (p *Plugin) handleMouseHover(action mouse.MouseAction) tea.Cmd {
 		default:
 			p.createButtonHover = 0
 		}
+	case ViewModeAgentConfig:
+		// Modal library handles hover state internally
+		return nil
 	case ViewModeAgentChoice:
 		// Modal library handles hover state internally
 		return nil

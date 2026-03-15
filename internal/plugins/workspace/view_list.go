@@ -63,6 +63,8 @@ func (p *Plugin) View(width, height int) string {
 		return p.renderTaskLinkModal(width, height)
 	case ViewModeMerge:
 		return p.renderMergeModal(width, height)
+	case ViewModeAgentConfig:
+		return p.renderAgentConfigModal(width, height)
 	case ViewModeAgentChoice:
 		return p.renderAgentChoiceModal(width, height)
 	case ViewModeConfirmDelete:
