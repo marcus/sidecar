@@ -657,7 +657,10 @@ func (p *Plugin) getAgentCommandWithContext(agentType AgentType, wt *Worktree) s
 // StartAgentWithOptions creates a tmux session and starts an agent with options.
 // If a session already exists, it reconnects to it instead of failing.
 func (p *Plugin) StartAgentWithOptions(wt *Worktree, agentType AgentType, skipPerms bool, prompt *Prompt) tea.Cmd {
-	epoch := p.ctx.Epoch // Capture epoch for stale detection
+	var epoch uint64
+	if p.ctx != nil {
+		epoch = p.ctx.Epoch // Capture epoch for stale detection
+	}
 	return func() tea.Msg {
 		sessionName := tmuxSessionPrefix + sanitizeName(wt.Name)
 

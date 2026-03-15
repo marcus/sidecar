@@ -103,3 +103,64 @@ func TestShouldShowAgentConfigSkipPerms(t *testing.T) {
 		})
 	}
 }
+
+func TestExecuteAgentConfig_FreshStart(t *testing.T) {
+	wt := &Worktree{Name: "test-wt", Path: "/tmp/test"}
+	p := &Plugin{
+		agentConfigWorktree:  wt,
+		agentConfigIsRestart: false,
+		agentConfigAgentType: AgentClaude,
+		agentConfigSkipPerms: true,
+		agentConfigPromptIdx: -1,
+		viewMode:             ViewModeAgentConfig,
+	}
+
+	cmd := p.executeAgentConfig()
+
+	if p.viewMode != ViewModeList {
+		t.Errorf("expected ViewModeList, got %v", p.viewMode)
+	}
+	if p.agentConfigWorktree != nil {
+		t.Error("worktree should be cleared")
+	}
+	if cmd == nil {
+		t.Error("expected non-nil cmd for fresh start")
+	}
+}
+
+func TestExecuteAgentConfig_Restart(t *testing.T) {
+	wt := &Worktree{Name: "test-wt", Path: "/tmp/test"}
+	p := &Plugin{
+		agentConfigWorktree:  wt,
+		agentConfigIsRestart: true,
+		agentConfigAgentType: AgentCodex,
+		agentConfigSkipPerms: false,
+		agentConfigPromptIdx: -1,
+		viewMode:             ViewModeAgentConfig,
+	}
+
+	cmd := p.executeAgentConfig()
+
+	if p.viewMode != ViewModeList {
+		t.Errorf("expected ViewModeList, got %v", p.viewMode)
+	}
+	if cmd == nil {
+		t.Error("expected non-nil cmd for restart")
+	}
+}
+
+func TestExecuteAgentConfig_NilWorktree(t *testing.T) {
+	p := &Plugin{
+		agentConfigWorktree: nil,
+		viewMode:            ViewModeAgentConfig,
+	}
+
+	cmd := p.executeAgentConfig()
+
+	if p.viewMode != ViewModeList {
+		t.Errorf("expected ViewModeList, got %v", p.viewMode)
+	}
+	if cmd != nil {
+		t.Error("expected nil cmd for nil worktree")
+	}
+}

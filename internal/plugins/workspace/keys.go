@@ -24,6 +24,8 @@ func (p *Plugin) handleKeyPress(msg tea.KeyMsg) tea.Cmd {
 		return p.handleTaskLinkKeys(msg)
 	case ViewModeMerge:
 		return p.handleMergeKeys(msg)
+	case ViewModeAgentConfig:
+		return p.handleAgentConfigKeys(msg)
 	case ViewModeAgentChoice:
 		return p.handleAgentChoiceKeys(msg)
 	case ViewModeConfirmDelete:
@@ -280,6 +282,73 @@ func (p *Plugin) handleAgentChoiceKeys(msg tea.KeyMsg) tea.Cmd {
 	}
 
 	return cmd
+}
+
+// handleAgentConfigKeys handles keys in agent config modal.
+func (p *Plugin) handleAgentConfigKeys(msg tea.KeyMsg) tea.Cmd {
+	p.ensureAgentConfigModal()
+	if p.agentConfigModal == nil {
+		return nil
+	}
+
+	prevAgentIdx := p.agentConfigAgentIdx
+	action, cmd := p.agentConfigModal.HandleKey(msg)
+
+	// Sync agent type when selection changes
+	if p.agentConfigAgentIdx != prevAgentIdx {
+		if p.agentConfigAgentIdx >= 0 && p.agentConfigAgentIdx < len(AgentTypeOrder) {
+			p.agentConfigAgentType = AgentTypeOrder[p.agentConfigAgentIdx]
+		}
+	}
+
+	switch action {
+	case "cancel", agentConfigCancelID:
+		p.viewMode = ViewModeList
+		p.clearAgentConfigModal()
+		return nil
+	case agentConfigPromptFieldID:
+		// Open prompt picker, set return mode to agent config
+		p.promptPickerReturnMode = ViewModeAgentConfig
+		p.promptPicker = NewPromptPicker(p.agentConfigPrompts, p.width, p.height)
+		p.clearPromptPickerModal()
+		p.viewMode = ViewModePromptPicker
+		return nil
+	case agentConfigSubmitID:
+		return p.executeAgentConfig()
+	}
+
+	return cmd
+}
+
+// executeAgentConfig executes the agent config modal action (start or restart).
+func (p *Plugin) executeAgentConfig() tea.Cmd {
+	wt := p.agentConfigWorktree
+	agentType := p.agentConfigAgentType
+	skipPerms := p.agentConfigSkipPerms
+	prompt := p.getAgentConfigPrompt()
+	isRestart := p.agentConfigIsRestart
+
+	p.viewMode = ViewModeList
+	p.clearAgentConfigModal()
+
+	if wt == nil {
+		return nil
+	}
+
+	if isRestart {
+		return tea.Sequence(
+			p.StopAgent(wt),
+			func() tea.Msg {
+				return restartAgentWithOptionsMsg{
+					worktree:  wt,
+					agentType: agentType,
+					skipPerms: skipPerms,
+					prompt:    prompt,
+				}
+			},
+		)
+	}
+	return p.StartAgentWithOptions(wt, agentType, skipPerms, prompt)
 }
 
 // executeAgentChoice executes the selected agent choice action.
