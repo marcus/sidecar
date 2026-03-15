@@ -188,6 +188,14 @@ type restartAgentMsg struct {
 	worktree *Worktree
 }
 
+// restartAgentWithOptionsMsg signals that an agent should be restarted with specific options.
+type restartAgentWithOptionsMsg struct {
+	worktree  *Worktree
+	agentType AgentType
+	skipPerms bool
+	prompt    *Prompt
+}
+
 // CommitStatusLoadedMsg delivers commit status info for the diff view header.
 type CommitStatusLoadedMsg struct {
 	Epoch         uint64 // Epoch when request was issued (for stale detection)
