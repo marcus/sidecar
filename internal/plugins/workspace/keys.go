@@ -293,6 +293,39 @@ func (p *Plugin) handleAgentConfigKeys(msg tea.KeyMsg) tea.Cmd {
 		return nil
 	}
 
+	key := msg.String()
+
+	// Handle Enter manually to respect focused element — the modal's HandleKey
+	// falls through to primaryAction (submit) when the focused section doesn't
+	// consume Enter, which incorrectly submits when prompt or agent list is focused.
+	if key == "enter" {
+		focusID := p.agentConfigModal.FocusedID()
+		switch {
+		case focusID == agentConfigPromptFieldID:
+			// Open prompt picker
+			p.promptPickerReturnMode = ViewModeAgentConfig
+			p.promptPicker = NewPromptPicker(p.agentConfigPrompts, p.width, p.height)
+			p.clearPromptPickerModal()
+			p.viewMode = ViewModePromptPicker
+			return nil
+		case focusID == agentConfigSubmitID:
+			return p.executeAgentConfig()
+		case focusID == agentConfigCancelID:
+			p.viewMode = ViewModeList
+			p.clearAgentConfigModal()
+			return nil
+		case strings.HasPrefix(focusID, agentConfigAgentItemPrefix):
+			// Enter on agent list item — just absorb (selection already tracked by index)
+			return nil
+		case focusID == agentConfigSkipPermissionsID:
+			// Toggle checkbox
+			p.agentConfigSkipPerms = !p.agentConfigSkipPerms
+			return nil
+		}
+		return nil
+	}
+
+	// Delegate all other keys to the modal
 	prevAgentIdx := p.agentConfigAgentIdx
 	action, cmd := p.agentConfigModal.HandleKey(msg)
 
@@ -308,15 +341,6 @@ func (p *Plugin) handleAgentConfigKeys(msg tea.KeyMsg) tea.Cmd {
 		p.viewMode = ViewModeList
 		p.clearAgentConfigModal()
 		return nil
-	case agentConfigPromptFieldID:
-		// Open prompt picker, set return mode to agent config
-		p.promptPickerReturnMode = ViewModeAgentConfig
-		p.promptPicker = NewPromptPicker(p.agentConfigPrompts, p.width, p.height)
-		p.clearPromptPickerModal()
-		p.viewMode = ViewModePromptPicker
-		return nil
-	case agentConfigSubmitID:
-		return p.executeAgentConfig()
 	}
 
 	return cmd
