@@ -217,33 +217,54 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 
 	case PromptSelectedMsg:
 		// Prompt selected from picker
-		p.viewMode = ViewModeCreate
+		returnMode := p.promptPickerReturnMode
 		p.promptPicker = nil
 		p.clearPromptPickerModal()
-		if msg.Prompt != nil {
-			// Find index of selected prompt
-			for i, pr := range p.createPrompts {
-				if pr.Name == msg.Prompt.Name {
-					p.createPromptIdx = i
-					break
+
+		if returnMode == ViewModeAgentConfig {
+			p.viewMode = ViewModeAgentConfig
+			if msg.Prompt != nil {
+				for i, pr := range p.agentConfigPrompts {
+					if pr.Name == msg.Prompt.Name {
+						p.agentConfigPromptIdx = i
+						break
+					}
 				}
-			}
-			// If ticketMode is none, skip task field and jump to agent
-			if msg.Prompt.TicketMode == TicketNone {
-				p.createFocus = 4 // agent field
 			} else {
-				p.createFocus = 3 // task field
+				p.agentConfigPromptIdx = -1
 			}
 		} else {
-			p.createPromptIdx = -1
-			p.createFocus = 3 // task field
+			p.viewMode = ViewModeCreate
+			if msg.Prompt != nil {
+				// Find index of selected prompt
+				for i, pr := range p.createPrompts {
+					if pr.Name == msg.Prompt.Name {
+						p.createPromptIdx = i
+						break
+					}
+				}
+				// If ticketMode is none, skip task field and jump to agent
+				if msg.Prompt.TicketMode == TicketNone {
+					p.createFocus = 4 // agent field
+				} else {
+					p.createFocus = 3 // task field
+				}
+			} else {
+				p.createPromptIdx = -1
+				p.createFocus = 3 // task field
+			}
 		}
 
 	case PromptCancelledMsg:
-		// Picker cancelled, return to create modal
-		p.viewMode = ViewModeCreate
+		// Picker cancelled, return to originating modal
+		returnMode := p.promptPickerReturnMode
 		p.promptPicker = nil
 		p.clearPromptPickerModal()
+		if returnMode == ViewModeAgentConfig {
+			p.viewMode = ViewModeAgentConfig
+		} else {
+			p.viewMode = ViewModeCreate
+		}
 
 	case PromptInstallDefaultsMsg:
 		// User pressed 'd' to install default prompts
@@ -255,8 +276,13 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 		}
 		configDir := filepath.Join(home, ".config", "sidecar")
 		if WriteDefaultPromptsToConfig(configDir) {
-			p.createPrompts = LoadPrompts(configDir, p.ctx.ProjectRoot)
-			p.promptPicker = NewPromptPicker(p.createPrompts, p.width, p.height)
+			if p.promptPickerReturnMode == ViewModeAgentConfig {
+				p.agentConfigPrompts = LoadPrompts(configDir, p.ctx.ProjectRoot)
+				p.promptPicker = NewPromptPicker(p.agentConfigPrompts, p.width, p.height)
+			} else {
+				p.createPrompts = LoadPrompts(configDir, p.ctx.ProjectRoot)
+				p.promptPicker = NewPromptPicker(p.createPrompts, p.width, p.height)
+			}
 			p.clearPromptPickerModal()
 		} else {
 			return p, func() tea.Msg {
