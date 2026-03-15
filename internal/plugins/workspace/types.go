@@ -38,6 +38,7 @@ const (
 	ViewModeFilePicker                     // Diff file picker modal
 	ViewModeInteractive                    // Interactive mode (tmux input passthrough)
 	ViewModeFetchPR                        // Fetch remote PR modal
+	ViewModeAgentConfig                    // Agent config modal (start/restart with options)
 )
 
 // FocusPane represents which pane is active in the split view.
