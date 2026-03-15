@@ -476,8 +476,13 @@ func (p *Plugin) renderRenameShellModal(width, height int) string {
 
 // renderPromptPickerModal renders the prompt picker modal.
 func (p *Plugin) renderPromptPickerModal(width, height int) string {
-	// Render the background (create modal behind it)
-	background := p.renderCreateModal(width, height)
+	// Render the appropriate background based on which modal opened the picker
+	var background string
+	if p.promptPickerReturnMode == ViewModeAgentConfig {
+		background = p.renderAgentConfigModal(width, height)
+	} else {
+		background = p.renderCreateModal(width, height)
+	}
 
 	p.ensurePromptPickerModal()
 	if p.promptPickerModal == nil {
