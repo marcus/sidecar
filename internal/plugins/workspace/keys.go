@@ -3,7 +3,9 @@ package workspace
 import (
 	"fmt"
 	"math"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -364,13 +366,20 @@ func (p *Plugin) executeAgentChoice() tea.Cmd {
 		// Attach to existing session
 		return p.AttachToSession(wt)
 	}
-	// Restart agent: stop first, then start
-	return tea.Sequence(
-		p.StopAgent(wt),
-		func() tea.Msg {
-			return restartAgentMsg{worktree: wt}
-		},
-	)
+	// Restart agent: open config modal to choose options
+	home, _ := os.UserHomeDir()
+	configDir := filepath.Join(home, ".config", "sidecar")
+	p.agentConfigWorktree = wt
+	p.agentConfigIsRestart = true
+	p.agentConfigAgentType = p.resolveWorktreeAgentType(wt)
+	p.agentConfigAgentIdx = p.agentTypeIndex(p.agentConfigAgentType)
+	p.agentConfigSkipPerms = false
+	p.agentConfigPromptIdx = -1
+	p.agentConfigPrompts = LoadPrompts(configDir, p.ctx.ProjectRoot)
+	p.agentConfigModal = nil
+	p.agentConfigModalWidth = 0
+	p.viewMode = ViewModeAgentConfig
+	return nil
 }
 
 // handleConfirmDeleteKeys handles keys in delete confirmation modal.
@@ -872,8 +881,20 @@ func (p *Plugin) handleListKeys(msg tea.KeyMsg) tea.Cmd {
 			return nil
 		}
 		if wt.Agent == nil {
-			// No agent running - start new one
-			return p.StartAgent(wt, p.resolveWorktreeAgentType(wt))
+			// No agent running - open agent config modal
+			home, _ := os.UserHomeDir()
+			configDir := filepath.Join(home, ".config", "sidecar")
+			p.agentConfigWorktree = wt
+			p.agentConfigIsRestart = false
+			p.agentConfigAgentType = p.resolveWorktreeAgentType(wt)
+			p.agentConfigAgentIdx = p.agentTypeIndex(p.agentConfigAgentType)
+			p.agentConfigSkipPerms = false
+			p.agentConfigPromptIdx = -1
+			p.agentConfigPrompts = LoadPrompts(configDir, p.ctx.ProjectRoot)
+			p.agentConfigModal = nil
+			p.agentConfigModalWidth = 0
+			p.viewMode = ViewModeAgentConfig
+			return nil
 		}
 		// Agent exists - show choice modal (attach or restart)
 		p.agentChoiceWorktree = wt
