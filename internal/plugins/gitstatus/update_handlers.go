@@ -813,7 +813,7 @@ func (p *Plugin) updateCommit(msg tea.KeyMsg) (plugin.Plugin, tea.Cmd) {
 
 // tryCommit attempts to execute the commit (or amend) if message is valid.
 func (p *Plugin) tryCommit() tea.Cmd {
-	message := strings.TrimSpace(p.commitMessage.Value())
+	message := NormalizeCommitMessage(p.commitMessage.Value())
 	if message == "" {
 		p.commitError = "Commit message cannot be empty"
 		return nil
