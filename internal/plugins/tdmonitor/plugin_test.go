@@ -3,6 +3,7 @@ package tdmonitor
 import (
 	"log/slog"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -156,6 +157,44 @@ func TestInitWithValidDatabase(t *testing.T) {
 
 	// Cleanup
 	p.Stop()
+}
+
+func TestInitSetsClipboardFn(t *testing.T) {
+	// Create a temp directory with a td database so we don't depend on
+	// the repo having one.
+	tmpDir, err := os.MkdirTemp("", "tdmonitor-clipboard-*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer func() { _ = os.RemoveAll(tmpDir) }()
+
+	// Initialize td in the temp directory
+	cmd := exec.Command("td", "init")
+	cmd.Dir = tmpDir
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Skipf("td init failed (td not installed?): %s: %v", out, err)
+	}
+
+	p := New()
+	ctx := &plugin.Context{
+		WorkDir: tmpDir,
+		Logger:  slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError})),
+	}
+
+	if err := p.Init(ctx); err != nil {
+		t.Fatalf("Init failed: %v", err)
+	}
+	defer p.Stop()
+
+	if p.model == nil {
+		t.Fatal("model should be created when database exists")
+	}
+
+	// ClipboardFn must be set so sidecar's clipboard (atotto/clipboard) is used
+	// instead of td's built-in one, which doesn't handle WSL.
+	if p.model.ClipboardFn == nil {
+		t.Error("model.ClipboardFn should be set to sidecar's clipboard implementation")
+	}
 }
 
 func TestDiagnosticsWithDatabase(t *testing.T) {

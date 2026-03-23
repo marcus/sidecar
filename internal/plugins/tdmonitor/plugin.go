@@ -5,6 +5,7 @@ import (
 	"os/exec"
 	"time"
 
+	"github.com/atotto/clipboard"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/marcus/td/pkg/monitor"
@@ -118,6 +119,11 @@ func (p *Plugin) Init(ctx *plugin.Context) error {
 	}
 
 	p.model = model
+
+	// Use sidecar's clipboard (atotto/clipboard) instead of td's built-in one.
+	// td's copyToClipboard doesn't handle WSL (tries xclip/xsel only);
+	// atotto/clipboard falls through to clip.exe on WSL.
+	model.ClipboardFn = clipboard.WriteAll
 
 	// Register TD bindings with sidecar's keymap (single source of truth)
 	if ctx.Keymap != nil && model.Keymap != nil {
