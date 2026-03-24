@@ -35,6 +35,7 @@ type ProjectConfig struct {
 type PluginsConfig struct {
 	GitStatus     GitStatusPluginConfig     `json:"git-status"`
 	TDMonitor     TDMonitorPluginConfig     `json:"td-monitor"`
+	FileBrowser   FileBrowserPluginConfig   `json:"file-browser"`
 	Conversations ConversationsPluginConfig `json:"conversations"`
 	Workspace     WorkspacePluginConfig     `json:"workspace"`
 	Notes         NotesPluginConfig         `json:"notes"`
@@ -44,6 +45,12 @@ type PluginsConfig struct {
 type GitStatusPluginConfig struct {
 	Enabled         bool          `json:"enabled"`
 	RefreshInterval time.Duration `json:"refreshInterval"`
+}
+
+// FileBrowserPluginConfig configures the file browser plugin.
+type FileBrowserPluginConfig struct {
+	// Enabled controls whether the file browser plugin is loaded. Default: true.
+	Enabled bool `json:"enabled"`
 }
 
 // TDMonitorPluginConfig configures the TD monitor plugin.
@@ -148,6 +155,9 @@ func Default() *Config {
 				Enabled:         true,
 				RefreshInterval: 2 * time.Second,
 				DBPath:          ".todos/issues.db",
+			},
+			FileBrowser: FileBrowserPluginConfig{
+				Enabled: true,
 			},
 			Conversations: ConversationsPluginConfig{
 				Enabled:       true,

@@ -74,6 +74,7 @@ type rawProjectConfig struct {
 type rawPluginsConfig struct {
 	GitStatus     rawGitStatusConfig     `json:"git-status"`
 	TDMonitor     rawTDMonitorConfig     `json:"td-monitor"`
+	FileBrowser   rawFileBrowserConfig   `json:"file-browser"`
 	Conversations rawConversationsConfig `json:"conversations"`
 	Workspace     rawWorkspaceConfig     `json:"workspace"`
 }
@@ -107,6 +108,10 @@ type rawTDMonitorConfig struct {
 	Enabled         *bool  `json:"enabled"`
 	RefreshInterval string `json:"refreshInterval"`
 	DBPath          string `json:"dbPath"`
+}
+
+type rawFileBrowserConfig struct {
+	Enabled *bool `json:"enabled"`
 }
 
 type rawConversationsConfig struct {
@@ -215,6 +220,11 @@ func mergeConfig(cfg *Config, raw *rawConfig) {
 	}
 	if raw.Plugins.TDMonitor.DBPath != "" {
 		cfg.Plugins.TDMonitor.DBPath = raw.Plugins.TDMonitor.DBPath
+	}
+
+	// File Browser
+	if raw.Plugins.FileBrowser.Enabled != nil {
+		cfg.Plugins.FileBrowser.Enabled = *raw.Plugins.FileBrowser.Enabled
 	}
 
 	// Conversations

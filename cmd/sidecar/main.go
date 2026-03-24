@@ -171,17 +171,25 @@ func main() {
 
 	// Register plugins (order determines tab order)
 	// TD plugin registers its bindings dynamically via p.ctx.Keymap
-	if err := registry.Register(tdmonitor.New()); err != nil {
-		logger.Warn("failed to register tdmonitor plugin", "err", err)
+	if cfg.Plugins.TDMonitor.Enabled {
+		if err := registry.Register(tdmonitor.New()); err != nil {
+			logger.Warn("failed to register tdmonitor plugin", "err", err)
+		}
 	}
-	if err := registry.Register(gitstatus.New()); err != nil {
-		logger.Warn("failed to register gitstatus plugin", "err", err)
+	if cfg.Plugins.GitStatus.Enabled {
+		if err := registry.Register(gitstatus.New()); err != nil {
+			logger.Warn("failed to register gitstatus plugin", "err", err)
+		}
 	}
-	if err := registry.Register(filebrowser.New()); err != nil {
-		logger.Warn("failed to register filebrowser plugin", "err", err)
+	if cfg.Plugins.FileBrowser.Enabled {
+		if err := registry.Register(filebrowser.New()); err != nil {
+			logger.Warn("failed to register filebrowser plugin", "err", err)
+		}
 	}
-	if err := registry.Register(conversations.New()); err != nil {
-		logger.Warn("failed to register conversations plugin", "err", err)
+	if cfg.Plugins.Conversations.Enabled {
+		if err := registry.Register(conversations.New()); err != nil {
+			logger.Warn("failed to register conversations plugin", "err", err)
+		}
 	}
 	if err := registry.Register(workspace.New()); err != nil {
 		logger.Warn("failed to register workspace plugin", "err", err)

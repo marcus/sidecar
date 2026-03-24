@@ -26,8 +26,13 @@ type saveProjectsConfig struct {
 type savePluginsConfig struct {
 	GitStatus     saveGitStatusConfig     `json:"git-status,omitempty"`
 	TDMonitor     saveTDMonitorConfig     `json:"td-monitor,omitempty"`
+	FileBrowser   saveFileBrowserConfig   `json:"file-browser,omitempty"`
 	Conversations saveConversationsConfig `json:"conversations,omitempty"`
 	Workspace     saveWorkspaceConfig     `json:"workspace,omitempty"`
+}
+
+type saveFileBrowserConfig struct {
+	Enabled *bool `json:"enabled,omitempty"`
 }
 
 type saveGitStatusConfig struct {
@@ -75,6 +80,9 @@ func toSaveConfig(cfg *Config) saveConfig {
 				Enabled:         &cfg.Plugins.TDMonitor.Enabled,
 				RefreshInterval: cfg.Plugins.TDMonitor.RefreshInterval.String(),
 				DBPath:          cfg.Plugins.TDMonitor.DBPath,
+			},
+			FileBrowser: saveFileBrowserConfig{
+				Enabled: &cfg.Plugins.FileBrowser.Enabled,
 			},
 			Conversations: saveConversationsConfig{
 				Enabled:       &cfg.Plugins.Conversations.Enabled,

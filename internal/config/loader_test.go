@@ -371,3 +371,40 @@ func TestApplyEnvOverrides_NeitherVarSet(t *testing.T) {
 		t.Errorf("DefaultAgentType = %q, want %q (should be unchanged)", cfg.Plugins.Workspace.DefaultAgentType, "original")
 	}
 }
+
+func TestDefault_FileBrowserEnabled(t *testing.T) {
+	cfg := Default()
+	if !cfg.Plugins.FileBrowser.Enabled {
+		t.Error("file-browser should be enabled by default")
+	}
+}
+
+func TestLoadFrom_FileBrowserDisabled(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+
+	content := []byte(`{
+		"plugins": {
+			"file-browser": {
+				"enabled": false
+			}
+		}
+	}`)
+
+	if err := os.WriteFile(path, content, 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := LoadFrom(path)
+	if err != nil {
+		t.Fatalf("LoadFrom failed: %v", err)
+	}
+
+	if cfg.Plugins.FileBrowser.Enabled {
+		t.Error("file-browser should be disabled when set to false in config")
+	}
+	// Other plugins should still have defaults
+	if !cfg.Plugins.GitStatus.Enabled {
+		t.Error("git-status should still be enabled (default)")
+	}
+}
