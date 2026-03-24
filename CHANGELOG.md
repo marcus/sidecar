@@ -2,6 +2,15 @@
 
 All notable changes to sidecar are documented here.
 
+## [v0.83.0] - 2026-03-24
+
+### Features
+
+- feat: full-file diff view with minimap (#232)
+- feat: two-pane diff tab with drag-to-resize (#232)
+- feat: git sidebar line stats (#232)
+- feat: split terminal panel with Ctrl+T toggle (#232)
+
 ## [v0.82.0] - 2026-03-24
 
 ### Dependencies
