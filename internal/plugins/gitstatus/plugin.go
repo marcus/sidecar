@@ -541,26 +541,6 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 		}
 		return p, nil
 
-	case FullFileDiffLoadedMsg:
-		if plugin.IsStale(p.ctx, msg) {
-			return p, nil
-		}
-		ffd := BuildFullFileDiff(msg.OldContent, msg.NewContent, msg.Parsed)
-		if msg.ForInline {
-			if msg.File == p.selectedDiffFile {
-				p.diffPaneFullFileDiff = ffd
-				// Clamp scroll if new content is shorter
-				p.clampDiffPaneScroll()
-			}
-		} else {
-			if msg.File == p.diffFile {
-				p.fullFileDiff = ffd
-				// Clamp scroll if new content is shorter
-				p.clampDiffScroll()
-			}
-		}
-		return p, nil
-
 	case RecentCommitsLoadedMsg:
 		if plugin.IsStale(p.ctx, msg) {
 			return p, nil // Ignore stale message from previous project
