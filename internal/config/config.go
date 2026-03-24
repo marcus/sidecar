@@ -87,6 +87,21 @@ type WorkspacePluginConfig struct {
 	InteractiveCopyKey string `json:"interactiveCopyKey,omitempty"`
 	// InteractivePasteKey is the keybinding to paste clipboard in interactive mode. Default: "alt+v".
 	InteractivePasteKey string `json:"interactivePasteKey,omitempty"`
+	// SidebarDisplay controls what information is shown in the workspace sidebar entries.
+	SidebarDisplay SidebarDisplayConfig `json:"sidebarDisplay"`
+}
+
+// SidebarDisplayConfig controls visibility of workspace sidebar entry elements.
+type SidebarDisplayConfig struct {
+	// HideRepoPrefix strips the repo name prefix from worktree names (e.g., "myrepo-feature" → "feature").
+	// Default: false (show full name).
+	HideRepoPrefix bool `json:"hideRepoPrefix"`
+	// HideAgent hides the agent type label (e.g., "claude") on the second line. Default: false.
+	HideAgent bool `json:"hideAgent"`
+	// HideTask hides the linked task ID (e.g., "td-abc123") on the second line. Default: false.
+	HideTask bool `json:"hideTask"`
+	// HideStats hides the +/- line change stats on the second line. Default: false.
+	HideStats bool `json:"hideStats"`
 }
 
 // NotesPluginConfig configures the notes plugin.

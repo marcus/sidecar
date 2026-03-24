@@ -47,14 +47,15 @@ type saveConversationsConfig struct {
 }
 
 type saveWorkspaceConfig struct {
-	DirPrefix            *bool             `json:"dirPrefix,omitempty"`
-	DefaultAgentType     string            `json:"defaultAgentType,omitempty"`
-	AgentStart           map[string]string `json:"agentStart,omitempty"`
-	TmuxCaptureMaxBytes  *int              `json:"tmuxCaptureMaxBytes,omitempty"`
-	InteractiveExitKey   string            `json:"interactiveExitKey,omitempty"`
-	InteractiveAttachKey string            `json:"interactiveAttachKey,omitempty"`
-	InteractiveCopyKey   string            `json:"interactiveCopyKey,omitempty"`
-	InteractivePasteKey  string            `json:"interactivePasteKey,omitempty"`
+	DirPrefix            *bool                `json:"dirPrefix,omitempty"`
+	DefaultAgentType     string               `json:"defaultAgentType,omitempty"`
+	AgentStart           map[string]string    `json:"agentStart,omitempty"`
+	TmuxCaptureMaxBytes  *int                 `json:"tmuxCaptureMaxBytes,omitempty"`
+	InteractiveExitKey   string               `json:"interactiveExitKey,omitempty"`
+	InteractiveAttachKey string               `json:"interactiveAttachKey,omitempty"`
+	InteractiveCopyKey   string               `json:"interactiveCopyKey,omitempty"`
+	InteractivePasteKey  string               `json:"interactivePasteKey,omitempty"`
+	SidebarDisplay       *SidebarDisplayConfig `json:"sidebarDisplay,omitempty"`
 }
 
 // toSaveConfig converts Config to the JSON-serializable format.
@@ -88,6 +89,7 @@ func toSaveConfig(cfg *Config) saveConfig {
 				InteractiveAttachKey: cfg.Plugins.Workspace.InteractiveAttachKey,
 				InteractiveCopyKey:   cfg.Plugins.Workspace.InteractiveCopyKey,
 				InteractivePasteKey:  cfg.Plugins.Workspace.InteractivePasteKey,
+				SidebarDisplay:       &cfg.Plugins.Workspace.SidebarDisplay,
 			},
 		},
 		Keymap:   cfg.Keymap,
