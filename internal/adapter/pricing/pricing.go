@@ -21,13 +21,13 @@ type modelTier struct {
 
 var (
 	// Version-aware tiers.
-	tierOpusNew   = modelTier{5.0, 25.0}   // Opus 4.5+
-	tierOpusOld   = modelTier{15.0, 75.0}  // Opus 3/4/4.1
-	tierSonnet    = modelTier{3.0, 15.0}   // All Sonnet versions
-	tierHaikuNew  = modelTier{1.0, 5.0}    // Haiku 4.5+
-	tierHaiku35   = modelTier{0.80, 4.0}   // Haiku 3.5
-	tierHaikuOld  = modelTier{0.25, 1.25}  // Haiku 3
-	tierDefault   = tierSonnet              // Unknown models
+	tierOpusNew  = modelTier{5.0, 25.0}  // Opus 4.5+
+	tierOpusOld  = modelTier{15.0, 75.0} // Opus 3/4/4.1
+	tierSonnet   = modelTier{3.0, 15.0}  // All Sonnet versions
+	tierHaikuNew = modelTier{1.0, 5.0}   // Haiku 4.5+
+	tierHaiku35  = modelTier{0.80, 4.0}  // Haiku 3.5
+	tierHaikuOld = modelTier{0.25, 1.25} // Haiku 3
+	tierDefault  = tierSonnet            // Unknown models
 )
 
 // ModelCost calculates cost in dollars for the given model and usage.

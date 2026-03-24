@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -146,7 +147,6 @@ func TestFindProjectID_WithSandboxPaths(t *testing.T) {
 	a := &Adapter{
 		storageDir:   tmpDir,
 		projectIndex: make(map[string]*Project),
-		sessionIndex: make(map[string]string),
 		metaCache:    make(map[string]sessionMetaCacheEntry),
 	}
 
@@ -179,7 +179,6 @@ func TestFindProjectID_WithSandboxPaths(t *testing.T) {
 	}
 }
 
-
 func TestFindProjectID_SubdirectoryMatch(t *testing.T) {
 	tmpDir := t.TempDir()
 	projectDir := filepath.Join(tmpDir, "project")
@@ -208,7 +207,6 @@ func TestFindProjectID_SubdirectoryMatch(t *testing.T) {
 	a := &Adapter{
 		storageDir:   tmpDir,
 		projectIndex: make(map[string]*Project),
-		sessionIndex: make(map[string]string),
 		metaCache:    make(map[string]sessionMetaCacheEntry),
 	}
 
@@ -266,7 +264,6 @@ func TestFindProjectID_SandboxNotDuplicated(t *testing.T) {
 	a := &Adapter{
 		storageDir:   tmpDir,
 		projectIndex: make(map[string]*Project),
-		sessionIndex: make(map[string]string),
 		metaCache:    make(map[string]sessionMetaCacheEntry),
 	}
 
@@ -456,6 +453,44 @@ func TestShortID(t *testing.T) {
 			t.Errorf("shortID(%q) = %q, expected %q", tt.id, result, tt.expected)
 		}
 	}
+}
+
+// calculateCost estimates cost based on model and token usage.
+// Moved from adapter.go since it's only used in tests.
+func calculateCost(model string, inputTokens, outputTokens, cacheRead int) float64 {
+	var inRate, outRate float64
+	model = strings.ToLower(model)
+
+	switch {
+	case strings.Contains(model, "opus"):
+		inRate, outRate = 15.0, 75.0
+	case strings.Contains(model, "sonnet"):
+		inRate, outRate = 3.0, 15.0
+	case strings.Contains(model, "haiku"):
+		inRate, outRate = 0.25, 1.25
+	case strings.Contains(model, "gpt-4o"):
+		inRate, outRate = 2.5, 10.0
+	case strings.Contains(model, "gpt-4"):
+		inRate, outRate = 10.0, 30.0
+	case strings.Contains(model, "o1"):
+		inRate, outRate = 15.0, 60.0
+	case strings.Contains(model, "gemini"):
+		inRate, outRate = 1.25, 5.0
+	case strings.Contains(model, "deepseek"):
+		inRate, outRate = 0.14, 0.28
+	default:
+		inRate, outRate = 3.0, 15.0
+	}
+
+	regularIn := inputTokens - cacheRead
+	if regularIn < 0 {
+		regularIn = 0
+	}
+	cacheInCost := float64(cacheRead) * inRate * 0.1 / 1_000_000
+	regularInCost := float64(regularIn) * inRate / 1_000_000
+	outCost := float64(outputTokens) * outRate / 1_000_000
+
+	return cacheInCost + regularInCost + outCost
 }
 
 func TestCalculateCost(t *testing.T) {

@@ -941,4 +941,3 @@ func getOpenCodeLastMessageStatus(storageDir, sessionID string) (WorktreeStatus,
 		return 0, false
 	}
 }
-

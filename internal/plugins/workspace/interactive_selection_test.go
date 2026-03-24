@@ -349,11 +349,11 @@ func TestGetLineSelectionCols(t *testing.T) {
 	p := newSelectionTestPlugin()
 
 	tests := []struct {
-		name             string
-		start, end       ui.SelectionPoint
-		lineIdx          int
-		expectStart      int
-		expectEnd        int
+		name        string
+		start, end  ui.SelectionPoint
+		lineIdx     int
+		expectStart int
+		expectEnd   int
 	}{
 		{
 			"line before selection",

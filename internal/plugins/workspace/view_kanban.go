@@ -57,7 +57,7 @@ func (p *Plugin) renderKanbanView(width, height int) string {
 	}
 	columnColors := map[WorktreeStatus]lipgloss.Color{
 		StatusActive:   styles.StatusCompleted.GetForeground().(lipgloss.Color), // Green
-		StatusThinking: styles.Primary,                                            // Purple
+		StatusThinking: styles.Primary,                                          // Purple
 		StatusWaiting:  styles.StatusModified.GetForeground().(lipgloss.Color),  // Yellow
 		StatusDone:     styles.Secondary,                                        // Cyan/Blue
 		StatusPaused:   styles.TextMuted,                                        // Gray

@@ -7,12 +7,12 @@ import (
 
 // Project represents an OpenCode project from storage/project/{id}.json.
 type Project struct {
-	ID       string   `json:"id"`
-	Worktree string   `json:"worktree"`
-	VCS      string   `json:"vcs,omitempty"`
+	ID        string   `json:"id"`
+	Worktree  string   `json:"worktree"`
+	VCS       string   `json:"vcs,omitempty"`
 	Sandboxes []string `json:"sandboxes,omitempty"`
-	Time     TimeInfo `json:"time"`
-	Icon     *Icon    `json:"icon,omitempty"`
+	Time      TimeInfo `json:"time"`
+	Icon      *Icon    `json:"icon,omitempty"`
 }
 
 // Icon holds project icon settings.

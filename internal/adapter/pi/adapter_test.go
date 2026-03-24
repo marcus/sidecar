@@ -737,11 +737,11 @@ func TestDetectSourceChannel(t *testing.T) {
 
 func TestExtractSessionMetadata(t *testing.T) {
 	tests := []struct {
-		name          string
-		msg           string
-		wantCat       string
-		wantCron      string
-		wantChannel   string
+		name        string
+		msg         string
+		wantCat     string
+		wantCron    string
+		wantChannel string
 	}{
 		{
 			"cron session",
@@ -839,9 +839,9 @@ func TestDirectSessionMetadata(t *testing.T) {
 
 func TestStripMessagePrefix(t *testing.T) {
 	tests := []struct {
-		name    string
-		input   string
-		want    string
+		name  string
+		input string
+		want  string
 	}{
 		{
 			"telegram prefix",
