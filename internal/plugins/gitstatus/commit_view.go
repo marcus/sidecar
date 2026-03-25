@@ -42,6 +42,7 @@ func (p *Plugin) ensureCommitModal() {
 		AddSection(p.commitStagedSection()).
 		AddSection(modal.Spacer()).
 		AddSection(modal.Textarea(commitMessageID, &p.commitMessage, 4)).
+		AddSection(p.commitSubjectLenSection()).
 		AddSection(modal.When(p.showCommitAmendToggle, modal.CheckboxDisplay("Amend last commit", &p.commitAmend, "ctrl+a"))).
 		AddSection(p.commitStatusSection()).
 		AddSection(modal.Buttons(
@@ -150,6 +151,25 @@ func (p *Plugin) commitStagedSection() modal.Section {
 		}
 
 		return modal.RenderedSection{Content: sb.String()}
+	}, nil)
+}
+
+func (p *Plugin) commitSubjectLenSection() modal.Section {
+	return modal.Custom(func(contentWidth int, focusID, hoverID string) modal.RenderedSection {
+		maxLen := 72
+		if p.ctx != nil && p.ctx.Config != nil && p.ctx.Config.Plugins.GitStatus.Commit.SubjectMaxLen > 0 {
+			maxLen = p.ctx.Config.Plugins.GitStatus.Commit.SubjectMaxLen
+		}
+
+		msg := p.commitMessage.Value()
+		subject := strings.SplitN(msg, "\n", 2)[0]
+		subjectLen := len(subject)
+
+		counter := fmt.Sprintf("%d/%d", subjectLen, maxLen)
+		if subjectLen > maxLen {
+			return modal.RenderedSection{Content: styles.StatusDeleted.Render(counter)}
+		}
+		return modal.RenderedSection{Content: styles.Muted.Render(counter)}
 	}, nil)
 }
 
