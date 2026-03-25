@@ -845,7 +845,7 @@ func (p *Plugin) Commands() []plugin.Command {
 		{ID: "cancel", Name: "Cancel", Description: "Cancel quick open", Category: plugin.CategoryActions, Context: "file-browser-quick-open", Priority: 1},
 		// Project search commands
 		{ID: "select", Name: "Open", Description: "Open selected result", Category: plugin.CategoryActions, Context: "file-browser-project-search", Priority: 1},
-		{ID: "toggle", Name: "Toggle", Description: "Expand/collapse file", Category: plugin.CategoryActions, Context: "file-browser-project-search", Priority: 2},
+		{ID: "toggle", Name: "Focus", Description: "Toggle input/results focus (j/k/g/G in results)", Category: plugin.CategoryNavigation, Context: "file-browser-project-search", Priority: 2},
 		{ID: "cancel", Name: "Close", Description: "Close search", Category: plugin.CategoryActions, Context: "file-browser-project-search", Priority: 3},
 		// File operation commands (move/rename/create/delete)
 		{ID: "confirm", Name: "Confirm", Description: "Confirm operation", Category: plugin.CategoryActions, Context: "file-browser-file-op", Priority: 1},

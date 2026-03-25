@@ -414,6 +414,89 @@ func TestProjectSearchState_PrevMatchIndex(t *testing.T) {
 	}
 }
 
+func TestProjectSearchState_LastMatchIndex(t *testing.T) {
+	tests := []struct {
+		name     string
+		results  []SearchFileResult
+		expected int
+	}{
+		{
+			name:     "empty results",
+			results:  nil,
+			expected: 0,
+		},
+		{
+			name: "single file with matches",
+			results: []SearchFileResult{
+				{Path: "a.go", Matches: []SearchMatch{{LineNo: 1}, {LineNo: 2}}},
+			},
+			expected: 2, // File header at 0, match1 at 1, match2 at 2
+		},
+		{
+			name: "multiple files",
+			results: []SearchFileResult{
+				{Path: "a.go", Matches: []SearchMatch{{LineNo: 1}}},
+				{Path: "b.go", Matches: []SearchMatch{{LineNo: 5}, {LineNo: 10}}},
+			},
+			expected: 4, // a.go(0), match(1), b.go(2), match(3), match(4)
+		},
+		{
+			name: "last file collapsed",
+			results: []SearchFileResult{
+				{Path: "a.go", Matches: []SearchMatch{{LineNo: 1}, {LineNo: 2}}},
+				{Path: "b.go", Collapsed: true, Matches: []SearchMatch{{LineNo: 5}}},
+			},
+			expected: 2, // Last visible match is a.go's second match at 2
+		},
+		{
+			name: "all files collapsed",
+			results: []SearchFileResult{
+				{Path: "a.go", Collapsed: true, Matches: []SearchMatch{{LineNo: 1}}},
+				{Path: "b.go", Collapsed: true, Matches: []SearchMatch{{LineNo: 5}}},
+			},
+			expected: 0, // No visible matches
+		},
+		{
+			name: "single match",
+			results: []SearchFileResult{
+				{Path: "a.go", Matches: []SearchMatch{{LineNo: 1}}},
+			},
+			expected: 1, // File header at 0, single match at 1
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			state := NewProjectSearchState()
+			state.Results = tc.results
+			if got := state.LastMatchIndex(); got != tc.expected {
+				t.Errorf("LastMatchIndex() = %d, want %d", got, tc.expected)
+			}
+		})
+	}
+}
+
+func TestProjectSearchState_ResultsFocused(t *testing.T) {
+	t.Run("default is input focused", func(t *testing.T) {
+		state := NewProjectSearchState()
+		if state.ResultsFocused {
+			t.Error("expected new state to have ResultsFocused=false")
+		}
+	})
+
+	t.Run("toggle results focused", func(t *testing.T) {
+		state := NewProjectSearchState()
+		state.ResultsFocused = true
+		if !state.ResultsFocused {
+			t.Error("expected ResultsFocused=true after setting")
+		}
+		state.ResultsFocused = false
+		if state.ResultsFocused {
+			t.Error("expected ResultsFocused=false after clearing")
+		}
+	})
+}
+
 func TestProjectSearchState_NearestMatchIndex(t *testing.T) {
 	state := NewProjectSearchState()
 	state.Results = []SearchFileResult{

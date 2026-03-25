@@ -359,7 +359,11 @@ func (p *Plugin) projectSearchMaxVisible() int {
 // renderProjectSearchHeader renders the search input bar.
 func (p *Plugin) renderProjectSearchHeader(width int) string {
 	state := p.projectSearchState
+	// Show block cursor when input focused, thin cursor when results focused
 	cursor := "█"
+	if state.ResultsFocused {
+		cursor = "▏"
+	}
 
 	prefix := "Search: "
 	available := width - len(prefix) - 1

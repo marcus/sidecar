@@ -1073,6 +1073,48 @@ func (p *Plugin) handleProjectSearchKey(msg tea.KeyMsg) (plugin.Plugin, tea.Cmd)
 		}
 	}
 
+	// Tab toggles between input-focused and results-focused modes.
+	// When results-focused, j/k/g/G navigate results (vim parity).
+	if key == "tab" && state != nil && len(state.Results) > 0 {
+		state.ResultsFocused = !state.ResultsFocused
+		if state.ResultsFocused {
+			// Jump to first match if cursor isn't on one
+			_, _, isFile := state.FlatItem(state.Cursor)
+			if isFile || state.Cursor == 0 {
+				state.Cursor = state.FirstMatchIndex()
+			}
+		}
+		p.clearProjectSearchModal() // Rebuild modal to reflect focus state
+		return p, cmd
+	}
+
+	// When results-focused, handle vim navigation keys before they reach
+	// the default printable-character handler.
+	if state != nil && state.ResultsFocused {
+		switch key {
+		case "j":
+			state.Cursor = state.NextMatchIndex()
+			return p, cmd
+		case "k":
+			state.Cursor = state.PrevMatchIndex()
+			return p, cmd
+		case "g":
+			state.Cursor = state.FirstMatchIndex()
+			state.ScrollOffset = 0
+			return p, cmd
+		case "G":
+			state.Cursor = state.LastMatchIndex()
+			return p, cmd
+		}
+
+		// Any other printable character switches back to input mode
+		// and falls through to the default handler below.
+		if len(key) == 1 && key[0] >= 32 && key[0] <= 126 {
+			state.ResultsFocused = false
+			p.clearProjectSearchModal()
+		}
+	}
+
 	switch key {
 	case "esc":
 		// Close project search
@@ -1106,25 +1148,30 @@ func (p *Plugin) handleProjectSearchKey(msg tea.KeyMsg) (plugin.Plugin, tea.Cmd)
 
 	case "down", "ctrl+n":
 		if state != nil {
+			// Arrow navigation auto-focuses results
+			state.ResultsFocused = true
 			// Skip file headers, only navigate between matches
 			state.Cursor = state.NextMatchIndex()
 		}
 
 	case "up", "ctrl+p":
 		if state != nil {
+			// Arrow navigation auto-focuses results
+			state.ResultsFocused = true
 			// Skip file headers, only navigate between matches
 			state.Cursor = state.PrevMatchIndex()
 		}
 
 	case "ctrl+g":
-		// Go to first match (ctrl+g to avoid conflict with typing 'g')
+		// Go to first match
 		if state != nil {
+			state.ResultsFocused = true
 			state.Cursor = state.FirstMatchIndex()
 			state.ScrollOffset = 0
 		}
 
 	case "ctrl+e":
-		// Open in editor at line (ctrl+e to avoid conflict with typing 'e')
+		// Open in editor at line
 		if state != nil && len(state.Results) > 0 {
 			path, lineNo := state.GetSelectedFile()
 			if path != "" {
@@ -1139,6 +1186,7 @@ func (p *Plugin) handleProjectSearchKey(msg tea.KeyMsg) (plugin.Plugin, tea.Cmd)
 	case "ctrl+d":
 		// Page down, snap to nearest match
 		if state != nil {
+			state.ResultsFocused = true
 			state.Cursor += 10
 			maxIdx := state.FlatLen() - 1
 			if state.Cursor > maxIdx {
@@ -1154,6 +1202,7 @@ func (p *Plugin) handleProjectSearchKey(msg tea.KeyMsg) (plugin.Plugin, tea.Cmd)
 	case "ctrl+u":
 		// Page up, snap to nearest match
 		if state != nil {
+			state.ResultsFocused = true
 			state.Cursor -= 10
 			if state.Cursor < 0 {
 				state.Cursor = 0
@@ -1176,6 +1225,8 @@ func (p *Plugin) handleProjectSearchKey(msg tea.KeyMsg) (plugin.Plugin, tea.Cmd)
 
 	case "backspace":
 		if state != nil && len(state.Query) > 0 {
+			state.ResultsFocused = false
+			p.clearProjectSearchModal()
 			runes := []rune(state.Query)
 			state.Query = string(runes[:len(runes)-1])
 			if state.Query == "" {

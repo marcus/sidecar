@@ -28,10 +28,11 @@ type ProjectSearchState struct {
 	WholeWord     bool
 
 	// UI state
-	Cursor       int  // Index in flattened results (files + matches)
-	ScrollOffset int  // For scrolling
-	IsSearching  bool // True while ripgrep is running
-	Error        string
+	Cursor         int  // Index in flattened results (files + matches)
+	ScrollOffset   int  // For scrolling
+	IsSearching    bool // True while ripgrep is running
+	Error          string
+	ResultsFocused bool // When true, j/k/g/G navigate results instead of typing
 
 	// Debounce: only run search when version matches
 	DebounceVersion int
@@ -150,6 +151,28 @@ func (s *ProjectSearchState) FirstMatchIndex() int {
 		}
 	}
 	return 0 // Fallback to 0 if no matches visible
+}
+
+// LastMatchIndex returns the flat index of the last visible match.
+// Skips file headers. Returns 0 if no matches are visible.
+func (s *ProjectSearchState) LastMatchIndex() int {
+	last := 0
+	found := false
+	pos := 0
+	for _, f := range s.Results {
+		pos++ // Skip file header
+		if !f.Collapsed && len(f.Matches) > 0 {
+			found = true
+			last = pos + len(f.Matches) - 1
+		}
+		if !f.Collapsed {
+			pos += len(f.Matches)
+		}
+	}
+	if !found {
+		return 0
+	}
+	return last
 }
 
 // NextMatchIndex returns the flat index of the next match after current cursor.

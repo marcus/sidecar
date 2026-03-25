@@ -348,6 +348,10 @@ func DefaultBindings() []Binding {
 		{Key: "ctrl+e", Command: "open-in-editor", Context: "file-browser-project-search"},
 		{Key: "ctrl+d", Command: "page-down", Context: "file-browser-project-search"},
 		{Key: "ctrl+u", Command: "page-up", Context: "file-browser-project-search"},
+		{Key: "j", Command: "cursor-down", Context: "file-browser-project-search"},
+		{Key: "k", Command: "cursor-up", Context: "file-browser-project-search"},
+		{Key: "g", Command: "cursor-top", Context: "file-browser-project-search"},
+		{Key: "G", Command: "cursor-bottom", Context: "file-browser-project-search"},
 
 		// File browser file operation context
 		{Key: "esc", Command: "cancel", Context: "file-browser-file-op"},
