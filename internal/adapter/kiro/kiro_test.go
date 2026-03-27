@@ -140,7 +140,6 @@ func TestShortConversationID(t *testing.T) {
 	}
 }
 
-
 func TestIsPromptEntry(t *testing.T) {
 	prompt := HistoryEntry{
 		User: &UserMessage{

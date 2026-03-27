@@ -409,7 +409,6 @@ func resolveProjectPath(projectRoot string) string {
 	return filepath.Clean(abs)
 }
 
-
 // firstPromptText returns the text of the first Prompt entry in the history.
 func firstPromptText(history []HistoryEntry) string {
 	for _, entry := range history {
@@ -573,4 +572,3 @@ func truncateOutput(s string, maxLen int) string {
 	}
 	return s[:maxLen-3] + "..."
 }
-

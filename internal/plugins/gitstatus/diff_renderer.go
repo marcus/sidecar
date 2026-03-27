@@ -12,7 +12,7 @@ import (
 type DiffViewMode int
 
 const (
-	DiffViewUnified   DiffViewMode = iota // Line-by-line unified view
+	DiffViewUnified    DiffViewMode = iota // Line-by-line unified view
 	DiffViewSideBySide                     // Side-by-side split view
 )
 

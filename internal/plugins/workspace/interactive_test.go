@@ -1046,10 +1046,10 @@ func TestHandleInteractiveKeys_CancelsPendingEscapeForMouseSequence(t *testing.T
 	p := &Plugin{
 		viewMode: ViewModeInteractive,
 		interactiveState: &InteractiveState{
-			Active:          true,
-			TargetSession:   "test-session",
-			EscapePressed:   true, // ESC arrived first (split-read)
-			EscapeTime:      time.Now(),
+			Active:        true,
+			TargetSession: "test-session",
+			EscapePressed: true, // ESC arrived first (split-read)
+			EscapeTime:    time.Now(),
 		},
 	}
 

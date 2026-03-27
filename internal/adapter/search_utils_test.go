@@ -243,9 +243,9 @@ func TestSearchMessagesSlice(t *testing.T) {
 
 func TestSearchMessagesSlice_MaxResultsAcrossMessages(t *testing.T) {
 	messages := []Message{
-		{ID: "m1", Content: "match here match"},       // 2 matches
-		{ID: "m2", Content: "another match here"},     // 1 match
-		{ID: "m3", Content: "match match match"},      // 3 matches
+		{ID: "m1", Content: "match here match"},   // 2 matches
+		{ID: "m2", Content: "another match here"}, // 1 match
+		{ID: "m3", Content: "match match match"},  // 3 matches
 	}
 
 	// Limit to 3 total matches

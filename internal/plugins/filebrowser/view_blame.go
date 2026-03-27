@@ -79,10 +79,14 @@ func (p *Plugin) ensureBlameModal() {
 		modal.WithHints(false),
 	).
 		AddSection(p.blameHeaderSection()).
-		AddSection(modal.When(func() bool { return !p.blameState.IsLoading && p.blameState.Error == nil && len(p.blameState.Lines) > 0 }, p.blameContentSection(resultsHeight))).
+		AddSection(modal.When(func() bool {
+			return !p.blameState.IsLoading && p.blameState.Error == nil && len(p.blameState.Lines) > 0
+		}, p.blameContentSection(resultsHeight))).
 		AddSection(modal.When(func() bool { return p.blameState.IsLoading }, p.blameLoadingSection())).
 		AddSection(modal.When(func() bool { return p.blameState.Error != nil }, p.blameErrorSection())).
-		AddSection(modal.When(func() bool { return !p.blameState.IsLoading && p.blameState.Error == nil && len(p.blameState.Lines) == 0 }, p.blameEmptySection()))
+		AddSection(modal.When(func() bool {
+			return !p.blameState.IsLoading && p.blameState.Error == nil && len(p.blameState.Lines) == 0
+		}, p.blameEmptySection()))
 }
 
 // blameHeaderSection is intentionally empty - title is in modal header

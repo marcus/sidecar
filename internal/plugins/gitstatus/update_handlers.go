@@ -1013,7 +1013,6 @@ func (p *Plugin) executePushMenuAction(idx int) (plugin.Plugin, tea.Cmd) {
 	return p, nil
 }
 
-
 // updateConfirmDiscard handles key events in the confirm discard modal.
 func (p *Plugin) updateConfirmDiscard(msg tea.KeyMsg) (plugin.Plugin, tea.Cmd) {
 	if p.discardModal == nil {

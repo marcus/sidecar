@@ -706,45 +706,6 @@ func (a *Adapter) batchLoadAllParts(messageIDs []string) map[string]parsedParts 
 	return result
 }
 
-// calculateCost estimates cost based on model and token usage.
-func calculateCost(model string, inputTokens, outputTokens, cacheRead int) float64 {
-	var inRate, outRate float64
-	model = strings.ToLower(model)
-
-	switch {
-	case strings.Contains(model, "opus"):
-		inRate, outRate = 15.0, 75.0
-	case strings.Contains(model, "sonnet"):
-		inRate, outRate = 3.0, 15.0
-	case strings.Contains(model, "haiku"):
-		inRate, outRate = 0.25, 1.25
-	case strings.Contains(model, "gpt-4o"):
-		inRate, outRate = 2.5, 10.0
-	case strings.Contains(model, "gpt-4"):
-		inRate, outRate = 10.0, 30.0
-	case strings.Contains(model, "o1"):
-		inRate, outRate = 15.0, 60.0
-	case strings.Contains(model, "gemini"):
-		inRate, outRate = 1.25, 5.0
-	case strings.Contains(model, "deepseek"):
-		inRate, outRate = 0.14, 0.28
-	default:
-		// Default to sonnet rates
-		inRate, outRate = 3.0, 15.0
-	}
-
-	// Cache reads get 90% discount
-	regularIn := inputTokens - cacheRead
-	if regularIn < 0 {
-		regularIn = 0
-	}
-	cacheInCost := float64(cacheRead) * inRate * 0.1 / 1_000_000
-	regularInCost := float64(regularIn) * inRate / 1_000_000
-	outCost := float64(outputTokens) * outRate / 1_000_000
-
-	return cacheInCost + regularInCost + outCost
-}
-
 // shortID returns the first 12 characters of an ID, or the full ID if shorter.
 func shortID(id string) string {
 	if len(id) >= 12 {

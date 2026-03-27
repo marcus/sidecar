@@ -4,7 +4,6 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
-
 // ensurePreviewCursorVisible adjusts scroll to keep commit preview cursor visible.
 func (p *Plugin) ensurePreviewCursorVisible() {
 	// Estimate visible file rows (rough - matches renderCommitPreview calculation)
@@ -66,7 +65,6 @@ func (p *Plugin) clampCommitScroll() {
 		p.commitScrollOff = maxOff
 	}
 }
-
 
 func (p *Plugin) ensureCommitListFilled() tea.Cmd {
 	if p.historyFilterActive || p.loadingMoreCommits || !p.moreCommitsAvailable {

@@ -146,8 +146,7 @@ func TestFindProjectID_WithSandboxPaths(t *testing.T) {
 	a := &Adapter{
 		storageDir:   tmpDir,
 		projectIndex: make(map[string]*Project),
-		sessionIndex: make(map[string]string),
-		metaCache:    make(map[string]sessionMetaCacheEntry),
+		metaCache: make(map[string]sessionMetaCacheEntry),
 	}
 
 	// Test 1: Find project by worktree path
@@ -179,7 +178,6 @@ func TestFindProjectID_WithSandboxPaths(t *testing.T) {
 	}
 }
 
-
 func TestFindProjectID_SubdirectoryMatch(t *testing.T) {
 	tmpDir := t.TempDir()
 	projectDir := filepath.Join(tmpDir, "project")
@@ -208,8 +206,7 @@ func TestFindProjectID_SubdirectoryMatch(t *testing.T) {
 	a := &Adapter{
 		storageDir:   tmpDir,
 		projectIndex: make(map[string]*Project),
-		sessionIndex: make(map[string]string),
-		metaCache:    make(map[string]sessionMetaCacheEntry),
+		metaCache: make(map[string]sessionMetaCacheEntry),
 	}
 
 	// Test 1: .bare subdirectory should match via subdirectory fallback
@@ -266,8 +263,7 @@ func TestFindProjectID_SandboxNotDuplicated(t *testing.T) {
 	a := &Adapter{
 		storageDir:   tmpDir,
 		projectIndex: make(map[string]*Project),
-		sessionIndex: make(map[string]string),
-		metaCache:    make(map[string]sessionMetaCacheEntry),
+		metaCache: make(map[string]sessionMetaCacheEntry),
 	}
 
 	// Should find project by worktree path
@@ -454,31 +450,6 @@ func TestShortID(t *testing.T) {
 		result := shortID(tt.id)
 		if result != tt.expected {
 			t.Errorf("shortID(%q) = %q, expected %q", tt.id, result, tt.expected)
-		}
-	}
-}
-
-func TestCalculateCost(t *testing.T) {
-	tests := []struct {
-		model   string
-		input   int
-		output  int
-		cache   int
-		minCost float64
-		maxCost float64
-	}{
-		{"claude-opus-4", 1000, 500, 0, 0.05, 0.06},
-		{"claude-sonnet-4", 1000, 500, 0, 0.01, 0.02},
-		{"claude-haiku", 1000, 500, 0, 0.0005, 0.001},
-		{"gpt-4o", 1000, 500, 0, 0.005, 0.01},
-		{"deepseek", 1000, 500, 0, 0.0001, 0.0005},
-	}
-
-	for _, tt := range tests {
-		cost := calculateCost(tt.model, tt.input, tt.output, tt.cache)
-		if cost < tt.minCost || cost > tt.maxCost {
-			t.Errorf("calculateCost(%q, %d, %d, %d) = %f, want between %f and %f",
-				tt.model, tt.input, tt.output, tt.cache, cost, tt.minCost, tt.maxCost)
 		}
 	}
 }

@@ -18,8 +18,8 @@ import (
 )
 
 const (
-	openInItemPrefix  = "open-in-item-"
-	openInMaxVisible  = 10
+	openInItemPrefix = "open-in-item-"
+	openInMaxVisible = 10
 )
 
 // openInApp represents a known IDE/app that can open the project directory.
