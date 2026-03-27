@@ -261,7 +261,7 @@ func (m *NotInstalledModel) renderPitch() string {
 	b.WriteString(linkStyle.Render("https://marcus.github.io/td/"))
 	b.WriteString("\n\n")
 
-	installCmd := "brew install marcus/tap/td\n# or\ngo install github.com/marcus/td/cmd/td@latest\n\ntd init"
+	installCmd := "brew install marcus/tap/td\n# or\ngo install github.com/marcus/td@latest\n\ntd init"
 	b.WriteString(codeBoxStyle.Render(installCmd))
 
 	return b.String()
