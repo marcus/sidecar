@@ -23,8 +23,8 @@ type AIQueryRow struct {
 // Format: [{"Query": {...}}]
 type QueryInput struct {
 	Query struct {
-		Text                  string         `json:"text"`
-		Context               []QueryContext `json:"context"`
+		Text                  string          `json:"text"`
+		Context               []QueryContext  `json:"context"`
 		ReferencedAttachments json.RawMessage `json:"referenced_attachments"`
 	} `json:"Query"`
 }
@@ -94,30 +94,30 @@ type ConversationData struct {
 
 // ConversationUsageMetadata contains usage statistics.
 type ConversationUsageMetadata struct {
-	WasSummarized          bool             `json:"was_summarized"`
-	ContextWindowUsage     float64          `json:"context_window_usage"`
-	CreditsSpent           float64          `json:"credits_spent"`
-	CreditsSpentLastBlock  float64          `json:"credits_spent_for_last_block"`
-	TokenUsage             []TokenUsageItem `json:"token_usage"`
-	ToolUsageMetadata      *ToolUsageMetadata `json:"tool_usage_metadata"`
+	WasSummarized         bool               `json:"was_summarized"`
+	ContextWindowUsage    float64            `json:"context_window_usage"`
+	CreditsSpent          float64            `json:"credits_spent"`
+	CreditsSpentLastBlock float64            `json:"credits_spent_for_last_block"`
+	TokenUsage            []TokenUsageItem   `json:"token_usage"`
+	ToolUsageMetadata     *ToolUsageMetadata `json:"tool_usage_metadata"`
 }
 
 // TokenUsageItem contains token usage for a specific model.
 type TokenUsageItem struct {
-	ModelID         string            `json:"model_id"`
-	WarpTokens      int               `json:"warp_tokens"`
-	BYOKTokens      int               `json:"byok_tokens"`
+	ModelID              string         `json:"model_id"`
+	WarpTokens           int            `json:"warp_tokens"`
+	BYOKTokens           int            `json:"byok_tokens"`
 	WarpTokensByCategory map[string]int `json:"warp_token_usage_by_category"`
 }
 
 // ToolUsageMetadata contains tool call statistics.
 type ToolUsageMetadata struct {
-	RunCommand       *ToolStats `json:"run_command_stats"`
-	ReadFiles        *ToolStats `json:"read_files_stats"`
-	Grep             *ToolStats `json:"grep_stats"`
-	FileGlob         *ToolStats `json:"file_glob_stats"`
-	ApplyFileDiff    *DiffStats `json:"apply_file_diff_stats"`
-	ReadShellOutput  *ToolStats `json:"read_shell_command_output_stats"`
+	RunCommand      *ToolStats `json:"run_command_stats"`
+	ReadFiles       *ToolStats `json:"read_files_stats"`
+	Grep            *ToolStats `json:"grep_stats"`
+	FileGlob        *ToolStats `json:"file_glob_stats"`
+	ApplyFileDiff   *DiffStats `json:"apply_file_diff_stats"`
+	ReadShellOutput *ToolStats `json:"read_shell_command_output_stats"`
 }
 
 // ToolStats contains basic tool call counts.
@@ -148,9 +148,9 @@ type BlockRow struct {
 
 // BlockAIMetadata represents the parsed ai_metadata JSON from blocks.
 type BlockAIMetadata struct {
-	ActionID          string            `json:"action_id"`
-	ConversationID    string            `json:"conversation_id"`
-	ConversationPhase json.RawMessage   `json:"conversation_phase"`
+	ActionID          string          `json:"action_id"`
+	ConversationID    string          `json:"conversation_id"`
+	ConversationPhase json.RawMessage `json:"conversation_phase"`
 }
 
 // ModelDisplayNames maps Warp model IDs to display names.

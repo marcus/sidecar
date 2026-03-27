@@ -50,11 +50,11 @@ type ParsedDiff struct {
 
 // FileDiffInfo holds a parsed diff with rendering position info.
 type FileDiffInfo struct {
-	Diff       *ParsedDiff
-	StartLine  int // Line position where this file starts in rendered output
-	EndLine    int // Line position where this file ends
-	Additions  int // Number of added lines
-	Deletions  int // Number of deleted lines
+	Diff      *ParsedDiff
+	StartLine int // Line position where this file starts in rendered output
+	EndLine   int // Line position where this file ends
+	Additions int // Number of added lines
+	Deletions int // Number of deleted lines
 }
 
 // MultiFileDiff holds multiple file diffs with navigation info.

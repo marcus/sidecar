@@ -15,11 +15,11 @@ func TestIntroModel_Update(t *testing.T) {
 	// Simulate running for a few seconds
 	// Total duration depends on last letter delay + travel time
 	// Max delay ~ 0.6s. Travel time ~ 1-2s?
-	
+
 	const dt = 16 * time.Millisecond
 	timeout := 5 * time.Second
 	start := time.Now()
-	
+
 	for !m.Done {
 		m.Update(dt)
 		if time.Since(start) > timeout {
@@ -30,10 +30,10 @@ func TestIntroModel_Update(t *testing.T) {
 	if !m.Done {
 		t.Error("IntroModel should be done after simulation")
 	}
-	
+
 	// Verify final state
 	// Letters should be at target positions (0, 1, 2...)
-	
+
 	for i, l := range m.Letters {
 		targetX := float64(i)
 		if l.CurrentX < targetX-0.1 || l.CurrentX > targetX+0.1 {

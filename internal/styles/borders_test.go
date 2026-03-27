@@ -144,7 +144,7 @@ func TestDecodeRune(t *testing.T) {
 		{"3-byte UTF-8", "中", '中', 3},
 		{"4-byte UTF-8", "😀", '😀', 4},
 		// Invalid continuation byte tests - should fallback to single byte
-		{"invalid 2-byte continuation", "\xC0\x00", 0xC0, 1},    // \x00 not valid continuation
+		{"invalid 2-byte continuation", "\xC0\x00", 0xC0, 1},     // \x00 not valid continuation
 		{"invalid 3-byte continuation", "\xE0\x80\x00", 0xE0, 1}, // \x00 not valid continuation
 		{"invalid 4-byte continuation", "\xF0\x80\x80\x00", 0xF0, 1},
 	}
@@ -170,11 +170,11 @@ func TestRuneWidth(t *testing.T) {
 		{'中', 2}, // CJK
 		{'한', 2}, // Hangul
 		{'ａ', 2}, // Fullwidth Latin
-		{'é', 1},  // Latin extended
+		{'é', 1}, // Latin extended
 		// Emoji tests - most render as width 2 in terminals
 		{'😀', 2}, // Emoticons (U+1F600)
 		{'🌍', 2}, // Misc Symbols (U+1F30D)
-		{'☀', 2},  // Misc Symbols (U+2600)
+		{'☀', 2}, // Misc Symbols (U+2600)
 		{'✅', 2}, // Dingbats (U+2705)
 	}
 

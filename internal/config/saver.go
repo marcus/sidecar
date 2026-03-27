@@ -27,7 +27,7 @@ type savePluginsConfig struct {
 	GitStatus     saveGitStatusConfig     `json:"git-status,omitempty"`
 	TDMonitor     saveTDMonitorConfig     `json:"td-monitor,omitempty"`
 	Conversations saveConversationsConfig `json:"conversations,omitempty"`
-	Workspace     saveWorkspaceConfig      `json:"workspace,omitempty"`
+	Workspace     saveWorkspaceConfig     `json:"workspace,omitempty"`
 }
 
 type saveGitStatusConfig struct {

@@ -142,5 +142,3 @@ func TestFormatTurnAsMarkdown_WithTokens(t *testing.T) {
 		t.Error("should contain output token count")
 	}
 }
-
-

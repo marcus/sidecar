@@ -123,8 +123,8 @@ func TestFindLastUsedIndex(t *testing.T) {
 		{"vscode", 0},
 		{"goland", 1},
 		{"finder", 2},
-		{"unknown", 0},  // fallback to 0
-		{"", 0},          // empty string fallback
+		{"unknown", 0}, // fallback to 0
+		{"", 0},        // empty string fallback
 	}
 
 	for _, tt := range tests {

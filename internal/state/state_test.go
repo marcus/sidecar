@@ -425,7 +425,7 @@ func TestGetWorkspaceState_Found(t *testing.T) {
 	current = &State{
 		Workspace: map[string]WorkspaceState{
 			"/path/to/project": {
-				WorkspaceName:  "feature-branch",
+				WorkspaceName: "feature-branch",
 				ShellTmuxName: "sidecar-sh-project-1",
 				ShellDisplayNames: map[string]string{
 					"sidecar-sh-project-1": "Backend",
@@ -459,7 +459,7 @@ func TestSetWorkspaceState(t *testing.T) {
 	current = &State{}
 
 	wtState := WorkspaceState{
-		WorkspaceName:  "my-workspace",
+		WorkspaceName: "my-workspace",
 		ShellTmuxName: "",
 		ShellDisplayNames: map[string]string{
 			"sidecar-sh-project-1": "Backend",
@@ -506,7 +506,7 @@ func TestSetWorkspaceState_ShellSelection(t *testing.T) {
 
 	// Save shell selection
 	wtState := WorkspaceState{
-		WorkspaceName:  "",
+		WorkspaceName: "",
 		ShellTmuxName: "sidecar-sh-project-2",
 	}
 

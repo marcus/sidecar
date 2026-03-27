@@ -146,7 +146,6 @@ func TestFindProjectID_WithSandboxPaths(t *testing.T) {
 	a := &Adapter{
 		storageDir:   tmpDir,
 		projectIndex: make(map[string]*Project),
-		sessionIndex: make(map[string]string),
 		metaCache:    make(map[string]sessionMetaCacheEntry),
 	}
 
@@ -179,7 +178,6 @@ func TestFindProjectID_WithSandboxPaths(t *testing.T) {
 	}
 }
 
-
 func TestFindProjectID_SubdirectoryMatch(t *testing.T) {
 	tmpDir := t.TempDir()
 	projectDir := filepath.Join(tmpDir, "project")
@@ -208,7 +206,6 @@ func TestFindProjectID_SubdirectoryMatch(t *testing.T) {
 	a := &Adapter{
 		storageDir:   tmpDir,
 		projectIndex: make(map[string]*Project),
-		sessionIndex: make(map[string]string),
 		metaCache:    make(map[string]sessionMetaCacheEntry),
 	}
 
@@ -266,7 +263,6 @@ func TestFindProjectID_SandboxNotDuplicated(t *testing.T) {
 	a := &Adapter{
 		storageDir:   tmpDir,
 		projectIndex: make(map[string]*Project),
-		sessionIndex: make(map[string]string),
 		metaCache:    make(map[string]sessionMetaCacheEntry),
 	}
 

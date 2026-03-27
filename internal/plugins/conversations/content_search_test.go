@@ -138,10 +138,10 @@ func TestFlatItemWithCollapsed(t *testing.T) {
 		isSess    bool
 		isMsg     bool
 	}{
-		{0, 0, -1, -1, true, false},  // session1
-		{1, 1, -1, -1, true, false},  // session2
-		{2, 1, 0, -1, false, true},   // session2/msg3
-		{3, 1, 0, 0, false, false},   // session2/msg3/match0
+		{0, 0, -1, -1, true, false},   // session1
+		{1, 1, -1, -1, true, false},   // session2
+		{2, 1, 0, -1, false, true},    // session2/msg3
+		{3, 1, 0, 0, false, false},    // session2/msg3/match0
 		{4, -1, -1, -1, false, false}, // out of range
 	}
 
@@ -164,12 +164,12 @@ func TestNextMatchIndex(t *testing.T) {
 		want int
 		desc string
 	}{
-		{0, 2, "from session1 to first match"},   // session -> match
-		{1, 2, "from msg1 to first match"},        // msg -> match
-		{2, 3, "from match0 to match1"},           // match -> next match
-		{3, 5, "from match1 to msg2/match0"},      // skip msg header
+		{0, 2, "from session1 to first match"},       // session -> match
+		{1, 2, "from msg1 to first match"},           // msg -> match
+		{2, 3, "from match0 to match1"},              // match -> next match
+		{3, 5, "from match1 to msg2/match0"},         // skip msg header
 		{5, 8, "from msg2/match0 to session2 match"}, // skip session and msg headers
-		{8, 2, "wrap around from last match"},     // wrap to first match
+		{8, 2, "wrap around from last match"},        // wrap to first match
 	}
 
 	for _, tc := range tests {
@@ -559,9 +559,9 @@ func TestRenderSessionHeader(t *testing.T) {
 
 func TestRenderMessageHeader(t *testing.T) {
 	msg := adapter.MessageMatch{
-		MessageID:  "msg1",
-		Role:       "user",
-		Timestamp:  time.Now(),
+		MessageID: "msg1",
+		Role:      "user",
+		Timestamp: time.Now(),
 		Matches: []adapter.ContentMatch{
 			{LineText: "This is a test message"},
 		},

@@ -15,7 +15,6 @@ import (
 	"github.com/marcus/sidecar/internal/styles"
 )
 
-
 // renderContentSearchModal renders the content search modal.
 // This creates a modal with search input, options, results, and stats sections.
 func renderContentSearchModal(state *ContentSearchState, width, height int) string {
@@ -692,4 +691,3 @@ func byteToRuneIndex(s string, byteIdx int) int {
 	}
 	return utf8.RuneCountInString(s[:byteIdx])
 }
-

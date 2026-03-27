@@ -11,13 +11,13 @@ import (
 // Watcher monitors a single file for changes.
 // Only watches the currently previewed file, not the entire directory tree.
 type Watcher struct {
-	fsWatcher    *fsnotify.Watcher
-	watchedFile  string // Currently watched file (absolute path)
-	events       chan struct{}
-	stop         chan struct{}
-	debounce     *time.Timer
-	mu           sync.Mutex
-	closed       bool
+	fsWatcher   *fsnotify.Watcher
+	watchedFile string // Currently watched file (absolute path)
+	events      chan struct{}
+	stop        chan struct{}
+	debounce    *time.Timer
+	mu          sync.Mutex
+	closed      bool
 }
 
 // NewWatcher creates a file watcher. Does not start watching anything until WatchFile is called.
