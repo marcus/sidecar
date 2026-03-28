@@ -18,6 +18,7 @@ import (
 	"github.com/marcus/sidecar/internal/modal"
 	"github.com/marcus/sidecar/internal/mouse"
 	"github.com/marcus/sidecar/internal/plugin"
+	"github.com/marcus/sidecar/internal/plugins/workspace"
 	"github.com/marcus/sidecar/internal/state"
 	"github.com/marcus/sidecar/internal/ui"
 )
@@ -240,6 +241,7 @@ type Plugin struct {
 	resumeNameInput       textinput.Model
 	resumeBaseBranchInput textinput.Model
 	resumeAgentIdx        int
+	resumeAgentOrder      []workspace.AgentType // Filtered agent order
 	resumeSkipPermissions bool
 	resumeFocus           int
 	resumeSession         *adapter.Session
