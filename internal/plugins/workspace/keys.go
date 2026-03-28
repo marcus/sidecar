@@ -70,8 +70,12 @@ func (p *Plugin) handleTypeSelectorKeys(msg tea.KeyMsg) tea.Cmd {
 
 	// Sync agent type when agent index changes (td-f42a86)
 	// No need to rebuild modal - When sections handle visibility dynamically
-	if p.typeSelectorAgentIdx != prevAgentIdx && p.typeSelectorAgentIdx >= 0 && p.typeSelectorAgentIdx < len(ShellAgentOrder) {
-		p.typeSelectorAgentType = ShellAgentOrder[p.typeSelectorAgentIdx]
+	agentOrder := p.typeSelectorAgentOrder
+	if len(agentOrder) == 0 {
+		agentOrder = ShellAgentOrder
+	}
+	if p.typeSelectorAgentIdx != prevAgentIdx && p.typeSelectorAgentIdx >= 0 && p.typeSelectorAgentIdx < len(agentOrder) {
+		p.typeSelectorAgentType = agentOrder[p.typeSelectorAgentIdx]
 	}
 
 	switch action {
@@ -326,8 +330,12 @@ func (p *Plugin) handleAgentConfigKeys(msg tea.KeyMsg) tea.Cmd {
 
 	// Sync agent type when selection changes
 	if p.agentConfigAgentIdx != prevAgentIdx {
-		if p.agentConfigAgentIdx >= 0 && p.agentConfigAgentIdx < len(AgentTypeOrder) {
-			p.agentConfigAgentType = AgentTypeOrder[p.agentConfigAgentIdx]
+		agentOrder := p.agentConfigAgentOrder
+		if len(agentOrder) == 0 {
+			agentOrder = AgentTypeOrder
+		}
+		if p.agentConfigAgentIdx >= 0 && p.agentConfigAgentIdx < len(agentOrder) {
+			p.agentConfigAgentType = agentOrder[p.agentConfigAgentIdx]
 		}
 	}
 
@@ -725,8 +733,9 @@ func (p *Plugin) handleListKeys(msg tea.KeyMsg) tea.Cmd {
 		p.typeSelectorNameInput.Prompt = ""
 		p.typeSelectorNameInput.Width = 30
 		p.typeSelectorNameInput.CharLimit = 50
-		p.typeSelectorModal = nil    // Force rebuild
-		p.typeSelectorModalWidth = 0 // Force rebuild
+		p.typeSelectorAgentOrder = p.filteredShellAgentOrder() // Initialize filtered agent order
+		p.typeSelectorModal = nil                              // Force rebuild
+		p.typeSelectorModalWidth = 0                           // Force rebuild
 		return nil
 	case "D":
 		// Check if deleting a shell session
@@ -1313,8 +1322,12 @@ func (p *Plugin) handleCreateKeys(msg tea.KeyMsg) tea.Cmd {
 
 	wasAgentIdx := p.createAgentIdx
 	action, cmd := p.createModal.HandleKey(msg)
-	if p.createAgentIdx != wasAgentIdx && p.createAgentIdx < len(AgentTypeOrder) {
-		p.createAgentType = AgentTypeOrder[p.createAgentIdx]
+	agentOrder := p.createAgentOrder
+	if len(agentOrder) == 0 {
+		agentOrder = AgentTypeOrder
+	}
+	if p.createAgentIdx != wasAgentIdx && p.createAgentIdx < len(agentOrder) {
+		p.createAgentType = agentOrder[p.createAgentIdx]
 		p.syncCreateModalFocus()
 	}
 
@@ -1379,7 +1392,11 @@ func (p *Plugin) shouldShowShellSkipPerms() bool {
 }
 
 func (p *Plugin) agentTypeIndex(agentType AgentType) int {
-	for i, at := range AgentTypeOrder {
+	agentOrder := p.createAgentOrder
+	if len(agentOrder) == 0 {
+		agentOrder = AgentTypeOrder
+	}
+	for i, at := range agentOrder {
 		if at == agentType {
 			return i
 		}

@@ -1212,8 +1212,12 @@ func (p *Plugin) ensureTypeSelectorModal() {
 	p.typeSelectorNameInput.Placeholder = p.nextShellDisplayName()
 
 	// Build agent list items for shell (td-a902fe)
-	agentItems := make([]modal.ListItem, len(ShellAgentOrder))
-	for i, at := range ShellAgentOrder {
+	agentOrder := p.typeSelectorAgentOrder
+	if len(agentOrder) == 0 {
+		agentOrder = ShellAgentOrder
+	}
+	agentItems := make([]modal.ListItem, len(agentOrder))
+	for i, at := range agentOrder {
 		agentItems[i] = modal.ListItem{
 			ID:    typeSelectorAgentItemPfx + string(at),
 			Label: AgentDisplayNames[at],
@@ -1282,6 +1286,7 @@ func (p *Plugin) clearTypeSelectorModal() {
 	// Reset shell agent selection state (td-2bb232)
 	p.typeSelectorAgentIdx = 0
 	p.typeSelectorAgentType = AgentNone
+	p.typeSelectorAgentOrder = nil
 	p.typeSelectorSkipPerms = false
 	p.typeSelectorFocusField = 0
 }

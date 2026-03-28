@@ -66,8 +66,12 @@ func (p *Plugin) ensureResumeModal() {
 	}
 
 	// Build agent selection list
-	agentItems := make([]modal.ListItem, len(workspace.AgentTypeOrder))
-	for i, at := range workspace.AgentTypeOrder {
+	agentOrder := p.resumeAgentOrder
+	if len(agentOrder) == 0 {
+		agentOrder = workspace.AgentTypeOrder
+	}
+	agentItems := make([]modal.ListItem, len(agentOrder))
+	for i, at := range agentOrder {
 		agentItems[i] = modal.ListItem{
 			ID:    fmt.Sprintf("%s%d", resumeAgentItemPrefix, i),
 			Label: workspace.AgentDisplayNames[at],
@@ -139,10 +143,14 @@ func (p *Plugin) shouldShowResumeSkipPerms() bool {
 	if !p.isResumeWorktreeMode() {
 		return false
 	}
-	if p.resumeAgentIdx < 0 || p.resumeAgentIdx >= len(workspace.AgentTypeOrder) {
+	agentOrder := p.resumeAgentOrder
+	if len(agentOrder) == 0 {
+		agentOrder = workspace.AgentTypeOrder
+	}
+	if p.resumeAgentIdx < 0 || p.resumeAgentIdx >= len(agentOrder) {
 		return false
 	}
-	agentType := workspace.AgentTypeOrder[p.resumeAgentIdx]
+	agentType := agentOrder[p.resumeAgentIdx]
 	if agentType == workspace.AgentNone {
 		return false
 	}
@@ -180,7 +188,11 @@ func (p *Plugin) handleResumeModalKeys(msg tea.KeyMsg) tea.Cmd {
 	if strings.HasPrefix(action, resumeAgentItemPrefix) {
 		var idx int
 		_, _ = fmt.Sscanf(action, resumeAgentItemPrefix+"%d", &idx)
-		if idx >= 0 && idx < len(workspace.AgentTypeOrder) {
+		agentOrder := p.resumeAgentOrder
+		if len(agentOrder) == 0 {
+			agentOrder = workspace.AgentTypeOrder
+		}
+		if idx >= 0 && idx < len(agentOrder) {
 			p.resumeAgentIdx = idx
 		}
 	}
@@ -217,7 +229,11 @@ func (p *Plugin) handleResumeModalMouse(msg tea.MouseMsg) tea.Cmd {
 	if strings.HasPrefix(action, resumeAgentItemPrefix) {
 		var idx int
 		_, _ = fmt.Sscanf(action, resumeAgentItemPrefix+"%d", &idx)
-		if idx >= 0 && idx < len(workspace.AgentTypeOrder) {
+		agentOrder := p.resumeAgentOrder
+		if len(agentOrder) == 0 {
+			agentOrder = workspace.AgentTypeOrder
+		}
+		if idx >= 0 && idx < len(agentOrder) {
 			p.resumeAgentIdx = idx
 		}
 	}
@@ -276,7 +292,8 @@ func (p *Plugin) openResumeModal() tea.Cmd {
 	p.resumeBaseBranchInput.CharLimit = 100
 
 	// Set default agent based on adapter
-	p.resumeAgentIdx = defaultAgentIdxForAdapter(session.AdapterID)
+	p.resumeAgentOrder = p.filteredAgentOrder()
+	p.resumeAgentIdx = p.defaultAgentIdxInOrder(session.AdapterID)
 	p.resumeSkipPermissions = false
 
 	// Clear cached modal to rebuild with new session
@@ -295,7 +312,45 @@ func (p *Plugin) resetResumeModal() {
 	p.resumeType = resumeTypeShell
 	p.resumeFocus = 0
 	p.resumeAgentIdx = 0
+	p.resumeAgentOrder = nil
 	p.resumeSkipPermissions = false
+}
+
+// filteredAgentOrder returns the agent order filtered by workspace config.
+// If agentFilter is empty, returns the full AgentTypeOrder.
+// AgentNone is always included at the end regardless of filter.
+func (p *Plugin) filteredAgentOrder() []workspace.AgentType {
+	if p.ctx == nil || p.ctx.Config == nil {
+		return workspace.AgentTypeOrder
+	}
+	filter := p.ctx.Config.Plugins.Workspace.AgentFilter
+	if len(filter) == 0 {
+		return workspace.AgentTypeOrder
+	}
+
+	// Build set of allowed agents from config
+	allowed := make(map[workspace.AgentType]bool, len(filter))
+	for _, id := range filter {
+		at := workspace.AgentType(id)
+		if _, ok := workspace.AgentDisplayNames[at]; ok && at != workspace.AgentNone {
+			allowed[at] = true
+		}
+	}
+
+	// Filter AgentTypeOrder to preserve ordering
+	result := make([]workspace.AgentType, 0, len(allowed)+1)
+	for _, at := range workspace.AgentTypeOrder {
+		if at == workspace.AgentNone {
+			continue // Add None at the end
+		}
+		if allowed[at] {
+			result = append(result, at)
+		}
+	}
+
+	// Always include None at the end
+	result = append(result, workspace.AgentNone)
+	return result
 }
 
 // executeResume sends the resume message to workspace plugin.
@@ -329,8 +384,12 @@ func (p *Plugin) executeResume() tea.Cmd {
 		if msg.BaseBranch == "" {
 			msg.BaseBranch = "HEAD"
 		}
-		if p.resumeAgentIdx >= 0 && p.resumeAgentIdx < len(workspace.AgentTypeOrder) {
-			msg.AgentType = workspace.AgentTypeOrder[p.resumeAgentIdx]
+		agentOrder := p.resumeAgentOrder
+		if len(agentOrder) == 0 {
+			agentOrder = workspace.AgentTypeOrder
+		}
+		if p.resumeAgentIdx >= 0 && p.resumeAgentIdx < len(agentOrder) {
+			msg.AgentType = agentOrder[p.resumeAgentIdx]
 		}
 		msg.SkipPerms = p.resumeSkipPermissions
 	}
@@ -361,8 +420,8 @@ func (p *Plugin) getSessionForResume() *adapter.Session {
 	return nil
 }
 
-// defaultAgentIdxForAdapter returns the index in AgentTypeOrder for the given adapter.
-func defaultAgentIdxForAdapter(adapterID string) int {
+// defaultAgentIdxInOrder returns the index in resumeAgentOrder for the given adapter.
+func (p *Plugin) defaultAgentIdxInOrder(adapterID string) int {
 	var agentType workspace.AgentType
 	switch adapterID {
 	case "claude-code":
@@ -378,11 +437,14 @@ func defaultAgentIdxForAdapter(adapterID string) int {
 	case "pi-agent", "pi":
 		agentType = workspace.AgentPi
 	default:
-		return 0 // Default to first (Claude)
+		return 0 // Default to first agent
 	}
 
-	// Find index in AgentTypeOrder
-	for i, at := range workspace.AgentTypeOrder {
+	agentOrder := p.resumeAgentOrder
+	if len(agentOrder) == 0 {
+		agentOrder = workspace.AgentTypeOrder
+	}
+	for i, at := range agentOrder {
 		if at == agentType {
 			return i
 		}

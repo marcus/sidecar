@@ -96,6 +96,11 @@ type WorkspacePluginConfig struct {
 	InteractivePasteKey string `json:"interactivePasteKey,omitempty"`
 	// SidebarDisplay controls what information is shown in the workspace sidebar entries.
 	SidebarDisplay SidebarDisplayConfig `json:"sidebarDisplay"`
+	// AgentFilter limits which agents appear in selection UIs.
+	// If empty or not set, all agents are shown.
+	// Values are agent type IDs: "claude", "codex", "copilot", "gemini", "cursor", "opencode", "pi", "amp".
+	// "none" is always available regardless of this setting.
+	AgentFilter []string `json:"agentFilter,omitempty"`
 }
 
 // SidebarDisplayConfig controls visibility of workspace sidebar entry elements.

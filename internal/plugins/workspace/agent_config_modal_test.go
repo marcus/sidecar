@@ -45,13 +45,14 @@ func TestGetAgentConfigPrompt(t *testing.T) {
 
 func TestClearAgentConfigModal(t *testing.T) {
 	p := &Plugin{
-		agentConfigWorktree:  &Worktree{Name: "test"},
-		agentConfigIsRestart: true,
-		agentConfigAgentType: AgentClaude,
-		agentConfigAgentIdx:  3,
-		agentConfigSkipPerms: true,
-		agentConfigPromptIdx: 2,
-		agentConfigPrompts:   []Prompt{{Name: "x"}},
+		agentConfigWorktree:   &Worktree{Name: "test"},
+		agentConfigIsRestart:  true,
+		agentConfigAgentType:  AgentClaude,
+		agentConfigAgentIdx:   3,
+		agentConfigAgentOrder: []AgentType{AgentClaude, AgentCodex},
+		agentConfigSkipPerms:  true,
+		agentConfigPromptIdx:  2,
+		agentConfigPrompts:    []Prompt{{Name: "x"}},
 	}
 	p.clearAgentConfigModal()
 
@@ -66,6 +67,9 @@ func TestClearAgentConfigModal(t *testing.T) {
 	}
 	if p.agentConfigAgentIdx != 0 {
 		t.Error("agentIdx not cleared")
+	}
+	if p.agentConfigAgentOrder != nil {
+		t.Error("agentOrder not cleared")
 	}
 	if p.agentConfigSkipPerms {
 		t.Error("skipPerms not cleared")
