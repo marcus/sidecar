@@ -99,9 +99,17 @@ type rawSidebarDisplayConfig struct {
 	HideStats      *bool `json:"hideStats"`
 }
 
+type rawCommitConfig struct {
+	SubjectMaxLen          *int  `json:"subjectMaxLen"`
+	EnforceBlankSecondLine *bool `json:"enforceBlankSecondLine"`
+	AutoCapitalize         *bool `json:"autoCapitalize"`
+	StripTrailingPeriod    *bool `json:"stripTrailingPeriod"`
+}
+
 type rawGitStatusConfig struct {
-	Enabled         *bool  `json:"enabled"`
-	RefreshInterval string `json:"refreshInterval"`
+	Enabled         *bool           `json:"enabled"`
+	RefreshInterval string          `json:"refreshInterval"`
+	Commit          rawCommitConfig `json:"commit"`
 }
 
 type rawTDMonitorConfig struct {
@@ -207,6 +215,18 @@ func mergeConfig(cfg *Config, raw *rawConfig) {
 		if d, err := time.ParseDuration(raw.Plugins.GitStatus.RefreshInterval); err == nil {
 			cfg.Plugins.GitStatus.RefreshInterval = d
 		}
+	}
+	if raw.Plugins.GitStatus.Commit.SubjectMaxLen != nil {
+		cfg.Plugins.GitStatus.Commit.SubjectMaxLen = *raw.Plugins.GitStatus.Commit.SubjectMaxLen
+	}
+	if raw.Plugins.GitStatus.Commit.EnforceBlankSecondLine != nil {
+		cfg.Plugins.GitStatus.Commit.EnforceBlankSecondLine = *raw.Plugins.GitStatus.Commit.EnforceBlankSecondLine
+	}
+	if raw.Plugins.GitStatus.Commit.AutoCapitalize != nil {
+		cfg.Plugins.GitStatus.Commit.AutoCapitalize = *raw.Plugins.GitStatus.Commit.AutoCapitalize
+	}
+	if raw.Plugins.GitStatus.Commit.StripTrailingPeriod != nil {
+		cfg.Plugins.GitStatus.Commit.StripTrailingPeriod = *raw.Plugins.GitStatus.Commit.StripTrailingPeriod
 	}
 
 	// TD Monitor

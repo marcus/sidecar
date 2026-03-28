@@ -41,10 +41,19 @@ type PluginsConfig struct {
 	Notes         NotesPluginConfig         `json:"notes"`
 }
 
+// CommitConfig configures commit message normalization rules.
+type CommitConfig struct {
+	SubjectMaxLen          int  `json:"subjectMaxLen"`
+	EnforceBlankSecondLine bool `json:"enforceBlankSecondLine"`
+	AutoCapitalize         bool `json:"autoCapitalize"`
+	StripTrailingPeriod    bool `json:"stripTrailingPeriod"`
+}
+
 // GitStatusPluginConfig configures the git status plugin.
 type GitStatusPluginConfig struct {
 	Enabled         bool          `json:"enabled"`
 	RefreshInterval time.Duration `json:"refreshInterval"`
+	Commit          CommitConfig  `json:"commit"`
 }
 
 // FileBrowserPluginConfig configures the file browser plugin.
@@ -150,6 +159,12 @@ func Default() *Config {
 			GitStatus: GitStatusPluginConfig{
 				Enabled:         true,
 				RefreshInterval: time.Second,
+				Commit: CommitConfig{
+					SubjectMaxLen:          72,
+					EnforceBlankSecondLine: true,
+					AutoCapitalize:         true,
+					StripTrailingPeriod:    true,
+				},
 			},
 			TDMonitor: TDMonitorPluginConfig{
 				Enabled:         true,

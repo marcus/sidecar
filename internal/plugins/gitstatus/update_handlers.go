@@ -1026,6 +1026,9 @@ func (p *Plugin) tryCommit() tea.Cmd {
 		p.commitError = "Commit message cannot be empty"
 		return nil
 	}
+	if p.ctx != nil && p.ctx.Config != nil {
+		message = NormalizeCommitMessage(message, p.ctx.Config.Plugins.GitStatus.Commit)
+	}
 	p.commitInProgress = true
 	if p.commitAmend {
 		return p.doAmend(message)
