@@ -605,22 +605,22 @@ fi
 		// aider uses --message flag
 		script = fmt.Sprintf(`#!/bin/bash
 %s
-%s --message "$(cat <<'SIDECAR_PROMPT_EOF'
+read -r -d '' sidecar_prompt <<'SIDECAR_PROMPT_EOF'
 %s
 SIDECAR_PROMPT_EOF
-)"
+%s --message "$sidecar_prompt"
 rm -f %q
-`, shellSetup, baseCmd, prompt, launcherFile)
+`, shellSetup, prompt, baseCmd, launcherFile)
 	case AgentOpenCode:
 		// opencode uses 'run' subcommand
 		script = fmt.Sprintf(`#!/bin/bash
 %s
-%s run "$(cat <<'SIDECAR_PROMPT_EOF'
+read -r -d '' sidecar_prompt <<'SIDECAR_PROMPT_EOF'
 %s
 SIDECAR_PROMPT_EOF
-)"
+%s run "$sidecar_prompt"
 rm -f %q
-`, shellSetup, baseCmd, prompt, launcherFile)
+`, shellSetup, prompt, baseCmd, launcherFile)
 	case AgentAmp:
 		// amp requires piping via stdin, does not accept positional args
 		script = fmt.Sprintf(`#!/bin/bash
@@ -634,12 +634,12 @@ rm -f %q
 		// Most agents (claude, codex, gemini, cursor) take prompt as positional argument
 		script = fmt.Sprintf(`#!/bin/bash
 %s
-%s "$(cat <<'SIDECAR_PROMPT_EOF'
+read -r -d '' sidecar_prompt <<'SIDECAR_PROMPT_EOF'
 %s
 SIDECAR_PROMPT_EOF
-)"
+%s "$sidecar_prompt"
 rm -f %q
-`, shellSetup, baseCmd, prompt, launcherFile)
+`, shellSetup, prompt, baseCmd, launcherFile)
 	}
 
 	if err := os.WriteFile(launcherFile, []byte(script), 0700); err != nil {
