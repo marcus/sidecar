@@ -43,8 +43,14 @@ import (
 	"golang.org/x/term"
 )
 
-// Version is set at build time via ldflags
-var Version = ""
+// Build-time variables set via ldflags.
+var (
+	Version      = "" // semantic version (e.g. v0.78.0)
+	Commit       = "" // short git commit hash
+	Dirty        = "" // "true" if working tree was dirty at build time
+	BuildDate    = "" // RFC3339 build timestamp
+	BuildProfile = "" // "release" or "debug"
+)
 
 var (
 	configPath     = flag.String("config", "", "path to config file")
@@ -80,7 +86,7 @@ func main() {
 
 	// Handle version flag
 	if *versionFlag || *shortVersion {
-		fmt.Printf("sidecar version %s\n", effectiveVersion(Version))
+		printVersionInfo()
 		os.Exit(0)
 	}
 
@@ -272,6 +278,76 @@ func effectiveVersion(v string) string {
 	}
 
 	return "devel"
+}
+
+// vcsInfo holds build-time VCS metadata resolved from ldflags or debug.ReadBuildInfo.
+type vcsInfo struct {
+	commit  string
+	dirty   bool
+	date    string
+	profile string
+}
+
+// resolveVCSInfo returns build metadata, preferring ldflags values and falling
+// back to debug.ReadBuildInfo when ldflags were not injected.
+func resolveVCSInfo() vcsInfo {
+	info := vcsInfo{
+		commit:  Commit,
+		dirty:   Dirty == "true",
+		date:    BuildDate,
+		profile: BuildProfile,
+	}
+
+	// Fill in anything missing from debug.ReadBuildInfo (dev builds).
+	if info.commit == "" || info.date == "" {
+		if bi, ok := debug.ReadBuildInfo(); ok {
+			for _, s := range bi.Settings {
+				switch s.Key {
+				case "vcs.revision":
+					if info.commit == "" {
+						if len(s.Value) > 7 {
+							info.commit = s.Value[:7]
+						} else {
+							info.commit = s.Value
+						}
+					}
+				case "vcs.modified":
+					if Dirty == "" {
+						info.dirty = s.Value == "true"
+					}
+				case "vcs.time":
+					if info.date == "" {
+						info.date = s.Value
+					}
+				}
+			}
+		}
+	}
+
+	if info.profile == "" {
+		info.profile = "development"
+	}
+
+	return info
+}
+
+// printVersionInfo prints detailed build information to stdout.
+func printVersionInfo() {
+	ver := effectiveVersion(Version)
+	vcs := resolveVCSInfo()
+
+	fmt.Printf("sidecar %s\n", ver)
+	if vcs.commit != "" {
+		if vcs.dirty {
+			fmt.Printf("  commit:  %s (dirty)\n", vcs.commit)
+		} else {
+			fmt.Printf("  commit:  %s\n", vcs.commit)
+		}
+	}
+	if vcs.date != "" {
+		fmt.Printf("  date:    %s\n", vcs.date)
+	}
+	fmt.Printf("  profile: %s\n", vcs.profile)
 }
 
 func init() {
