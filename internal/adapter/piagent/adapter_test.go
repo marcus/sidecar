@@ -27,7 +27,7 @@ func TestProjectDirPath(t *testing.T) {
 	a := New()
 
 	tests := []struct {
-		input    string
+		input      string
 		wantSuffix string
 	}{
 		{"/home/user/project", "--home-user-project--"},

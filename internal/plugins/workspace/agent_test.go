@@ -314,7 +314,6 @@ func TestExtractPrompt(t *testing.T) {
 	}
 }
 
-
 func TestDetectStatusPriorityOrder(t *testing.T) {
 	// Waiting should take priority over error when both patterns present
 	output := "Error occurred\nRetry? [y/n]"
@@ -474,12 +473,12 @@ func TestShouldShowSkipPermissions(t *testing.T) {
 
 func TestBuildAgentCommand(t *testing.T) {
 	tests := []struct {
-		name      string
-		agentType AgentType
-		skipPerms bool
-		taskID    string
-		wantFlag  string   // Expected skip-perms flag in output
-		wantPrompt bool    // Whether prompt should be included
+		name       string
+		agentType  AgentType
+		skipPerms  bool
+		taskID     string
+		wantFlag   string // Expected skip-perms flag in output
+		wantPrompt bool   // Whether prompt should be included
 	}{
 		// Claude tests
 		{

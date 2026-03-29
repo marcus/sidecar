@@ -12,9 +12,9 @@ import (
 )
 
 const (
-	projectSearchMaxResults  = 1000              // Max total matches to display
-	projectSearchTimeout     = 30 * time.Second  // Max time for search
-	projectSearchDebounce    = 200 * time.Millisecond // Debounce delay before searching
+	projectSearchMaxResults = 1000                   // Max total matches to display
+	projectSearchTimeout    = 30 * time.Second       // Max time for search
+	projectSearchDebounce   = 200 * time.Millisecond // Debounce delay before searching
 )
 
 // ProjectSearchState holds the state for project-wide search.
@@ -55,10 +55,10 @@ type SearchFileResult struct {
 
 // SearchMatch represents a single match within a file.
 type SearchMatch struct {
-	LineNo    int    // 1-indexed line number
-	LineText  string // Full line content
-	ColStart  int    // Match start column (0-indexed)
-	ColEnd    int    // Match end column (0-indexed)
+	LineNo   int    // 1-indexed line number
+	LineText string // Full line content
+	ColStart int    // Match start column (0-indexed)
+	ColEnd   int    // Match end column (0-indexed)
 }
 
 // ProjectSearchResultsMsg contains results from a search.
@@ -282,11 +282,11 @@ func RunProjectSearch(workDir string, state *ProjectSearchState, epoch uint64) t
 // buildRipgrepArgs constructs the ripgrep command arguments.
 func buildRipgrepArgs(state *ProjectSearchState) []string {
 	args := []string{
-		"--line-number",    // Include line numbers
-		"--column",         // Include column numbers for match position
-		"--no-heading",     // Don't group by file (simpler parsing)
-		"--with-filename",  // Always include filename
-		"--max-count=100",  // Limit matches per file
+		"--line-number",     // Include line numbers
+		"--column",          // Include column numbers for match position
+		"--no-heading",      // Don't group by file (simpler parsing)
+		"--with-filename",   // Always include filename
+		"--max-count=100",   // Limit matches per file
 		"--max-filesize=1M", // Skip very large files
 	}
 

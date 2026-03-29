@@ -20,7 +20,7 @@ const (
 	adapterID           = "codex"
 	adapterName         = "Codex"
 	metaCacheMaxEntries = 2048
-	msgCacheMaxEntries  = 128 // fewer entries since messages are larger
+	msgCacheMaxEntries  = 128                    // fewer entries since messages are larger
 	dirCacheTTL         = 500 * time.Millisecond // TTL for directory listing cache (td-c9ff3aac)
 	// Two-pass parsing thresholds (td-a2c1dd41)
 	metaParseSmallFileThreshold = 16 * 1024 // Files smaller than 16KB use full scan
@@ -37,12 +37,12 @@ type dirCacheEntry struct {
 // Adapter implements the adapter.Adapter interface for Codex CLI sessions.
 type Adapter struct {
 	sessionsDir     string
-	sessionIndex    map[string]string                // sessionID -> file path cache
-	totalUsageCache map[string]*TokenUsage           // sessionID -> total usage (populated by Messages)
-	mu              sync.RWMutex                     // guards sessionIndex and totalUsageCache
+	sessionIndex    map[string]string      // sessionID -> file path cache
+	totalUsageCache map[string]*TokenUsage // sessionID -> total usage (populated by Messages)
+	mu              sync.RWMutex           // guards sessionIndex and totalUsageCache
 	metaCache       map[string]sessionMetaCacheEntry
-	metaMu          sync.RWMutex                        // guards metaCache
-	msgCache        *cache.Cache[messageCacheEntry]     // path -> cached messages
+	metaMu          sync.RWMutex                    // guards metaCache
+	msgCache        *cache.Cache[messageCacheEntry] // path -> cached messages
 	dirCache        *dirCacheEntry
 	dirCacheMu      sync.RWMutex // guards dirCache
 }

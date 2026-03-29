@@ -51,9 +51,9 @@ func TestMergeRecentCommitsAddsNewHead(t *testing.T) {
 
 func TestClampCommitScroll(t *testing.T) {
 	p := &Plugin{
-		tree:           &FileTree{},
-		height:         10,
-		recentCommits:  makeCommits("c", 5),
+		tree:            &FileTree{},
+		height:          10,
+		recentCommits:   makeCommits("c", 5),
 		commitScrollOff: 10,
 	}
 
