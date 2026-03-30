@@ -6,6 +6,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/marcus/sidecar/internal/app"
+	"github.com/marcus/sidecar/internal/config"
 	appmsg "github.com/marcus/sidecar/internal/msg"
 	"github.com/marcus/sidecar/internal/plugin"
 	"github.com/marcus/sidecar/internal/state"
@@ -813,16 +814,31 @@ func (p *Plugin) updateCommit(msg tea.KeyMsg) (plugin.Plugin, tea.Cmd) {
 
 // tryCommit attempts to execute the commit (or amend) if message is valid.
 func (p *Plugin) tryCommit() tea.Cmd {
-	message := strings.TrimSpace(p.commitMessage.Value())
-	if message == "" {
-		p.commitError = "Commit message cannot be empty"
+	raw := p.commitMessage.Value()
+	cfg := p.commitConfig()
+	result := NormalizeCommitMessage(raw, cfg)
+
+	if result.Error != "" {
+		p.commitError = result.Error
 		return nil
 	}
+	if result.Warning != "" {
+		p.commitWarning = result.Warning
+	}
+
 	p.commitInProgress = true
 	if p.commitAmend {
-		return p.doAmend(message)
+		return p.doAmend(result.Message)
 	}
-	return p.doCommit(message)
+	return p.doCommit(result.Message)
+}
+
+// commitConfig returns the commit configuration, falling back to defaults.
+func (p *Plugin) commitConfig() config.CommitConfig {
+	if p.ctx != nil && p.ctx.Config != nil {
+		return p.ctx.Config.Plugins.GitStatus.Commit
+	}
+	return config.CommitConfig{SubjectMaxLen: 72}
 }
 
 // updatePushMenu handles key events in the push menu.

@@ -141,6 +141,7 @@ type Plugin struct {
 	// Commit state
 	commitMessage         textarea.Model
 	commitError           string
+	commitWarning         string
 	commitInProgress      bool
 	commitAmend           bool // true when amending last commit
 	commitButtonFocus     bool // true when button is focused instead of textarea
@@ -461,6 +462,7 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 		p.commitInProgress = false
 		p.commitAmend = false
 		p.commitError = ""
+		p.commitWarning = ""
 		return p, p.refresh()
 
 	case CommitErrorMsg:
@@ -1360,6 +1362,7 @@ func (p *Plugin) initCommitTextarea() {
 	p.commitMessage.SetWidth(textareaWidth)
 	p.commitMessage.SetHeight(4)
 	p.commitError = ""
+	p.commitWarning = ""
 	p.commitButtonFocus = false
 	p.commitButtonHover = false
 	p.commitModal = nil
