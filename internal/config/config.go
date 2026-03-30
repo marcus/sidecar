@@ -45,6 +45,20 @@ type PluginsConfig struct {
 type GitStatusPluginConfig struct {
 	Enabled         bool          `json:"enabled"`
 	RefreshInterval time.Duration `json:"refreshInterval"`
+	Commit          CommitConfig  `json:"commit"`
+}
+
+// CommitConfig configures commit message normalization and validation.
+type CommitConfig struct {
+	// SubjectMaxLen is the maximum recommended length for the subject line (first line).
+	// Messages exceeding this show a warning but are not blocked. Default: 72.
+	SubjectMaxLen int `json:"subjectMaxLen"`
+	// ConventionalCommits enforces conventional commit prefixes (feat:, fix:, etc.).
+	// When true, commits without a recognized prefix are blocked. Default: false.
+	ConventionalCommits bool `json:"conventionalCommits"`
+	// AllowedPrefixes overrides the default conventional commit types.
+	// Default: ["feat", "fix", "docs", "style", "refactor", "perf", "test", "build", "ci", "chore", "revert"]
+	AllowedPrefixes []string `json:"allowedPrefixes,omitempty"`
 }
 
 // FileBrowserPluginConfig configures the file browser plugin.
@@ -150,6 +164,9 @@ func Default() *Config {
 			GitStatus: GitStatusPluginConfig{
 				Enabled:         true,
 				RefreshInterval: time.Second,
+				Commit: CommitConfig{
+					SubjectMaxLen: 72,
+				},
 			},
 			TDMonitor: TDMonitorPluginConfig{
 				Enabled:         true,

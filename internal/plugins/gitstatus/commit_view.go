@@ -155,7 +155,27 @@ func (p *Plugin) commitStagedSection() modal.Section {
 
 func (p *Plugin) commitStatusSection() modal.Section {
 	return modal.Custom(func(contentWidth int, focusID, hoverID string) modal.RenderedSection {
-		lines := make([]string, 0, 2)
+		lines := make([]string, 0, 4)
+
+		// Subject line length indicator.
+		subLen := SubjectLength(p.commitMessage.Value())
+		maxLen := p.commitConfig().SubjectMaxLen
+		if maxLen <= 0 {
+			maxLen = 72
+		}
+		lenStr := fmt.Sprintf("%d/%d", subLen, maxLen)
+		switch {
+		case subLen > maxLen:
+			lines = append(lines, styles.StatusDeleted.Render(lenStr))
+		case subLen > maxLen*3/4:
+			lines = append(lines, styles.StatusModified.Render(lenStr))
+		default:
+			lines = append(lines, styles.Muted.Render(lenStr))
+		}
+
+		if p.commitWarning != "" {
+			lines = append(lines, styles.StatusModified.Render("⚠ "+p.commitWarning))
+		}
 		if p.commitError != "" {
 			lines = append(lines, styles.StatusDeleted.Render("✗ "+p.commitError))
 		}
