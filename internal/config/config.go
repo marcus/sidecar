@@ -1,6 +1,9 @@
 package config
 
-import "time"
+import (
+	"strings"
+	"time"
+)
 
 // Config is the root configuration structure.
 type Config struct {
@@ -38,6 +41,7 @@ type PluginsConfig struct {
 	Conversations ConversationsPluginConfig `json:"conversations"`
 	Workspace     WorkspacePluginConfig     `json:"workspace"`
 	Notes         NotesPluginConfig         `json:"notes"`
+	VCS           VCSPluginConfig           `json:"vcs"`
 }
 
 // GitStatusPluginConfig configures the git status plugin.
@@ -97,6 +101,13 @@ type NotesPluginConfig struct {
 	DefaultEditor string `json:"defaultEditor,omitempty"`
 }
 
+// VCSPluginConfig controls VCS mode preference and plugin gating.
+type VCSPluginConfig struct {
+	// Preferred controls startup plugin preference.
+	// Values: "auto" (default), "jj", "git".
+	Preferred string `json:"preferred,omitempty"`
+}
+
 // KeymapConfig holds key binding overrides.
 type KeymapConfig struct {
 	Overrides map[string]string `json:"overrides"`
@@ -142,6 +153,9 @@ func Default() *Config {
 				DirPrefix:           true,
 				TmuxCaptureMaxBytes: 2 * 1024 * 1024,
 			},
+			VCS: VCSPluginConfig{
+				Preferred: "auto",
+			},
 		},
 		Keymap: KeymapConfig{
 			Overrides: make(map[string]string),
@@ -169,6 +183,14 @@ func (c *Config) Validate() error {
 	}
 	if c.Plugins.Workspace.TmuxCaptureMaxBytes <= 0 {
 		c.Plugins.Workspace.TmuxCaptureMaxBytes = 2 * 1024 * 1024
+	}
+	switch strings.ToLower(strings.TrimSpace(c.Plugins.VCS.Preferred)) {
+	case "", "auto", "jj", "git":
+		if strings.TrimSpace(c.Plugins.VCS.Preferred) == "" {
+			c.Plugins.VCS.Preferred = "auto"
+		}
+	default:
+		c.Plugins.VCS.Preferred = "auto"
 	}
 	return nil
 }

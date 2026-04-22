@@ -76,6 +76,11 @@ type rawPluginsConfig struct {
 	TDMonitor     rawTDMonitorConfig     `json:"td-monitor"`
 	Conversations rawConversationsConfig `json:"conversations"`
 	Workspace     rawWorkspaceConfig     `json:"workspace"`
+	VCS           rawVCSConfig           `json:"vcs"`
+}
+
+type rawVCSConfig struct {
+	Preferred string `json:"preferred"`
 }
 
 type rawWorkspaceConfig struct {
@@ -244,6 +249,11 @@ func mergeConfig(cfg *Config, raw *rawConfig) {
 	}
 	if raw.Plugins.Workspace.InteractivePasteKey != "" {
 		cfg.Plugins.Workspace.InteractivePasteKey = raw.Plugins.Workspace.InteractivePasteKey
+	}
+
+	// VCS
+	if raw.Plugins.VCS.Preferred != "" {
+		cfg.Plugins.VCS.Preferred = raw.Plugins.VCS.Preferred
 	}
 
 	// Keymap

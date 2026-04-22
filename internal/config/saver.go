@@ -28,6 +28,11 @@ type savePluginsConfig struct {
 	TDMonitor     saveTDMonitorConfig     `json:"td-monitor,omitempty"`
 	Conversations saveConversationsConfig `json:"conversations,omitempty"`
 	Workspace     saveWorkspaceConfig     `json:"workspace,omitempty"`
+	VCS           saveVCSConfig           `json:"vcs,omitempty"`
+}
+
+type saveVCSConfig struct {
+	Preferred string `json:"preferred,omitempty"`
 }
 
 type saveGitStatusConfig struct {
@@ -88,6 +93,9 @@ func toSaveConfig(cfg *Config) saveConfig {
 				InteractiveAttachKey: cfg.Plugins.Workspace.InteractiveAttachKey,
 				InteractiveCopyKey:   cfg.Plugins.Workspace.InteractiveCopyKey,
 				InteractivePasteKey:  cfg.Plugins.Workspace.InteractivePasteKey,
+			},
+			VCS: saveVCSConfig{
+				Preferred: cfg.Plugins.VCS.Preferred,
 			},
 		},
 		Keymap:   cfg.Keymap,

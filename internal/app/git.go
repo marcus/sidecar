@@ -22,16 +22,23 @@ func normalizePath(path string) (string, error) {
 	return filepath.Clean(resolved), nil
 }
 
-// WorktreeInfo contains information about a git worktree.
+// WorktreeInfo contains information about a git worktree or jj workspace.
 type WorktreeInfo struct {
 	Path   string // Absolute path to the worktree
-	Branch string // Branch name (e.g., "feature-auth")
+	Branch string // Branch or workspace name (e.g., "feature-auth")
 	IsMain bool   // True if this is the main worktree
+	IsJJ   bool   // True if this entry is a native jj workspace
 }
 
 // GetWorktrees returns all worktrees for the repository containing workDir.
 // Returns nil if workDir is not in a git repository.
 func GetWorktrees(workDir string) []WorktreeInfo {
+	if useNativeJJWorkspaces(workDir) {
+		if workspaces := getJJWorkspaces(workDir); len(workspaces) > 0 {
+			return workspaces
+		}
+	}
+
 	// First, verify this is a git repo
 	cmd := exec.Command("git", "--no-optional-locks", "rev-parse", "--git-dir")
 	cmd.Dir = workDir
@@ -96,6 +103,15 @@ func parseWorktreeList(output string) []WorktreeInfo {
 // GetMainWorktreePath returns the path to the main worktree for the repository.
 // Returns empty string if not in a git repo or no main worktree found.
 func GetMainWorktreePath(workDir string) string {
+	if useNativeJJWorkspaces(workDir) {
+		root, err := jjWorkspaceRoot(workDir)
+		if err == nil && root != "" {
+			if repoPath, err := jjRepoPath(root); err == nil && repoPath != "" {
+				return jjMainWorkspacePath(repoPath, root)
+			}
+		}
+	}
+
 	worktrees := GetWorktrees(workDir)
 	for _, wt := range worktrees {
 		if wt.IsMain {
@@ -203,6 +219,12 @@ func WorktreeExists(worktreePath string) bool {
 		return false
 	}
 
+	if useNativeJJWorkspaces(worktreePath) {
+		jjPath := filepath.Join(worktreePath, ".jj")
+		_, err = os.Stat(jjPath)
+		return err == nil
+	}
+
 	// Verify it's still a valid git worktree by checking for .git file/directory
 	gitPath := filepath.Join(worktreePath, ".git")
 	_, err = os.Stat(gitPath)
@@ -214,6 +236,12 @@ func WorktreeExists(worktreePath string) bool {
 func CheckCurrentWorktree(workDir string) (exists bool, mainPath string) {
 	if WorktreeExists(workDir) {
 		return true, ""
+	}
+
+	if jjWorkspacesEnabled() {
+		if featuresMain := findMainJJWorkspaceFromDeleted(workDir); featuresMain != "" {
+			return false, featuresMain
+		}
 	}
 
 	// Current worktree doesn't exist - find the main worktree that owned it

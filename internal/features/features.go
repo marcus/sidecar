@@ -39,6 +39,13 @@ var (
 		Default:     false,
 		Description: "Enable the notes plugin for capturing quick notes",
 	}
+
+	// JjPlugin enables the experimental jujutsu status plugin.
+	JjPlugin = Feature{
+		Name:        "jj_plugin",
+		Default:     false,
+		Description: "Enable the experimental jujutsu status plugin",
+	}
 )
 
 // allFeatures is the registry of all known features.
@@ -46,6 +53,7 @@ var allFeatures = []Feature{
 	TmuxInteractiveInput,
 	TmuxInlineEdit,
 	NotesPlugin,
+	JjPlugin,
 }
 
 // defaultValues provides O(1) lookup for feature defaults.

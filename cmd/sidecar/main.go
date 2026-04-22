@@ -34,12 +34,14 @@ import (
 	"github.com/marcus/sidecar/internal/plugins/conversations"
 	"github.com/marcus/sidecar/internal/plugins/filebrowser"
 	"github.com/marcus/sidecar/internal/plugins/gitstatus"
+	"github.com/marcus/sidecar/internal/plugins/jjstatus"
 	"github.com/marcus/sidecar/internal/plugins/notes"
 	"github.com/marcus/sidecar/internal/plugins/tdmonitor"
 	"github.com/marcus/sidecar/internal/plugins/workspace"
 	"github.com/marcus/sidecar/internal/state"
 	"github.com/marcus/sidecar/internal/styles"
 	"github.com/marcus/sidecar/internal/theme"
+	jjvcs "github.com/marcus/sidecar/internal/vcs/jj"
 	"golang.org/x/term"
 )
 
@@ -174,8 +176,39 @@ func main() {
 	if err := registry.Register(tdmonitor.New()); err != nil {
 		logger.Warn("failed to register tdmonitor plugin", "err", err)
 	}
-	if err := registry.Register(gitstatus.New()); err != nil {
-		logger.Warn("failed to register gitstatus plugin", "err", err)
+	jjPluginEnabled := features.IsEnabled("jj_plugin")
+	jjWorkspace := detectJJWorkspace(workDir)
+	vcsPreferred := normalizeVCSPreference(cfg.Plugins.VCS.Preferred)
+	registerGit := true
+	registerJJ := false
+
+	switch vcsPreferred {
+	case "git":
+		registerGit = true
+		registerJJ = false
+	case "jj":
+		if jjPluginEnabled && jjWorkspace {
+			registerGit = false
+			registerJJ = true
+		}
+	case "auto":
+		if jjPluginEnabled && jjWorkspace {
+			registerGit = false
+			registerJJ = true
+		}
+	}
+
+	if registerGit {
+		if err := registry.Register(gitstatus.New()); err != nil {
+			logger.Warn("failed to register gitstatus plugin", "err", err)
+		}
+	} else {
+		logger.Info("skipping gitstatus plugin", "vcs_preferred", vcsPreferred, "jj_workspace", jjWorkspace, "jj_plugin_enabled", jjPluginEnabled)
+	}
+	if registerJJ {
+		if err := registry.Register(jjstatus.New()); err != nil {
+			logger.Warn("failed to register jjstatus plugin", "err", err)
+		}
 	}
 	if err := registry.Register(filebrowser.New()); err != nil {
 		logger.Warn("failed to register filebrowser plugin", "err", err)
@@ -307,5 +340,24 @@ func applyFeatureOverrides() {
 			}
 			features.SetOverride(name, false)
 		}
+	}
+}
+
+func detectJJWorkspace(workDir string) bool {
+	root, ok, err := jjvcs.New().Detect(workDir)
+	if err != nil {
+		return false
+	}
+	return ok && strings.TrimSpace(root) != ""
+}
+
+func normalizeVCSPreference(value string) string {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "jj":
+		return "jj"
+	case "git":
+		return "git"
+	default:
+		return "auto"
 	}
 }

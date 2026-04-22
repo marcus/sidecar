@@ -1348,6 +1348,8 @@ func isRootContext(ctx string) bool {
 		return true
 	case "git-status", "git-status-commits", "git-status-diff", "git-commit-preview":
 		return true
+	case "jj-status", "jj-log":
+		return true
 	case "file-browser-tree", "file-browser-preview":
 		return true
 	case "workspace-list", "workspace-preview":
