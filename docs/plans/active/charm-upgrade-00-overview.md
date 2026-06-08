@@ -129,3 +129,77 @@ github.com/charmbracelet/x/cellbuf      v0.0.15   // direct import in 2 files
 - `go test ./...` green (after updating test constructors)
 - Manual smoke test: launch sidecar, switch every plugin tab, exercise mouse click/scroll/drag, attach to a tmux workspace + paste, open a file in editor (`tea.ExecProcess`) and return, switch theme, resize the terminal. Verify the header never scrolls off (see CLAUDE.md plugin-height rule).
 - Run under both a dark and a light terminal profile to confirm colors.
+- Automated visual regression check (see below) — for any phase that can shift layout or color (all of them). Phase 0 = width/alignment; Phase 1 = **both** width and color (color is the #1 risk).
+
+## Visual testing recipe (tmux capture) — for agents
+
+You cannot launch the interactive TUI from a normal tool call, but you **can** drive it headlessly inside a detached `tmux` session and capture the rendered pane. This gives two machine-checkable signals that map directly onto the risk register: **column alignment** (width regressions) and the **rendered color palette** (color regressions). Validated on Phase 0 — both signals came back clean for the x/ansi bump.
+
+The high-value pattern is **old-vs-new binary comparison**: build the pre-upgrade binary and the post-upgrade binary, drive both through the *same* screens, and diff the extracted signals — not the raw screens. Raw full-screen `diff` is useless here: it's swamped by live data (message counts, `$` cost, timestamps, clock) and navigation-timing drift. Extract an order-independent signal instead.
+
+### 0. Build both binaries
+
+```bash
+# IMPORTANT: from a git worktree, the repo go.work points at the main checkout and
+# excludes the worktree dir, so `go build ./...` errors. Use GOWORK=off.
+GOWORK=off go build -o /tmp/sc-new ./cmd/sidecar          # post-upgrade (current tree)
+
+# pre-upgrade binary: temporarily revert the dep, build, then restore
+GOWORK=off go get github.com/charmbracelet/x/ansi@<OLD_VER>   # e.g. the v2 trio for Phase 1
+GOWORK=off go build -o /tmp/sc-old ./cmd/sidecar
+GOWORK=off go get github.com/charmbracelet/x/ansi@<NEW_VER> && GOWORK=off go mod tidy   # restore + clean tree
+git status -sb   # confirm working tree is clean again before continuing
+```
+
+### 1. Launch headless + wait for first render
+
+```bash
+launch() {  # $1=session  $2=binary
+  tmux kill-session -t "$1" 2>/dev/null
+  tmux new-session -d -s "$1" -x 160 -y 45          # fixed size → deterministic columns
+  # truecolor env so colors actually emit (else they downsample and the palette test is meaningless)
+  tmux send-keys -t "$1" "TERM=xterm-256color COLORTERM=truecolor $2 -project ." Enter
+  for i in $(seq 1 8); do sleep 1
+    [ "$(tmux capture-pane -t "$1" -p 2>/dev/null | grep -c '[│╭╰]')" -gt 3 ] && return
+  done   # poll for box-drawing chars instead of a fixed sleep
+}
+launch sc_new /tmp/sc-new
+launch sc_old /tmp/sc-old
+```
+
+Navigate with `tmux send-keys -t <session> "<keys>"` (e.g. `1`–`5` for plugin tabs); `sleep 2` after each switch; capture with `tmux capture-pane -t <session> -p` (plain) or `-e -p` (with SGR escapes). Drive both sessions through the identical key sequence.
+
+### 2. Width / alignment check (plain capture)
+
+A mis-measured glyph pushes its line's right border off-column. So: for every bordered line, compute the display width up to the final `│` — they must all be equal (one column for the whole screen). Run this on the **new** binary across glyph-heavy views (workspace tree art, file browser tree, conversation status pips, anything with `— ⏸ ◉ ★ ✗` / emoji / CJK):
+
+```python
+import unicodedata, sys
+def dispw(s):
+    return sum(0 if unicodedata.combining(c) else (2 if unicodedata.east_asian_width(c) in 'WF' else 1) for c in s)
+lines = open(sys.argv[1]).read().split('\n')
+cols = {dispw(l[:l.rfind('│')]) for l in lines if '│' in l}
+print("ALIGNED" if len(cols)==1 else f"MISALIGNED — borders at columns {sorted(cols)}")
+```
+
+One column = perfect alignment. Multiple columns = a glyph measured differently; that line is your regression.
+
+### 3. Color check (escape capture, palette set-diff)
+
+`tmux capture-pane -e -p` preserves full truecolor sequences (`38;2;R;G;B` fg, `48;2;R;G;B` bg). Extract the **set** of RGB colors each binary renders on the same screen and compare — set membership is immune to live-data and gradient-position noise:
+
+```bash
+palette() { tmux capture-pane -t "$1" -e -p | grep -oE $'\x1b\\[[0-9;]*m' \
+            | grep -oE '[34]8;2;[0-9]+;[0-9]+;[0-9]+' | sort -u; }
+diff <(palette sc_old) <(palette sc_new)   # empty diff = identical palette = no color regression
+```
+
+A color the old binary rendered that the new one dropped (`< ...`), or a suspicious newcomer like `48;2;0;0;0` where there should be a theme color (`> ...`), is a color regression — exactly the lipgloss-v2 `color.Color` failure mode. Run it on a couple of color-rich screens (the default conversation view and a themed workspace pane), and re-run after switching theme.
+
+### 4. Clean up
+
+```bash
+tmux kill-session -t sc_new 2>/dev/null; tmux kill-session -t sc_old 2>/dev/null
+```
+
+> Caveats: gradient borders shift their per-cell RGB as the row count changes between runs, so for gradient regions prefer the *count* of distinct colors (`palette ... | wc -l`) or sample a static-content screen. A 160×45 fixed size keeps column math deterministic. This harness proves *layout and color did not change* — it does not exercise mouse, paste, or `tea.ExecProcess`; those still need the manual smoke test above.

@@ -41,6 +41,7 @@ That's it — no source edits anticipated.
 
 - `go build ./... && go test ./...` clean.
 - **Spot-check column alignment** in views that mix wide / emoji / CJK glyphs (the 0.11.x changes are width-calc fixes — in rare edge cases a glyph may now measure one cell differently). Look at: the workspace list/preview panes, the file browser tree, and any table-like alignment. If something is off by a cell, it's almost certainly an intended width correction, not a regression.
+  - For an automated check, use the **tmux capture recipe** in [00-overview.md → "Visual testing recipe"](charm-upgrade-00-overview.md#visual-testing-recipe-tmux-capture--for-agents). Phase 0 was verified this way: old (v0.11.3) vs new (v0.11.7) binaries driven through the same glyph-heavy views — every bordered line's right border landed at one column (perfect alignment) and the rendered RGB palette was byte-identical (144 colors, zero diff).
 
 ## Gotchas
 
