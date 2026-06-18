@@ -1137,6 +1137,13 @@ func TestWriteAgentLauncher(t *testing.T) {
 			prompt:    "Task: fix bug",
 			wantCmd:   "bash '" + expectedLauncherPath + "'",
 		},
+		{
+			name:      "claude with apostrophe in prompt (bash 3.2 regression)",
+			agentType: AgentClaude,
+			baseCmd:   "claude",
+			prompt:    "fix today's bug — don't break it",
+			wantCmd:   "bash '" + expectedLauncherPath + "'",
+		},
 	}
 
 	for _, tt := range tests {
@@ -1185,6 +1192,17 @@ func TestWriteAgentLauncher(t *testing.T) {
 			if tt.agentType == AgentAmp {
 				if !strings.Contains(scriptStr, "SIDECAR_PROMPT_EOF' | "+tt.baseCmd) {
 					t.Errorf("amp script should pipe prompt to command via stdin, got:\n%s", scriptStr)
+				}
+			} else {
+				// Non-Amp agents use the tmpfile pattern (safe on macOS bash 3.2 with apostrophes).
+				if !strings.Contains(scriptStr, "TMPFILE=$(mktemp") {
+					t.Errorf("script should use tmpfile pattern, got:\n%s", scriptStr)
+				}
+				if !strings.Contains(scriptStr, `cat > "$TMPFILE" <<'SIDECAR_PROMPT_EOF'`) {
+					t.Errorf("script should write prompt to tmpfile via heredoc, got:\n%s", scriptStr)
+				}
+				if !strings.Contains(scriptStr, `"$(cat "$TMPFILE")"`) {
+					t.Errorf("script should read prompt from tmpfile, got:\n%s", scriptStr)
 				}
 			}
 
