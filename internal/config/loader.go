@@ -83,13 +83,14 @@ type rawWorkspaceConfig struct {
 	DirPrefix            *bool                    `json:"dirPrefix"`
 	DefaultAgentType     string                   `json:"defaultAgentType"`
 	LegacyDefaultAgent   string                   `json:"defaultAgent"` // Backward compatibility
-	AgentStart           json.RawMessage           `json:"agentStart"`
+	AgentStart           json.RawMessage          `json:"agentStart"`
 	TmuxCaptureMaxBytes  *int                     `json:"tmuxCaptureMaxBytes"`
 	InteractiveExitKey   string                   `json:"interactiveExitKey"`
 	InteractiveAttachKey string                   `json:"interactiveAttachKey"`
 	InteractiveCopyKey   string                   `json:"interactiveCopyKey"`
 	InteractivePasteKey  string                   `json:"interactivePasteKey"`
 	SidebarDisplay       *rawSidebarDisplayConfig `json:"sidebarDisplay"`
+	AgentFilter          []string                 `json:"agentFilter"`
 }
 
 type rawSidebarDisplayConfig struct {
@@ -250,6 +251,9 @@ func mergeConfig(cfg *Config, raw *rawConfig) {
 	}
 	if agentStart, ok := parseAgentStartOverrides(raw.Plugins.Workspace.AgentStart); ok {
 		cfg.Plugins.Workspace.AgentStart = agentStart
+	}
+	if len(raw.Plugins.Workspace.AgentFilter) > 0 {
+		cfg.Plugins.Workspace.AgentFilter = raw.Plugins.Workspace.AgentFilter
 	}
 	if raw.Plugins.Workspace.InteractiveExitKey != "" {
 		cfg.Plugins.Workspace.InteractiveExitKey = raw.Plugins.Workspace.InteractiveExitKey

@@ -224,10 +224,11 @@ type Plugin struct {
 	createNameInput       textinput.Model
 	createBaseBranchInput textinput.Model
 	createTaskID          string
-	createTaskTitle       string    // Title of selected task for display
-	createAgentType       AgentType // Selected agent type (default: AgentClaude)
-	createAgentIdx        int       // Selected agent index in AgentTypeOrder
-	createSkipPermissions bool      // Skip permissions checkbox
+	createTaskTitle       string      // Title of selected task for display
+	createAgentType       AgentType   // Selected agent type (default: AgentClaude)
+	createAgentIdx        int         // Selected agent index in createAgentOrder
+	createAgentOrder      []AgentType // Filtered agent order for create modal
+	createSkipPermissions bool        // Skip permissions checkbox
 	createFocus           int       // 0=name, 1=base, 2=prompt, 3=task, 4=agent, 5=skipPerms, 6=create, 7=cancel
 	createButtonHover     int       // 0=none, 1=create, 2=cancel
 	createError           string    // Error message to display in create modal
@@ -294,15 +295,16 @@ type Plugin struct {
 	agentChoiceModalWidth int          // Cached width for rebuild detection
 
 	// Agent config modal state (start/restart with options)
-	agentConfigWorktree   *Worktree
-	agentConfigIsRestart  bool
-	agentConfigAgentType  AgentType
-	agentConfigAgentIdx   int
-	agentConfigSkipPerms  bool
-	agentConfigPromptIdx  int
-	agentConfigPrompts    []Prompt
-	agentConfigModal      *modal.Modal
-	agentConfigModalWidth int
+	agentConfigWorktree    *Worktree
+	agentConfigIsRestart   bool
+	agentConfigAgentType   AgentType
+	agentConfigAgentIdx    int
+	agentConfigAgentOrder  []AgentType // Filtered agent order for agent config modal
+	agentConfigSkipPerms   bool
+	agentConfigPromptIdx   int
+	agentConfigPrompts     []Prompt
+	agentConfigModal       *modal.Modal
+	agentConfigModalWidth  int
 
 	// Prompt picker return routing
 	promptPickerReturnMode ViewMode
@@ -359,10 +361,11 @@ type Plugin struct {
 	typeSelectorModalWidth int             // Cached width for rebuild detection
 
 	// Type selector modal - shell agent selection (td-2bb232)
-	typeSelectorAgentIdx   int       // Selected index in agent list (0 = None)
-	typeSelectorAgentType  AgentType // The selected agent type
-	typeSelectorSkipPerms  bool      // Whether skip permissions is checked
-	typeSelectorFocusField int       // Focus: 0=name, 1=agent, 2=skipPerms, 3=buttons
+	typeSelectorAgentIdx   int         // Selected index in agent list (0 = None)
+	typeSelectorAgentType  AgentType   // The selected agent type
+	typeSelectorAgentOrder []AgentType // Filtered agent order for shell creation
+	typeSelectorSkipPerms  bool        // Whether skip permissions is checked
+	typeSelectorFocusField int         // Focus: 0=name, 1=agent, 2=skipPerms, 3=buttons
 
 	// Resume conversation state (td-aa4136)
 	pendingResumeCmd      string // Resume command to inject after shell creation
@@ -854,6 +857,80 @@ func (p *Plugin) getConfigDefaultAgentType() AgentType {
 	return AgentClaude
 }
 
+// filteredAgentOrder returns the agent order filtered by config.
+// If agentFilter is empty, returns the full AgentTypeOrder.
+// AgentNone is always included at the end regardless of filter.
+func (p *Plugin) filteredAgentOrder() []AgentType {
+	if p == nil || p.ctx == nil || p.ctx.Config == nil {
+		return AgentTypeOrder
+	}
+	filter := p.ctx.Config.Plugins.Workspace.AgentFilter
+	if len(filter) == 0 {
+		return AgentTypeOrder
+	}
+
+	// Build set of allowed agents from config
+	allowed := make(map[AgentType]bool, len(filter))
+	for _, id := range filter {
+		at := AgentType(id)
+		if _, ok := AgentDisplayNames[at]; ok && at != AgentNone {
+			allowed[at] = true
+		}
+	}
+
+	// Filter AgentTypeOrder to preserve ordering
+	result := make([]AgentType, 0, len(allowed)+1)
+	for _, at := range AgentTypeOrder {
+		if at == AgentNone {
+			continue // Add None at the end
+		}
+		if allowed[at] {
+			result = append(result, at)
+		}
+	}
+
+	// Always include None at the end
+	result = append(result, AgentNone)
+	return result
+}
+
+// filteredShellAgentOrder returns the agent order for shell creation filtered by config.
+// If agentFilter is empty, returns the full ShellAgentOrder (None first).
+// AgentNone is always included at the beginning regardless of filter.
+func (p *Plugin) filteredShellAgentOrder() []AgentType {
+	if p == nil || p.ctx == nil || p.ctx.Config == nil {
+		return ShellAgentOrder
+	}
+	filter := p.ctx.Config.Plugins.Workspace.AgentFilter
+	if len(filter) == 0 {
+		return ShellAgentOrder
+	}
+
+	// Build set of allowed agents from config
+	allowed := make(map[AgentType]bool, len(filter))
+	for _, id := range filter {
+		at := AgentType(id)
+		if _, ok := AgentDisplayNames[at]; ok && at != AgentNone {
+			allowed[at] = true
+		}
+	}
+
+	// Start with None (shells default to no agent)
+	result := []AgentType{AgentNone}
+
+	// Filter ShellAgentOrder to preserve ordering (skip None, already added)
+	for _, at := range ShellAgentOrder {
+		if at == AgentNone {
+			continue
+		}
+		if allowed[at] {
+			result = append(result, at)
+		}
+	}
+
+	return result
+}
+
 // resolveWorktreeAgentType returns the agent type to use when starting an agent for a worktree.
 // Hierarchy: .sidecar-agent file -> config defaultAgentType -> Claude fallback.
 func (p *Plugin) resolveWorktreeAgentType(wt *Worktree) AgentType {
@@ -885,6 +962,7 @@ func (p *Plugin) clearCreateModal() {
 	p.createBaseBranchInput = textinput.Model{}
 	p.createTaskID = ""
 	p.createTaskTitle = ""
+	p.createAgentOrder = nil
 	p.createAgentType = p.getDefaultCreateAgentType()
 	p.createAgentIdx = p.agentTypeIndex(p.createAgentType)
 	p.createSkipPermissions = false
@@ -937,6 +1015,7 @@ func (p *Plugin) initCreateModalBase() {
 	// Reset all state
 	p.createTaskID = ""
 	p.createTaskTitle = ""
+	p.createAgentOrder = p.filteredAgentOrder()
 	p.createAgentType = p.getDefaultCreateAgentType()
 	p.createAgentIdx = p.agentTypeIndex(p.createAgentType)
 	p.createSkipPermissions = false

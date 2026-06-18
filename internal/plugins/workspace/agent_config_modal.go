@@ -26,8 +26,9 @@ func (p *Plugin) openAgentConfigModal(wt *Worktree, isRestart bool) {
 	configDir := filepath.Join(home, ".config", "sidecar")
 	p.agentConfigWorktree = wt
 	p.agentConfigIsRestart = isRestart
+	p.agentConfigAgentOrder = p.filteredAgentOrder()
 	p.agentConfigAgentType = p.resolveWorktreeAgentType(wt)
-	p.agentConfigAgentIdx = p.agentTypeIndex(p.agentConfigAgentType)
+	p.agentConfigAgentIdx = p.agentConfigTypeIndex(p.agentConfigAgentType)
 	p.agentConfigSkipPerms = false
 	p.agentConfigPromptIdx = -1
 	p.agentConfigPrompts = LoadPrompts(configDir, p.ctx.ProjectRoot)
@@ -36,12 +37,27 @@ func (p *Plugin) openAgentConfigModal(wt *Worktree, isRestart bool) {
 	p.viewMode = ViewModeAgentConfig
 }
 
+// agentConfigTypeIndex returns the index of the agent type in agentConfigAgentOrder.
+func (p *Plugin) agentConfigTypeIndex(agentType AgentType) int {
+	agentOrder := p.agentConfigAgentOrder
+	if len(agentOrder) == 0 {
+		agentOrder = AgentTypeOrder
+	}
+	for i, at := range agentOrder {
+		if at == agentType {
+			return i
+		}
+	}
+	return 0
+}
+
 // clearAgentConfigModal resets all agent config modal state.
 func (p *Plugin) clearAgentConfigModal() {
 	p.agentConfigWorktree = nil
 	p.agentConfigIsRestart = false
 	p.agentConfigAgentType = ""
 	p.agentConfigAgentIdx = 0
+	p.agentConfigAgentOrder = nil
 	p.agentConfigSkipPerms = false
 	p.agentConfigPromptIdx = -1
 	p.agentConfigPrompts = nil
@@ -95,8 +111,12 @@ func (p *Plugin) ensureAgentConfigModal() {
 	}
 	p.agentConfigModalWidth = modalW
 
-	items := make([]modal.ListItem, len(AgentTypeOrder))
-	for i, at := range AgentTypeOrder {
+	agentOrder := p.agentConfigAgentOrder
+	if len(agentOrder) == 0 {
+		agentOrder = AgentTypeOrder
+	}
+	items := make([]modal.ListItem, len(agentOrder))
+	for i, at := range agentOrder {
 		items[i] = modal.ListItem{
 			ID:    fmt.Sprintf("%s%d", agentConfigAgentItemPrefix, i),
 			Label: AgentDisplayNames[at],

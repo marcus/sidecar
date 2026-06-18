@@ -249,7 +249,10 @@ Config file: `~/.config/sidecar/config.json`
     "td-monitor": { "enabled": true, "refreshInterval": "2s" },
     "conversations": { "enabled": true },
     "file-browser": { "enabled": true },
-    "workspaces": { "enabled": true }
+    "workspace": {
+      "defaultAgentType": "claude",
+      "agentFilter": ["claude", "codex", "copilot"]
+    }
   },
   "ui": {
     "showClock": true,
@@ -260,6 +263,15 @@ Config file: `~/.config/sidecar/config.json`
   }
 }
 ```
+
+### Workspace Plugin Options
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `defaultAgentType` | string | `"claude"` | Default agent selected when creating workspaces. Valid values: `claude`, `codex`, `copilot`, `gemini`, `cursor`, `opencode`, `pi`, `amp` |
+| `agentFilter` | string[] | `[]` (all agents) | Limits which agents appear in selection UIs. If empty or omitted, all agents are shown. "None (attach only)" is always available. |
+| `dirPrefix` | bool | `true` | Prefix workspace directories with repo name |
+| `agentStart` | object | `{}` | Map of agent type to custom startup command (e.g., `{"claude": "claude --profile fast"}`) |
 
 ## Contributing
 

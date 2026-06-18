@@ -408,3 +408,58 @@ func TestLoadFrom_FileBrowserDisabled(t *testing.T) {
 		t.Error("git-status should still be enabled (default)")
 	}
 }
+
+func TestLoadFrom_WorkspaceAgentFilter(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+	content := []byte(`{
+		"plugins": {
+			"workspace": {
+				"agentFilter": ["claude", "codex", "copilot"]
+			}
+		}
+	}`)
+	if err := os.WriteFile(path, content, 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := LoadFrom(path)
+	if err != nil {
+		t.Fatalf("LoadFrom failed: %v", err)
+	}
+
+	if len(cfg.Plugins.Workspace.AgentFilter) != 3 {
+		t.Errorf("AgentFilter length = %d, want 3", len(cfg.Plugins.Workspace.AgentFilter))
+	}
+	expected := []string{"claude", "codex", "copilot"}
+	for i, want := range expected {
+		if cfg.Plugins.Workspace.AgentFilter[i] != want {
+			t.Errorf("AgentFilter[%d] = %q, want %q", i, cfg.Plugins.Workspace.AgentFilter[i], want)
+		}
+	}
+}
+
+func TestLoadFrom_WorkspaceAgentFilter_Empty(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+	content := []byte(`{
+		"plugins": {
+			"workspace": {
+				"agentFilter": []
+			}
+		}
+	}`)
+	if err := os.WriteFile(path, content, 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := LoadFrom(path)
+	if err != nil {
+		t.Fatalf("LoadFrom failed: %v", err)
+	}
+
+	// Empty array should not override (stays nil/empty)
+	if len(cfg.Plugins.Workspace.AgentFilter) != 0 {
+		t.Errorf("AgentFilter length = %d, want 0", len(cfg.Plugins.Workspace.AgentFilter))
+	}
+}
