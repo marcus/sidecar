@@ -4,7 +4,7 @@ builds:
   - main: ./cmd/sidecar
     binary: sidecar
     ldflags:
-      - -s -w -X main.Version={{ .Version }}
+      - -s -w -X main.Version={{ .Version }} -X main.Commit={{ .ShortCommit }} -X main.Dirty=false -X main.BuildDate={{ .Date }} -X main.BuildProfile=release
     env:
       - CGO_ENABLED=0
     goos:
