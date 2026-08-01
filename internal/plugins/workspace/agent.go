@@ -616,24 +616,30 @@ fi
 	switch agentType {
 	case AgentAider:
 		// aider uses --message flag
+		// Use tmpfile to avoid bash 3.2 bug: apostrophes in heredoc inside $(...) break parsing on macOS.
 		script = fmt.Sprintf(`#!/bin/bash
 %s
-%s --message "$(cat <<'SIDECAR_PROMPT_EOF'
+TMPFILE=$(mktemp /tmp/sidecar-prompt.XXXXXX)
+cat > "$TMPFILE" <<'SIDECAR_PROMPT_EOF'
 %s
 SIDECAR_PROMPT_EOF
-)"
+%s --message "$(cat "$TMPFILE")"
+rm -f "$TMPFILE"
 rm -f %q
-`, shellSetup, baseCmd, prompt, launcherFile)
+`, shellSetup, prompt, baseCmd, launcherFile)
 	case AgentOpenCode:
 		// opencode uses 'run' subcommand
+		// Use tmpfile to avoid bash 3.2 bug: apostrophes in heredoc inside $(...) break parsing on macOS.
 		script = fmt.Sprintf(`#!/bin/bash
 %s
-%s run "$(cat <<'SIDECAR_PROMPT_EOF'
+TMPFILE=$(mktemp /tmp/sidecar-prompt.XXXXXX)
+cat > "$TMPFILE" <<'SIDECAR_PROMPT_EOF'
 %s
 SIDECAR_PROMPT_EOF
-)"
+%s run "$(cat "$TMPFILE")"
+rm -f "$TMPFILE"
 rm -f %q
-`, shellSetup, baseCmd, prompt, launcherFile)
+`, shellSetup, prompt, baseCmd, launcherFile)
 	case AgentAmp:
 		// amp requires piping via stdin, does not accept positional args
 		script = fmt.Sprintf(`#!/bin/bash
@@ -644,15 +650,18 @@ SIDECAR_PROMPT_EOF
 rm -f %q
 `, shellSetup, baseCmd, prompt, launcherFile)
 	default:
-		// Most agents (claude, codex, gemini, cursor) take prompt as positional argument
+		// Most agents (claude, codex, gemini, cursor) take prompt as positional argument.
+		// Use tmpfile to avoid bash 3.2 bug: apostrophes in heredoc inside $(...) break parsing on macOS.
 		script = fmt.Sprintf(`#!/bin/bash
 %s
-%s "$(cat <<'SIDECAR_PROMPT_EOF'
+TMPFILE=$(mktemp /tmp/sidecar-prompt.XXXXXX)
+cat > "$TMPFILE" <<'SIDECAR_PROMPT_EOF'
 %s
 SIDECAR_PROMPT_EOF
-)"
+%s "$(cat "$TMPFILE")"
+rm -f "$TMPFILE"
 rm -f %q
-`, shellSetup, baseCmd, prompt, launcherFile)
+`, shellSetup, prompt, baseCmd, launcherFile)
 	}
 
 	if err := os.WriteFile(launcherFile, []byte(script), 0700); err != nil {
