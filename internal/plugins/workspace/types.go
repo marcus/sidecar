@@ -137,6 +137,7 @@ const (
 	AgentGemini   AgentType = "gemini"   // Gemini CLI
 	AgentCursor   AgentType = "cursor"   // Cursor Agent
 	AgentOpenCode AgentType = "opencode" // OpenCode
+	AgentGoose    AgentType = "goose"    // Goose CLI
 	AgentPi       AgentType = "pi"       // Pi Agent
 	AgentAmp      AgentType = "amp"      // Amp
 	AgentCustom   AgentType = "custom"   // Custom command
@@ -152,6 +153,7 @@ var SkipPermissionsFlags = map[AgentType]string{
 	AgentGemini:   "--yolo",
 	AgentCursor:   "-f",
 	AgentOpenCode: "", // No known flag
+	AgentGoose:    "", // No known flag
 	AgentPi:       "", // No known flag
 	AgentAmp:      "--dangerously-allow-all",
 }
@@ -174,6 +176,7 @@ var AgentDisplayNames = map[AgentType]string{
 	AgentGemini:   "Gemini CLI",
 	AgentCursor:   "Cursor Agent",
 	AgentOpenCode: "OpenCode",
+	AgentGoose:    "Goose CLI",
 	AgentPi:       "Pi Agent",
 	AgentAmp:      "Amp",
 	AgentShell:    "Project Shell",
@@ -188,6 +191,7 @@ var shellAgentAbbreviations = map[AgentType]string{
 	AgentGemini:   "Gemini",
 	AgentCursor:   "Cursor",
 	AgentOpenCode: "OpenCode",
+	AgentGoose:    "Goose",
 	AgentPi:       "Pi",
 	AgentAmp:      "Amp",
 }
@@ -201,6 +205,7 @@ var AgentCommands = map[AgentType]string{
 	AgentGemini:   "gemini",
 	AgentCursor:   "cursor-agent",
 	AgentOpenCode: "opencode",
+	AgentGoose:    "goose",
 	AgentPi:       "pi",
 	AgentAmp:      "amp",
 }
@@ -213,6 +218,7 @@ var AgentTypeOrder = []AgentType{
 	AgentGemini,
 	AgentCursor,
 	AgentOpenCode,
+	AgentGoose,
 	AgentPi,
 	AgentAmp,
 	AgentNone,
@@ -228,6 +234,7 @@ var ShellAgentOrder = []AgentType{
 	AgentGemini,
 	AgentCursor,
 	AgentOpenCode,
+	AgentGoose,
 	AgentPi,
 	AgentAmp,
 }
