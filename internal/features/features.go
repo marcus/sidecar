@@ -47,6 +47,13 @@ var (
 		Default:     false,
 		Description: "Enable the notes plugin for capturing quick notes",
 	}
+
+	// RunPlugin enables the run plugin for executing project commands.
+	RunPlugin = Feature{
+		Name:        "run_plugin",
+		Default:     false,
+		Description: "Enable the run plugin for executing project commands",
+	}
 )
 
 // allFeatures is the registry of all known features.
@@ -55,6 +62,7 @@ var allFeatures = []Feature{
 	TmuxInlineEdit,
 	FilesAutoRefresh,
 	NotesPlugin,
+	RunPlugin,
 }
 
 // defaultValues provides O(1) lookup for feature defaults.
