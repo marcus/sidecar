@@ -352,23 +352,10 @@ func (p *Plugin) updateSearch(msg tea.KeyPressMsg) (plugin.Plugin, tea.Cmd) {
 			return p, p.schedulePreviewLoad(p.selectedSession)
 		}
 
-	case "g":
-		p.cursor = 0
-		p.scrollOff = 0
-		sessions := p.visibleSessions()
-		if len(sessions) > 0 {
-			p.setSelectedSession(sessions[0].ID)
-			return p, p.schedulePreviewLoad(p.selectedSession)
-		}
-
-	case "G":
-		sessions := p.visibleSessions()
-		if len(sessions) > 0 {
-			p.cursor = len(sessions) - 1
-			p.ensureCursorVisible()
-			p.setSelectedSession(sessions[p.cursor].ID)
-			return p, p.schedulePreviewLoad(p.selectedSession)
-		}
+	// Note: 'g'/'G' goto-top/bottom are intentionally NOT bound here so they
+	// fall through to the default branch and are typed into the search query
+	// (issue #166). This mirrors the arrow-key-only navigation precedent
+	// (td-2467e8) already applied to up/down/h in the search input.
 
 	default:
 		// Add character to search query

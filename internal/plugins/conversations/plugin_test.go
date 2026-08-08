@@ -812,6 +812,46 @@ func TestUpdateSearchBackspace(t *testing.T) {
 	}
 }
 
+// TestUpdateSearchTypingGoto verifies that 'g' and 'G' are typed into the
+// search query instead of being swallowed by list goto-top/bottom navigation
+// while the search input is active (issue #166). Mirrors the arrow-key-only
+// navigation precedent (td-2467e8) already applied to up/down/h in this view.
+func TestUpdateSearchTypingGoto(t *testing.T) {
+	p := New()
+	p.adapters = map[string]adapter.Adapter{"mock": &mockAdapter{}}
+	p.sessions = []adapter.Session{
+		{ID: "test-1", Name: "go-build"},
+		{ID: "test-2", Name: "Golang"},
+		{ID: "test-3", Name: "other"},
+	}
+	p.searchMode = true
+
+	// Type 'g' — must land in the query, not trigger goto-top.
+	msg := tea.KeyPressMsg{Code: 'g', Text: "g"}
+	_, _ = p.Update(msg)
+
+	if p.searchQuery != "g" {
+		t.Errorf("expected 'g' to be typed into searchQuery, got %q (likely swallowed by goto-top navigation)", p.searchQuery)
+	}
+
+	// Type 'o' — completing "go", the exact scenario from issue #166.
+	msg = tea.KeyPressMsg{Code: 'o', Text: "o"}
+	_, _ = p.Update(msg)
+
+	if p.searchQuery != "go" {
+		t.Errorf("expected searchQuery 'go', got %q", p.searchQuery)
+	}
+
+	// 'G' (shift+g) must also be typed, not trigger goto-bottom.
+	p.searchQuery = ""
+	msg = tea.KeyPressMsg{Code: 'G', Text: "G"}
+	_, _ = p.Update(msg)
+
+	if p.searchQuery != "G" {
+		t.Errorf("expected 'G' to be typed into searchQuery, got %q (likely swallowed by goto-bottom navigation)", p.searchQuery)
+	}
+}
+
 // TestUpdateSearchNavigationDown tests down navigation in search results.
 func TestUpdateSearchNavigationDown(t *testing.T) {
 	p := New()
