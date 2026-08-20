@@ -148,7 +148,10 @@ kind is issue, task, commit, file, session or url; :line applies to files only;
 and @project names another checkout by configured project name or by path, in
 which case Sidecar switches projects and then lands. Ids written in the title or
 body are still found by scanning — --target is for precision and for targets the
-text does not spell out.
+text does not spell out. A session target attaches a Sidecar-owned tmux
+session — the sidecar-sh-… and sidecar-ws-… names shells and worktree agents
+run under, which are also the only ones found by scanning. A task target opens
+the Tasks tab.
 
 ```
 Usage: sidecar notify post [options] <title>

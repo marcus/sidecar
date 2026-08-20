@@ -338,3 +338,80 @@ func TestScanGitDottedWinsOverComponentRevs(t *testing.T) {
 		t.Fatalf("resolver saw %#v, want only the range token", seen)
 	}
 }
+
+// TestScanFindsSidecarSessionNames pins the session pattern to the names
+// Sidecar itself mints — a shell (sidecar-sh-<project>-<n>) and a worktree
+// agent (sidecar-ws-<slug>) — because those are the only sessions any surface
+// attaches to.
+func TestScanFindsSidecarSessionNames(t *testing.T) {
+	for _, line := range []string{
+		"agent idle in sidecar-sh-repo-1",
+		"sidecar-ws-notification-center finished",
+		"(sidecar-ws-td-331dbf19) needs review",
+	} {
+		spans := Scan(line, nil, nil)
+		var sessions []Span
+		for _, span := range spans {
+			if span.Kind == KindSession {
+				sessions = append(sessions, span)
+			}
+		}
+		if len(sessions) != 1 {
+			t.Fatalf("%q: got %d session spans: %+v", line, len(sessions), spans)
+		}
+		got := sessions[0]
+		if line[got.StartCol:got.EndCol+1] != got.Value {
+			t.Fatalf("%q: columns %d-%d do not cover %q", line, got.StartCol, got.EndCol, got.Value)
+		}
+		if !SessionName(got.Value) {
+			t.Fatalf("%q: scanned %q that SessionName rejects", line, got.Value)
+		}
+	}
+}
+
+// TestScanDoesNotInventSessions is the false-positive gate. A tmux session name
+// is free text, so anything looser than "a name Sidecar minted, whole token"
+// would underline ordinary prose and paths.
+func TestScanDoesNotInventSessions(t *testing.T) {
+	for _, line := range []string{
+		"attach to main",                        // an ordinary tmux name
+		"the sidecar session is running",        // prose about sidecar
+		"see /tmp/sidecar-sh-repo-1.log",        // a filename containing one
+		"sidecar-tp-repo is the terminal panel", // an internal pane, never attached
+		"sidecar-edit-12345 died",               // likewise
+		"my-sidecar-sh-repo-1 is not ours",      // not the whole token
+		"sidecar-sh- has no body",
+		"SIDECAR-SH-REPO-1 shouts",
+	} {
+		for _, span := range Scan(line, nil, nil) {
+			if span.Kind == KindSession {
+				t.Fatalf("%q: invented session %q", line, span.Value)
+			}
+		}
+	}
+}
+
+// TestSessionWinsOverTheIdInsideIt keeps a worktree session named after an
+// issue whole: the token is a session, not the id hiding in it.
+func TestSessionWinsOverTheIdInsideIt(t *testing.T) {
+	spans := Scan("sidecar-ws-td-331dbf19 is stuck", nil, nil)
+	for _, span := range spans {
+		if span.Kind == KindIssue {
+			t.Fatalf("issue span %q inside a session name: %+v", span.Value, spans)
+		}
+	}
+	if len(spans) != 1 || spans[0].Kind != KindSession {
+		t.Fatalf("got %+v", spans)
+	}
+}
+
+func TestSessionNameRejectsWhatItDoesNotMint(t *testing.T) {
+	for _, value := range []string{"", "main", "sidecar-tp-repo", "sidecar-sh-repo-1 ", "sidecar-sh-repo;rm -rf /", "sidecar-sh-repo-1.log"} {
+		if SessionName(value) {
+			t.Fatalf("SessionName(%q) = true", value)
+		}
+	}
+	if !SessionName("sidecar-ws-alpha") {
+		t.Fatal("SessionName rejected a name Sidecar mints")
+	}
+}

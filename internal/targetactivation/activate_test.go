@@ -125,10 +125,11 @@ func TestResolvePaneKinds(t *testing.T) {
 func TestSpanKindsCoverPlanKinds(t *testing.T) {
 	t.Parallel()
 	spans := map[terminallink.Kind]terminallink.Span{
-		terminallink.KindURL:   {Kind: terminallink.KindURL, Value: "https://example.com"},
-		terminallink.KindFile:  {Kind: terminallink.KindFile, Value: "internal/app/model.go", Extra: terminallink.Extra{Line: 12}},
-		terminallink.KindIssue: {Kind: terminallink.KindIssue, Value: "td-331dbf19"},
-		terminallink.KindDiff:  {Kind: terminallink.KindDiff, Value: "abc1234", Extra: terminallink.Extra{Raw: "HEAD~1"}},
+		terminallink.KindURL:     {Kind: terminallink.KindURL, Value: "https://example.com"},
+		terminallink.KindFile:    {Kind: terminallink.KindFile, Value: "internal/app/model.go", Extra: terminallink.Extra{Line: 12}},
+		terminallink.KindIssue:   {Kind: terminallink.KindIssue, Value: "td-331dbf19"},
+		terminallink.KindDiff:    {Kind: terminallink.KindDiff, Value: "abc1234", Extra: terminallink.Extra{Raw: "HEAD~1"}},
+		terminallink.KindSession: {Kind: terminallink.KindSession, Value: "sidecar-sh-repo-1"},
 		terminallink.KindResource: {
 			Kind: terminallink.KindResource, Value: "CASH-1245",
 			Extra: terminallink.Extra{Provider: "jira", Matcher: "issue-key"},

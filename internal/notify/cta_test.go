@@ -77,15 +77,21 @@ func TestCallsToActionDropsDuplicatesAndUnactivatableKinds(t *testing.T) {
 		Title:  "td-aaaa1111 and td-aaaa1111 again",
 		Targets: []Target{
 			{Kind: TargetIssue, Value: "td-aaaa1111"},
-			{Kind: TargetTask, Value: "task-7"}, // no activation until Phase 5c
+			{Kind: TargetTask, Value: "task-7"},
+			{Kind: TargetKind("horoscope"), Value: "scorpio"}, // no activation, ever
 		},
 	}
 	list := CallsToAction(n, terminallink.Options{})
-	if len(list) != 1 {
+	if len(list) != 2 {
 		t.Fatalf("got %d: %+v", len(list), list)
 	}
 	if list[0].Target.Value != "td-aaaa1111" || list[0].Field != CTAFieldTitle {
-		t.Fatalf("only = %+v", list[0])
+		t.Fatalf("first = %+v", list[0])
+	}
+	// A task has no detection pattern, so it is numbered from the stored
+	// target alone and has nothing in the text to underline.
+	if list[1].Target.Kind != uirequest.TargetKindTask || list[1].Field != CTAFieldNone {
+		t.Fatalf("second = %+v", list[1])
 	}
 }
 

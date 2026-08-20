@@ -362,6 +362,14 @@ func (p *Plugin) activateResolvedTerminalLink(link terminalLink, context termina
 		return p.activateDiffLink(plan.Spec)
 	case targetactivation.PlanOpenFile:
 		return p.activateFilePlan(plan, link, context, termPanel)
+	case targetactivation.PlanAttachSession:
+		// The same lookup the public AttachSessionMsg does, and the same gate:
+		// a name matching no shell and no worktree agent attaches nothing.
+		if cmd := p.attachSessionMsg(app.AttachSessionMsg{Session: plan.Session}); cmd != nil {
+			p.clearTerminalSelection()
+			return cmd, true
+		}
+		return nil, false
 	default:
 		return nil, false
 	}
@@ -374,7 +382,7 @@ func terminalHandlesPlanKind(kind targetactivation.PlanKind) bool {
 	switch kind {
 	case targetactivation.PlanOpenURL, targetactivation.PlanOpenFile,
 		targetactivation.PlanOpenIssue, targetactivation.PlanOpenDiff,
-		targetactivation.PlanOpenResource:
+		targetactivation.PlanOpenResource, targetactivation.PlanAttachSession:
 		return true
 	default:
 		return false

@@ -85,6 +85,15 @@ func ParseTargetSpec(spec string) (Target, error) {
 		if _, ok := terminallink.SafeHTTPURL(value); !ok {
 			return Target{}, fmt.Errorf("target %q is not a safe http(s) URL", spec)
 		}
+	case TargetSession:
+		// Only Sidecar-owned session names attach: the lookup behind a session
+		// target is over this instance's shells and worktree agents, and every
+		// one of those runs under a name of this shape. Refusing here is the
+		// difference between a typo an agent can see and a digit that silently
+		// does nothing.
+		if !terminallink.SessionName(value) {
+			return Target{}, fmt.Errorf("target %q is not a Sidecar tmux session (want sidecar-sh-… or sidecar-ws-…)", spec)
+		}
 	case TargetIssue:
 		if !terminallink.IssueID(value) {
 			return Target{}, fmt.Errorf("target %q is not a td issue id (want td-xxxxxx)", spec)

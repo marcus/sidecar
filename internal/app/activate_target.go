@@ -57,6 +57,12 @@ func (m *Model) activateTarget(req ActivateTargetMsg) tea.Cmd {
 		return tea.Batch(FocusPlugin(plan.PluginID), OpenResourcePane(plan.Provider, plan.Matcher, plan.Locator))
 	case targetactivation.PlanAttachSession:
 		return tea.Batch(FocusPlugin(plan.PluginID), AttachSession(plan.Session))
+	case targetactivation.PlanOpenTask:
+		// Focusing the tab is what this route can promise. The embedded Tasks
+		// UI exposes no select-by-id entry point, so landing on the task
+		// itself is not available yet; when it is, it becomes a second command
+		// here and nothing else changes.
+		return FocusPlugin(plan.PluginID)
 	default:
 		return nil
 	}

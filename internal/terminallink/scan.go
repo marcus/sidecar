@@ -20,6 +20,9 @@ const (
 	// Which provider and matcher produced it lives in Extra, so adding a
 	// provider never adds a kind.
 	KindResource Kind = "resource"
+	// KindSession is a tmux session a surface can attach to. Only sessions
+	// Sidecar itself named are detected — see sessionPattern.
+	KindSession Kind = "session"
 )
 
 // Activatable reports whether a kind is one a host can act on, and so one
@@ -28,7 +31,7 @@ const (
 // surface's decoration and miss the other's hit testing.
 func Activatable(k Kind) bool {
 	switch k {
-	case KindURL, KindFile, KindIssue, KindDiff, KindResource:
+	case KindURL, KindFile, KindIssue, KindDiff, KindResource, KindSession:
 		return true
 	default:
 		return false
@@ -88,6 +91,18 @@ var (
 	// The same shape anchored, for callers holding a stored id rather than a
 	// line of output.
 	issueIDPattern = regexp.MustCompile(`^td-[0-9a-fA-F]{4,}$`)
+	// Sidecar-owned tmux session names, and only those. A tmux session name
+	// is otherwise free text — "main", "work", "notes" — and a pattern that
+	// matched free text would underline half of ordinary prose. The two
+	// prefixes here are the only sessions anything can attach to (a shell,
+	// `sidecar-sh-<project>-<n>`, and a worktree agent, `sidecar-ws-<slug>`);
+	// `sidecar-tp-`, `sidecar-edit-` and friends are internal panes that no
+	// surface attaches, so detecting them would promise a jump that cannot
+	// happen. Whole-token matching is enforced separately, so a path or a log
+	// filename containing a session name is not a session.
+	sessionPattern = regexp.MustCompile(`\bsidecar-(?:sh|ws)-[A-Za-z0-9][A-Za-z0-9_-]{0,63}`)
+	// The same shape anchored, for a caller holding a stored session name.
+	sessionNamePattern = regexp.MustCompile(`^sidecar-(?:sh|ws)-[A-Za-z0-9][A-Za-z0-9_-]{0,63}$`)
 	// Lowercase hex only. Mixed-case and HEAD/branch names are CLI-only.
 	gitRevPattern        = regexp.MustCompile(`[0-9a-f]{7,64}`)
 	gitDottedPattern     = regexp.MustCompile(`[0-9a-f]{7,64}(?:\.\.\.|\.\.)[0-9a-f]{7,64}`)
@@ -100,6 +115,14 @@ var (
 // element of the fetch.
 func IssueID(value string) bool {
 	return issueIDPattern.MatchString(value)
+}
+
+// SessionName reports whether value is a Sidecar-owned tmux session name of
+// the shape this package detects. A host restoring a name from disk — a stored
+// notification target, say — asks here rather than trusting the file: the name
+// becomes an argv element of a tmux command.
+func SessionName(value string) bool {
+	return sessionNamePattern.MatchString(value)
 }
 
 // Options collects everything a scan may consult. The zero value scans only
@@ -141,6 +164,10 @@ func ScanWith(line string, opts Options) []Span {
 	if opts.Resolve != nil {
 		spans = append(spans, scanBareFiles(plain, spans, opts.Resolve)...)
 	}
+	// Sessions before issues and git specs: a worktree session named after an
+	// issue (sidecar-ws-td-331dbf19) or ending in hex must be the whole token
+	// it is, not the id hiding inside it.
+	spans = append(spans, scanSessions(plain, spans)...)
 	spans = append(spans, scanIssues(plain, spans)...)
 	if opts.ResolveDiff != nil {
 		spans = append(spans, scanGitSpecs(plain, spans, opts.ResolveDiff)...)
@@ -239,6 +266,26 @@ func scanBareFiles(plain string, existing []Span, resolve Resolver) []Span {
 			EndCol:   colAt(plain, end) - 1,
 			Value:    resolved,
 			Extra:    extra,
+		})
+	}
+	return spans
+}
+
+// scanSessions finds Sidecar-owned tmux session names. Whole-token only: the
+// same rule issue ids follow, so `/tmp/sidecar-sh-repo-1.log` and
+// `sidecar-sh-repo-1x` are text, not sessions.
+func scanSessions(plain string, existing []Span) []Span {
+	var spans []Span
+	for _, loc := range sessionPattern.FindAllStringIndex(plain, -1) {
+		start, end := loc[0], loc[1]
+		if overlaps(plain, existing, spans, start, end) || !issueTokenWhole(plain, start, end) {
+			continue
+		}
+		spans = append(spans, Span{
+			Kind:     KindSession,
+			StartCol: colAt(plain, start),
+			EndCol:   colAt(plain, end) - 1,
+			Value:    plain[start:end],
 		})
 	}
 	return spans

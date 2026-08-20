@@ -250,3 +250,47 @@ func TestCentreActivatesACrossProjectTarget(t *testing.T) {
 		t.Fatalf("numbered list = %+v", list)
 	}
 }
+
+// A session named in an agent notification is a call to action from the
+// centre: the scan finds Sidecar's own session names, so no poster has to
+// attach one for the common case.
+func TestCentreActivatesAScannedSessionTarget(t *testing.T) {
+	m := centreTestModel(t, &sizingPlugin{id: "files"})
+	postTargetNotification(t, &m, "agent finished", "sidecar-ws-alpha is waiting for you")
+	m.toggleNotificationCentre()
+	m.notificationCentreCursor = 0
+
+	handled, cmd := m.notificationCentreKey(tea.KeyPressMsg{Code: tea.KeyEnter})
+	if !handled {
+		t.Fatal("enter was not consumed by the panel")
+	}
+	activate, ok := activateTargetMsgFrom(t, cmd)
+	if !ok {
+		t.Fatal("enter did not ask for an activation")
+	}
+	if activate.Target.Kind != uirequest.TargetKindSession || activate.Target.Value != "sidecar-ws-alpha" {
+		t.Fatalf("activated %+v", activate.Target)
+	}
+}
+
+// A task target has no detection pattern, so it only ever arrives attached —
+// and when it does, it is numbered and it jumps.
+func TestCentreActivatesAnAttachedTaskTarget(t *testing.T) {
+	m := centreTestModel(t, &sizingPlugin{id: "files"})
+	postTargetNotification(t, &m, "task due", "pay the invoice",
+		notify.Target{Kind: notify.TargetTask, Value: "a1b2c3d4"})
+	m.toggleNotificationCentre()
+	m.notificationCentreCursor = 0
+
+	handled, cmd := m.notificationCentreKey(tea.KeyPressMsg{Code: tea.KeyEnter})
+	if !handled {
+		t.Fatal("enter was not consumed by the panel")
+	}
+	activate, ok := activateTargetMsgFrom(t, cmd)
+	if !ok {
+		t.Fatal("enter did not ask for an activation")
+	}
+	if activate.Target.Kind != uirequest.TargetKindTask || activate.Target.Value != "a1b2c3d4" {
+		t.Fatalf("activated %+v", activate.Target)
+	}
+}

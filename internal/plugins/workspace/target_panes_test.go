@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/marcus/sidecar/internal/app"
+	"github.com/marcus/sidecar/internal/terminallink"
 )
 
 // TestPublicPaneMessagesOpenTheSamePanesAsAClick proves the seam is real: the
@@ -37,5 +38,19 @@ func TestAttachSessionMessageHonoursTheFeatureGate(t *testing.T) {
 	}
 	if cmd := p.attachSessionMsg(app.AttachSessionMsg{Session: "anything"}); cmd != nil {
 		t.Fatal("attach by name ran with full tmux attach disabled")
+	}
+}
+
+// TestSessionLinkActivatesThroughTheSameAttach keeps the clicked session span
+// on the one attach path: no second lookup, and the same feature gate.
+func TestSessionLinkActivatesThroughTheSameAttach(t *testing.T) {
+	p := New()
+	link := terminalLink{Kind: terminallink.KindSession, Value: "sidecar-sh-nothing-1"}
+	cmd, handled := p.activateResolvedTerminalLink(link, terminalLinkSurfaceContext{}, false)
+	// A name matching no shell and no worktree agent (and, when the gate is
+	// off, any name at all) attaches nothing and says the click did nothing —
+	// never a silent "handled" that swallows the gesture.
+	if handled || cmd != nil {
+		t.Fatalf("unknown session reported handled=%v cmd=%v", handled, cmd != nil)
 	}
 }

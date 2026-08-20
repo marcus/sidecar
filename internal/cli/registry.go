@@ -242,7 +242,10 @@ func notifyCommand() *Command {
 			"and @project names another checkout by configured project name or by path, in\n" +
 			"which case Sidecar switches projects and then lands. Ids written in the title or\n" +
 			"body are still found by scanning — --target is for precision and for targets the\n" +
-			"text does not spell out.",
+			"text does not spell out. A session target attaches a Sidecar-owned tmux\n" +
+			"session — the sidecar-sh-… and sidecar-ws-… names shells and worktree agents\n" +
+			"run under, which are also the only ones found by scanning. A task target opens\n" +
+			"the Tasks tab.",
 		Flags: []Flag{
 			{Name: "--body", Arg: "TEXT", Summary: "Detail line shown under the title"},
 			{Name: "--target", Arg: "SPEC", Summary: "Call to action, kind:value[:line][@project]; repeatable"},

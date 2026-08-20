@@ -16,7 +16,7 @@ func TestParseTargetSpecAcceptsTheDocumentedGrammar(t *testing.T) {
 		{"file:internal/app/model.go:42", Target{Kind: TargetFile, Value: "internal/app/model.go", Line: 42}},
 		{"url:https://example.com/a:b", Target{Kind: TargetURL, Value: "https://example.com/a:b"}},
 		{"commit:abc1234", Target{Kind: TargetCommit, Value: "abc1234"}},
-		{"session:sidecar-main", Target{Kind: TargetSession, Value: "sidecar-main"}},
+		{"session:sidecar-sh-repo-1", Target{Kind: TargetSession, Value: "sidecar-sh-repo-1"}},
 		{"task:t-17", Target{Kind: TargetTask, Value: "t-17"}},
 		{"FILE:x.go:7", Target{Kind: TargetFile, Value: "x.go", Line: 7}},
 	}
@@ -33,12 +33,29 @@ func TestParseTargetSpecAcceptsTheDocumentedGrammar(t *testing.T) {
 
 // A commit sha or a session name may end in digits; only a file has a line.
 func TestParseTargetSpecReadsALineOnlyForFiles(t *testing.T) {
-	got, err := ParseTargetSpec("session:build:42")
+	got, err := ParseTargetSpec("commit:HEAD~1:42")
 	if err != nil {
 		t.Fatalf("ParseTargetSpec: %v", err)
 	}
-	if got.Line != 0 || got.Value != "build:42" {
-		t.Fatalf("a session target must keep its trailing digits: %+v", got)
+	if got.Line != 0 || got.Value != "HEAD~1:42" {
+		t.Fatalf("a commit target must keep its trailing digits: %+v", got)
+	}
+	session, err := ParseTargetSpec("session:sidecar-sh-repo-42")
+	if err != nil {
+		t.Fatalf("ParseTargetSpec: %v", err)
+	}
+	if session.Line != 0 || session.Value != "sidecar-sh-repo-42" {
+		t.Fatalf("a session target must keep its trailing digits: %+v", session)
+	}
+}
+
+// Only Sidecar-owned session names attach, so only they are accepted: a name
+// nothing can attach to would be a numbered digit that does nothing.
+func TestParseTargetSpecRefusesAForeignSession(t *testing.T) {
+	for _, spec := range []string{"session:main", "session:my-work", "session:sidecar-tp-repo"} {
+		if got, err := ParseTargetSpec(spec); err == nil {
+			t.Fatalf("ParseTargetSpec(%q) = %+v, want a refusal", spec, got)
+		}
 	}
 }
 

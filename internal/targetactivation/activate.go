@@ -43,6 +43,9 @@ const FileBrowserPluginID = "file-browser"
 // tmux sessions a session target attaches to.
 const WorkspacePluginID = "workspace-manager"
 
+// TasksPluginID owns task targets.
+const TasksPluginID = "tasks"
+
 // PlanKind names the executable shape of a resolved activation.
 type PlanKind string
 
@@ -63,6 +66,11 @@ const (
 	PlanOpenResource PlanKind = "open-resource"
 	// PlanAttachSession attaches the tmux session named Session.
 	PlanAttachSession PlanKind = "attach-session"
+	// PlanOpenTask focuses the Tasks tab on Task. Landing on the specific
+	// task inside the embedded model is best effort — the host does what its
+	// embedded UI allows — but focusing the tab always happens, so the jump is
+	// never a no-op.
+	PlanOpenTask PlanKind = "open-task"
 )
 
 // Plan is what the shell executes. It is data, not commands: the shell turns
@@ -79,6 +87,7 @@ type Plan struct {
 	Matcher  string
 	Locator  string
 	Session  string
+	Task     string
 }
 
 // PlanKindsFromSpans lists every plan kind a scanned terminal-link span can
@@ -86,7 +95,11 @@ type Plan struct {
 // dispatch all of these, and TestSpanKindsCoverPlanKinds keeps the list honest
 // against terminallink.Activatable.
 func PlanKindsFromSpans() []PlanKind {
-	return []PlanKind{PlanOpenURL, PlanOpenFile, PlanOpenIssue, PlanOpenDiff, PlanOpenResource}
+	// PlanOpenTask is deliberately absent: a task id is bare 8-hex, which no
+	// scanner can tell from a short sha or from prose, so a task target only
+	// ever arrives from a poster that named one (`--target task:...`) and
+	// never from a scanned span.
+	return []PlanKind{PlanOpenURL, PlanOpenFile, PlanOpenIssue, PlanOpenDiff, PlanOpenResource, PlanAttachSession}
 }
 
 // PlanForSpan is the whole span→activation path in one call: the shared
@@ -149,6 +162,11 @@ func Resolve(target uirequest.Target) (Plan, error) {
 			return Plan{}, err
 		}
 		return Plan{Kind: PlanAttachSession, PluginID: WorkspacePluginID, Session: value}, nil
+	case uirequest.TargetKindTask:
+		if err := plainValue(value, "task"); err != nil {
+			return Plan{}, err
+		}
+		return Plan{Kind: PlanOpenTask, PluginID: TasksPluginID, Task: value}, nil
 	case "":
 		return Plan{}, errors.New("target has no kind")
 	default:

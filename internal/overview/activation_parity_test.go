@@ -35,3 +35,24 @@ func TestPreviewHandledKindsAreTheDispatchedKinds(t *testing.T) {
 	dispatched := parityscan.HandledKinds(t, "preview_links.go", "activatePreviewPlan")
 	parityscan.RequireSameKinds(t, "the global preview surface", declared, dispatched)
 }
+
+// TestSessionPlanNeedsARowRunningIt: attaching on this surface means typing
+// into the live pane the session is already showing in, so a session no row is
+// running is not attachable and the click must report itself unhandled rather
+// than pretending.
+func TestSessionPlanNeedsARowRunningIt(t *testing.T) {
+	t.Parallel()
+	m := &Model{}
+	if cmd := m.attachPreviewSession("sidecar-ws-nobody"); cmd != nil {
+		t.Fatal("attached a session no workspace is running")
+	}
+	if cmd := m.attachPreviewSession("  "); cmd != nil {
+		t.Fatal("attached an empty session name")
+	}
+	cmd, handled := m.activatePreviewPlan(targetactivation.Plan{
+		Kind: targetactivation.PlanAttachSession, Session: "sidecar-ws-nobody",
+	})
+	if handled || cmd != nil {
+		t.Fatalf("unknown session reported handled=%v cmd=%v", handled, cmd != nil)
+	}
+}

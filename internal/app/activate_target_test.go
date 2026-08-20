@@ -207,3 +207,19 @@ func TestActivatePaneTargetsSendPublicMessages(t *testing.T) {
 		})
 	}
 }
+
+// A task target focuses the Tasks tab. Landing on the task itself is not
+// available — the embedded Tasks model exposes no select-by-id entry — so the
+// tab is what this route promises and what it must actually do.
+func TestActivateTaskTargetFocusesTasks(t *testing.T) {
+	m := activationModel(t.TempDir())
+	msgs := collect(m.activateTarget(ActivateTargetMsg{
+		Target: uirequest.Target{Kind: uirequest.TargetKindTask, Value: "a1b2c3d4"},
+	}))
+	for _, got := range msgs {
+		if typed, ok := got.(FocusPluginByIDMsg); ok && typed.PluginID == "tasks" {
+			return
+		}
+	}
+	t.Fatalf("task target did not focus the Tasks tab: %+v", msgs)
+}

@@ -3,6 +3,8 @@ package overview
 import (
 	"os"
 	"path/filepath"
+	"sort"
+	"strings"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
@@ -244,6 +246,8 @@ func (m *Model) activatePreviewPlan(plan targetactivation.Plan) (tea.Cmd, bool) 
 		cmd = m.openPreviewIssue(plan.Issue)
 	case targetactivation.PlanOpenDiff:
 		cmd = m.activatePreviewDiff(plan.Spec)
+	case targetactivation.PlanAttachSession:
+		cmd = m.attachPreviewSession(plan.Session)
 	case targetactivation.PlanOpenResource:
 		cmd = m.activatePreviewResource(resourceview.Ref{
 			Instance: plan.Provider,
@@ -267,11 +271,41 @@ func previewHandlesPlanKind(kind targetactivation.PlanKind) bool {
 	switch kind {
 	case targetactivation.PlanOpenURL, targetactivation.PlanOpenFile,
 		targetactivation.PlanOpenIssue, targetactivation.PlanOpenDiff,
-		targetactivation.PlanOpenResource:
+		targetactivation.PlanOpenResource, targetactivation.PlanAttachSession:
 		return true
 	default:
 		return false
 	}
+}
+
+// attachPreviewSession is this surface's version of "attach": select the
+// workspace running that tmux session and hand it the keyboard. The project
+// workspace attaches by opening the session in its own terminal; here the
+// live pane is already on screen, so attaching means typing into it. Same
+// decision (targetactivation), surface-local execution — the rule every kind
+// on these two surfaces already follows.
+//
+// A session no row is running is not attachable, and the caller treats a nil
+// command as "this click did nothing", which is what an unknown session is.
+func (m *Model) attachPreviewSession(session string) tea.Cmd {
+	if strings.TrimSpace(session) == "" {
+		return nil
+	}
+	ids := make([]string, 0, len(m.catalog))
+	for id := range m.catalog {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	for _, id := range ids {
+		if m.catalog[id].TmuxName != session {
+			continue
+		}
+		if !m.workspaces.SelectID(id) {
+			return nil
+		}
+		return tea.Batch(m.focusList(), m.previewSync(), m.enterPreviewInteractive())
+	}
+	return nil
 }
 
 func (m *Model) activatePreviewDiff(raw string) tea.Cmd {

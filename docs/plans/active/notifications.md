@@ -1469,3 +1469,74 @@ posting surface and the tests that pin the behaviour down.
   does not yet number — the kind switch in `notify.targetFromStored`, the
   scanner's `KindSession`/task ids, and both terminal surfaces' dispatch are
   5c's five-test recipe.
+
+### Phase 5c as built: session and task kinds (2026-08-19)
+
+Phase 5 is complete: every `notify.TargetKind` now maps to an activation, and
+the two kinds this slice added reach the centre and both terminal surfaces.
+
+- **Session detection is deliberately narrow, and that is the decision.** A
+  tmux session name is free text — `main`, `work`, `notes` — so a general
+  pattern would underline ordinary prose. `terminallink.KindSession` matches
+  only the names Sidecar itself mints and only as a whole token:
+  `sidecar-sh-<project>-<n>` (a shell) and `sidecar-ws-<slug>` (a worktree
+  agent). Those are also exactly the sessions `AttachSessionMsg` looks up, so
+  detection promises nothing attach cannot deliver. `sidecar-tp-` and
+  `sidecar-edit-` are internal panes no surface attaches and are **not**
+  detected. `/tmp/sidecar-sh-repo-1.log`, `my-sidecar-sh-repo-1` and
+  `SIDECAR-SH-REPO-1` are text. Sessions are scanned **before** issues and git
+  specs so `sidecar-ws-td-331dbf19` is one session, not the issue id inside it.
+  `terminallink.SessionName` is the anchored form, used by `--target
+  session:…` to refuse a name nothing could attach — the same shape as
+  `IssueID`.
+- **Task ids have no pattern, and will not get one.** A `tasks` id is
+  `SecureRandom.hex(4)` — bare 8-hex, indistinguishable from a short git sha or
+  from prose. Detecting it would either steal every short sha or fire on
+  arbitrary words. **Task targets are therefore stored-only**: they arrive from
+  `--target task:<id>` and never from a scan. `PlanKindsFromSpans()` says so in
+  a comment and omits `PlanOpenTask`, which is why the surface parity pair does
+  not require the terminal surfaces to dispatch it — no span can produce it.
+- **Task activation is the Tasks tab, best effort by design.** The embedded
+  Tasks model (`tasksui`) exposes no select-by-id entry point, so
+  `PlanOpenTask` focuses the `tasks` plugin and stops there. If a deep-link
+  entry ever appears it becomes a second command in the same branch. A project
+  without the Tasks plugin refuses out loud through the existing
+  absent-plugin guard ("Cannot open that here: tasks is not available in this
+  project"), which is what the proof run exercised.
+- **Both surfaces now dispatch `PlanAttachSession`** — the branch deferred by
+  `target-activation.md` step 2. The workspace surface routes the clicked span
+  through the *same* `attachSessionMsg` the public message uses (one lookup,
+  one feature gate, no creation). The global preview surface attaches the way
+  *it* attaches: select the row running that session and hand it the keyboard
+  (`enterPreviewInteractive`), because on that surface the live pane is already
+  on screen. Same decision, surface-local execution — the rule every other kind
+  on those two surfaces already follows. A session no row is running is
+  unhandled, so the click reports itself as doing nothing rather than pretending.
+- **The centre inherited both kinds for free**, exactly as 5a predicted:
+  `notify.targetFromStored` gained the `TargetTask` case (`TargetSession`
+  already mapped), and scanned session spans become numbered calls to action
+  through the same reconciliation.
+- **Known gap, written down rather than papered over:** attaching a session
+  that no shell and no worktree agent is running does nothing and says nothing.
+  That is `AttachSessionMsg`'s pre-existing shape (the shell cannot know which
+  names exist; the plugin can, and currently returns nil). Making it refuse out
+  loud belongs to the workspace plugin, not to this slice.
+- Tested: `internal/terminallink/scan_test.go` (four new — the names it finds,
+  an eight-line false-positive gate, session-beats-the-id-inside-it, and the
+  anchored `SessionName`), `internal/targetactivation` (the span fixture gained
+  a session, so the shared parity test now requires both surfaces to dispatch
+  attach), `internal/app/activate_target_test.go` (a task target focuses Tasks),
+  `internal/app/notification_targets_test.go` (a scanned session and an attached
+  task both activate from the centre), `internal/plugins/workspace`
+  (a clicked session span goes through the one gated attach) and
+  `internal/overview` (a session no row runs is unhandled).
+  `internal/notify/target_spec_test.go` gained the foreign-session refusal and
+  moved the file-only-`:line` case onto a commit spec.
+- Verified in the real app through an isolated `scripts/tmux-drive.sh` run
+  (`paths` checked first, run dir `/private/tmp/sidecar-drive-501-cta5c`,
+  `stop` confirmed, private server gone): a post of
+  `"Agent finished in sidecar-ws-alpha" --target task:a1b2c3d4` rendered the
+  selection row `1 a1b2c3d4 · 2 sidecar-ws-alpha` — the attached task first, the
+  scanned session second; `1` refused out loud because this project has no Tasks
+  tab; `2` focused the Workspaces plugin and attached nothing, the session
+  fixture not existing.

@@ -200,8 +200,9 @@ func fieldSpans(field CTAField, text string, opts terminallink.Options) []scanne
 }
 
 // targetFromStored maps the notification vocabulary onto the activation
-// vocabulary. A kind with no activation yet (task, until Phase 5c) is dropped
-// rather than numbered: a digit that cannot jump is worse than no digit.
+// vocabulary. Every notify target kind maps since Phase 5c; a kind that ever
+// stops mapping is dropped rather than numbered, because a digit that cannot
+// jump is worse than no digit.
 func targetFromStored(stored Target) (uirequest.Target, bool) {
 	value := strings.TrimSpace(stored.Value)
 	if value == "" {
@@ -216,6 +217,8 @@ func targetFromStored(stored Target) (uirequest.Target, bool) {
 		return uirequest.Target{Kind: uirequest.TargetKindURL, Value: value}, true
 	case TargetCommit:
 		return uirequest.Target{Kind: uirequest.TargetKindDiff, Value: value}, true
+	case TargetTask:
+		return uirequest.Target{Kind: uirequest.TargetKindTask, Value: value}, true
 	case TargetSession:
 		return uirequest.Target{Kind: uirequest.TargetKindSession, Value: value}, true
 	default:

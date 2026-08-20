@@ -254,6 +254,8 @@ func TargetFromSpan(span terminallink.Span) (Target, bool) {
 		return Target{Kind: TargetKindIssue, Value: span.Value}, true
 	case terminallink.KindDiff:
 		return Target{Kind: TargetKindDiff, Value: rawOrValue()}, true
+	case terminallink.KindSession:
+		return Target{Kind: TargetKindSession, Value: span.Value}, true
 	case terminallink.KindResource:
 		return Target{
 			Kind:     TargetKindResource,

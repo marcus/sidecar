@@ -39,10 +39,14 @@ const (
 	// TargetKindNotification is a notification id. Its Value is empty on a
 	// post (the id travels in the payload) and set on a dismiss.
 	TargetKindNotification TargetKind = "notification"
-	// TargetKindSession is a tmux session name to attach. Nothing detects one
-	// in text yet; it exists so activation has a session vocabulary rather
-	// than a plugin-private method.
+	// TargetKindSession is a tmux session name to attach. Sidecar-owned names
+	// are detected in text (terminallink.KindSession); any name may be
+	// attached by a poster that names one.
 	TargetKindSession TargetKind = "session"
+	// TargetKindTask is a task in the embedded Tasks UI. Nothing detects one
+	// in text — a task id is bare 8-hex, indistinguishable from a short sha —
+	// so it only ever arrives from a poster that named it.
+	TargetKindTask TargetKind = "task"
 )
 
 // Status describes the host's response to a UI request.
