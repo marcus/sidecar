@@ -1415,3 +1415,57 @@ cross-project landing and `--target` are 5b, session/task kinds are 5c.
   underlined, the selection's `1 td-4c1f9a · 2 internal/app/mo…` row, a footer
   reading `enter Open · 1 Target · v Details`, and pressing `2` opened
   `internal/app/model.go` in the Files preview scrolled to line 42.
+
+### Phase 5b as built: cross-project landing and `--target` (2026-08-19)
+
+Most of the cross-project *rendering* and *activation* was already in place
+after 5a (`CallToAction.Project` → `Display()`'s `repo/td-xxxxxx`, and
+`ActivateTargetIn` → the pending-target slot), so this slice is mainly the
+posting surface and the tests that pin the behaviour down.
+
+- **The spec grammar is a model rule, not a CLI rule.**
+  `notify.ParseTargetSpec` / `ParseTargetSpecs` (`internal/notify/target_spec.go`)
+  own `kind:value[:line][@project]`, so a future API or MCP poster accepts
+  exactly the same strings. The two ambiguities in the grammar are resolved by
+  kind: `:line` is read **for files only** (a commit sha, a session name and a
+  URL can all end in digits), and the text after the last `@` is taken as a
+  project qualifier only when it *looks* like one — an absolute path (or `~`),
+  or a name containing no `/` and no `:`. That keeps
+  `url:https://user@host/path` intact while `issue:td-99aabb@braid` and
+  `file:cmd/main.go:12@/Users/x/code/braid` both qualify.
+- **Validation is loud, and happens before anything is posted.** An unknown
+  kind, an empty value, a URL that is not `SafeHTTPURL`, or an id that is not
+  `terminallink.IssueID` is exit code 2 with the valid kinds named; one bad
+  spec fails the whole post rather than filing a notification that quietly does
+  less than it says. Exact duplicates within one post are dropped (a typo, not
+  two calls to action).
+- **`--target` is repeatable and order-preserving**, which is the numbering:
+  stored targets come first in attach order (5a's reconciliation), the scan
+  fills the gaps. Documented in the command's `Long` text and flags, so it
+  lands in `sidecar --agents` and `docs/reference/cli.md` (regenerated).
+- **Nothing new was needed on the bus.** The `notify` request payload is the
+  marshalled `Notification`, so `Targets` already travel over the file-RPC route
+  and through the JSONL fallback; the round trip is now covered by a test rather
+  than left to inspection.
+- **Cross-project targets stay unverified at render**, per the phase decision:
+  a stored target with a `Project` never adopts a local span as its location
+  (a span is written in this checkout's terms), so it is numbered, prefixed
+  with the project, and fails through the activation service's error path if
+  the project is gone.
+- Tested: `internal/notify/target_spec_test.go` (grammar, the file-only line,
+  project qualifiers vs URL userinfo, refusals, order/dedupe, the
+  cross-project `Display` prefix), `internal/cli/notify_test.go`
+  (`--target` end-to-end into the log and back through `CallsToAction`, and the
+  refusal storing nothing), and `internal/app/notification_targets_test.go`
+  (`enter` on a foreign target emits `ActivateTargetMsg` with the project).
+- Verified in the real app through an isolated `scripts/tmux-drive.sh` run
+  (`paths` checked, private run dir, `stop` confirmed): a post carrying
+  `--target issue:td-99aabb@braid --target file:internal/app/model.go:42`
+  rendered the selection row `1 braid/td-99aabb · 2 internal/…`, and pressing
+  `1` refused out loud with "Cannot jump to braid: that project is no longer
+  available" rather than doing nothing.
+- **Left for 5c:** `notify.TargetTask` still maps to no activation and is
+  dropped from the numbered list, so `--target task:...` parses and stores but
+  does not yet number — the kind switch in `notify.targetFromStored`, the
+  scanner's `KindSession`/task ids, and both terminal surfaces' dispatch are
+  5c's five-test recipe.

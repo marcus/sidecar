@@ -217,3 +217,36 @@ func TestNotificationCTAMemoIsPrunedWithTheCache(t *testing.T) {
 		t.Fatal("the memo kept a record the store no longer has")
 	}
 }
+
+// A target in another checkout activates with its project attached: the
+// activation service parks it, switches project, and lands afterwards. It is
+// deliberately not existence-verified here — the resolvers are per-checkout —
+// so it renders activatable and fails through the service's error path.
+func TestCentreActivatesACrossProjectTarget(t *testing.T) {
+	m := centreTestModel(t, &sizingPlugin{id: "files"})
+	postTargetNotification(t, &m, "fixed upstream", "",
+		notify.Target{Kind: notify.TargetIssue, Value: "td-99aabb", Project: "/Users/x/code/braid"})
+	m.toggleNotificationCentre()
+	m.notificationCentreCursor = 0
+
+	handled, cmd := m.notificationCentreKey(tea.KeyPressMsg{Code: tea.KeyEnter})
+	if !handled {
+		t.Fatal("enter was not consumed by the panel")
+	}
+	activate, ok := activateTargetMsgFrom(t, cmd)
+	if !ok {
+		t.Fatal("enter produced no activation")
+	}
+	if activate.Project != "/Users/x/code/braid" {
+		t.Fatalf("activation lost its project qualifier: %+v", activate)
+	}
+	if activate.Target.Kind != uirequest.TargetKindIssue || activate.Target.Value != "td-99aabb" {
+		t.Fatalf("unexpected target: %+v", activate.Target)
+	}
+
+	// And it reads with the project in front of it in the numbered row.
+	list := m.selectedNotificationTargets()
+	if len(list) != 1 || list[0].Display() != "braid/td-99aabb" {
+		t.Fatalf("numbered list = %+v", list)
+	}
+}

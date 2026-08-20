@@ -40,6 +40,7 @@ func runNotifyPost(env Env, args []string) int {
 	body := ""
 	source := string(notify.SourceAgent)
 	expiry := ""
+	var targetSpecs []string
 	var positional []string
 
 	for i := 0; i < len(args); i++ {
@@ -84,6 +85,13 @@ func runNotifyPost(env Env, args []string) int {
 				return 2
 			}
 			expiry = v
+		case arg == "--target" || strings.HasPrefix(arg, "--target="):
+			v, ok := value("--target")
+			if !ok {
+				cliErrf(env.Stderr, "--target requires kind:value[:line][@project]\n\n%s", help)
+				return 2
+			}
+			targetSpecs = append(targetSpecs, v)
 		default:
 			if strings.HasPrefix(arg, "-") {
 				cliErrf(env.Stderr, "unknown option %q\n\n%s", arg, help)
@@ -102,6 +110,15 @@ func runNotifyPost(env Env, args []string) int {
 		return 2
 	}
 
+	// Targets are parsed before anything is posted: a malformed target is a
+	// usage error the agent can fix, not a notification that quietly does less
+	// than it says.
+	targets, err := notify.ParseTargetSpecs(targetSpecs)
+	if err != nil {
+		cliErrf(env.Stderr, "%s\n\n%s", err, help)
+		return 2
+	}
+
 	n := notify.Notification{
 		ID:      notify.NewID(),
 		Source:  notify.SourceID(source),
@@ -109,7 +126,7 @@ func runNotifyPost(env Env, args []string) int {
 		Body:    body,
 		Origin:  notifyOrigin(env),
 		Sticky:  false,
-		Targets: nil,
+		Targets: targets,
 	}
 	switch strings.TrimSpace(strings.ToLower(expiry)) {
 	case "":

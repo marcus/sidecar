@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/marcus/sidecar/internal/notify"
+	"github.com/marcus/sidecar/internal/terminallink"
 	"github.com/marcus/sidecar/internal/uirequest"
 )
 
@@ -229,5 +230,67 @@ func TestNotifyPostReportsWhyItFellBack(t *testing.T) {
 	}
 	if all, err := notify.ReadAll(notify.Path(env.StateDir)); err != nil || len(all) != 1 {
 		t.Fatalf("the notification must still be filed: %d, %v", len(all), err)
+	}
+}
+
+// --target is the precise call to action an agent attaches when the prose does
+// not spell the target out. It must survive the whole way to the log, in order,
+// with its project qualifier intact.
+func TestNotifyPostStoresTargets(t *testing.T) {
+	env, _, errOut := notifyEnv(t)
+
+	code := runNotifyPost(env, []string{
+		"--target", "issue:td-4c1f9a",
+		"--target=file:internal/app/model.go:42",
+		"--target", "issue:td-99aabb@braid",
+		"Review this",
+	})
+	if code != 0 {
+		t.Fatalf("post = %d, stderr %q", code, errOut.String())
+	}
+
+	all, err := notify.ReadAll(notify.Path(env.StateDir))
+	if err != nil {
+		t.Fatalf("ReadAll: %v", err)
+	}
+	if len(all) != 1 {
+		t.Fatalf("expected 1 notification, got %d", len(all))
+	}
+	want := []notify.Target{
+		{Kind: notify.TargetIssue, Value: "td-4c1f9a"},
+		{Kind: notify.TargetFile, Value: "internal/app/model.go", Line: 42},
+		{Kind: notify.TargetIssue, Value: "td-99aabb", Project: "braid"},
+	}
+	got := all[0].Targets
+	if len(got) != len(want) {
+		t.Fatalf("targets = %+v, want %+v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("target %d = %+v, want %+v", i, got[i], want[i])
+		}
+	}
+	// The bus route carries the same record: the request payload is the
+	// notification itself, so a delivered post keeps its targets too.
+	list := notify.CallsToAction(all[0], terminallink.Options{})
+	if len(list) != 3 || list[2].Display() != "braid/td-99aabb" {
+		t.Fatalf("stored targets did not reconcile into the numbered list: %+v", list)
+	}
+}
+
+func TestNotifyPostRefusesAMalformedTarget(t *testing.T) {
+	env, _, errOut := notifyEnv(t)
+	if code := runNotifyPost(env, []string{"--target", "branch:main", "title"}); code != 2 {
+		t.Fatalf("a malformed target should be a usage error, got %d", code)
+	}
+	if !strings.Contains(errOut.String(), "unknown target kind") {
+		t.Fatalf("expected the kinds to be named, got %q", errOut.String())
+	}
+	if code := runNotifyPost(env, []string{"--target", "title"}); code != 2 {
+		t.Fatalf("--target with no spec should be a usage error, got %d", code)
+	}
+	all, _ := notify.ReadAll(notify.Path(env.StateDir))
+	if len(all) != 0 {
+		t.Fatalf("a refused post must store nothing, got %d records", len(all))
 	}
 }

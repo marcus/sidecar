@@ -234,9 +234,18 @@ func notifyCommand() *Command {
 			"log and appears at the next start; nothing is lost.\n\n" +
 			"--expiry sets how long the toast stays on screen — a duration such as 10s, or\n" +
 			"\"never\" for one that waits for the user. Expiry never removes the notification\n" +
-			"from the centre.",
+			"from the centre.\n\n" +
+			"--target attaches a call to action: the notification centre numbers targets 1-N\n" +
+			"and the user jumps to one with enter or a digit. Repeat it for several, in the\n" +
+			"order they should be numbered. The form is kind:value[:line][@project], where\n" +
+			"kind is issue, task, commit, file, session or url; :line applies to files only;\n" +
+			"and @project names another checkout by configured project name or by path, in\n" +
+			"which case Sidecar switches projects and then lands. Ids written in the title or\n" +
+			"body are still found by scanning — --target is for precision and for targets the\n" +
+			"text does not spell out.",
 		Flags: []Flag{
 			{Name: "--body", Arg: "TEXT", Summary: "Detail line shown under the title"},
+			{Name: "--target", Arg: "SPEC", Summary: "Call to action, kind:value[:line][@project]; repeatable"},
 			{Name: "--source", Arg: "ID", Summary: "Source: agent, waiting, session, tasks, td, system (default agent)"},
 			{Name: "--expiry", Arg: "DURATION", Summary: "Toast lifetime (e.g. 10s), or \"never\" (default: the source's)"},
 			{Name: "--json", Summary: "Write one structured result object to stdout", Bool: true},
@@ -252,9 +261,11 @@ func notifyCommand() *Command {
 			{Command: "sidecar notify post \"Tests are green\""},
 			{Command: "sidecar notify post \"Need a decision\" --source waiting --expiry never"},
 			{Command: "sidecar notify post \"Build failed\" --body \"go test ./internal/app\" --json"},
+			{Command: "sidecar notify post \"Review needed\" --target issue:td-4c1f9a --target file:internal/app/model.go:42"},
+			{Command: "sidecar notify post \"Fixed upstream\" --target issue:td-99aabb@braid"},
 		},
 		Agent: AgentDoc{
-			Invocation: "sidecar notify post \"<short title>\" [--body TEXT] [--source ID]",
+			Invocation: "sidecar notify post \"<short title>\" [--body TEXT] [--source ID] [--target kind:value[:line][@project]]",
 			Summary:    "Tell the user something happened without making them watch this shell",
 		},
 		Run: runNotifyPost,

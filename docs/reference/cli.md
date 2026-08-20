@@ -141,6 +141,15 @@ log and appears at the next start; nothing is lost.
 "never" for one that waits for the user. Expiry never removes the notification
 from the centre.
 
+--target attaches a call to action: the notification centre numbers targets 1-N
+and the user jumps to one with enter or a digit. Repeat it for several, in the
+order they should be numbered. The form is kind:value[:line][@project], where
+kind is issue, task, commit, file, session or url; :line applies to files only;
+and @project names another checkout by configured project name or by path, in
+which case Sidecar switches projects and then lands. Ids written in the title or
+body are still found by scanning — --target is for precision and for targets the
+text does not spell out.
+
 ```
 Usage: sidecar notify post [options] <title>
 ```
@@ -148,6 +157,7 @@ Usage: sidecar notify post [options] <title>
 **Options:**
 
 - `--body TEXT`: Detail line shown under the title
+- `--target SPEC`: Call to action, kind:value[:line][@project]; repeatable
 - `--source ID`: Source: agent, waiting, session, tasks, td, system (default agent)
 - `--expiry DURATION`: Toast lifetime (e.g. 10s), or "never" (default: the source's)
 - `--json`: Write one structured result object to stdout
@@ -165,6 +175,8 @@ Usage: sidecar notify post [options] <title>
 sidecar notify post "Tests are green"
 sidecar notify post "Need a decision" --source waiting --expiry never
 sidecar notify post "Build failed" --body "go test ./internal/app" --json
+sidecar notify post "Review needed" --target issue:td-4c1f9a --target file:internal/app/model.go:42
+sidecar notify post "Fixed upstream" --target issue:td-99aabb@braid
 ```
 
 ## `sidecar open`
