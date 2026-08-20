@@ -1336,3 +1336,82 @@ assigned/reviewable. (No `git` source — see Architecture.)
 notifications for sources that opt in, so tmux/iTerm/Ghostty surface them as
 real macOS notifications when sidecar is unfocused. Adapter-shaped, per
 source, off by default.
+
+### Phase 5a as built: same-project file and td-issue targets (2026-08-19)
+
+The centre can now act on what a notification names. Scope was 5a only:
+cross-project landing and `--target` are 5b, session/task kinds are 5c.
+
+- **Reconciliation is one state-free function, `notify.CallsToAction`**
+  (`internal/notify/cta.go`). Stored `notify.Targets` come first in the order
+  they were attached; `terminallink.ScanWith` over title then body fills the
+  gaps in reading order (`ScanWith` emits kind by kind, so the spans are sorted
+  by column before numbering). A scanned span that says the same thing as a
+  stored target is **not** a second entry — it becomes that target's location,
+  which is what lets a stored target be underlined where it is written.
+  Numbering is 1..N over the reconciled list. `notify.CTATitle`/`CTABody` are
+  the exact strings the centre renders — `StripOSC8` applied once, whitespace
+  collapsed once — so a span's columns are the columns on screen; the centre
+  calls them too rather than repeating the normalisation.
+- **`notify` now imports `uirequest` and `terminallink`** (no cycle: neither
+  imports `notify`). A `CallToAction` carries a `uirequest.Target`, so the
+  reconciled list is already in the activation vocabulary and the centre adds
+  no mapping of its own. `notify.TargetTask` maps to nothing yet and is
+  **dropped rather than numbered** — a digit that cannot jump is worse than no
+  digit — which is 5c's first job to reverse.
+- **Verification is memoized, not skipped.** `internal/app/notification_targets.go`
+  scans with a `Resolve` that stats against the current checkout
+  (`terminallink.ResolveFile`), so the plan's verified-underline invariant
+  holds for same-project files; the answer is cached per notification id
+  (`Model.notificationCTAs`, pruned in `refreshNotifications`, the one seam the
+  cache is written at) so it is one stat per record rather than one per frame.
+  No diff resolver and no resource matchers: both need a live snapshot the
+  centre does not hold, and a git existence check per notification is not worth
+  a lit-up commit id — commit targets therefore only appear when a poster
+  attaches one.
+- **Rendering — decided, and a deviation from "two lines".** Located targets
+  are underlined in place in the title and body rows (`terminallink.Decorate`
+  over spans shifted to where the row drew them and clipped to what survived
+  truncation). The **numbered** list needs its own row, and it is drawn **only
+  for the entry under the cursor on a focused panel** — the only entry `enter`
+  and the digits can act on. So the list stays the two rows plan 1.5 asked for,
+  the selection expands to a third `1 td-4c1f9a · 2 internal/app/model.go:42`,
+  and a target that appears nowhere in the text (attached, or in another
+  project) still has somewhere to be seen. Decoration passes every span as
+  `KindFile` deliberately: in the centre a URL is underlined like everything
+  else and activated through the service's `SafeHTTPURL` check, never turned
+  into an OSC-8 link the terminal would open unchecked.
+- **Keys.** `enter` = activate the first call to action, via
+  `app.ActivateTargetIn` — one function, `activateNotificationTarget`, that the
+  digits also use, so the double-click keeps following `enter` by construction.
+  On an entry with **no** target `enter` falls back to the old detail re-show
+  rather than doing nothing (most notifications name nothing activatable).
+  Re-show moved to **`v`** (`show-details`), free in every context and the
+  conventional "view". Digits **1-9** jump — but only when the selection has a
+  target of that number; otherwise the digit stays the project tab it is
+  everywhere else and still releases focus, so the panel never eats a
+  navigation key to do nothing. `keymap/bindings.go` registers `v` and, of the
+  digits, **only `1`** (`jump-target`): the panel answers the whole range
+  itself, exactly as the shell does for its own globals, and nine rows in help
+  would say nine things about one behaviour.
+- **The `path:line` papercut is closed on this route.** A file target from the
+  centre lands in the file browser at its line — `RelativeProjectPath` +
+  `NavigateToFileMsg{Path, Line}`, which the file browser already honours. The
+  terminal surfaces' version of the papercut (their own click path) is
+  untouched and still open.
+- **Toasts were not touched**, per the phase decision: no focus context, no
+  activation affordance.
+- Tested: `internal/notify/cta_test.go` (ordering, stored-first, location
+  adoption, dedupe, the dropped task kind, StripOSC8 columns, cross-project
+  `Display`) and `internal/app/notification_targets_test.go` (enter, digits,
+  the unclaimed digit releasing focus, `v`, the file landing at its line, an
+  unverified path being neither underlined nor numbered, the memo and its
+  pruning). `TestCentreEntriesAreTwoLines` now also asserts the focused
+  selection's third row and that blurring takes it away.
+- Verified in the real app through `scripts/tmux-drive.sh` (isolated tmux and
+  state in a private run dir, `paths` checked first, stopped after): a
+  `sidecar notify post` into the isolated store rendered `Review td-4c1f9a now`
+  with the id underlined, `Fix internal/app/model.go:42 first` with the path
+  underlined, the selection's `1 td-4c1f9a · 2 internal/app/mo…` row, a footer
+  reading `enter Open · 1 Target · v Details`, and pressing `2` opened
+  `internal/app/model.go` in the Files preview scrolled to line 42.

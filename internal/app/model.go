@@ -374,6 +374,10 @@ type Model struct {
 	// worktree switches, and is the single writer for this process.
 	notifications     notify.Store
 	notificationCache []notify.Notification
+	// notificationCTAs memoizes each notification's reconciled target list by
+	// id, so the file-existence check behind a verified underline runs once per
+	// record rather than once per frame. See notification_targets.go.
+	notificationCTAs map[string][]notify.CallToAction
 	// toastPainted records notification ids a toast was actually drawn for, so
 	// the expiry sweep only marks read what the user had a chance to see.
 	toastPainted map[string]bool

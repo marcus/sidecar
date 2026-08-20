@@ -382,17 +382,23 @@ func TestCentreEntriesAreTwoLines(t *testing.T) {
 	if strings.Contains(bodyRow, "review requested") {
 		t.Fatalf("title and body share a row: %q", bodyRow)
 	}
-	withBody, withoutBody := 0, 0
-	for _, n := range counts {
-		if n == 2 {
-			withBody++
-		}
-		if n == 1 {
-			withoutBody++
+	// Entry 0 is the selection on a focused panel and names a target, so it
+	// carries the numbered targets row as well (Phase 5); entry 1 has neither
+	// body nor target and stays one row.
+	if counts[0] != 3 || counts[1] != 1 {
+		t.Fatalf("row counts per entry = %v, want 3 and 1", counts)
+	}
+	// Blurred, the selection loses the targets row and the entry is the two
+	// lines plan 1.5 asked for.
+	m.blurNotificationCentre()
+	counts = map[int]int{}
+	for _, row := range m.notificationCentreBody(notificationCentreDefaultWidth-4, time.Now()) {
+		if row.item >= 0 {
+			counts[row.item]++
 		}
 	}
-	if withBody != 1 || withoutBody != 1 {
-		t.Fatalf("row counts per entry = %v, want one two-row and one one-row entry", counts)
+	if counts[0] != 2 || counts[1] != 1 {
+		t.Fatalf("unfocused row counts per entry = %v, want 2 and 1", counts)
 	}
 }
 

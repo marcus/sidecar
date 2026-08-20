@@ -2,6 +2,7 @@ package app
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -13,6 +14,7 @@ import (
 	"github.com/marcus/sidecar/internal/plugin"
 	"github.com/marcus/sidecar/internal/state"
 	"github.com/marcus/sidecar/internal/styles"
+	"github.com/marcus/sidecar/internal/terminallink"
 	"github.com/marcus/sidecar/internal/ui"
 )
 
@@ -208,18 +210,74 @@ func notificationGroupClearCol(inner int) int {
 // being lost to a truncated title — a notification whose whole content is its
 // title still renders as a single row, so a list of short items stays dense.
 func (m Model) notificationCentreItemLines(n notify.Notification, inner, index int, now time.Time) []string {
-	lines := []string{m.notificationCentreTitleLine(n, inner, index, now)}
-	body := strings.Join(strings.Fields(strings.TrimSpace(n.Body)), " ")
-	if body == "" {
-		return lines
+	ctas := m.notificationCallsToAction(n)
+	lines := []string{m.notificationCentreTitleLine(n, inner, index, now, ctas)}
+	body := notify.CTABody(n)
+	if body != "" {
+		// The body aligns under the title, past the two columns the unread dot
+		// occupies, so the two rows read as one entry.
+		const indent = "  "
+		bodyWidth := max(1, inner-len(indent))
+		row := indent + lipgloss.NewStyle().Foreground(styles.TextSubtle).
+			Render(ansi.Truncate(body, bodyWidth, "…"))
+		row = decorateCentreTargets(row, ctas, notify.CTAFieldBody, len(indent), bodyWidth)
+		lines = append(lines, m.styleCentreRow(row, inner, index))
 	}
-	// The body aligns under the title, past the two columns the unread dot
-	// occupies, so the two rows read as one entry.
+	if row, ok := m.notificationTargetsLine(ctas, inner, index); ok {
+		lines = append(lines, row)
+	}
+	return lines
+}
+
+// notificationTargetsLine is the entry's numbered call-to-action row: "1
+// td-331dbf19 · 2 main.go:42". It is drawn only for the entry under the cursor
+// — which is the only entry `enter` and the digit keys can act on — so the
+// list stays the two rows plan 1.5 asked for and still says which digit means
+// which target. It is also the only place a target that appears nowhere in the
+// text (one the poster attached, or one in another project) can be seen at all.
+func (m Model) notificationTargetsLine(ctas []notify.CallToAction, inner, index int) (string, bool) {
+	if len(ctas) == 0 || !m.notificationCentreOwnsKeys() || index != m.notificationCentreCursor {
+		return "", false
+	}
 	const indent = "  "
-	bodyWidth := max(1, inner-len(indent))
-	row := indent + lipgloss.NewStyle().Foreground(styles.TextSubtle).
-		Render(ansi.Truncate(body, bodyWidth, "…"))
-	return append(lines, m.styleCentreRow(row, inner, index))
+	numberStyle := lipgloss.NewStyle().Foreground(styles.Accent).Bold(true)
+	labelStyle := lipgloss.NewStyle().Foreground(styles.TextSubtle)
+	parts := make([]string, 0, len(ctas))
+	for _, cta := range ctas {
+		if cta.Number > notificationMaxTargetDigits {
+			break
+		}
+		parts = append(parts, numberStyle.Render(strconv.Itoa(cta.Number))+" "+labelStyle.Render(cta.Display()))
+	}
+	row := indent + ansi.Truncate(strings.Join(parts, labelStyle.Render(" · ")), max(1, inner-len(indent)), "…")
+	return m.styleCentreRow(row, inner, index), true
+}
+
+// decorateCentreTargets underlines the calls to action that fall in one
+// rendered field. The row already carries its own styling and its own left
+// offset, so the spans are shifted to where they were drawn and clipped to
+// what survived truncation — an underline past the ellipsis would promise a
+// digit on text that is not there.
+//
+// The text these columns were computed from is notify.CTATitle/CTABody, which
+// StripOSC8 before anything else, so decoration can only add the links the
+// scan actually found (internal/targetactivation's safety rule).
+func decorateCentreTargets(row string, ctas []notify.CallToAction, field notify.CTAField, offset, width int) string {
+	var spans []terminallink.Span
+	for _, cta := range ctas {
+		if cta.Field != field || cta.StartCol < 0 || cta.StartCol >= width {
+			continue
+		}
+		spans = append(spans, terminallink.Span{
+			Kind:     terminallink.KindFile, // any activatable kind: Decorate only underlines
+			StartCol: cta.StartCol + offset,
+			EndCol:   min(cta.EndCol, width-1) + offset,
+		})
+	}
+	if len(spans) == 0 {
+		return row
+	}
+	return terminallink.Decorate(row, spans)
 }
 
 // styleCentreRow applies the cursor highlight to a row of the selected entry.
@@ -238,16 +296,13 @@ func (m Model) styleCentreRow(row string, inner, index int) string {
 }
 
 // notificationCentreTitleLine is an entry's first row.
-func (m Model) notificationCentreTitleLine(n notify.Notification, inner, index int, now time.Time) string {
+func (m Model) notificationCentreTitleLine(n notify.Notification, inner, index int, now time.Time, ctas []notify.CallToAction) string {
 	meta := notificationAge(n.CreatedAt, now)
 	mark := "  "
 	if !n.Read() {
 		mark = lipgloss.NewStyle().Foreground(notify.ChromeColor(n.Source, n.Severity)).Render("●") + " "
 	}
-	title := strings.TrimSpace(n.Title)
-	if title == "" {
-		title = n.SourceInfo().Label
-	}
+	title := notify.CTATitle(n)
 	titleWidth := max(1, inner-lipgloss.Width(mark)-lipgloss.Width(meta)-1)
 	titleStyle := lipgloss.NewStyle().Foreground(styles.TextSecondary)
 	if !n.Read() {
@@ -259,6 +314,7 @@ func (m Model) notificationCentreTitleLine(n notify.Notification, inner, index i
 		gap = 1
 	}
 	row := mark + body + strings.Repeat(" ", gap) + styles.Muted.Render(meta)
+	row = decorateCentreTargets(row, ctas, notify.CTAFieldTitle, lipgloss.Width(mark), titleWidth)
 	return m.styleCentreRow(row, inner, index)
 }
 
@@ -449,11 +505,13 @@ func padNotificationRow(row string, width int) string {
 func (m Model) notificationCentreCommands() []plugin.Command {
 	return []plugin.Command{
 		{ID: "cursor-down", Name: "Move", Context: notificationCentreContext, Priority: 1},
-		{ID: "select", Name: "Details", Context: notificationCentreContext, Priority: 2},
-		{ID: "dismiss", Name: "Dismiss", Context: notificationCentreContext, Priority: 3},
-		{ID: "dismiss-group", Name: "Group", Context: notificationCentreContext, Priority: 4},
-		{ID: "close-notification-centre", Name: "Close", Context: notificationCentreContext, Priority: 5},
-		{ID: "focus-content", Name: "Content", Description: "Move focus on to the content", Context: notificationCentreContext, Priority: 6},
+		{ID: "select", Name: "Open", Description: "Activate the first target", Context: notificationCentreContext, Priority: 2},
+		{ID: "jump-target", Name: "Target", Description: "Jump to the numbered target", Context: notificationCentreContext, Priority: 3},
+		{ID: "show-details", Name: "Details", Description: "Re-present the notification in full", Context: notificationCentreContext, Priority: 4},
+		{ID: "dismiss", Name: "Dismiss", Context: notificationCentreContext, Priority: 5},
+		{ID: "dismiss-group", Name: "Group", Context: notificationCentreContext, Priority: 6},
+		{ID: "close-notification-centre", Name: "Close", Context: notificationCentreContext, Priority: 7},
+		{ID: "focus-content", Name: "Content", Description: "Move focus on to the content", Context: notificationCentreContext, Priority: 8},
 	}
 }
 
@@ -471,6 +529,15 @@ func (m *Model) notificationCentreKey(msg tea.KeyPressMsg) (bool, tea.Cmd) {
 		// act on. Consuming it here is what makes the stop symmetric with tab
 		// in: one press per stop. See notificationCentreTabKey for the way in.
 		return true, m.leaveNotificationCentreFocus(key == "shift+tab")
+	}
+	// Digits 1-9 jump to a target of the selected entry — but only when that
+	// target exists. A notification with two targets leaves 3-9 as the tab
+	// digits they are everywhere else, so the panel never eats a navigation key
+	// to do nothing. See notificationCentreReleasesFocus.
+	if number, isDigit := notificationTargetDigit(key); isDigit {
+		if _, ok := notify.CallToActionAt(m.selectedNotificationTargets(), number); ok {
+			return true, m.activateNotificationTarget(number)
+		}
 	}
 	if notificationCentreReleasesFocus(key) {
 		// A navigation key means the user is going somewhere else. Hand the
@@ -510,6 +577,8 @@ func (m *Model) notificationCentreKey(msg tea.KeyPressMsg) (bool, tea.Cmd) {
 		return true, nil
 	case "enter":
 		return true, m.activateSelectedNotification()
+	case "v":
+		return true, m.showNotificationDetails()
 	}
 	return false, nil
 }
@@ -527,16 +596,45 @@ func (m *Model) dismissNotificationGroup(source notify.SourceID) {
 	m.clampNotificationCentreCursor(len(m.notificationCentreItems()))
 }
 
-// activateSelectedNotification is what `enter` means on the centre — today
-// "view details": re-present the selection as a toast so the body the centre's
-// two lines truncate can be read in full. It is presentation only: no re-post,
-// no un-dismiss, and the centre stays open and focused behind it.
+// activateSelectedNotification is what `enter` means on the centre: take the
+// selection's first call to action — the jump the notification is about.
 //
-// Double-clicking an entry calls this same function, so it follows `enter`
-// automatically. When Phase 5 rebinds `enter` to target activation, change
-// this body (and move re-show to its own key) — do not give the pointer a
-// second action of its own.
+// Double-clicking an entry calls this same function, so the pointer follows
+// `enter` by construction; there is no second action to keep in step.
+//
+// An entry with no target keeps the old meaning, "view details", rather than
+// doing nothing: most notifications name nothing activatable, and an `enter`
+// that is dead on them would be worse than one that shows the full text.
 func (m *Model) activateSelectedNotification() tea.Cmd {
+	return m.activateNotificationTarget(1)
+}
+
+// activateNotificationTarget is the digit keys and `enter` in one function:
+// jump to the selection's Nth call to action through the shared activation
+// service. Nothing about the decision lives here — targetactivation resolves
+// the plan, refuses an unsafe URL, and reports why when it cannot.
+func (m *Model) activateNotificationTarget(number int) tea.Cmd {
+	selected, ok := m.selectedNotification(m.notificationCentreItems())
+	if !ok {
+		return nil
+	}
+	m.readSelectedNotification()
+	cta, ok := notify.CallToActionAt(m.notificationCallsToAction(selected), number)
+	if !ok {
+		if number == 1 {
+			return m.showNotificationDetails()
+		}
+		return nil
+	}
+	return ActivateTargetIn(cta.Target, cta.Project)
+}
+
+// showNotificationDetails re-presents the selection as a toast so the body the
+// centre's two lines truncate can be read in full. It is presentation only: no
+// re-post, no un-dismiss, and the centre stays open and focused behind it.
+// Phase 5 moved it off `enter` onto `v`, and it is still what `enter` falls
+// back to on an entry with nothing to jump to.
+func (m *Model) showNotificationDetails() tea.Cmd {
 	selected, ok := m.selectedNotification(m.notificationCentreItems())
 	if !ok {
 		return nil
@@ -550,6 +648,15 @@ func (m *Model) activateSelectedNotification() tea.Cmd {
 // else in the shell. The panel is not a modal, so these keep working while it
 // has focus — but working means the surface they select gets the keyboard, not
 // just the screen.
+// notificationTargetDigit reads a target-jump digit. 0 is not one: the target
+// numbering starts at 1, and `0` stays the tab digit it is everywhere else.
+func notificationTargetDigit(key string) (int, bool) {
+	if len(key) != 1 || key[0] < '1' || key[0] > '9' {
+		return 0, false
+	}
+	return int(key[0] - '0'), true
+}
+
 func notificationCentreReleasesFocus(key string) bool {
 	switch key {
 	case "1", "2", "3", "4", "5", "6", "7", "8", "9", "0",

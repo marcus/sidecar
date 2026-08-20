@@ -121,10 +121,18 @@ func DefaultBindings() []Binding {
 		{Key: "down", Command: "cursor-down", Context: "notification-centre"},
 		{Key: "k", Command: "cursor-up", Context: "notification-centre"},
 		{Key: "up", Command: "cursor-up", Context: "notification-centre"},
-		// enter re-presents the selected notification as a toast ("view
-		// details"), which is what it means until Phase 5 gives it target
-		// activation.
+		// enter activates the selected notification's first call to action —
+		// the jump the notification is about (Phase 5). On an entry with no
+		// target it falls back to the detail re-show, which `v` is now the
+		// dedicated key for.
 		{Key: "enter", Command: "select", Context: "notification-centre"},
+		{Key: "v", Command: "show-details", Context: "notification-centre"},
+		// Digits 1-9 jump to the numbered target of the selected entry. Only
+		// "1" is registered: the panel answers the whole range itself (as the
+		// shell does for its own globals), and registering nine rows would say
+		// nine things in help about one behaviour. A digit with no target of
+		// that number is left alone and stays the project tab it is elsewhere.
+		{Key: "1", Command: "jump-target", Context: "notification-centre"},
 		{Key: "d", Command: "dismiss", Context: "notification-centre"},
 		{Key: "D", Command: "dismiss-group", Context: "notification-centre"},
 		{Key: "esc", Command: "close-notification-centre", Context: "notification-centre"},
