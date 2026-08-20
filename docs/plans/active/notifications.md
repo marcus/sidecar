@@ -1,6 +1,6 @@
 # Notifications — toasts, centre, indicator, sources
 
-**Status:** Phase 1 (steel thread) **done**; Phase 1.5 **done**; Phase 2 **done** (both halves — see the two "Phase 2 as built" sections); Phase 3 **done** (see "Phase 3 as built"); Phases 4–7 planned, not started. Next up: `target-activation.md` (separate plan, prerequisite), then Phase 5 — Phase 4 is deliberately deferred behind them
+**Status:** Phase 1 (steel thread) **done**; Phase 1.5 **done**; Phase 2 **done** (both halves — see the two "Phase 2 as built" sections); Phase 3 **done** (see "Phase 3 as built"); `target-activation.md` **done**; Phase 5 **done** (5a–5c, review pass, and the end-to-end proof run — see "Phase 5 proof run"). Phases 4, 6 and 7 planned, not started; Phase 4 is deliberately deferred behind Phase 5
 **Created:** 2026-08-18
 **Design:** claude.ai/design project `3172ac49-4413-4a60-9235-0afa5c77cf77`, file `Sidecar Notifications.dc.html` (frames 1a–1h). The design is authoritative for visual grammar. Two deliberate deviations, decided by Marcus: the sources config lives on the existing config screen (`internal/configui`), not the design's invented one; and the notification centre is an **app-level right panel that pushes all content left** (see "The centre" below), not the in-pane split the design's frame 1c sketches.
 
@@ -1573,3 +1573,60 @@ the same path *with* a line are numbered separately (different targets by key);
 an underline may cover the truncation ellipsis when a target is clipped at the
 row's right edge; and 5c's known gap — attaching a session nothing is running
 does nothing and says nothing — is still the workspace plugin's to close.
+
+### Phase 5 proof run (2026-08-19)
+
+Phase 5 driven end to end in the real app: an isolated `scripts/tmux-drive.sh`
+instance (`paths` checked first — run dir `/private/tmp/sidecar-drive-501-cta5p`,
+private tmux socket and state tree, nothing under `~/.local/state/sidecar` or
+`~/.config/sidecar`; `stop` confirmed, both servers gone) configured with two
+synthesized project fixtures, `alpha` (an 80-line `long.txt` for the `:line`
+proof) and `beta`. Every item passed; two gaps found are *pre-existing shapes of
+the activation surfaces*, not Phase 5 regressions, and are written down below.
+
+- **Stored + scanned targets, numbering, `enter`, digits, `v`.** A post of
+  `"Review td-4c1f9a now" --body "check README then td-4c1f9a" --target
+  file:README.md:3` rendered the title's `td-4c1f9a` underlined and the
+  selection row `1 README.md:3 · 2 td-4c1f9a` — stored first, scanned second.
+  `enter` opened the file browser on the file; with a target of
+  `file:long.txt:60` the preview opened scrolled to line 60 (rows 39–80 on
+  screen). `2` opened a `td-4c1f9a` issue pane, which said `issue "td-4c1f9a"
+  not found` — the loud, correct answer in a fixture with no td database. `v`
+  re-showed the detail card.
+- **Cross-project.** `--target issue:td-9911aa@beta` rendered `1 beta/td-9911aa`;
+  `enter` switched the project to `beta`. `--target issue:td-8822bb@nowhere`
+  refused out loud and filed the refusal as a notification: "Cannot jump to
+  nowhere: that project is no longer available".
+- **Session.** `"Agent idle" --body "waiting in sidecar-sh-alpha-1"` underlined
+  the scanned session name and numbered it `1 sidecar-sh-alpha-1`. With
+  `tmux_full_attach` **off**, activating focused Workspaces and attached nothing
+  — the documented gate. With the flag **on**, the jump reached the workspace
+  plugin and selected the shell, but the suspend-and-attach itself cannot be
+  seen from this harness: the outer driver pane is already a tmux client, so a
+  nested `tmux attach` is not a thing `capture-pane` can show. That limitation
+  is `headless-testing.md`'s, not this phase's.
+- **Toasts unchanged.** The same notifications' toasts showed title and body
+  only: no numbered row, no underline, no digit or `enter` affordance.
+- **Unsafe URLs.** `--target url:file:///etc/passwd` and
+  `url:javascript:alert(1)` are exit 2 at parse and store nothing. A
+  hand-written `url:file:///etc/passwd` appended straight into
+  `notifications.jsonl` (bypassing the CLI entirely) *is* numbered but refuses
+  on activation — `refusing to open "file:///etc/passwd": only …` — so the
+  `SafeHTTPURL` gate holds at the only place that matters.
+
+**Found, not fixed (pre-existing, outside this phase's code):**
+
+- **A cross-project landing can drop the jump silently.** After
+  `switchProject`'s `Reinit`, `applyPendingActivation` re-emits the
+  `ActivateTargetMsg` immediately, but the workspace plugin has not loaded its
+  shells and worktrees yet, so `selectedTerminalSurface()` fails and
+  `openIssuePaneMsg` returns `nil`. Observed: landing in `beta` switched the
+  project and focused Workspaces but opened no issue pane; activating the *same*
+  target once `beta` was loaded opened it correctly. The fix is a readiness
+  signal (or a deferred re-emit) in `target-activation`'s hand-off, plus a loud
+  refusal in `openIssuePaneMsg`/`openDiffPaneMsg`/`openResourcePaneMsg` when
+  there is no surface — the same "returns nil rather than refusing" shape 5c
+  already recorded for `attachSessionMsg`.
+- **The same silence in-project:** a project with no shell and no worktree has
+  no terminal surface to host an issue/diff/resource pane, so those activations
+  focus Workspaces and stop. Creating a shell (`ctrl+n`) makes them work.
