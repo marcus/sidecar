@@ -1,6 +1,7 @@
 package notify
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/marcus/sidecar/internal/terminallink"
@@ -137,5 +138,25 @@ func TestCrossProjectTargetRendersWithItsProjectPrefix(t *testing.T) {
 	// The same id written in this project's text is a separate, local target.
 	if len(list) != 2 || list[1].Project != "" || list[1].Field != CTAFieldTitle {
 		t.Fatalf("expected the scanned local id to remain its own call to action: %+v", list)
+	}
+}
+
+// A URL never gives up its tail to a project qualifier: `@` is legal in a
+// path, in userinfo and in a query, and truncating one silently would post a
+// call to action that opens the wrong page.
+func TestParseTargetSpecKeepsAtInURLs(t *testing.T) {
+	for _, raw := range []string{
+		"url:https://example.com/pkg@v2",
+		"url:https://user@example.com/path",
+		"url:https://example.com/search?q=a@b",
+	} {
+		target, err := ParseTargetSpec(raw)
+		if err != nil {
+			t.Fatalf("ParseTargetSpec(%q) = %v", raw, err)
+		}
+		want := strings.TrimPrefix(raw, "url:")
+		if target.Value != want || target.Project != "" {
+			t.Fatalf("ParseTargetSpec(%q) = %+v, want value %q and no project", raw, target, want)
+		}
 	}
 }

@@ -378,6 +378,9 @@ type Model struct {
 	// id, so the file-existence check behind a verified underline runs once per
 	// record rather than once per frame. See notification_targets.go.
 	notificationCTAs map[string][]notify.CallToAction
+	// notificationCTARoot is the checkout notificationCTAs was verified
+	// against; a project or worktree switch invalidates the whole memo.
+	notificationCTARoot string
 	// toastPainted records notification ids a toast was actually drawn for, so
 	// the expiry sweep only marks read what the user had a chance to see.
 	toastPainted map[string]bool

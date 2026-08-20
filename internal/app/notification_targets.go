@@ -26,7 +26,12 @@ const notificationMaxTargetDigits = 9
 // is a sufficient key; refreshNotifications prunes ids that have left the
 // store.
 func (m Model) notificationCallsToAction(n notify.Notification) []notify.CallToAction {
-	if m.notificationCTAs == nil {
+	// The memo is only valid for the checkout it was verified against. A
+	// project or worktree switch keeps the same (global) notifications but
+	// changes what "internal/app/model.go" means and whether it exists, so a
+	// memo from the previous root is answered fresh and not written back —
+	// pruneNotificationCTAs drops it on the next refresh.
+	if m.notificationCTAs == nil || m.notificationCTARoot != m.ui.WorkDir {
 		return notify.CallsToAction(n, m.notificationScanOptions())
 	}
 	if list, ok := m.notificationCTAs[n.ID]; ok {
@@ -63,8 +68,11 @@ func (m Model) notificationScanOptions() terminallink.Options {
 // longer returns, and is where the map is created. Called from
 // refreshNotifications, the one seam the cache is written at.
 func (m *Model) pruneNotificationCTAs() {
-	if m.notificationCTAs == nil {
+	if m.notificationCTAs == nil || m.notificationCTARoot != m.ui.WorkDir {
+		// A new checkout re-verifies everything: the store is global, so the
+		// same record can be looked at from two projects in one session.
 		m.notificationCTAs = make(map[string][]notify.CallToAction)
+		m.notificationCTARoot = m.ui.WorkDir
 		return
 	}
 	live := make(map[string]bool, len(m.notificationCache))

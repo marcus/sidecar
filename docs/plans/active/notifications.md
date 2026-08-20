@@ -1540,3 +1540,36 @@ the two kinds this slice added reach the centre and both terminal surfaces.
   scanned session second; `1` refused out loud because this project has no Tasks
   tab; `2` focused the Workspaces plugin and attached nothing, the session
   fixture not existing.
+
+### Phase 5 review pass — corrections (2026-08-19)
+
+An independent review of 5a–5c against this plan and `target-activation.md`.
+Toasts were confirmed untouched (no activation affordance, no focus context),
+`enter`/double-click still share one function, the digit keys still release
+focus when they name nothing, `StripOSC8`-before-`Decorate` holds on every
+centre render path, and URL activation still goes through the service's
+`SafeHTTPURL`. Two real defects were found and fixed:
+
+- **The call-to-action memo outlived its checkout.** `notificationCTAs` was
+  keyed by notification id alone, but the store is global and a
+  project/worktree switch changes both what a relative path means and whether
+  it exists. A file verified in project A stayed underlined and numbered in
+  project B, and activating it navigated to a path that is not there — the
+  verified-underline invariant silently broken by navigation. The memo now
+  records the root it was computed against (`notificationCTARoot`): a mismatch
+  is answered fresh and not written back, and `pruneNotificationCTAs` drops the
+  whole map on the next refresh. Regression test:
+  `TestCentreTargetMemoIsPerCheckout`.
+- **`--target url:` lost its tail to the `@project` rule.** `@` is legal in a
+  URL path, in userinfo and in a query, so
+  `url:https://example.com/pkg@v2` parsed as `https://example.com/pkg` in
+  project `v2` — a call to action that silently opens the wrong page. URLs are
+  not project-scoped (they open in a browser wherever they are activated), so
+  the project split is now skipped entirely for the `url` kind. Regression
+  test: `TestParseTargetSpecKeepsAtInURLs`.
+
+Left open deliberately: a stored file target with no line and a scanned span of
+the same path *with* a line are numbered separately (different targets by key);
+an underline may cover the truncation ellipsis when a target is clipped at the
+row's right edge; and 5c's known gap — attaching a session nothing is running
+does nothing and says nothing — is still the workspace plugin's to close.

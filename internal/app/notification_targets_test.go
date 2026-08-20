@@ -294,3 +294,29 @@ func TestCentreActivatesAnAttachedTaskTarget(t *testing.T) {
 		t.Fatalf("activated %+v", activate.Target)
 	}
 }
+
+// The store is global, so the same record is looked at from more than one
+// project in a session. The verification memo belongs to the checkout it was
+// computed in: after a switch, a file that only exists in the previous project
+// is neither numbered nor underlined here.
+func TestCentreTargetMemoIsPerCheckout(t *testing.T) {
+	rootA := t.TempDir()
+	if err := os.WriteFile(filepath.Join(rootA, "model.go"), []byte("package app\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	m := centreTestModel(t, &sizingPlugin{id: "files"})
+	m.ui.WorkDir = rootA
+	posted := postTargetNotification(t, &m, "build failed", "at model.go:42")
+	m.refreshNotifications()
+	if got := m.notificationCallsToAction(posted); len(got) != 1 {
+		t.Fatalf("in the project that has the file: %+v", got)
+	}
+	m.ui.WorkDir = t.TempDir()
+	if got := m.notificationCallsToAction(posted); len(got) != 0 {
+		t.Fatalf("after the switch, before any refresh: %+v", got)
+	}
+	m.refreshNotifications()
+	if got := m.notificationCallsToAction(posted); len(got) != 0 {
+		t.Fatalf("after the switch and a refresh: %+v", got)
+	}
+}

@@ -51,11 +51,11 @@ func ValidTargetKind(kind TargetKind) bool {
 //
 //   - `:line` is read only for file targets. A commit sha, a session name and
 //     a URL can all end in digits, and none of them has a line.
-//   - `@project` is read only when the text after the last `@` looks like a
-//     project qualifier: an absolute path, or a name with no `/` and no `:`.
-//     That keeps `url:https://user@host/path` intact while `url:https://x@here`
-//     is still qualifiable. (Project qualifiers are resolved by the running
-//     instance — a configured project name or a checkout path.)
+//   - `@project` is never read for a URL (a URL is not project-scoped, and `@`
+//     is legal throughout one), and elsewhere only when the text after the last
+//     `@` looks like a qualifier: an absolute path, or a name with no `/` and
+//     no `:`. (Project qualifiers are resolved by the running instance — a
+//     configured project name or a checkout path.)
 func ParseTargetSpec(spec string) (Target, error) {
 	raw := strings.TrimSpace(spec)
 	if raw == "" {
@@ -127,6 +127,14 @@ func ParseTargetSpecs(specs []string) ([]Target, error) {
 }
 
 func splitTargetProject(rest string, kind TargetKind) (value, project string) {
+	if kind == TargetURL {
+		// A URL is not project-scoped — it opens in a browser wherever it is
+		// activated — and `@` is legal in a path, in userinfo and in a query.
+		// Splitting one would silently truncate the link
+		// (`url:https://example.com/pkg@v2`), which is worse than not
+		// supporting a qualifier nothing would use.
+		return rest, ""
+	}
 	idx := strings.LastIndex(rest, "@")
 	if idx < 0 {
 		return rest, ""
@@ -142,7 +150,7 @@ func splitTargetProject(rest string, kind TargetKind) (value, project string) {
 		// "@project" with nothing before it: no value, let the caller refuse.
 		return "", candidate
 	}
-	_ = kind
+
 	return rest[:idx], candidate
 }
 
