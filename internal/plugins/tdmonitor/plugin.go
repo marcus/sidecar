@@ -1,6 +1,8 @@
 package tdmonitor
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -106,11 +108,16 @@ type Plugin struct {
 	// installEnv is the process environment first-install runs through. Nil
 	// means the real one; a test substitutes it so no test ever runs brew.
 	installEnv *version.Environment
+
+	// remoteSync pulls browser/server changes into the local td database. The
+	// command is injectable so plugin tests never contact a real sync server.
+	remoteSync        *remoteSyncRunner
+	remoteSyncCommand remoteSyncCommand
 }
 
 // New creates a new TD Monitor plugin.
 func New() *Plugin {
-	return &Plugin{}
+	return &Plugin{remoteSyncCommand: runTDRemoteSync}
 }
 
 // SetInstallEnvironment substitutes the process environment first-install
@@ -169,6 +176,9 @@ func (p *Plugin) Icon() string { return pluginIcon }
 
 // Init initializes the plugin with context.
 func (p *Plugin) Init(ctx *plugin.Context) error {
+	if p.remoteSync != nil {
+		p.remoteSync.stop()
+	}
 	p.ctx = ctx
 
 	// Clear any stale state from previous initialization (important for project switching)
@@ -180,6 +190,7 @@ func (p *Plugin) Init(ctx *plugin.Context) error {
 	p.dbFileInfo = nil
 	p.lastDBIdentityAt = time.Time{}
 	p.pendingTDMessage = nil
+	p.remoteSync = nil
 
 	// Check if .todos exists as a file instead of a directory (#194).
 	// This must happen before attempting to create the monitor or showing
@@ -291,6 +302,31 @@ func (p *Plugin) adoptMonitor(msg MonitorReadyMsg) tea.Cmd {
 	p.model = msg.Model
 	p.captureDBIdentity()
 
+	// monitor.NewEmbeddedWithOptions only refreshes the local SQLite database.
+	// Standalone `td monitor` separately wires AutoSyncFunc; do the same here so
+	// tasks created in the hosted browser reach a Sidecar left open all day.
+	var syncCmd tea.Cmd
+	if state, err := p.model.DB.GetSyncState(); err == nil && state != nil &&
+		state.ProjectID != "" && !state.SyncDisabled && p.tdOnPath && p.remoteSyncCommand != nil {
+		if p.remoteSync != nil {
+			p.remoteSync.stop()
+		}
+		runner := newRemoteSyncRunner(p.ctx.WorkDir, p.remoteSyncCommand)
+		logger := p.ctx.Logger
+		p.remoteSync = runner
+		p.model.AutoSyncFunc = func() {
+			if err := runner.pull(); err != nil && !errors.Is(err, context.Canceled) && logger != nil {
+				logger.Debug("td monitor: periodic remote sync failed", "error", err)
+			}
+		}
+		p.model.AutoSyncInterval = remoteSyncInterval
+		// The immediate pull below is this interval's first attempt. Without this,
+		// LastAutoSync's zero value makes the first local refresh tick launch a
+		// redundant second pull only seconds later.
+		p.model.LastAutoSync = time.Now()
+		syncCmd = remoteSyncCmd(p.ctx.Epoch, runner)
+	}
+
 	// Ensure the adopted monitor has the latest resolved palette in case a
 	// theme change occurred while loading.
 	p.applyPaneFocusTheme()
@@ -328,9 +364,12 @@ func (p *Plugin) adoptMonitor(msg MonitorReadyMsg) tea.Cmd {
 	// Delegate to monitor's Init which starts data fetch and tick.
 	// Mark as started to prevent duplicate poll chains on focus (td-023577)
 	p.started = true
-	initCmd := p.model.Init()
+	cmds := []tea.Cmd{p.model.Init()}
+	if syncCmd != nil {
+		cmds = append(cmds, syncCmd)
+	}
 	if pending == nil {
-		return initCmd
+		return tea.Batch(cmds...)
 	}
 	// Batch, not Sequence. The monitor's Init is a batch whose members include
 	// scheduleTick — a tea.Tick for the whole refresh interval — and Sequence
@@ -340,7 +379,8 @@ func (p *Plugin) adoptMonitor(msg MonitorReadyMsg) tea.Cmd {
 	// Nothing here needs the ordering. The model is already adopted and can
 	// handle a key; Init's other members are async data fetches, and a key
 	// arriving before RefreshDataMsg is ordinary operation.
-	return tea.Batch(initCmd, func() tea.Msg { return pending })
+	cmds = append(cmds, func() tea.Msg { return pending })
+	return tea.Batch(cmds...)
 }
 
 // captureDBIdentity records the file opened by the current monitor. Failure is
@@ -400,6 +440,10 @@ func (p *Plugin) reopenReplacedDatabase(msg tea.Msg) tea.Cmd {
 
 // Stop cleans up plugin resources.
 func (p *Plugin) Stop() {
+	if p.remoteSync != nil {
+		p.remoteSync.stop()
+		p.remoteSync = nil
+	}
 	if p.model != nil {
 		_ = p.model.Close()
 		p.model = nil
@@ -434,6 +478,20 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 			return p, nil
 		}
 		return p, p.adoptMonitor(ready)
+	}
+
+	if synced, ok := msg.(RemoteSyncFinishedMsg); ok {
+		if plugin.IsStale(p.ctx, synced) || synced.runner != p.remoteSync {
+			return p, nil
+		}
+		if synced.Err != nil && !errors.Is(synced.Err, context.Canceled) &&
+			p.ctx != nil && p.ctx.Logger != nil {
+			p.ctx.Logger.Debug("td monitor: startup remote sync failed", "error", synced.Err)
+		}
+		if p.databaseWasReplaced(true) {
+			return p, p.reopenReplacedDatabase(nil)
+		}
+		return p, nil
 	}
 
 	// A successful init from either td-backed surface makes both refresh. A
