@@ -14,7 +14,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 )
 
-const remoteSyncInterval = 5 * time.Minute
+const remoteSyncInterval = time.Minute
 
 type remoteSyncCommand func(context.Context, string) error
 
