@@ -14,13 +14,20 @@ import (
 // waitForEvent waits for the next coalesced event, failing if none arrives.
 func waitForEvent(t *testing.T, w *TreeWatcher) FSEvent {
 	t.Helper()
+	return waitForEventWithin(t, w, 3*time.Second)
+}
+
+// waitForEventWithin is waitForEvent for a watcher built with a non-default
+// quiet period, which has to outwait that window before anything can arrive.
+func waitForEventWithin(t *testing.T, w *TreeWatcher, budget time.Duration) FSEvent {
+	t.Helper()
 	select {
 	case ev, ok := <-w.Events():
 		if !ok {
 			t.Fatal("events channel closed while waiting for an event")
 		}
 		return ev
-	case <-time.After(3 * time.Second):
+	case <-time.After(budget):
 		t.Fatal("timeout waiting for filesystem event")
 		return FSEvent{}
 	}
@@ -454,23 +461,41 @@ func TestIsIgnoredWatchPath(t *testing.T) {
 }
 
 func TestTreeWatcher_CoalescesBurst(t *testing.T) {
+	// Widened windows, because what is under test is that one burst flushes
+	// once - not that 20 writes finish within 150ms. Under the production
+	// windows a loaded runner can spend longer than the quiet period inside
+	// the write loop, flushing mid-burst and failing the test for being slow
+	// rather than for coalescing wrongly.
+	const (
+		burstQuiet      = 2 * time.Second
+		burstMaxLatency = 10 * time.Second
+	)
+	w, err := newTreeWatcher(burstQuiet, burstMaxLatency)
+	if err != nil {
+		t.Fatalf("newTreeWatcher() failed: %v", err)
+	}
+	t.Cleanup(w.Stop)
+
 	tmpDir := t.TempDir()
 	preview := filepath.Join(tmpDir, "preview.txt")
 	writeFile(t, preview, "x")
 
-	w := newTestWatcher(t)
 	w.SyncDirs([]string{tmpDir})
 	if err := w.SetPreviewFile(preview); err != nil {
 		t.Fatal(err)
 	}
 
 	// A burst of creates plus preview writes, all inside one quiet period.
+	start := time.Now()
 	for i := 0; i < 10; i++ {
 		writeFile(t, filepath.Join(tmpDir, "burst"+string(rune('0'+i))+".txt"), "x")
 		writeFile(t, preview, "change")
 	}
+	if spent := time.Since(start); spent >= burstQuiet {
+		t.Fatalf("burst took %v, longer than the %v window it must fit inside", spent, burstQuiet)
+	}
 
-	ev := waitForEvent(t, w)
+	ev := waitForEventWithin(t, w, burstQuiet+3*time.Second)
 	if !ev.TreeChanged || !ev.PreviewChanged {
 		t.Errorf("coalesced event lost a flag: %+v", ev)
 	}
@@ -479,7 +504,7 @@ func TestTreeWatcher_CoalescesBurst(t *testing.T) {
 	select {
 	case extra := <-w.Events():
 		t.Errorf("burst produced more than one event: %+v", extra)
-	case <-time.After(watchQuietPeriod + 400*time.Millisecond):
+	case <-time.After(burstQuiet + 400*time.Millisecond):
 	}
 }
 

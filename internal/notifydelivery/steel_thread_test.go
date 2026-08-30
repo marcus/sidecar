@@ -19,7 +19,13 @@ func TestTwoServiceSteelThreadDeliversOnceAndRetainsCentreRecords(t *testing.T) 
 	ledgerPath := filepath.Join(stateDir, LedgerFileName)
 	native := &fakeNative{capability: Capability{Available: true, Provider: "fake-native"}}
 	sound := &fakeSound{capability: Capability{Available: true, Provider: "fake-sound"}}
-	now := time.Date(2026, 8, 29, 12, 0, 0, 0, time.UTC)
+	// Anchored to the wall clock, not a literal date: this is the one delivery
+	// test backed by the JSONL ledger, and OpenPath garbage-collects entries
+	// against time.Now() as it loads them. A pinned date stops matching the
+	// real clock the moment it falls more than ReceiptRetention in the past,
+	// at which point the first service's receipt is swept away before the
+	// second service reads the file and both deliver.
+	now := time.Now().UTC()
 	cfg := config.DefaultNotificationsConfig()
 	cfg.Native.Mode, cfg.Sound.Mode = config.DeliveryBackground, config.DeliveryBackground
 	policy := notify.ResolveConfig(cfg)

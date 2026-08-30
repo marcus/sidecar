@@ -55,6 +55,12 @@ type TreeWatcher struct {
 	done      chan struct{}
 	stopOnce  sync.Once
 
+	// Coalescing windows, fixed at construction because run() reads them
+	// without the lock. Production always uses the constants; tests that must
+	// fit a whole burst inside one window widen them.
+	quietPeriod time.Duration
+	maxLatency  time.Duration
+
 	mu          sync.Mutex
 	closed      bool
 	watched     map[string]bool // Directories currently registered with fsnotify
@@ -66,18 +72,28 @@ type TreeWatcher struct {
 // NewTreeWatcher creates a watcher. Nothing is watched until SyncDirs or
 // SetPreviewFile is called.
 func NewTreeWatcher() (*TreeWatcher, error) {
+	return newTreeWatcher(watchQuietPeriod, watchMaxLatency)
+}
+
+// newTreeWatcher builds a watcher with explicit coalescing windows. A test that
+// asserts a burst of writes produces exactly one event has to fit every write
+// inside one quiet period; on a loaded machine the production 150ms window can
+// expire mid-burst, which reports the same coalescing behaviour as a failure.
+func newTreeWatcher(quiet, maxLatency time.Duration) (*TreeWatcher, error) {
 	fsw, err := fsnotify.NewWatcher()
 	if err != nil {
 		return nil, err
 	}
 
 	w := &TreeWatcher{
-		fsWatcher: fsw,
-		events:    make(chan FSEvent, 1),
-		stop:      make(chan struct{}),
-		done:      make(chan struct{}),
-		watched:   make(map[string]bool),
-		treeDirs:  make(map[string]bool),
+		fsWatcher:   fsw,
+		events:      make(chan FSEvent, 1),
+		stop:        make(chan struct{}),
+		done:        make(chan struct{}),
+		watched:     make(map[string]bool),
+		treeDirs:    make(map[string]bool),
+		quietPeriod: quiet,
+		maxLatency:  maxLatency,
 	}
 
 	go w.run()
@@ -297,10 +313,10 @@ func (w *TreeWatcher) run() {
 			// Restart the quiet period on every change; start the max-latency
 			// timer only once per batch so a busy directory still reports.
 			stopTimer(quiet)
-			quiet.Reset(watchQuietPeriod)
+			quiet.Reset(w.quietPeriod)
 			quietC = quiet.C
 			if !hasEvent {
-				maxLatency.Reset(watchMaxLatency)
+				maxLatency.Reset(w.maxLatency)
 				maxLatC = maxLatency.C
 			}
 			hasEvent = true
