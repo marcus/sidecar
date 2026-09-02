@@ -6,8 +6,8 @@ integration assets from Herdr.
 
 Project:    Herdr
 Repository: https://github.com/herdrdev/herdr
-Ref:        e2b85c7
-Commit:     e2b85c73615b37a483eefa839923d9aff8e629b3
+Ref:        preview-2026-08-31-b1ff4582e968
+Commit:     b1ff4582e9688f52ffb943cfa8bee4871ae122e4
 Source:     src/integration/assets
 License:    Apache License, Version 2.0 (see LICENSE in this directory)
 

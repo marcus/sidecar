@@ -1,18 +1,17 @@
 # Herdr detection sync report
 
-Generated 2026-09-02T06:09:09Z by `go run ./internal/tools/herdrsync`.
+Generated 2026-09-02T13:29:35Z by `go run ./internal/tools/herdrsync`.
 
 | Field | Value |
 | --- | --- |
 | Herdr repository | https://github.com/herdrdev/herdr |
-| Ref vendored | `e2b85c7` |
-| Commit | `e2b85c73615b37a483eefa839923d9aff8e629b3` |
+| Ref vendored | `preview-2026-08-31-b1ff4582e968` |
+| Commit | `b1ff4582e9688f52ffb943cfa8bee4871ae122e4` |
 | Pinned release for the differential harness | `preview-2026-08-31-b1ff4582e968` |
 | Catalog | https://herdr.dev/agent-detection/index.toml |
 | Catalog ETag | `W/"d78b183cb570f3f343ba80777bbf579d"` |
 | Sidecar manifest engine version | 3 |
 | Manifests vendored | 21 |
-| Read from local checkout | `/Users/marcus/code/herdr` |
 
 ## Version changes
 
@@ -73,31 +72,32 @@ Every Herdr alias for a family Sidecar already claims appears literally in `inte
 
 Herdr's published authority is a *target*. Sidecar tiers are earned by traces and are never copied.
 
+**Below target** marks an agent Herdr gives lifecycle authority to *through hooks* and Sidecar has not proved `full` for. That is the same rule `TestHerdrAuthorityGaps` prints, so this table and `go test ./internal/agentlifecycle/` name the same set.
+
 | Agent | Herdr authority | Sidecar tier | Below target |
 | --- | --- | --- | --- |
-| `agy` | session_identity | screen-fallback | yes |
+| `agy` | session_identity | screen-fallback |  |
 | `amp` | none | screen-fallback |  |
 | `claude` | session_identity | session-identity |  |
 | `cline` | none | — |  |
 | `codex` | session_identity | session-identity |  |
-| `copilot` | session_identity | screen-fallback | yes |
-| `cursor` | session_identity | screen-fallback | yes |
-| `devin` | session_identity | — | yes |
-| `droid` | session_identity | — | yes |
+| `copilot` | session_identity | screen-fallback |  |
+| `cursor` | session_identity | screen-fallback |  |
+| `devin` | session_identity | — |  |
+| `droid` | session_identity | — |  |
 | `gemini` | none | — |  |
-| `grok` | session_identity | screen-fallback | yes |
-| `hermes` | session_identity | — | yes |
+| `grok` | session_identity | screen-fallback |  |
+| `hermes` | session_identity | — |  |
 | `kilo` | hooks | — | yes |
 | `kimi` | hooks | — | yes |
 | `kiro` | none | — |  |
 | `maki` | none | — |  |
 | `mastracode` | hooks | — | yes |
-| `muse` | none | screen-fallback |  |
 | `omp` | hooks | — | yes |
 | `opencode` | hooks | full |  |
 | `pi` | hooks | session-identity | yes |
-| `qodercli` | session_identity | — | yes |
-| `qwen` | session_identity | — | yes |
+| `qodercli` | session_identity | — |  |
+| `qwen` | session_identity | — |  |
 
 ## Integration assets
 
@@ -182,7 +182,6 @@ A rule carrying an **upstream** id is not in that bucket and is never a deletion
 | `grok` | `sidecar.overlay_retain` | addition | changes 1 fixture(s): `overlay.txt` |
 | `grok` | `sidecar.working_footer` | addition | changes nothing, and the overlay declares it `harness-exempt`: no fixture holds the screen it is for, and its case is a Go test |
 | `grok` | `sidecar.idle_footer` | addition | changes 1 fixture(s): `stale_working_scrollback.txt` |
-| `grok` | `sidecar.allow_prompt_blocked` | addition | changes 1 fixture(s): `allow_prompt.txt` |
 | `kiro` | `tool_spinner_working` | replaces upstream | changes 1 fixture(s): `tool_spinner_working.txt` |
 | `muse` | `sidecar.thinking_working` | addition | changes 1 fixture(s): `thinking.txt` |
 | `qodercli` | `spinner_working` | replaces upstream | changes 1 fixture(s): `spinner_working.txt` |

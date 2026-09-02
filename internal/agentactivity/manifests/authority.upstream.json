@@ -4,7 +4,7 @@
     "docs/preview/website/src/content/docs/agents.mdx",
     "src/integration/assets"
   ],
-  "herdr_ref": "e2b85c7",
+  "herdr_ref": "preview-2026-08-31-b1ff4582e968",
   "agents": {
     "agy": {
       "display_name": "Antigravity CLI",
@@ -131,12 +131,6 @@
       "integration_role": "state and session",
       "integration_version": 2,
       "integration_asset_dir": "mastracode"
-    },
-    "muse": {
-      "display_name": "Muse",
-      "lifecycle_authority": "none",
-      "state_authority": "screen manifest",
-      "integration_role": "none"
     },
     "omp": {
       "display_name": "OMP",
