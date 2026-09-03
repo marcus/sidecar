@@ -30,6 +30,26 @@ func renderSelect(s Section, width int, focusID, hoverID string) RenderedSection
 	return s.Render(width, focusID, hoverID)
 }
 
+// listBody is the list shape's own rows with the box taken off: the first and
+// last lines are the border, and every line between them carries a border cell
+// at either end. Tests about rows read this; tests about the box read the
+// content itself.
+func listBody(t *testing.T, content string) []string {
+	t.Helper()
+	lines := strings.Split(ansi.Strip(content), "\n")
+	if len(lines) < 3 {
+		t.Fatalf("the list shape draws a border around its rows, got:\n%s", ansi.Strip(content))
+	}
+	if !strings.HasPrefix(lines[0], "╭") || !strings.HasPrefix(lines[len(lines)-1], "╰") {
+		t.Fatalf("the list shape is not bordered:\n%s", ansi.Strip(content))
+	}
+	rows := make([]string, 0, len(lines)-2)
+	for _, line := range lines[1 : len(lines)-1] {
+		rows = append(rows, strings.TrimSuffix(strings.TrimPrefix(line, "│"), "│"))
+	}
+	return rows
+}
+
 // Four choices are a row of segments; five are a list. The threshold is the
 // point at which a row of segments stops being readable, and it is the same
 // number wherever a Select is used.
@@ -43,25 +63,25 @@ func TestSelectShapeFollowsItemCount(t *testing.T) {
 		t.Fatalf("the segmented shape is one line:\n%s", four)
 	}
 
-	five := ansi.Strip(renderSelect(Select("s", selectItems(5), &idx), 80, "s", "").Content)
-	lines := strings.Split(five, "\n")
+	five := renderSelect(Select("s", selectItems(5), &idx), 80, "s", "").Content
+	lines := listBody(t, five)
 	if len(lines) != 5 {
-		t.Fatalf("five choices drew %d lines, want one row each:\n%s", len(lines), five)
+		t.Fatalf("five choices drew %d rows, want one row each:\n%s", len(lines), ansi.Strip(five))
 	}
 	if !strings.HasPrefix(strings.TrimLeft(lines[0], " "), "❯ ") {
-		t.Fatalf("the list shape points at the selection with ❯:\n%s", five)
+		t.Fatalf("the list shape points at the selection with ❯:\n%s", ansi.Strip(five))
 	}
 	if !strings.Contains(lines[0], "the 0th thing") {
-		t.Fatalf("the list shape draws the description column:\n%s", five)
+		t.Fatalf("the list shape draws the description column:\n%s", ansi.Strip(five))
 	}
 }
 
 // WithShape overrides the count, in both directions.
 func TestSelectShapeCanBeForced(t *testing.T) {
 	var idx int
-	list := ansi.Strip(renderSelect(Select("s", selectItems(3), &idx, WithShape(ShapeList)), 80, "s", "").Content)
-	if len(strings.Split(list, "\n")) != 3 {
-		t.Fatalf("WithShape(ShapeList) did not draw a list:\n%s", list)
+	list := renderSelect(Select("s", selectItems(3), &idx, WithShape(ShapeList)), 80, "s", "").Content
+	if rows := listBody(t, list); len(rows) != 3 {
+		t.Fatalf("WithShape(ShapeList) did not draw a list:\n%s", ansi.Strip(list))
 	}
 	seg := ansi.Strip(renderSelect(Select("s", selectItems(8), &idx, WithShape(ShapeSegmented)), 200, "s", "").Content)
 	if strings.Contains(seg, "\n") {
@@ -76,6 +96,202 @@ func TestSelectFallsBackToTheListWhenSegmentsDoNotFit(t *testing.T) {
 	narrow := ansi.Strip(renderSelect(Select("s", selectItems(4), &idx), 20, "s", "").Content)
 	if !strings.Contains(narrow, "\n") {
 		t.Fatalf("a toggle too wide for its column stayed segmented:\n%s", narrow)
+	}
+}
+
+// The width a segmented control reports is the width it draws. It was not:
+// styles.Button pads every segment by two columns either side, and leaving that
+// out of the measurement is what let the View modal keep a control that did not
+// fit and truncate its last segment into "Up…".
+func TestSelectSegmentedWidthIsTheWidthItDraws(t *testing.T) {
+	var idx int
+	items := []SelectItem{
+		{ID: "a", Label: "Relevance"},
+		{ID: "b", Label: "Source"},
+		{ID: "c", Label: "Updated"},
+	}
+	s := Select("s", items, &idx).(*selectSection)
+	natural := s.NaturalWidth()
+	if natural != s.segmentedWidth() {
+		t.Fatalf("a segmented control's natural width %d is not its drawn width %d", natural, s.segmentedWidth())
+	}
+	// Rendered with room to spare, so nothing truncates and the measurement is
+	// compared against the whole control.
+	drawn := ansi.StringWidth(ansi.Strip(renderSelect(s, 200, "s", "").Content))
+	if drawn != natural {
+		t.Fatalf("the toggle drew %d columns, reported %d", drawn, natural)
+	}
+	// Given exactly its natural width it stays segmented and whole.
+	fitted := ansi.Strip(renderSelect(s, natural, "s", "").Content)
+	if strings.Contains(fitted, "…") || strings.Contains(fitted, "\n") {
+		t.Fatalf("the toggle at its own natural width %d was not drawn whole:\n%s", natural, fitted)
+	}
+	if !strings.Contains(fitted, "Updated") {
+		t.Fatalf("the last segment is missing at the natural width:\n%s", fitted)
+	}
+}
+
+// The list shape fills whatever column it is handed, so it asks for no width of
+// its own and cannot widen a modal on its own account.
+func TestSelectListShapeAsksForNoWidth(t *testing.T) {
+	var idx int
+	if w := Select("s", selectItems(3), &idx, WithShape(ShapeList)).(*selectSection).NaturalWidth(); w != 0 {
+		t.Fatalf("a forced list asked for %d columns", w)
+	}
+	if w := Select("s", selectItems(9), &idx).(*selectSection).NaturalWidth(); w != 0 {
+		t.Fatalf("a nine-choice list asked for %d columns", w)
+	}
+	if w := Select("s", nil, &idx).(*selectSection).NaturalWidth(); w != 0 {
+		t.Fatalf("an empty control asked for %d columns", w)
+	}
+}
+
+// WidthForSections is what a host sizes a modal by: the widest control, the
+// box's border and padding, and the column a scrollbar takes once the body is
+// taller than the surface. A When wrapper whose condition is false hides its
+// control from the measurement, exactly as it hides it from the box.
+func TestWidthForSectionsSizesToTheWidestControl(t *testing.T) {
+	var idx int
+	narrow := Select("n", []SelectItem{{ID: "a", Label: "A"}, {ID: "b", Label: "B"}}, &idx)
+	wide := Select("w", []SelectItem{
+		{ID: "a", Label: "Relevance"}, {ID: "b", Label: "Source"}, {ID: "c", Label: "Updated"},
+	}, &idx)
+
+	want := wide.(*selectSection).segmentedWidth() + ModalPadding + ScrollbarColumns
+	if got := WidthForSections(Text("hello"), narrow, Spacer(), wide); got != want {
+		t.Fatalf("WidthForSections = %d, want the widest control %d", got, want)
+	}
+	if got := WidthForSections(Text("hello"), Spacer()); got != 0 {
+		t.Fatalf("a modal of sections that ask for nothing wanted %d columns", got)
+	}
+	hidden := When(func() bool { return false }, wide)
+	if got := WidthForSections(narrow, hidden); got >= want {
+		t.Fatalf("a hidden control widened the modal to %d", got)
+	}
+	shown := When(func() bool { return true }, wide)
+	if got := WidthForSections(narrow, shown); got != want {
+		t.Fatalf("a shown control inside When reported %d, want %d", got, want)
+	}
+}
+
+// Even at the width a host could give it, a control whose segments do not fit
+// becomes a list rather than a stub — the floor under the count rule, now that
+// the measurement it is compared against is the real one.
+func TestSelectFallsBackToTheListAtTheCappedWidth(t *testing.T) {
+	var idx int
+	items := []SelectItem{
+		{ID: "a", Label: "Relevance"},
+		{ID: "b", Label: "Source"},
+		{ID: "c", Label: "Updated"},
+	}
+	s := Select("s", items, &idx)
+	natural := s.(*selectSection).NaturalWidth()
+
+	whole := ansi.Strip(renderSelect(s, natural, "s", "").Content)
+	if strings.Contains(whole, "\n") {
+		t.Fatalf("the toggle fell back to the list at a width that fits it:\n%s", whole)
+	}
+	// One column short of what it needs is the case the screenshot showed. It
+	// must become a list, and no segment may be truncated on the way.
+	capped := ansi.Strip(renderSelect(s, natural-1, "s", "").Content)
+	if !strings.Contains(capped, "\n") {
+		t.Fatalf("a toggle one column too wide stayed segmented:\n%s", capped)
+	}
+	if strings.Contains(capped, "…") {
+		t.Fatalf("the fallback truncated a label instead of listing it:\n%s", capped)
+	}
+	for _, label := range []string{"Relevance", "Source", "Updated"} {
+		if !strings.Contains(capped, label) {
+			t.Fatalf("the list fallback dropped %q:\n%s", label, capped)
+		}
+	}
+}
+
+// The list shape is a bordered control, and the border is the ladder a modal
+// input's border uses: idle, hovered, focused. Without it a modal holding three
+// selectors paints three gold rows and says nothing about which one the
+// keyboard is on.
+func TestSelectListBorderFollowsFocus(t *testing.T) {
+	if got, want := selectListBorderStyle(true, false).GetBorderTopForeground(), styles.Primary; got != want {
+		t.Fatalf("focused border = %v, want Primary %v", got, want)
+	}
+	if got, want := selectListBorderStyle(false, true).GetBorderTopForeground(), styles.TextMuted; got != want {
+		t.Fatalf("hovered border = %v, want TextMuted %v", got, want)
+	}
+	if got, want := selectListBorderStyle(false, false).GetBorderTopForeground(), styles.BorderNormal; got != want {
+		t.Fatalf("idle border = %v, want BorderNormal %v", got, want)
+	}
+
+	var idx int
+	s := Select("s", selectItems(6), &idx)
+	idle := renderSelect(s, 64, "", "").Content
+	focused := renderSelect(s, 64, "s", "").Content
+	hovered := renderSelect(s, 64, "", "s").Content
+	// Hovering one ROW lights the control's border too: the pointer is on the
+	// control either way.
+	rowHovered := renderSelect(s, 64, "", "choice-3").Content
+
+	firstLine := func(content string) string { return strings.SplitN(content, "\n", 2)[0] }
+	if firstLine(idle) == firstLine(focused) {
+		t.Fatal("the focused and idle lists drew the same border")
+	}
+	if firstLine(hovered) == firstLine(idle) {
+		t.Fatal("the hovered list drew the idle border")
+	}
+	if firstLine(rowHovered) != firstLine(hovered) {
+		t.Fatal("hovering a row did not light the control's own border")
+	}
+	// The selected row keeps its fill whether or not the control has focus: the
+	// fill says which choice is active, the border says where the keyboard is.
+	for name, content := range map[string]string{"idle": idle, "focused": focused} {
+		if !strings.Contains(ansi.Strip(content), "❯ choice 0") {
+			t.Fatalf("the %s list lost its selection cursor:\n%s", name, ansi.Strip(content))
+		}
+	}
+	if got, want := selectRowStyle(false, true, false).GetBackground(), styles.ButtonFocused.GetBackground(); got != want {
+		t.Fatalf("selected row background = %v, want the Primary fill %v regardless of focus", got, want)
+	}
+}
+
+// The border is chrome, not a choice: a click on a border cell focuses the
+// control and moves nothing. The rows sit inside it, so their hit regions moved
+// with them.
+func TestSelectListBorderIsNotARow(t *testing.T) {
+	idx := 2
+	s := Select("s", selectItems(6), &idx)
+	m := New("Choose", WithWidth(50)).AddSection(s)
+	handler := mouse.NewHandler()
+	m.Render(90, 40, handler)
+
+	var section, row mouse.Rect
+	for _, region := range handler.HitMap.Regions() {
+		switch region.ID {
+		case "s":
+			section = region.Rect
+		case "choice-0":
+			row = region.Rect
+		}
+	}
+	if section.W == 0 || row.W == 0 {
+		t.Fatal("the control registered no section or row region")
+	}
+	if row.X != section.X+1 || row.Y != section.Y+1 {
+		t.Fatalf("row 0 at (%d,%d), want it inside the border at (%d,%d)", row.X, row.Y, section.X+1, section.Y+1)
+	}
+	if row.W != section.W-2 {
+		t.Fatalf("row width %d, want the box less its two border cells %d", row.W, section.W-2)
+	}
+
+	// The top-left border cell belongs to the control's own Tab stop.
+	action := m.HandleMouse(tea.MouseClickMsg{X: section.X, Y: section.Y, Button: tea.MouseLeft}, handler)
+	if idx != 2 {
+		t.Fatalf("a click on the border selected row %d", idx)
+	}
+	if action != "s" {
+		t.Fatalf("a border click returned %q, want the control's own ID", action)
+	}
+	if m.FocusedID() != "s" {
+		t.Fatalf("a border click left focus on %q", m.FocusedID())
 	}
 }
 
@@ -203,29 +419,32 @@ func TestSelectDoesNotWrapAtTheEnds(t *testing.T) {
 func TestSelectScrollsWithMarkers(t *testing.T) {
 	idx := 0
 	s := Select("s", selectItems(20), &idx, WithMaxVisible(6))
-	out := ansi.Strip(s.Render(64, "s", "").Content)
-	lines := strings.Split(out, "\n")
+	// The markers are inside the box with the rows they belong to: a control
+	// that said "more below" outside its own border would be pointing at the
+	// modal rather than at itself.
+	out := s.Render(64, "s", "").Content
+	lines := listBody(t, out)
 	if len(lines) != 7 {
-		t.Fatalf("six visible rows plus one marker = 7 lines, got %d:\n%s", len(lines), out)
+		t.Fatalf("six visible rows plus one marker = 7 rows, got %d:\n%s", len(lines), ansi.Strip(out))
 	}
 	if !strings.Contains(lines[len(lines)-1], "↓ more below") {
-		t.Fatalf("no more-below marker at the top of a 20-row list:\n%s", out)
+		t.Fatalf("no more-below marker at the top of a 20-row list:\n%s", ansi.Strip(out))
 	}
-	if strings.Contains(out, "↑ more above") {
-		t.Fatalf("a more-above marker at the top of the list:\n%s", out)
+	if strings.Contains(ansi.Strip(out), "↑ more above") {
+		t.Fatalf("a more-above marker at the top of the list:\n%s", ansi.Strip(out))
 	}
 
 	idx = 12
-	out = ansi.Strip(s.Render(64, "s", "").Content)
-	lines = strings.Split(out, "\n")
+	out = s.Render(64, "s", "").Content
+	lines = listBody(t, out)
 	if len(lines) != 8 {
-		t.Fatalf("mid-list draws both markers around six rows, got %d lines:\n%s", len(lines), out)
+		t.Fatalf("mid-list draws both markers around six rows, got %d rows:\n%s", len(lines), ansi.Strip(out))
 	}
 	if !strings.Contains(lines[0], "↑ more above") || !strings.Contains(lines[len(lines)-1], "↓ more below") {
-		t.Fatalf("mid-list is missing a marker:\n%s", out)
+		t.Fatalf("mid-list is missing a marker:\n%s", ansi.Strip(out))
 	}
-	if !strings.Contains(out, "choice 12") {
-		t.Fatalf("the selection scrolled out of its own window:\n%s", out)
+	if !strings.Contains(ansi.Strip(out), "choice 12") {
+		t.Fatalf("the selection scrolled out of its own window:\n%s", ansi.Strip(out))
 	}
 
 	idx = 19

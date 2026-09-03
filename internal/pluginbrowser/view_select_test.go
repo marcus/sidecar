@@ -142,6 +142,62 @@ func TestManyChoiceFilterScrollsInsideItsWindow(t *testing.T) {
 	}
 }
 
+// The View modal grows to hold the widest control it carries. A collection
+// with three sort keys draws a segmented control wider than the browser's fixed
+// 46 columns, and a modal that could not grow left the control to truncate
+// itself into "Up…" — which is the bug the maintainer photographed.
+func TestViewModalWidthFollowsItsWidestControl(t *testing.T) {
+	host := &fakeHost{page: testPage(4)}
+	m := newTestModel(t, host)
+	desc := testDescription()
+	desc.Collections[0].Sort = []pluginhost.SortKey{
+		{ID: "relevance", Label: "Relevance", Default: pluginhost.SortDesc},
+		{ID: "source", Label: "Source"},
+		{ID: "updated", Label: "Updated"},
+	}
+	host.desc = desc
+	run(t, m, m.Refresh())
+	s := m.activeState()
+	s.query = "dex"
+	run(t, m, m.list(m.desc.Collections[0], s, false))
+
+	press(t, m, "v")
+	if m.overlay.width <= overlayModalCols {
+		t.Fatalf("the View modal stayed at %d columns, want it grown past the fixed %d", m.overlay.width, overlayModalCols)
+	}
+	view := strip(m.View())
+	for _, label := range []string{"Relevance", "Source", "Updated"} {
+		if !strings.Contains(view, label) {
+			t.Fatalf("the sort control lost %q:\n%s", label, view)
+		}
+	}
+	if !strings.Contains(view, "[") || !strings.Contains(view, " | ") {
+		t.Fatalf("the sort control is no longer segmented:\n%s", view)
+	}
+	if strings.Contains(view, "Up…") {
+		t.Fatalf("the sort control is still truncated:\n%s", view)
+	}
+	press(t, m, "esc")
+
+	// The frame is the cap. In a browser too narrow for the control, the modal
+	// takes what the frame allows and the control's own floor drops it to the
+	// list shape rather than truncating a segment.
+	m.SetSize(46, 45)
+	press(t, m, "v")
+	if m.overlay.width > 46-4 {
+		t.Fatalf("the View modal grew to %d columns in a 46-column frame", m.overlay.width)
+	}
+	view = strip(m.View())
+	if strings.Contains(view, "Up…") || strings.Contains(view, "Sour…") {
+		t.Fatalf("a capped modal truncated the sort control instead of listing it:\n%s", view)
+	}
+	for _, label := range []string{"Relevance", "Source", "Updated"} {
+		if !strings.Contains(view, label) {
+			t.Fatalf("the capped modal lost the sort key %q:\n%s", label, view)
+		}
+	}
+}
+
 func regionForID(m *Model, id string) *mouse.Region {
 	if m.overlay.mouse == nil {
 		return nil

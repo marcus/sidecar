@@ -42,6 +42,72 @@ type ScrollOwnerSection interface {
 	ScrollAtBoundary(delta int) bool
 }
 
+// NaturalWidthSection is implemented by a section that has a width it would
+// rather be given than be truncated to. A segmented Select is the case that
+// forced it: its shape is a single row of labels, so a modal that is narrower
+// than that row either truncates the labels into stubs or drops the control to
+// its list shape, and both are decisions the host should be making with the
+// number in front of it.
+//
+// The reported width is a CONTENT width — what the section wants inside the
+// modal's border and padding. It is a wish, not a floor: a host still caps it
+// to the frame, and a section handed less must still draw something sensible.
+type NaturalWidthSection interface {
+	Section
+
+	// NaturalWidth is the content width this section would rather have, or 0
+	// for a section that fills whatever column it is handed.
+	NaturalWidth() int
+}
+
+// NaturalWidth is the widest natural width among sections, or 0 when none of
+// them asks for one. A When wrapper answers for its inner section only while
+// its condition holds, so a hidden control does not widen a modal.
+func NaturalWidth(sections ...Section) int {
+	widest := 0
+	for _, s := range sections {
+		n, ok := asNaturalWidth(s)
+		if !ok {
+			continue
+		}
+		if w := n.NaturalWidth(); w > widest {
+			widest = w
+		}
+	}
+	return widest
+}
+
+// WidthForSections is the modal width that holds every section at its natural
+// width: the widest control, the box's own border and padding, and the column a
+// scrollbar takes when the body is taller than the surface — because a modal
+// that fits its widest control only until the body scrolls is a modal that
+// changes shape as it fills up. It returns 0 when no section asks for a width;
+// a host takes the larger of this and its own default, and caps the result to
+// the frame it floats over.
+func WidthForSections(sections ...Section) int {
+	widest := NaturalWidth(sections...)
+	if widest <= 0 {
+		return 0
+	}
+	return widest + ModalPadding + ScrollbarColumns
+}
+
+// asNaturalWidth resolves a section to its natural width, seeing through When
+// wrappers whose condition currently holds.
+func asNaturalWidth(s Section) (NaturalWidthSection, bool) {
+	for {
+		if w, ok := s.(*whenSection); ok {
+			if !w.condition() {
+				return nil, false
+			}
+			s = w.inner
+			continue
+		}
+		n, ok := s.(NaturalWidthSection)
+		return n, ok
+	}
+}
+
 // asScrollOwner resolves a section to its scroll owner, seeing through When
 // wrappers whose condition currently holds.
 func asScrollOwner(s Section) (ScrollOwnerSection, bool) {

@@ -10,11 +10,16 @@ import (
 )
 
 // The kind chooser is the selector the rest of the app is adopting, so it moved
-// into internal/modal as modal.Select. That move is a refactor, not a redesign:
-// these goldens are the exact bytes the Create Workspace modal drew before it,
-// recorded from the pre-change code, and cover both shapes (the segmented
-// toggle under five rows, the vertical list at five or more), a disabled row,
-// the focused and unfocused frames, and the widths the two hosts use.
+// into internal/modal as modal.Select. These goldens cover both shapes (the
+// segmented toggle under five rows, the vertical list at five or more), a
+// disabled row, the focused and unfocused frames, and the widths the two hosts
+// use.
+//
+// They were recorded from the pre-change code and held the promotion to the
+// byte. They have been rewritten once since, for td-c6904c: the list shape is
+// now a bordered control, so every list golden gained a rounded box around its
+// rows and lost the two columns the box takes. Nothing else about them moved,
+// and the segmented golden is still byte-identical to the pre-promotion one.
 //
 // Regenerate deliberately, and only with a reason:
 //
