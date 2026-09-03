@@ -169,6 +169,11 @@ type Model struct {
 	listBar   browserBar
 	docBar    browserBar
 	hoverRail bool
+	// railDragged records that a rail drag is in flight, so the split is saved
+	// however the gesture ends. A release is not guaranteed: a button-less
+	// motion after a lost one ends the drag inside internal/mouse and arrives
+	// here as hover.
+	railDragged bool
 	// share is the list's percentage of the box. Zero until it is read from
 	// state, because a browser is built before it knows how wide it will be.
 	share int

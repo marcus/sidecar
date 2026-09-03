@@ -1506,9 +1506,16 @@ func (h *appContentDeck) focusRing() ([]appDeckFocusStop, plugin.PaneFocusProvid
 // cyclePrimaryPaneFocus answers Tab for a deck holding nothing but its Primary
 // leaf, by cycling the focused plugin's own projected stops.
 //
-// A provider with fewer than two stops declines: one stop is not a ring, and
-// swallowing Tab there would take the key from whatever the plugin binds it to
-// while giving the user nowhere to go.
+// Only for a plugin that has handed the key over, through
+// plugin.PaneFocusRingHost. Every other surface routes Tab itself — Files and
+// Git move to their content pane, Notes saves the editor on the way out — and
+// taking it here on the strength of two projected stops would quietly replace
+// behaviour those plugins still own. Once a second leaf is open the deck's ring
+// is larger than any one plugin's and the key is the app's outright, which is
+// the rung above this one.
+//
+// A provider with fewer than two stops declines as well: one stop is not a
+// ring, and swallowing Tab there would give the user nowhere to go.
 func (m *Model) cyclePrimaryPaneFocus(h *appContentDeck, key tea.KeyPressMsg) (tea.Cmd, bool) {
 	if key.Code != tea.KeyTab {
 		return nil, false
@@ -1516,8 +1523,11 @@ func (m *Model) cyclePrimaryPaneFocus(h *appContentDeck, key tea.KeyPressMsg) (t
 	if h.info != nil || h.appContentSearchActive() {
 		return nil, false
 	}
-	provider, ok := h.plugin.(plugin.PaneFocusProvider)
-	if !ok || len(provider.PaneFocusStops()) < 2 {
+	provider, ok := h.plugin.(plugin.PaneFocusRingHost)
+	if !ok || !provider.HostOwnsPaneFocusRing() {
+		return nil, false
+	}
+	if len(provider.PaneFocusStops()) < 2 {
 		return nil, false
 	}
 	if consumer, ok := h.plugin.(plugin.TextInputConsumer); ok && consumer.ConsumesTextInput() {

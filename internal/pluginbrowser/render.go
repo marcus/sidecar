@@ -51,14 +51,16 @@ const (
 // that hands back more rows than its box would push the app header off screen,
 // so the fit is enforced here rather than trusted to the caller.
 func (m *Model) View() string {
+	// One hit map, cleared here and rebuilt in paint order. Every frame answers
+	// for itself: a region left over from the last one is a target for something
+	// that is no longer on screen. That includes a frame that paints nothing at
+	// all, so the clear runs before the box is measured — a browser collapsed to
+	// no width must not keep the targets of the frame before it.
+	m.pointer().Clear()
+	m.geom = frameGeom{}
 	if m.width <= 0 || m.height <= 0 {
 		return ""
 	}
-	// One hit map, cleared here and rebuilt in paint order. Every frame answers
-	// for itself: a region left over from the last one is a target for something
-	// that is no longer on screen.
-	m.pointer().Clear()
-	m.geom = frameGeom{}
 	// A pane leaf shows one tab shape at a time; see pane.go for why.
 	if m.paneMode() {
 		return m.paneView()

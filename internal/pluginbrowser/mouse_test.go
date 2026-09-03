@@ -394,3 +394,167 @@ func TestTheQueryLimitHintIsNoTarget(t *testing.T) {
 		t.Fatalf("the limit hint is registered as the outcome control: %+v", regions)
 	}
 }
+
+// The rail is not pointer-only. `+` and `-` move the split by the same step
+// the file browser and Git move theirs by, through the same clamped setter and
+// the same store the drag uses.
+func TestResizeKeysMoveTheSplitAndPersistIt(t *testing.T) {
+	if err := state.InitWithDir(t.TempDir()); err != nil {
+		t.Fatalf("state.InitWithDir: %v", err)
+	}
+	t.Cleanup(func() { _ = state.InitWithDir(t.TempDir()) })
+	m := loadedModel(t, &fakeHost{page: testPage(12)})
+
+	before := m.ListShare()
+	step := m.shareStep()
+	press(t, m, "+")
+	if got := m.ListShare(); got != before+step {
+		t.Fatalf("`+` left the share at %d, want %d", got, before+step)
+	}
+	if got := state.GetPluginBrowserSplit("fixture"); got != m.ListShare() {
+		t.Fatalf("saved share = %d, live share = %d", got, m.ListShare())
+	}
+	press(t, m, "-")
+	if got := m.ListShare(); got != before {
+		t.Fatalf("`-` left the share at %d, want the %d it started from", got, before)
+	}
+	if got := state.GetPluginBrowserSplit("fixture"); got != before {
+		t.Fatalf("the second press saved %d, want %d", got, before)
+	}
+}
+
+// The keys stop at the same floors the drag does, and a press the floor refuses
+// writes nothing: a preference that did not change is not a preference to save.
+func TestResizeKeysClampAtTheFloorsAndSaveNothingThere(t *testing.T) {
+	if err := state.InitWithDir(t.TempDir()); err != nil {
+		t.Fatalf("state.InitWithDir: %v", err)
+	}
+	t.Cleanup(func() { _ = state.InitWithDir(t.TempDir()) })
+	m := loadedModel(t, &fakeHost{page: testPage(12)})
+
+	lo, hi := m.shareBounds()
+	for range 200 {
+		press(t, m, "+")
+	}
+	if got := m.ListShare(); got != hi {
+		t.Fatalf("`+` ran to %d, want the ceiling %d", got, hi)
+	}
+	// At the ceiling the key stays claimed — the rail is still there and the
+	// other direction still works — and a press that moves nothing leaves the
+	// saved preference exactly where it was.
+	press(t, m, "+")
+	if got := state.GetPluginBrowserSplit("fixture"); got != hi {
+		t.Fatalf("a press at the ceiling left %d saved, want %d", got, hi)
+	}
+	if !m.ClaimsKey("+") {
+		t.Fatal("the browser stopped claiming `+` at the ceiling; the rail is still there")
+	}
+	for range 200 {
+		press(t, m, "-")
+	}
+	if got := m.ListShare(); got != lo {
+		t.Fatalf("`-` ran to %d, want the floor %d", got, lo)
+	}
+}
+
+// A pane leaf holds one box, whose width the deck sets. There is no rail there,
+// so the keys are inert and unclaimed rather than swallowed.
+func TestResizeKeysAreUnclaimedInPaneMode(t *testing.T) {
+	m := loadedModel(t, &fakeHost{page: testPage(12)})
+	m.SetPaneCollection("results")
+	m.View()
+	if !m.paneMode() {
+		t.Fatal("the browser is not in pane mode; this test is about a pane leaf")
+	}
+
+	for _, key := range []string{"+", "-"} {
+		if m.ClaimsKey(key) {
+			t.Fatalf("a pane browser claims %q with no rail to move", key)
+		}
+		if _, consumed := m.HandleKey(keyPress(key)); consumed {
+			t.Fatalf("a pane browser consumed %q with nothing to do", key)
+		}
+	}
+}
+
+// A third rapid press is still a press. Nothing here wants three of them, and
+// swallowing it would make a row go dead under a fast hand.
+func TestATripleClickOnARowIsStillAClick(t *testing.T) {
+	host := &fakeHost{page: testPage(12)}
+	m := loadedModel(t, host)
+	row := rowRegion(t, m, 2)
+
+	press := func() {
+		run(t, m, m.HandleMouse(tea.MouseClickMsg{X: row.Rect.X, Y: row.Rect.Y, Button: tea.MouseLeft}))
+		m.View()
+	}
+	press()
+	press()
+	if len(host.gets) == 0 {
+		t.Fatal("two presses on a row never opened it")
+	}
+	if m.focus != FocusList {
+		t.Fatalf("focus is already at %q; the third press would prove nothing", m.focus)
+	}
+	// The third press, immediately: the shared handler reports it as a triple,
+	// and it is the press that focuses the document already showing that row.
+	press()
+	if m.focus != FocusDetail {
+		t.Fatalf("the third press left focus at %q; it was swallowed", m.focus)
+	}
+}
+
+// A frame that paints nothing keeps no targets: a browser collapsed to no width
+// must not answer for the frame before it.
+func TestAZeroSizedFrameClearsItsTargets(t *testing.T) {
+	m := loadedModel(t, &fakeHost{page: testPage(12)})
+	if len(m.Regions()) == 0 {
+		t.Fatal("the painted frame registered nothing to lose")
+	}
+	m.SetSize(0, 0)
+	m.View()
+	if regions := m.Regions(); len(regions) != 0 {
+		t.Fatalf("a frame that painted nothing left %d targets behind", len(regions))
+	}
+}
+
+// A drag whose release the window never saw still saves the split: internal
+// mouse ends the gesture on the first button-less motion and reports it as
+// hover, and that is the only notice this model gets.
+func TestALostReleaseStillSavesTheSplit(t *testing.T) {
+	if err := state.InitWithDir(t.TempDir()); err != nil {
+		t.Fatalf("state.InitWithDir: %v", err)
+	}
+	t.Cleanup(func() { _ = state.InitWithDir(t.TempDir()) })
+	m := loadedModel(t, &fakeHost{page: testPage(12)})
+
+	rail := firstRegion(t, m, regionRail)
+	run(t, m, m.HandleMouse(tea.MouseClickMsg{X: rail.Rect.X + 1, Y: 4, Button: tea.MouseLeft}))
+	run(t, m, m.HandleMouse(tea.MouseMotionMsg{X: rail.Rect.X + 1 - 20, Y: 4, Button: tea.MouseLeft}))
+	m.View()
+	dragged := m.ListShare()
+	// No release: the next thing that arrives is plain motion.
+	run(t, m, m.HandleMouse(tea.MouseMotionMsg{X: rail.Rect.X + 1 - 20, Y: 4, Button: tea.MouseNone}))
+
+	if got := state.GetPluginBrowserSplit("fixture"); got != dragged {
+		t.Fatalf("saved share = %d after a lost release, want the dragged %d", got, dragged)
+	}
+}
+
+// While an overlay is up the wheel is the overlay's. Answering the boundary
+// question for the list underneath would let the host drop a notch the modal
+// was going to scroll.
+func TestTheWheelIsNeverAtABoundaryUnderAnOverlay(t *testing.T) {
+	m := loadedModel(t, &fakeHost{page: testPage(3)})
+	if !m.ScrollAtBoundaryAt(4, 4, -1) {
+		t.Fatal("a list at its top is not reporting a boundary; this test needs one")
+	}
+	run(t, m, m.openViewModal())
+	m.View()
+	if !m.OverlayOpen() {
+		t.Fatal("the View modal did not open")
+	}
+	if m.ScrollAtBoundaryAt(4, 4, -1) {
+		t.Fatal("the browser answered for the list while an overlay owned the wheel")
+	}
+}

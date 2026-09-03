@@ -107,8 +107,10 @@ func TestACollectionPaneClaimsTheBrowsersKeys(t *testing.T) {
 	if p.ClaimsKey("a") {
 		t.Fatal("a collection with no applicable action still claims `a`")
 	}
-	// Keys the pane does not own stay the host's.
-	for _, key := range []string{"K", "@", "#", "1", "n", "tab"} {
+	// Keys the pane does not own stay the host's. `+` and `-` move the
+	// browser's own rail on the tab surface, and a pane leaf has no rail: one
+	// box, whose width the deck sets, so the keys stay the deck's.
+	for _, key := range []string{"K", "@", "#", "1", "n", "tab", "+", "-"} {
 		if p.ClaimsKey(key) {
 			t.Fatalf("a focused collection pane claims %q, which is the host's", key)
 		}

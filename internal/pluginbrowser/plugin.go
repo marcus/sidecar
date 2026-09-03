@@ -26,6 +26,13 @@ const (
 	cmdSource   = "plugin-source"
 	cmdCoverage = "plugin-coverage"
 
+	// The split's keys carry sidecar's own command IDs rather than plugin-
+	// prefixed ones: they are the same command the file browser, Git and both
+	// Workspace hosts bind, and the footer and the help sheet key their chips
+	// by the ID.
+	cmdResizeGrow   = "resize-pane-grow"
+	cmdResizeShrink = "resize-pane-shrink"
+
 	cmdModalMove   = "plugin-modal-move"
 	cmdModalSelect = "plugin-modal-select"
 	cmdModalClose  = "plugin-modal-close"
@@ -126,6 +133,7 @@ func (p *TabPlugin) Init(ctx *plugin.Context) error {
 		{"a", cmdActions},
 		{"c", cmdCoverage},
 		{"o", cmdSource},
+		{"+", cmdResizeGrow}, {"-", cmdResizeShrink},
 	} {
 		ctx.Keymap.RegisterPluginBinding(b.key, b.command, context)
 	}
@@ -246,6 +254,21 @@ func (p *TabPlugin) Commands() []plugin.Command {
 			Category: plugin.CategoryActions, Context: context, Priority: 8,
 		})
 	}
+	// Last, and so the first pair a narrow footer drops: the rail is also a
+	// pointer target, and of everything here it is the one gesture that is not
+	// the only way to reach what it does.
+	if p.model.canResizeSplit() {
+		commands = append(commands,
+			plugin.Command{
+				ID: cmdResizeGrow, Name: "Grow", Description: "Grow the list",
+				Category: plugin.CategoryView, Context: context, Priority: 9,
+			},
+			plugin.Command{
+				ID: cmdResizeShrink, Name: "Shrink", Description: "Shrink the list",
+				Category: plugin.CategoryView, Context: context, Priority: 10,
+			},
+		)
+	}
 	return commands
 }
 
@@ -304,6 +327,12 @@ func (p *TabPlugin) WheelAtBoundary(msg tea.MouseWheelMsg) bool {
 		return false
 	}
 }
+
+// HostOwnsPaneFocusRing hands Tab and Shift+Tab to the app on a deck holding
+// nothing but this browser's Primary leaf. It is the same statement
+// browserOwnedKeys makes by leaving `tab` out: the focus ring is the host's on
+// every other surface, and a protocol plugin gets it without binding anything.
+func (p *TabPlugin) HostOwnsPaneFocusRing() bool { return true }
 
 // PaneFocusStops projects the browser's two windows into the app-owned ring.
 func (p *TabPlugin) PaneFocusStops() []plugin.PaneFocusStop {

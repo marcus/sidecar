@@ -121,7 +121,10 @@ func (m *Model) HandleMouse(msg tea.MouseMsg) tea.Cmd {
 		return nil
 	case mouse.ActionClick:
 		return m.pointerClick(action, false)
-	case mouse.ActionDoubleClick:
+	case mouse.ActionDoubleClick, mouse.ActionTripleClick:
+		// A third rapid press is still a press. The browser has no gesture that
+		// wants three of them, and dropping it would make the row, the rail or
+		// a scrollbar go dead under a fast hand.
 		return m.pointerClick(action, true)
 	case mouse.ActionScrollUp, mouse.ActionScrollDown:
 		return m.pointerWheel(action)
@@ -154,6 +157,9 @@ func (m *Model) applyHover(action mouse.MouseAction) {
 		if m.docBar.gesture.Active() {
 			m.docBar.gesture.End()
 		}
+		// A rail drag that ended this way never produced a release, so this is
+		// the only place its split would be saved.
+		m.settleSplit()
 	}
 }
 
@@ -252,6 +258,7 @@ func (m *Model) pointerWheel(action mouse.MouseAction) tea.Cmd {
 func (m *Model) pointerDrag(action mouse.MouseAction) tea.Cmd {
 	switch m.pointer().DragRegion() {
 	case regionRail:
+		m.railDragged = true
 		m.setListShare(m.pointer().DragStartValue() + action.DragDX*100/max(m.width, 1))
 		return nil
 	case ui.RegionScrollbarThumb, ui.RegionScrollbarTrack:
@@ -275,12 +282,33 @@ func (m *Model) pointerDrag(action mouse.MouseAction) tea.Cmd {
 func (m *Model) pointerDragEnd(action mouse.MouseAction) tea.Cmd {
 	switch action.DragStartID {
 	case regionRail:
-		_ = state.SetPluginBrowserSplit(m.instance, m.share)
+		m.settleSplit()
 	case ui.RegionScrollbarThumb, ui.RegionScrollbarTrack:
 		m.listBar.gesture.End()
 		m.docBar.gesture.End()
 	}
 	return nil
+}
+
+// settleSplit saves where a rail drag left the split, whichever way the drag
+// ended: on a release, or on the first button-less motion after a release the
+// window never saw, which internal/mouse ends the gesture on and reports as
+// hover. A drag that put the split back where it was writes nothing — a
+// preference that did not change is not a preference to save.
+func (m *Model) settleSplit() {
+	if !m.railDragged {
+		return
+	}
+	m.railDragged = false
+	m.persistSplit()
+}
+
+// persistSplit is the one write both routes to the rail go through.
+func (m *Model) persistSplit() {
+	if state.GetPluginBrowserSplit(m.instance) == m.share {
+		return
+	}
+	_ = state.SetPluginBrowserSplit(m.instance, m.share)
 }
 
 // scrollListTo moves the table's window to an offset a bar gesture chose, and
@@ -381,6 +409,39 @@ func (m *Model) setListShare(share int) {
 	m.share = share
 }
 
+// resizeColumns is how far one press of the resize keys moves the rail. Three
+// columns is what the file browser's and Git's `+`/`-` move their sidebars by,
+// and a key that moved a different distance on this surface would be a third
+// answer to a question sidecar has already settled twice.
+const resizeColumns = 3
+
+// shareStep expresses that step in the unit this split is kept in. It is never
+// less than one percent, because a step that rounded to nothing would make the
+// key look dead on a wide box.
+func (m *Model) shareStep() int {
+	if m.width <= 0 {
+		return 1
+	}
+	step := resizeColumns * 100 / m.width
+	if step < 1 {
+		step = 1
+	}
+	return step
+}
+
+// resizeSplit moves the rail one step in the given direction and persists where
+// it settled. It goes through setListShare and state.SetPluginBrowserSplit —
+// the same clamp and the same store the drag uses — so the two routes cannot
+// drift, and a step that the floors refuse writes nothing.
+func (m *Model) resizeSplit(direction int) tea.Cmd {
+	if !m.canResizeSplit() {
+		return nil
+	}
+	m.setListShare(m.listShare() + direction*m.shareStep())
+	m.persistSplit()
+	return nil
+}
+
 func (m *Model) shareBounds() (int, int) {
 	if m.width <= 0 {
 		return 1, 99
@@ -462,6 +523,12 @@ func (m *Model) Regions() []mouse.Region { return m.pointer().HitMap.Regions() }
 // nothing, answered for the box under the pointer rather than the focused one,
 // so the host can hand the notch to whatever is underneath.
 func (m *Model) ScrollAtBoundaryAt(x, y, delta int) bool {
+	// An open overlay is what the notch would scroll, and the list underneath
+	// is not the box being asked about. Answering for the list would let the
+	// host drop a wheel the modal was going to use.
+	if m.overlay.open() {
+		return false
+	}
 	region := m.pointer().HitMap.Test(x, y)
 	if m.boxAt(region, x) == barDetail {
 		if delta < 0 {

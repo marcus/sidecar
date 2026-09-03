@@ -20,18 +20,26 @@ import (
 // `n` and `tab` are deliberately absent. The pane switcher and the focus ring
 // are the host's, and a plugin that swallowed either would be answering a
 // question the app has already answered for every other surface.
+// `+` and `-` are the split's, as they are on every other two-pane surface in
+// sidecar. Neither is in keymap.HostReservedKeys or keymap.GlobalKeys, so the
+// browser may own them.
 var browserOwnedKeys = map[string]bool{
 	"j": true, "k": true, "down": true, "up": true,
 	"pgdown": true, "pgup": true, "home": true, "end": true,
 	"enter": true,
 	"/":     true, "v": true, "r": true, "a": true, "o": true, "c": true,
+	"+": true, "-": true,
 }
 
 // stateBoundKeys are the browser's control keys that depend on what the
-// collection declares. They are owned — no plugin may take one — but claimed
-// only where they do something, so a key that would be inert falls through to
-// whatever the host binds instead of being swallowed (td-fcb648).
-var stateBoundKeys = map[string]bool{"/": true, "v": true, "a": true, "c": true}
+// collection declares, or on what is on screen. They are owned — no plugin may
+// take one — but claimed only where they do something, so a key that would be
+// inert falls through to whatever the host binds instead of being swallowed
+// (td-fcb648).
+var stateBoundKeys = map[string]bool{
+	"/": true, "v": true, "a": true, "c": true,
+	"+": true, "-": true,
+}
 
 // OwnedKeys reports the keys the browser acts on, for a host that has to answer
 // "does this surface claim that key" without keeping its own copy of the list.
@@ -73,8 +81,22 @@ func (m *Model) canAct(key string) bool {
 		return len(m.applicableActions()) > 0
 	case "c":
 		return m.hasCoverage()
+	case "+", "-":
+		return m.canResizeSplit()
 	}
 	return false
+}
+
+// canResizeSplit reports that there are two boxes to move the rail between. A
+// pane leaf holds one shape and a box too narrow for a detail gives the whole
+// of itself to the list; in both there is no rail, so the keys are inert and
+// unclaimed rather than swallowed.
+func (m *Model) canResizeSplit() bool {
+	if m.paneMode() || m.width <= 0 {
+		return false
+	}
+	_, detail := m.split()
+	return detail > 0
 }
 
 // ConsumesTextInput reports that the query line has the keyboard, so the host
@@ -143,6 +165,10 @@ func (m *Model) HandleKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		return m.openCoverage(), true
 	case "o":
 		return m.openSource(), true
+	case "+":
+		return m.resizeSplit(1), true
+	case "-":
+		return m.resizeSplit(-1), true
 	}
 	// Esc with nothing open is the host's: it is how the global space is left,
 	// and a surface that swallowed it would strand the user on a tab.

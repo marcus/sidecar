@@ -181,3 +181,41 @@ func TestAppContentTabDeclinesASingleStopSurface(t *testing.T) {
 		t.Fatal("Tab was swallowed by a surface with nowhere to go")
 	}
 }
+
+// The Primary-only ring is opt-in. A plugin that projects two stops but has not
+// handed Tab over through plugin.PaneFocusRingHost keeps the key, because its
+// own handler does more than move focus: Files and Git toggle their content
+// pane, Notes clears an in-note search and saves the editor on the way out.
+// deckHostTestPlugin stands for all three — like them, it declares stops and
+// not the ring.
+func TestAppContentTabStaysWithAPluginThatKeepsIt(t *testing.T) {
+	root := t.TempDir()
+	p := &deckHostTestPlugin{id: "file-browser", focus: "tree", frame: "tree | preview"}
+	m := appDeckTestModel(t, root, p)
+	m.renderContent(200, 40)
+
+	h := m.currentContentDeck()
+	if h == nil {
+		t.Fatal("the plugin got no content deck")
+	}
+	if got := h.deck.Leaf(panelayout.Document) + h.deck.Leaf(panelayout.Issue) +
+		h.deck.Leaf(panelayout.Note) + h.deck.Leaf(panelayout.Diff) + h.deck.Leaf(panelayout.Resource); got != 0 {
+		t.Fatalf("the deck holds a passive leaf (%d); this test is about a Primary-only one", got)
+	}
+	if stops := p.PaneFocusStops(); len(stops) != 2 {
+		t.Fatalf("the stand-in projects %d stops; it needs two for this to prove anything", len(stops))
+	}
+	if _, ok := plugin.Plugin(p).(plugin.PaneFocusRingHost); ok {
+		t.Fatal("the stand-in hands the ring over; it stands for the plugins that do not")
+	}
+
+	if _, handled := m.handleAppContentKey(tea.KeyPressMsg{Code: tea.KeyTab}); handled {
+		t.Fatal("the app's ring took Tab from a plugin that still routes it")
+	}
+	if got := p.PaneFocus(); got != "tree" {
+		t.Fatalf("Tab moved focus to %q behind the plugin's back", got)
+	}
+	if _, handled := m.handleAppContentKey(tea.KeyPressMsg{Code: tea.KeyTab, Mod: tea.ModShift}); handled {
+		t.Fatal("the app's ring took Shift+Tab from a plugin that still routes it")
+	}
+}
