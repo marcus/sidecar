@@ -20,6 +20,7 @@ import (
 	"github.com/marcus/sidecar/internal/startuptrace"
 	"github.com/marcus/sidecar/internal/styles"
 	"github.com/marcus/sidecar/internal/terminalperf"
+	"github.com/marcus/sidecar/internal/tty"
 	"github.com/marcus/sidecar/internal/ui"
 )
 
@@ -1585,7 +1586,8 @@ func (m *Model) ensureHelpModal() {
 		modal.WithHints(false),
 	).
 		AddSection(m.helpGlobalSection()).
-		AddSection(m.helpPluginSection())
+		AddSection(m.helpPluginSection()).
+		AddSection(m.helpSelectionSection())
 }
 
 // clearHelpModal clears the help modal state.
@@ -1626,6 +1628,38 @@ func (m *Model) helpPluginSection() modal.Section {
 		m.renderBindingSection(&b, ctx, contentWidth)
 		return modal.RenderedSection{Content: b.String()}
 	}, nil)
+}
+
+// helpSelectionSection is the one paragraph help owes text selection. The
+// chords are already in the binding lists above; what no list can say is that
+// holding shift or option hands the drag to the terminal emulator instead,
+// which is the answer to "why can I not select that" on any pane Sidecar does
+// not make selectable — and the reason the emulator's own quick-copy still
+// works everywhere.
+func (m *Model) helpSelectionSection() modal.Section {
+	return modal.Custom(func(contentWidth int, focusID, hoverID string) modal.RenderedSection {
+		var b strings.Builder
+		b.WriteString(styles.Title.Render("Selecting text"))
+		b.WriteString("\n")
+		for _, line := range []string{
+			"Drag over a pane's text to select it; " + m.selectionCopyKeyLabel() + " copies.",
+			"Hold shift or option while dragging to hand the drag to your",
+			"terminal instead, for its own selection and quick copy.",
+		} {
+			b.WriteString(styles.Muted.Render(ui.TruncateString(line, contentWidth)))
+			b.WriteString("\n")
+		}
+		return modal.RenderedSection{Content: strings.TrimRight(b.String(), "\n")}
+	}, nil)
+}
+
+// selectionCopyKeyLabel is the configured copy chord, so help names the key the
+// user actually has rather than the default.
+func (m *Model) selectionCopyKeyLabel() string {
+	if key := TerminalConfig(m.cfg).SelectionKeys().Copy; key != "" {
+		return key
+	}
+	return tty.SuperCopyKey
 }
 
 // helpSurface names the surface help should document and the keymap context it
