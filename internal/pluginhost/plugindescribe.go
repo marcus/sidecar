@@ -129,6 +129,12 @@ func validateCollections(instance string, wire []WireCollection, home string) ([
 		}
 		c.Sort = sortKeys
 
+		filters, err := validateFilters(instance, id, w.Filters)
+		if err != nil {
+			return nil, err
+		}
+		c.Filters = filters
+
 		refresh, err := validateRefresh(instance, id, w.Refresh, home)
 		if err != nil {
 			return nil, err
@@ -268,6 +274,90 @@ func validateSortKeys(instance, collection string, wire []WireSortKey) ([]SortKe
 			}
 		}
 		out = append(out, key)
+	}
+	return out, nil
+}
+
+// validateFilters checks a collection's declared choosers.
+//
+// It refuses rather than repairs, like the rest of describe. A filter is a
+// control the host draws and a value the host persists and sends back: an
+// unknown kind would be drawn as the wrong control, a choice filter with no
+// choices is a menu with nothing in it, and a default naming an option that
+// does not exist would open the control on a value the plugin never declared
+// and then send it back on every list. Each of those is a bug in the plugin
+// that the author has to see, not one to publish half of.
+func validateFilters(instance, collection string, wire []WireFilter) ([]Filter, error) {
+	if len(wire) == 0 {
+		return nil, nil
+	}
+	if len(wire) > MaxFilters {
+		return nil, describeFail(instance, "collection %q declares %d filters, the limit is %d", collection, len(wire), MaxFilters)
+	}
+	seen := make(map[string]bool, len(wire))
+	out := make([]Filter, 0, len(wire))
+	for i, w := range wire {
+		id, err := storableID(instance, "collection "+collection+" filter", i, w.ID, MaxFilterIDChars)
+		if err != nil {
+			return nil, err
+		}
+		if seen[id] {
+			return nil, describeFail(instance, "collection %q declares filter id %q more than once", collection, id)
+		}
+		seen[id] = true
+
+		kind := CoerceFilterKind(w.Kind)
+		if kind == "" {
+			return nil, describeFail(instance, "collection %q filter %q declares kind %q, which is not one of choice or text", collection, id, w.Kind)
+		}
+		f := Filter{ID: id, Kind: kind, Label: resource.SanitizeLine(w.Label, MaxFilterTitleChars)}
+		if f.Label == "" {
+			f.Label = id
+		}
+
+		switch kind {
+		case FilterChoice:
+			if len(w.Choices) == 0 {
+				return nil, describeFail(instance, "collection %q filter %q is a choice with no choices", collection, id)
+			}
+			if len(w.Choices) > MaxFilterChoices {
+				return nil, describeFail(instance, "collection %q filter %q declares %d choices, the limit is %d", collection, id, len(w.Choices), MaxFilterChoices)
+			}
+			choiceSeen := make(map[string]bool, len(w.Choices))
+			for j, wc := range w.Choices {
+				choiceID, err := storableID(instance, "collection "+collection+" filter "+id+" choice", j, wc.ID, MaxFilterIDChars)
+				if err != nil {
+					return nil, err
+				}
+				if choiceSeen[choiceID] {
+					return nil, describeFail(instance, "collection %q filter %q declares choice id %q more than once", collection, id, choiceID)
+				}
+				choiceSeen[choiceID] = true
+				title := resource.SanitizeLine(wc.Title, MaxFilterTitleChars)
+				if title == "" {
+					title = choiceID
+				}
+				f.Choices = append(f.Choices, FilterOption{ID: choiceID, Title: title})
+			}
+			f.Default = strings.TrimSpace(w.Default)
+			if f.Default == "" {
+				// No stated default is the first declared option: a radio group
+				// has to open on something, and the plugin's own order says
+				// which.
+				f.Default = f.Choices[0].ID
+			} else if !choiceSeen[f.Default] {
+				return nil, describeFail(instance, "collection %q filter %q defaults to %q, which is not one of its choices", collection, id, f.Default)
+			}
+		case FilterText:
+			if len(w.Choices) > 0 {
+				return nil, describeFail(instance, "collection %q filter %q is text and declares choices", collection, id)
+			}
+			f.Default = resource.SanitizeLine(w.Default, MaxFilterValueChars)
+			if f.Default != strings.TrimSpace(w.Default) {
+				return nil, describeFail(instance, "collection %q filter %q declares a default the host cannot store verbatim", collection, id)
+			}
+		}
+		out = append(out, f)
 	}
 	return out, nil
 }

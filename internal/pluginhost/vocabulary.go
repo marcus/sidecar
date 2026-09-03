@@ -18,6 +18,28 @@ const (
 	// MaxViews and MaxSortKeys bound one collection's view pills and sort keys.
 	MaxViews    = 32
 	MaxSortKeys = 16
+	// MaxFilters bounds one collection's declared choosers. Eight is what the
+	// View modal can draw without becoming a page of its own, and the first of
+	// them is the collection's scope.
+	MaxFilters = 8
+	// MaxFilterChoices bounds one choice filter's option list.
+	MaxFilterChoices = 64
+	// MaxFilterIDChars and MaxFilterTitleChars bound a filter's identity and
+	// the strings the host paints for it. They are short because a filter id
+	// rides in persisted tab state and a filter title rides in the View pill.
+	MaxFilterIDChars    = 32
+	MaxFilterTitleChars = 32
+	// MaxFilterValueChars bounds a text filter's value — the initial text a
+	// plugin declares and the value the host sends back. It is bounded on both
+	// sides because the value is persisted with the tab.
+	MaxFilterValueChars = 64
+	// MaxCoverageRows and MaxCoverageReasonChars bound the per-source ledger a
+	// page may carry. It is read only by the coverage modal; the notices stay
+	// the one-line summary.
+	MaxCoverageRows        = 64
+	MaxCoverageReasonChars = 200
+	// MaxCoverageSourceChars bounds one coverage row's source name.
+	MaxCoverageSourceChars = 64
 	// MaxActions bounds a plugin's action list and MaxActionInputs one
 	// action's form.
 	MaxActions      = 32
@@ -290,6 +312,10 @@ type Collection struct {
 	Columns []Column
 	Views   []View
 	Sort    []SortKey
+	// Filters are the collection's declared choosers, in declared order. The
+	// first is the collection's scope, whose current value the host always
+	// shows.
+	Filters []Filter
 	// Detail reports whether get is meaningful for rows.
 	Detail  bool
 	Refresh Refresh
@@ -411,7 +437,21 @@ const (
 	// OutcomeDegraded means some eligible source could not answer, so an empty
 	// list reads as "no matches, and coverage was incomplete".
 	OutcomeDegraded PageOutcome = "degraded"
+	// OutcomeFailed means every source that was asked failed, so the page says
+	// nothing at all about the query. The host renders an error card over an
+	// empty list and never the words "no matches", which would be a claim
+	// nothing made.
+	OutcomeFailed PageOutcome = "failed"
 )
+
+// Outcome describes the ROW SET of this page and nothing else.
+//
+// A collection whose rows are all present answers `answered` even when what
+// those rows describe is unhealthy — a list of sources, half of them stale, is
+// a complete list. Health of the subject belongs on the rows, in their own
+// status pills. Conflating the two is what made an honest plugin report
+// `degraded` for a page that was in fact complete, and left the reader unable
+// to tell "I could not look" from "what I found is in a bad way".
 
 // CoercePageOutcome maps a declared outcome onto a known one.
 //
@@ -429,10 +469,89 @@ func CoercePageOutcome(v string) PageOutcome {
 		return OutcomeAnswered
 	case OutcomeAbstained:
 		return OutcomeAbstained
+	case OutcomeFailed:
+		return OutcomeFailed
 	default:
 		return OutcomeDegraded
 	}
 }
+
+// CoverageState is what one source did when this page was gathered.
+type CoverageState string
+
+const (
+	// CoverageAnswered means the source answered in full.
+	CoverageAnswered CoverageState = "answered"
+	// CoverageTimeout means the source ran out of the budget it was given.
+	CoverageTimeout CoverageState = "timeout"
+	// CoverageUnhealthy means the source was reachable but could not be
+	// trusted to answer — a stale checkpoint, a broken index.
+	CoverageUnhealthy CoverageState = "unhealthy"
+	// CoverageSkipped means the source was not asked at all.
+	CoverageSkipped CoverageState = "skipped"
+	// CoverageFailed means the source was asked and errored.
+	CoverageFailed CoverageState = "failed"
+)
+
+// CoerceCoverageState maps a declared state onto a known one. An unknown state
+// reads as failed for the same reason an unknown outcome reads as degraded: of
+// the two ways to be wrong about a word the host cannot read, the one that does
+// not invent a guarantee on the plugin's behalf is the honest one.
+func CoerceCoverageState(v string) CoverageState {
+	switch CoverageState(strings.TrimSpace(v)) {
+	case CoverageAnswered:
+		return CoverageAnswered
+	case CoverageTimeout:
+		return CoverageTimeout
+	case CoverageUnhealthy:
+		return CoverageUnhealthy
+	case CoverageSkipped:
+		return CoverageSkipped
+	default:
+		return CoverageFailed
+	}
+}
+
+// Tone is the status tone the host paints a coverage state in. It is the host's
+// mapping, not the plugin's: a plugin must not be able to colour its own
+// failure green.
+func (s CoverageState) Tone() resource.Tone {
+	switch s {
+	case CoverageAnswered:
+		return resource.ToneSuccess
+	case CoverageSkipped:
+		return resource.ToneNeutral
+	case CoverageFailed:
+		return resource.ToneDanger
+	default:
+		return resource.ToneWarning
+	}
+}
+
+// Coverage is one source's row in a page's per-source ledger. It is read only
+// by the host's coverage modal; the notices stay the one-line summary, because
+// thirteen sources' states do not fit in four notice rows and a reader who
+// wants them is asking a second question.
+type Coverage struct {
+	Source string
+	State  CoverageState
+	// Reason is the plugin's own one-line explanation, shown verbatim.
+	Reason string
+	// ElapsedMs is how long the source took. Zero means the plugin did not say.
+	ElapsedMs int
+}
+
+// Omitted is what the plugin held back from a page it could otherwise have
+// filled: rows below its own relevance floor, and rows past its budget. The
+// host renders both as data in the summary row rather than leaving a plugin to
+// write them into free-text notices.
+type Omitted struct {
+	Suppressed int
+	Dropped    int
+}
+
+// Any reports whether anything was held back.
+func (o Omitted) Any() bool { return o.Suppressed > 0 || o.Dropped > 0 }
 
 // Notice is one single-line row the host shows above or below a list.
 type Notice struct {
@@ -463,8 +582,16 @@ type Page struct {
 	// say.
 	Total   int
 	Notices []Notice
+	// Omitted is what the plugin held back, as counts the summary row renders
+	// as data.
+	Omitted Omitted
+	// Coverage is the per-source ledger, read only by the coverage modal.
+	Coverage []Coverage
 	// Truncated reports that the plugin sent more items than the host keeps.
 	Truncated bool
+	// CoverageTruncated reports the same for the coverage ledger, so the modal
+	// can say the table is not the whole of it rather than implying it is.
+	CoverageTruncated bool
 }
 
 // ActStatus is whether an action succeeded.

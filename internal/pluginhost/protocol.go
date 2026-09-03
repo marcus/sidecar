@@ -69,13 +69,18 @@ type ResolveParams struct {
 }
 
 // ListParams addresses one page of one collection.
+//
+// Filters carries every declared filter whose value is not its default; a
+// missing key means the default. The host drops undeclared keys before the
+// call, so a plugin only ever reads names it published itself.
 type ListParams struct {
-	Collection string    `json:"collection"`
-	Query      string    `json:"query"`
-	View       string    `json:"view"`
-	Sort       SortOrder `json:"sort"`
-	Cursor     string    `json:"cursor"`
-	Limit      int       `json:"limit"`
+	Collection string            `json:"collection"`
+	Query      string            `json:"query"`
+	View       string            `json:"view"`
+	Sort       SortOrder         `json:"sort"`
+	Filters    map[string]string `json:"filters,omitempty"`
+	Cursor     string            `json:"cursor"`
+	Limit      int               `json:"limit"`
 }
 
 // SortOrder is the chosen sort key and direction, both empty when the plugin

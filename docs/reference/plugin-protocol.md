@@ -16,7 +16,7 @@ Every response is data. Plugin text never becomes ANSI, never binds a key, never
 
 Everything described here is implemented and enforced by the host today, and `sidecar plugin check` will hold a plugin to it. What is not settled is the identifier: while the protocol is a draft it is `sidecar.plugin/v1-draft`, and a host may refuse that value at any point. It freezes as `sidecar.plugin/v1` the way `sidecar.terminal-resource/v1` did — the host has implemented it, one real external plugin (recall) implements it against a live tool, and both revise from what the other found.
 
-Revisions the M0 mockups and the recall implementation surfaced are listed, with their proposed shapes, in the plan README's [pending revisions table](../plans/active/plugin-ecosystem/README.md#protocol-revisions-pending-from-the-m0-recall-mockup). **None of them is implemented**, and nothing in this document describes them. A plugin written against what is here keeps working when they land; four of them (`filters[]`, `page.omitted`, the `failed` outcome, and `page.coverage[]`) are additive fields that milestone M4b applies, and until then a plugin that sends one is sending a field the host ignores.
+Revisions the M0 mockups and the recall implementation surfaced are listed, with their proposed shapes, in the plan README's [pending revisions table](../plans/active/plugin-ecosystem/README.md#protocol-revisions-pending-from-the-m0-recall-mockup). The four that milestone M4b applied — `filters[]`, `page.omitted`, the `failed` outcome, and `page.coverage[]` — are described here and implemented by the host; everything still in that table is not, and nothing in this document describes it. A plugin written against what is here keeps working when the rest land, because each is an additive field.
 
 A plugin that answers only `sidecar.terminal-resource/v1` is not affected by any of this. That protocol is frozen, its contract is [its own reference](terminal-resource-provider-protocol.md), and a provider written against it keeps working unchanged.
 
@@ -90,6 +90,14 @@ The identity block is spelled `plugin`. A response that spells it `provider`, th
       ],
       "views": [],
       "sort": [],
+      "filters": [
+        {"id": "profile", "label": "Profile", "kind": "choice",
+         "choices": [{"id": "home", "title": "home"}, {"id": "docs", "title": "docs"}],
+         "default": "home"},
+        {"id": "source", "label": "Source", "kind": "choice",
+         "choices": [{"id": "any", "title": "Any"}, {"id": "notes", "title": "notes"}]},
+        {"id": "since", "label": "Since", "kind": "text"}
+      ],
       "detail": true,
       "refresh": {}
     },
@@ -145,11 +153,28 @@ A collection is a named, listable set of rows the host can show as a table with 
 | `columns[]` | Ordered, at least one. `{id, label, width?, align?, kind?, primary?, secondary?}`. Exactly one `primary` column names the row; an optional `secondary` column is rendered under it when the pane is too narrow for a table. `kind` is `text` (default), `status`, `timestamp`, `user`, `number`, or `badge`; `align` is `left`, `right`, or `center`. `width` is a hint in cells and the host reflows. |
 | `views[]` | Named preset filters: `{id, title}`. The host offers them in its View modal and sends the chosen ID back in `list`. |
 | `sort[]` | Sortable keys: `{id, label, default?: "asc"\|"desc"}`. Offered in the same modal; the chosen key and direction go back in `list`. |
+| `filters[]` | The collection's own choosers: `{id, label, kind: "choice"\|"text", choices?: [{id, title}], default?}`. See [filters](#filters). |
 | `detail` | Whether `get` is meaningful for rows. Absent reads as `true`. `false` means Enter does nothing, though a row's `sourceUrl` can still open. |
 | `refresh` | `{everySeconds?, watch?[]}`. See [Freshness](#freshness-live-behaviour-without-a-resident-process). |
 | `context` | Optional narrowing: `["project"]` means this collection is meaningful only when project context exists, so a global surface hides it. |
 
 Two things inside a collection are repaired rather than refused, because neither can be wrong in a way the user needs to act on: a second `primary` or `secondary` column is dropped so exactly one of each survives (a collection that declares no primary gets its first column), and a second default sort key loses its default. Everything else in `describe` is refused whole — see [Limits](#limits).
+
+### `filters`
+
+A collection's own choosers. The plugin declares them; the host draws them in its View modal, persists what the user chose with the tab, and sends the applied set back on every `list`.
+
+| Field | Meaning |
+| --- | --- |
+| `id` | Stable, at most 32 characters. It is persisted with the tab and it is the key in `list.params.filters`, so changing it drops a saved choice. |
+| `label` | The control's name, at most 32 characters. A missing label falls back to the id. |
+| `kind` | `choice` (a radio group) or `text` (an input). Any other value refuses the whole describe: a control drawn as the wrong type collects the wrong value and the plugin filters on it. |
+| `choices[]` | `{id, title}`, required for `choice` and refused for `text`. At most 64, ids and titles at most 32 characters, ids unique. A missing title falls back to the id. |
+| `default` | For `choice`, a choice id — one this filter declares, or the describe is refused. Absent means the FIRST declared choice, because a radio group has to open on something and the plugin's own order says which. For `text`, the initial text, at most 64 characters. |
+
+**The first declared filter is the collection's scope.** Its current value is always folded into the host's View pill, because a page gathered under a scope nobody can see is a page whose emptiness means nothing. Declare the one that changes what a page *is* first, and the ones that merely narrow it after.
+
+Bounds: 8 filters per collection. Everything in `filters[]` is validated all-or-nothing with the rest of `describe`.
 
 ### `actions`
 
@@ -180,6 +205,7 @@ Actions never carry code, keys the host did not grant, or colours.
     "query": "dex",
     "view": "",
     "sort": {"key": "", "dir": ""},
+    "filters": {"profile": "docs", "since": "2026-08-01"},
     "cursor": "",
     "limit": 100
   }
@@ -203,6 +229,11 @@ Actions never carry code, keys the host did not grant, or colours.
     "total": 7,
     "notices": [
       {"tone": "warning", "text": "1 of 4 sources did not answer (mail: checkpoint stale)"}
+    ],
+    "omitted": {"suppressed": 2, "dropped": 6},
+    "coverage": [
+      {"source": "notes", "state": "answered", "elapsedMs": 12},
+      {"source": "mail", "state": "unhealthy", "reason": "checkpoint stale since 2026-08-30", "elapsedMs": 2}
     ]
   }
 }
@@ -210,11 +241,17 @@ Actions never carry code, keys the host did not grant, or colours.
 
 | Field | Meaning |
 | --- | --- |
-| `outcome` | `answered`, `abstained` (nothing matched, sources fine), or `degraded` (some eligible source could not answer). These are recall's exit states lifted into data: a plugin whose CLI would have exited non-zero for one of them still exits `0` here and says it in `outcome`. The host renders each honestly — an empty list under `abstained` is "no matches", under `degraded` it is "no matches, and coverage was incomplete". An absent outcome reads as `answered`, which is what a plugin that never thinks about coverage means. **A value this host does not recognise reads as `degraded`**, because of the two ways to be wrong about a claim it cannot understand, that is the one that does not invent a guarantee on the plugin's behalf. |
+| `outcome` | `answered`, `abstained` (nothing matched, sources fine), `degraded` (some eligible source could not answer), or `failed` (every source that was asked failed, so the page says nothing at all — the host renders an error card over the empty list and never the words "no matches"). These are recall's exit states lifted into data: a plugin whose CLI would have exited non-zero for one of them still exits `0` here and says it in `outcome`. The host renders each honestly — an empty list under `abstained` is "no matches", under `degraded` it is "no matches, and coverage was incomplete", under `failed` it is an error. An absent outcome reads as `answered`, which is what a plugin that never thinks about coverage means. **A value this host does not recognise reads as `degraded`**, because of the two ways to be wrong about a claim it cannot understand, that is the one that does not invent a guarantee on the plugin's behalf. |
 | `items[]` | Bounded rows. `id` is what `get` and item actions receive, and a row without one is dropped: it could be neither opened nor acted on. `cells` is keyed by column ID; a missing cell renders blank, and **a cell keyed by a column the collection never declared is dropped**, because the host has nowhere to paint it. `status` is an optional `{label, tone}` pill rendered in a reserved right-hand column. `sourceUrl` is an optional validated http(s) URL. |
 | `nextCursor` | Opaque; empty means no more. The host pages on demand, never eagerly. |
 | `total` | Optional count for the summary row. |
 | `notices[]` | Up to 4 single-line `{tone, text}` rows the host shows with the list. Where a coverage note or a scan-health line goes. |
+| `omitted` | Optional `{suppressed, dropped}`: rows held back below the plugin's own relevance floor, and rows past its budget. The host renders both as data in the summary row ("8 shown · 1 below floor · 6 over budget") rather than leaving them to free text. Negative counts are dropped. |
+| `coverage[]` | Optional per-source ledger, `{source, state, reason?, elapsedMs?}` with `state` in `answered`, `timeout`, `unhealthy`, `skipped`, `failed`. Read only by the host's coverage modal; the notices stay the one-line summary, because thirteen sources' states do not fit in four notice rows. A row naming no source is dropped; an unrecognised state reads as `failed`, for the same reason an unrecognised outcome reads as `degraded`. The host owns the colour each state is painted in. Bounded to 64 rows and 200-character reasons, truncated and marked past that. |
+
+**`outcome` describes the row set of this page and nothing else.** A collection whose rows are all present answers `answered` even when what those rows describe is unhealthy: a list of thirteen sources, five of them stale, is a *complete* list. The health of the subject belongs on the rows, in their own `status` pills. Conflating the two makes an honest plugin report `degraded` for a page that was in fact complete, and leaves the reader unable to tell "I could not look" from "what I found is in a bad way".
+
+`params.filters` is the applied set, and only the applied set: **a key whose value equals that filter's `default` is not sent, and a missing key means the default.** A key the collection did not declare — or a `choice` value that is not one of that filter's declared options — is dropped by the host before the process starts, so a plugin only ever reads names it published itself.
 
 A query on a `search: required` collection with an empty string is answered by the host without calling the plugin: an `abstained` page and a prompt. No process is started, which is what keeps a required-search collection free once per keystroke rather than once per keystroke plus a spawn.
 
@@ -354,6 +391,9 @@ Everything in [resource v1's limits](terminal-resource-provider-protocol.md#limi
 | Items per page, and the `limit` clamp | 500 |
 | Cell length | 512 chars |
 | Notices per page / notice length | 4 / 200 chars |
+| Filters per collection / choices per filter | 8 / 64 |
+| Filter and choice ID / label and title / text value | 32 / 32 / 64 chars |
+| `coverage[]` rows per page / reason length / source name | 64 / 200 chars / 64 chars |
 | Sections per resource / timeline items per section | 8 / 200 |
 | Collection ID / title, column ID / label | 64 / 64, 64 / 32 chars |
 | Action ID / title, input label / default | 64 / 64, 64 / 512 chars |
@@ -364,7 +404,7 @@ Everything in [resource v1's limits](terminal-resource-provider-protocol.md#limi
 
 Over-limit content in a `list`, `get`, `resolve`, or `act` response is truncated and marked, as in resource v1: a slightly-too-long page still shows the user their rows, where refusing it shows them an error for a page that was almost entirely fine. Only stdout size and the structural violations under [Invocation model](#invocation-model) refuse a response outright.
 
-**`describe` is the exception, and the exception is deliberate.** It is validated all-or-nothing, exactly as resource v1 already validates matchers. A plugin that declares a 13-column collection, a collection with no columns, a duplicate collection or column ID, an action naming a collection it never declared, a `choice` input with no choices, or a watch path outside the home directory is refused whole: nothing it declared is published, and `sidecar plugin check` and `sidecar plugin list --describe` report the instance as `incompatible` with the outcome `invalid-describe`. (The host builds a specific reason for the refusal — which collection, which column, which path — and the CLI does not print it yet; until it does, the way to find the offending declaration is to call `describe` from the plugin's own CLI and read the JSON.) Publishing the rest of such a declaration would hide the bug while changing what the scanner recognises and what the host holds open on disk. The two repairs named under [collections](#collections) are the only exceptions.
+**`describe` is the exception, and the exception is deliberate.** It is validated all-or-nothing, exactly as resource v1 already validates matchers. A plugin that declares a 13-column collection, a collection with no columns, a duplicate collection or column ID, a nine-filter collection, a `choice` filter with no choices or one whose `default` is not among them, an action naming a collection it never declared, a `choice` input with no choices, or a watch path outside the home directory is refused whole: nothing it declared is published, and `sidecar plugin check` and `sidecar plugin list --describe` report the instance as `incompatible` with the outcome `invalid-describe`. (The host builds a specific reason for the refusal — which collection, which column, which path — and the CLI does not print it yet; until it does, the way to find the offending declaration is to call `describe` from the plugin's own CLI and read the JSON.) Publishing the rest of such a declaration would hide the bug while changing what the scanner recognises and what the host holds open on disk. The two repairs named under [collections](#collections) are the only exceptions.
 
 What happens to a plugin's existing declarations when a describe fails is the frozen protocol's rule, unchanged: a typed error removes them, a transport failure or a validation refusal **keeps** the last good ones for the rest of the process and reports the failure, because the host has no authoritative new answer and does not discard a working one.
 
@@ -433,10 +473,11 @@ Canonical request and response JSON lives at `internal/pluginhost/testdata/proto
 
 **That path moved.** It was published as `internal/resourceprovider/testdata/protocol/` by the frozen protocol's reference, and the M2a rename to `internal/pluginhost` moved it. The stability promise was broken for anyone who followed it; the new path is the one above, and both references now name it.
 
-The reference fixture executable is `internal/pluginhost/testdata/fixtureprovider`. It speaks both identifiers from one binary — itself a property under test — and simulates every hostile case the resource fixture does, plus: an `act` that never returns, a `list` whose `nextCursor` loops, a collection that declares 13 columns, watch paths that are outside the home directory, are the home directory, are relative, or are too many, an action with an unknown target, an action naming an undeclared collection, a `choice` input with no choices, a page whose every string is trying to escape the table, a page over every count limit, a page carrying an undeclared cell, and a `describe` that answers `sidecar.terminal-resource/v1` only. Each is selected with `-mode=NAME` or with a `mode:NAME:` prefix on the request's subject — the locator on `resolve`, the query on `list`, the id on `get`, the action on `act`.
+The reference fixture executable is `internal/pluginhost/testdata/fixtureprovider`. It speaks both identifiers from one binary — itself a property under test — and simulates every hostile case the resource fixture does, plus: an `act` that never returns, a `list` whose `nextCursor` loops, a collection that declares 13 columns, watch paths that are outside the home directory, are the home directory, are relative, or are too many, an action with an unknown target, an action naming an undeclared collection, a `choice` input with no choices, a page whose every string is trying to escape the table, a page over every count limit (rows, cells, and `coverage[]`), a page carrying an undeclared cell, and a `describe` that answers `sidecar.terminal-resource/v1` only. Its `results` collection declares one filter of each shape — a choice with a default, a choice without, and a text one — and four list queries exercise the M4b fields: `filters` echoes back exactly the filters that reached it, `coverage` returns `omitted` beside a 13-row `coverage[]`, `failed` returns the `failed` outcome, and `future` returns an outcome from a version this host has never heard of. Each is selected with `-mode=NAME` or with a `mode:NAME:` prefix on the request's subject — the locator on `resolve`, the query on `list`, the id on `get`, the action on `act`.
 
 The smallest complete plugin, in Python and checked in, is `docs/guides/examples/hello-plugin/`; [the authoring guide](../guides/active/creating-plugins.md) builds it up method by method, and a test under `internal/pluginhost` runs it through the real host so it cannot rot.
 
 ## History
 
+- 2026-09-03: M4b applied four revisions: `filters[]` on a collection, `list.params.filters`, `page.omitted`, `page.coverage[]`, and the `failed` outcome; and stated the rule that `outcome` describes only the row set. Everything still in the plan README's pending table remains unimplemented.
 - 2026-09-03: published as the single authority for `sidecar.plugin/v1-draft`, carrying the contract that was drafted in `docs/plans/active/plugin-ecosystem/protocol.md` and implemented in M2a and M2b. Still a draft; the identifier freezes in M4d.

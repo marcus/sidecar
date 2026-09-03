@@ -624,3 +624,125 @@ func TestPluginConfigVerbsRefuseTheLegacySection(t *testing.T) {
 		t.Fatalf("the refusal did not point at the owning surface: %s", errOut.String())
 	}
 }
+
+// `plugin check --list` prints what the host will actually send, so an author
+// can see a key being dropped rather than wondering why their filter did
+// nothing.
+func TestPluginCheckPrintsTheAppliedFilters(t *testing.T) {
+	bin := buildPluginFixture(t)
+
+	env, out, errOut := pluginProtocolEnv(t, externalPluginJSON(bin))
+	code := runPluginCheck(env, []string{
+		"fixture", "--list", "results", "--query", "filters",
+		"--filter", "scope=notes", // declared, not the default: sent
+		"--filter=source=any",    // declared, but IS the default: dropped
+		"--filter", "smuggled=x", // never declared: dropped
+		"--json",
+	})
+	if code != 0 {
+		t.Fatalf("exit %d: %s\n%s", code, errOut.String(), out.String())
+	}
+	var report pluginCheckReport
+	if err := json.Unmarshal(out.Bytes(), &report); err != nil {
+		t.Fatalf("decode: %v (%s)", err, out.String())
+	}
+	if report.List == nil || len(report.List.Filters) != 1 || report.List.Filters["scope"] != "notes" {
+		t.Fatalf("applied filters = %v, want only scope=notes", report.List.Filters)
+	}
+	// The fixture echoes what actually reached it, so this asserts the wire
+	// rather than the host's own bookkeeping.
+	if got := report.List.Page.Items[0].Cells["title"]; got != "scope=notes" {
+		t.Fatalf("the plugin received %q", got)
+	}
+
+	// The declaration is printed too, with the scope marked.
+	env, out, errOut = pluginProtocolEnv(t, externalPluginJSON(bin))
+	if code := runPluginCheck(env, []string{"fixture", "--list", "results", "--query", "filters", "--filter", "scope=notes"}); code != 0 {
+		t.Fatalf("exit %d: %s", code, errOut.String())
+	}
+	for _, want := range []string{`filter scope "Scope" kind=choice scope`, "default=everything", "filters   scope=notes"} {
+		if !strings.Contains(out.String(), want) {
+			t.Fatalf("human output is missing %q:\n%s", want, out.String())
+		}
+	}
+
+	// A filter with no list to apply it to is a usage error, exactly as a
+	// stray --query is.
+	env, _, errOut = pluginProtocolEnv(t, externalPluginJSON(bin))
+	if code := runPluginCheck(env, []string{"fixture", "--filter", "scope=notes"}); code != pluginExitUsage {
+		t.Fatalf("stray --filter exit = %d", code)
+	}
+	if !strings.Contains(errOut.String(), "applies only to --list") {
+		t.Fatalf("stray --filter was not explained: %s", errOut.String())
+	}
+
+	env, _, errOut = pluginProtocolEnv(t, externalPluginJSON(bin))
+	if code := runPluginCheck(env, []string{"fixture", "--list", "results", "--filter", "novalue"}); code != pluginExitUsage {
+		t.Fatalf("malformed --filter exit = %d", code)
+	}
+	if !strings.Contains(errOut.String(), "takes id=value") {
+		t.Fatalf("malformed --filter was not explained: %s", errOut.String())
+	}
+}
+
+// The same shorthand on `plugin call`, which is the raw-method authoring loop.
+func TestPluginCallAcceptsFilterFlags(t *testing.T) {
+	bin := buildPluginFixture(t)
+
+	env, out, errOut := pluginProtocolEnv(t, externalPluginJSON(bin))
+	code := runPluginCall(env, []string{
+		"fixture", "list",
+		"--params", `{"collection":"results","query":"filters","filters":{"since":"2026-08-01"}}`,
+		"--filter", "scope=notes",
+		"--json",
+	})
+	if code != 0 {
+		t.Fatalf("exit %d: %s\n%s", code, errOut.String(), out.String())
+	}
+	var report pluginCallReport
+	if err := json.Unmarshal(out.Bytes(), &report); err != nil {
+		t.Fatalf("decode: %v (%s)", err, out.String())
+	}
+	if got := report.Page.Items[0].Cells["title"]; got != "scope=notes;since=2026-08-01" {
+		t.Fatalf("the plugin received %q; --filter merges with params.filters", got)
+	}
+
+	env, _, errOut = pluginProtocolEnv(t, externalPluginJSON(bin))
+	if code := runPluginCall(env, []string{"fixture", "get", "--filter", "scope=notes"}); code != pluginExitUsage {
+		t.Fatalf("--filter on get exit = %d", code)
+	}
+	if !strings.Contains(errOut.String(), "applies only to list") {
+		t.Fatalf("the refusal did not explain itself: %s", errOut.String())
+	}
+}
+
+// A page's omitted counts and per-source coverage reach the CLI too, so an
+// author can prove the shape before the host draws it.
+func TestPluginCheckPrintsOmittedAndCoverage(t *testing.T) {
+	bin := buildPluginFixture(t)
+	env, out, errOut := pluginProtocolEnv(t, externalPluginJSON(bin))
+	if code := runPluginCheck(env, []string{"fixture", "--list", "results", "--query", "coverage", "--json"}); code != 0 {
+		t.Fatalf("exit %d: %s", code, errOut.String())
+	}
+	var report pluginCheckReport
+	if err := json.Unmarshal(out.Bytes(), &report); err != nil {
+		t.Fatalf("decode: %v (%s)", err, out.String())
+	}
+	page := report.List.Page
+	if page.Omitted == nil || page.Omitted.Suppressed != 1 || page.Omitted.Dropped != 6 {
+		t.Fatalf("omitted = %+v", page.Omitted)
+	}
+	if len(page.Coverage) != 13 {
+		t.Fatalf("coverage = %d rows, want 13", len(page.Coverage))
+	}
+
+	env, out, errOut = pluginProtocolEnv(t, externalPluginJSON(bin))
+	if code := runPluginCheck(env, []string{"fixture", "--list", "results", "--query", "coverage"}); code != 0 {
+		t.Fatalf("exit %d: %s", code, errOut.String())
+	}
+	for _, want := range []string{"omitted   1 below floor, 6 over budget", "coverage  mail  unhealthy"} {
+		if !strings.Contains(out.String(), want) {
+			t.Fatalf("human output is missing %q:\n%s", want, out.String())
+		}
+	}
+}

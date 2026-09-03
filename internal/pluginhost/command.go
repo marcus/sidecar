@@ -236,6 +236,10 @@ func (p *CommandProvider) List(ctx context.Context, params ListParams, callCtx *
 		return Page{Outcome: OutcomeAbstained}, nil
 	}
 	params.Limit = ClampListLimit(params.Limit)
+	// Filters are narrowed here, at the process boundary, for the same reason
+	// context is: "a key the collection did not declare never reaches the
+	// plugin" has to be a property of the host, not a promise each caller keeps.
+	params.Filters = NormalizeFilters(collection, params.Filters)
 	req := p.newRequest(MethodList, p.resolveTimeout, &params)
 	req.Context = p.allowedContext(callCtx)
 

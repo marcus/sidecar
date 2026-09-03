@@ -89,6 +89,7 @@ type collectionReport struct {
 	Columns      []columnReport `json:"columns"`
 	Views        []string       `json:"views,omitempty"`
 	Sort         []string       `json:"sort,omitempty"`
+	Filters      []filterReport `json:"filters,omitempty"`
 	Detail       bool           `json:"detail"`
 	EverySeconds int            `json:"everySeconds,omitempty"`
 	Watch        []string       `json:"watch,omitempty"`
@@ -103,6 +104,17 @@ type columnReport struct {
 	Width     int    `json:"width,omitempty"`
 	Primary   bool   `json:"primary,omitempty"`
 	Secondary bool   `json:"secondary,omitempty"`
+}
+
+// filterReport is one declared filter. Scope marks the FIRST one, which is the
+// collection's scope and the value the host always shows in its pill.
+type filterReport struct {
+	ID      string   `json:"id"`
+	Label   string   `json:"label"`
+	Kind    string   `json:"kind"`
+	Choices []string `json:"choices,omitempty"`
+	Default string   `json:"default,omitempty"`
+	Scope   bool     `json:"scope,omitempty"`
 }
 
 type actionReport struct {
@@ -149,22 +161,42 @@ type pluginCheckReport struct {
 }
 
 type pluginListCallReport struct {
-	OK         bool         `json:"ok"`
-	Outcome    string       `json:"outcome"`
-	DurationMs int64        `json:"durationMs"`
-	Collection string       `json:"collection"`
-	Query      string       `json:"query,omitempty"`
-	Page       *pageReport  `json:"page,omitempty"`
-	Error      *errorReport `json:"error,omitempty"`
+	OK         bool   `json:"ok"`
+	Outcome    string `json:"outcome"`
+	DurationMs int64  `json:"durationMs"`
+	Collection string `json:"collection"`
+	Query      string `json:"query,omitempty"`
+	// Filters is what the host actually sent, after dropping undeclared keys
+	// and values equal to their filter's default. Printing the applied set
+	// rather than the asked-for one is the point: it is how an author sees that
+	// a key was dropped.
+	Filters map[string]string `json:"filters,omitempty"`
+	Page    *pageReport       `json:"page,omitempty"`
+	Error   *errorReport      `json:"error,omitempty"`
 }
 
 type pageReport struct {
-	Outcome    string         `json:"outcome"`
-	Items      []itemReport   `json:"items"`
-	NextCursor string         `json:"nextCursor,omitempty"`
-	Total      int            `json:"total,omitempty"`
-	Truncated  bool           `json:"truncated,omitempty"`
-	Notices    []noticeReport `json:"notices,omitempty"`
+	Outcome           string           `json:"outcome"`
+	Items             []itemReport     `json:"items"`
+	NextCursor        string           `json:"nextCursor,omitempty"`
+	Total             int              `json:"total,omitempty"`
+	Truncated         bool             `json:"truncated,omitempty"`
+	Notices           []noticeReport   `json:"notices,omitempty"`
+	Omitted           *omittedReport   `json:"omitted,omitempty"`
+	Coverage          []coverageReport `json:"coverage,omitempty"`
+	CoverageTruncated bool             `json:"coverageTruncated,omitempty"`
+}
+
+type omittedReport struct {
+	Suppressed int `json:"suppressed,omitempty"`
+	Dropped    int `json:"dropped,omitempty"`
+}
+
+type coverageReport struct {
+	Source    string `json:"source"`
+	State     string `json:"state"`
+	Reason    string `json:"reason,omitempty"`
+	ElapsedMs int    `json:"elapsedMs,omitempty"`
 }
 
 type itemReport struct {
@@ -302,13 +334,16 @@ func pluginCommand() *Command {
 			"describe always runs. --list and --get are separate, explicit flags because\n" +
 			"they can perform network access and print private data; neither is ever\n" +
 			"implied. --query applies only to --list, and a collection whose search is\n" +
-			"required needs one.\n\n" +
+			"required needs one. --filter applies only to --list too, is repeatable, and\n" +
+			"takes id=value naming a filter the collection declared; what is printed back\n" +
+			"is what the host actually sent, so a key that was dropped shows as dropped.\n\n" +
 			"Only what the host kept is printed, never the plugin's raw stdout: every\n" +
 			"string shown has been through the host's own sanitization and bounds, so what\n" +
 			"you see is what a pane would draw.",
 		Flags: []Flag{
 			{Name: "--list", Arg: "COLLECTION", Summary: "Also call list on this collection"},
 			{Name: "--query", Arg: "TEXT", Summary: "Query to send with --list"},
+			{Name: "--filter", Arg: "ID=VALUE", Summary: "Apply one declared filter with --list (repeatable)"},
 			{Name: "--get", Arg: "COLLECTION ID", Summary: "Also call get on this collection row (two values)"},
 			jsonFlag, helpFlag,
 		},
@@ -323,6 +358,7 @@ func pluginCommand() *Command {
 		Examples: []Example{
 			{Command: "sidecar plugin check recall"},
 			{Command: "sidecar plugin check recall --list results --query dex --json"},
+			{Command: "sidecar plugin check recall --list results --query dex --filter profile=docs"},
 			{Command: "sidecar plugin check recall --get results rc:notes:1 --json"},
 		},
 		Agent: AgentDoc{
@@ -342,16 +378,20 @@ func pluginCommand() *Command {
 			"exactly what survives.\n\n" +
 			"--params is the method's params object as JSON:\n" +
 			"  resolve  {\"matcher\":\"issue-key\",\"locator\":\"CASH-1\"}\n" +
-			"  list     {\"collection\":\"results\",\"query\":\"dex\",\"cursor\":\"\",\"limit\":100}\n" +
+			"  list     {\"collection\":\"results\",\"query\":\"dex\",\"filters\":{\"profile\":\"docs\"},\"cursor\":\"\",\"limit\":100}\n" +
 			"  get      {\"collection\":\"results\",\"id\":\"rc:notes:1\"}\n" +
 			"  act      {\"action\":\"log-note\",\"collection\":\"results\",\"id\":\"rc:notes:1\",\"inputs\":{\"text\":\"…\"}}\n\n" +
 			"list first runs describe, because the declared columns are what a page is\n" +
 			"sanitized against — a cell keyed by an undeclared column is dropped, and that\n" +
-			"is a finding worth seeing here rather than in a pane.\n\n" +
+			"is a finding worth seeing here rather than in a pane. The same is true of\n" +
+			"filters: --filter id=value is shorthand for a key inside params.filters, and\n" +
+			"a key the collection never declared, or a value equal to that filter's own\n" +
+			"default, is dropped before the plugin is called.\n\n" +
 			"No host context is sent: this process has no surface, so it has no project\n" +
 			"and no selection to offer.",
 		Flags: []Flag{
 			{Name: "--params", Arg: "JSON", Summary: "The method's params object"},
+			{Name: "--filter", Arg: "ID=VALUE", Summary: "Apply one declared filter to list (repeatable)"},
 			jsonFlag, helpFlag,
 		},
 		Args: ArgSpec{Min: 2, Max: 2, Description: "plugin id and method"},
@@ -365,6 +405,7 @@ func pluginCommand() *Command {
 		Examples: []Example{
 			{Command: "sidecar plugin call recall describe --json"},
 			{Command: `sidecar plugin call recall list --params '{"collection":"results","query":"dex"}' --json`},
+			{Command: `sidecar plugin call recall list --params '{"collection":"results","query":"dex"}' --filter profile=docs --json`},
 			{Command: `sidecar plugin call dex act --params '{"action":"log-note","collection":"people","id":"p:ada","inputs":{"text":"hi"}}' --json`},
 		},
 		Agent: AgentDoc{
@@ -830,6 +871,17 @@ func toCollectionReport(c pluginhost.Collection) collectionReport {
 		}
 		out.Sort = append(out.Sort, s.ID)
 	}
+	for i, f := range c.Filters {
+		report := filterReport{
+			ID: f.ID, Label: f.Label, Kind: string(f.Kind), Default: f.Default,
+			// The first declared filter is the collection's scope.
+			Scope: i == 0,
+		}
+		for _, choice := range f.Choices {
+			report.Choices = append(report.Choices, choice.ID)
+		}
+		out.Filters = append(out.Filters, report)
+	}
 	for _, kind := range c.Context {
 		out.Context = append(out.Context, string(kind))
 	}
@@ -868,6 +920,15 @@ func toPageReport(page pluginhost.Page) *pageReport {
 	for _, notice := range page.Notices {
 		out.Notices = append(out.Notices, noticeReport{Tone: string(notice.Tone), Text: notice.Text})
 	}
+	if page.Omitted.Any() {
+		out.Omitted = &omittedReport{Suppressed: page.Omitted.Suppressed, Dropped: page.Omitted.Dropped}
+	}
+	for _, row := range page.Coverage {
+		out.Coverage = append(out.Coverage, coverageReport{
+			Source: row.Source, State: string(row.State), Reason: row.Reason, ElapsedMs: row.ElapsedMs,
+		})
+	}
+	out.CoverageTruncated = page.CoverageTruncated
 	return out
 }
 
@@ -908,6 +969,18 @@ func toOutcomeReport(outcome pluginhost.Outcome) *outcomeReport {
 	return out
 }
 
+// parseFilterFlag reads one --filter id=value. The id may not be empty and the
+// value may be: `--filter since=` clears a text filter, which is a different
+// intention from not naming it at all.
+func parseFilterFlag(raw string) (string, string, bool) {
+	id, value, found := strings.Cut(raw, "=")
+	id = strings.TrimSpace(id)
+	if !found || id == "" {
+		return "", "", false
+	}
+	return id, value, true
+}
+
 func runPluginCheck(env Env, args []string) int {
 	cmd := RootCommand().FindSubcommand("plugin").FindSubcommand("check")
 	help := RenderHelp(cmd)
@@ -920,6 +993,7 @@ func runPluginCheck(env Env, args []string) int {
 		getID      string
 		wantList   bool
 		wantGet    bool
+		filters    map[string]string
 		positional []string
 	)
 	for i := 0; i < len(args); i++ {
@@ -948,6 +1022,31 @@ func runPluginCheck(env Env, args []string) int {
 			query = args[i]
 		case strings.HasPrefix(arg, "--query="):
 			query = strings.TrimPrefix(arg, "--query=")
+		case arg == "--filter":
+			if i+1 >= len(args) {
+				cliErrf(env.Stderr, "--filter needs id=value\n\n%s", help)
+				return pluginExitUsage
+			}
+			i++
+			id, value, ok := parseFilterFlag(args[i])
+			if !ok {
+				cliErrf(env.Stderr, "--filter takes id=value, not %q\n\n%s", args[i], help)
+				return pluginExitUsage
+			}
+			if filters == nil {
+				filters = map[string]string{}
+			}
+			filters[id] = value
+		case strings.HasPrefix(arg, "--filter="):
+			id, value, ok := parseFilterFlag(strings.TrimPrefix(arg, "--filter="))
+			if !ok {
+				cliErrf(env.Stderr, "--filter takes id=value, not %q\n\n%s", arg, help)
+				return pluginExitUsage
+			}
+			if filters == nil {
+				filters = map[string]string{}
+			}
+			filters[id] = value
 		case arg == "--get":
 			if i+2 >= len(args) {
 				cliErrf(env.Stderr, "--get needs a collection id and a row id\n\n%s", help)
@@ -968,6 +1067,10 @@ func runPluginCheck(env Env, args []string) int {
 	}
 	if query != "" && !wantList {
 		cliErrf(env.Stderr, "--query applies only to --list\n\n%s", help)
+		return pluginExitUsage
+	}
+	if len(filters) > 0 && !wantList {
+		cliErrf(env.Stderr, "--filter applies only to --list\n\n%s", help)
 		return pluginExitUsage
 	}
 
@@ -1014,7 +1117,7 @@ func runPluginCheck(env Env, args []string) int {
 				return pluginExitFailed
 			}
 			if wantList {
-				report.List = callList(ctx, provider, report.Describe, listName, query)
+				report.List = callList(ctx, provider, report.Describe, listName, query, filters)
 				if !report.List.OK {
 					failed = true
 				}
@@ -1099,7 +1202,7 @@ func pluginStateFromDescribe(instance config.PluginInstance, d *pluginDescribeRe
 	}
 }
 
-func callList(ctx context.Context, provider *pluginhost.CommandProvider, describe *pluginDescribeReport, name, query string) *pluginListCallReport {
+func callList(ctx context.Context, provider *pluginhost.CommandProvider, describe *pluginDescribeReport, name, query string, filters map[string]string) *pluginListCallReport {
 	out := &pluginListCallReport{Collection: name, Query: query}
 	collection, ok := declaredCollection(describe, name)
 	if !ok {
@@ -1107,8 +1210,12 @@ func callList(ctx context.Context, provider *pluginhost.CommandProvider, describ
 		out.Error = toErrorReport(resource.Errorf(resource.CodeNotFound, "the plugin declares no collection named %q", name))
 		return out
 	}
+	// What is reported is what the host will actually send, not what was asked
+	// for: an undeclared key or a value equal to its default is dropped, and
+	// seeing that here is the whole point of printing it.
+	out.Filters = pluginhost.NormalizeFilters(collection, filters)
 	started := time.Now()
-	page, err := provider.List(ctx, pluginhost.ListParams{Collection: name, Query: query}, nil, collection)
+	page, err := provider.List(ctx, pluginhost.ListParams{Collection: name, Query: query, Filters: filters}, nil, collection)
 	out.DurationMs = time.Since(started).Milliseconds()
 	out.Outcome = pluginhost.OutcomeCode(err)
 	if err != nil {
@@ -1148,6 +1255,13 @@ func declaredCollection(describe *pluginDescribeReport, name string) (pluginhost
 			continue
 		}
 		out := pluginhost.Collection{ID: c.ID, Title: c.Title, Search: pluginhost.SearchMode(c.Search), Detail: c.Detail}
+		for _, f := range c.Filters {
+			filter := pluginhost.Filter{ID: f.ID, Label: f.Label, Kind: pluginhost.FilterKind(f.Kind), Default: f.Default}
+			for _, choice := range f.Choices {
+				filter.Choices = append(filter.Choices, pluginhost.FilterOption{ID: choice, Title: choice})
+			}
+			out.Filters = append(out.Filters, filter)
+		}
 		for _, col := range c.Columns {
 			out.Columns = append(out.Columns, pluginhost.Column{
 				ID: col.ID, Label: col.Label, Kind: pluginhost.ColumnKind(col.Kind),
@@ -1192,8 +1306,33 @@ func writePluginCheckText(env Env, report pluginCheckReport) {
 	if r := report.List; r != nil {
 		if r.OK {
 			_, _ = fmt.Fprintf(env.Stdout, "  list      ok in %dms — %s, %s, %d row(s)\n", r.DurationMs, r.Collection, r.Page.Outcome, len(r.Page.Items))
+			// The applied set, not the asked-for one: a dropped key is a
+			// finding, so it is printed as an absence rather than hidden.
+			if len(r.Filters) > 0 {
+				parts := make([]string, 0, len(r.Filters))
+				for _, key := range pluginhost.FilterKeys(r.Filters) {
+					parts = append(parts, key+"="+r.Filters[key])
+				}
+				_, _ = fmt.Fprintf(env.Stdout, "            filters   %s\n", strings.Join(parts, " "))
+			}
 			for _, item := range r.Page.Items {
 				_, _ = fmt.Fprintf(env.Stdout, "            %s  %s\n", item.ID, primaryCell(item))
+			}
+			if o := r.Page.Omitted; o != nil {
+				_, _ = fmt.Fprintf(env.Stdout, "            omitted   %d below floor, %d over budget\n", o.Suppressed, o.Dropped)
+			}
+			for _, row := range r.Page.Coverage {
+				line := fmt.Sprintf("            coverage  %s  %s", row.Source, row.State)
+				if row.ElapsedMs > 0 {
+					line += fmt.Sprintf("  %dms", row.ElapsedMs)
+				}
+				if row.Reason != "" {
+					line += "  " + row.Reason
+				}
+				_, _ = fmt.Fprintln(env.Stdout, line)
+			}
+			if r.Page.CoverageTruncated {
+				_, _ = fmt.Fprintln(env.Stdout, "            coverage  the plugin sent more sources than Sidecar keeps")
 			}
 			for _, notice := range r.Page.Notices {
 				_, _ = fmt.Fprintf(env.Stdout, "            %s: %s\n", notice.Tone, notice.Text)
@@ -1295,6 +1434,20 @@ func writeDescribeText(env Env, indent string, d *pluginDescribeReport) {
 			line += fmt.Sprintf(" poll=%ds", c.EverySeconds)
 		}
 		_, _ = fmt.Fprintln(env.Stdout, line)
+		for _, f := range c.Filters {
+			scope := ""
+			if f.Scope {
+				scope = " scope"
+			}
+			filterLine := fmt.Sprintf("%s  filter %s %q kind=%s%s", pad, f.ID, f.Label, f.Kind, scope)
+			if len(f.Choices) > 0 {
+				filterLine += " choices=" + strings.Join(f.Choices, ",")
+			}
+			if f.Default != "" {
+				filterLine += " default=" + f.Default
+			}
+			_, _ = fmt.Fprintln(env.Stdout, filterLine)
+		}
 		for _, path := range c.Watch {
 			_, _ = fmt.Fprintf(env.Stdout, "%s  watches %s\n", pad, path)
 		}
@@ -1340,6 +1493,7 @@ type callParams struct {
 	Query      string               `json:"query"`
 	View       string               `json:"view"`
 	Sort       pluginhost.SortOrder `json:"sort"`
+	Filters    map[string]string    `json:"filters"`
 	Cursor     string               `json:"cursor"`
 	Limit      int                  `json:"limit"`
 	ID         string               `json:"id"`
@@ -1352,9 +1506,10 @@ func runPluginCall(env Env, args []string) int {
 	help := RenderHelp(cmd)
 
 	var (
-		jsonOutput bool
-		rawParams  string
-		positional []string
+		jsonOutput  bool
+		rawParams   string
+		flagFilters map[string]string
+		positional  []string
 	)
 	for i := 0; i < len(args); i++ {
 		arg := args[i]
@@ -1373,6 +1528,25 @@ func runPluginCall(env Env, args []string) int {
 			rawParams = args[i]
 		case strings.HasPrefix(arg, "--params="):
 			rawParams = strings.TrimPrefix(arg, "--params=")
+		case arg == "--filter", strings.HasPrefix(arg, "--filter="):
+			raw := strings.TrimPrefix(arg, "--filter=")
+			if arg == "--filter" {
+				if i+1 >= len(args) {
+					cliErrf(env.Stderr, "--filter needs id=value\n\n%s", help)
+					return pluginExitUsage
+				}
+				i++
+				raw = args[i]
+			}
+			fid, value, ok := parseFilterFlag(raw)
+			if !ok {
+				cliErrf(env.Stderr, "--filter takes id=value, not %q\n\n%s", raw, help)
+				return pluginExitUsage
+			}
+			if flagFilters == nil {
+				flagFilters = map[string]string{}
+			}
+			flagFilters[fid] = value
 		case strings.HasPrefix(arg, "-"):
 			cliErrf(env.Stderr, "unknown option %q\n\n%s", arg, help)
 			return pluginExitUsage
@@ -1397,6 +1571,20 @@ func runPluginCall(env Env, args []string) int {
 		if err := json.Unmarshal([]byte(rawParams), &params); err != nil {
 			cliErrf(env.Stderr, "--params is not a JSON object: %v\n", err)
 			return pluginExitUsage
+		}
+	}
+	if len(flagFilters) > 0 {
+		if method != pluginhost.MethodList {
+			cliErrf(env.Stderr, "--filter applies only to list\n\n%s", help)
+			return pluginExitUsage
+		}
+		// A flag wins over the same key inside --params: it is the later, more
+		// specific statement of the same intention.
+		if params.Filters == nil {
+			params.Filters = map[string]string{}
+		}
+		for k, v := range flagFilters {
+			params.Filters[k] = v
 		}
 	}
 
@@ -1476,7 +1664,7 @@ func runPluginCall(env Env, args []string) int {
 		var page pluginhost.Page
 		page, callErr = provider.List(ctx, pluginhost.ListParams{
 			Collection: params.Collection, Query: params.Query, View: params.View,
-			Sort: params.Sort, Cursor: params.Cursor, Limit: params.Limit,
+			Sort: params.Sort, Filters: params.Filters, Cursor: params.Cursor, Limit: params.Limit,
 		}, nil, collection)
 		if callErr == nil {
 			report.Page = toPageReport(page)

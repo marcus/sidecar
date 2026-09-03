@@ -91,6 +91,24 @@ func TestFixturePluginDescribesTheWholeVocabulary(t *testing.T) {
 	if len(results.Sort) != 2 || results.Sort[0].Default != SortDesc || results.Sort[1].Default != "" {
 		t.Fatalf("sort keys = %+v, want one default", results.Sort)
 	}
+	if len(results.Filters) != 3 {
+		t.Fatalf("filters = %+v, want three", results.Filters)
+	}
+	scope, ok := results.ScopeFilter()
+	if !ok || scope.ID != "scope" || scope.Default != "everything" {
+		t.Fatalf("scope filter = %+v; the first declared filter is the scope", scope)
+	}
+	if title, _ := scope.OptionTitle("project"); title != "This project" {
+		t.Fatalf("scope option title = %q", title)
+	}
+	source := results.Filters[1]
+	if source.Kind != FilterChoice || source.Default != "any" {
+		t.Fatalf("source filter = %+v; a choice with no stated default opens on its first option", source)
+	}
+	since := results.Filters[2]
+	if since.Kind != FilterText || len(since.Choices) != 0 || since.Default != "" {
+		t.Fatalf("since filter = %+v, want an empty text filter", since)
+	}
 	if !results.Detail {
 		t.Fatal("results declared detail:true and lost it")
 	}
@@ -197,6 +215,9 @@ func TestFixturePluginPageOutcomes(t *testing.T) {
 	}{
 		{"nothing", OutcomeAbstained, 0},
 		{"degraded", OutcomeDegraded, 1},
+		// Every asked source failed: the page says so rather than reporting an
+		// empty list as "no matches".
+		{"failed", OutcomeFailed, 0},
 		// An outcome from a later protocol version must not be read as a
 		// completeness guarantee.
 		{"future", OutcomeDegraded, 0},
@@ -692,7 +713,10 @@ func TestPluginProtocolGoldens(t *testing.T) {
 			Context: &Context{Project: &ProjectContext{
 				Root: "/path/to/checkout", WorkDir: "/path/to/checkout", Name: "sidecar", Branch: "main",
 			}},
-			Params: &ListParams{Collection: "results", Query: "dex", Limit: 100},
+			Params: &ListParams{
+				Collection: "results", Query: "dex", Limit: 100,
+				Filters: map[string]string{"profile": "docs", "since": "2026-08-01"},
+			},
 		}
 		assertMatchesGolden(t, "plugin-list-request.json", req)
 	})
@@ -743,6 +767,16 @@ func TestPluginProtocolGoldens(t *testing.T) {
 		if !ok || results.Search != SearchRequired || len(results.Columns) != 4 {
 			t.Fatalf("results = %+v", results)
 		}
+		if len(results.Filters) != 3 {
+			t.Fatalf("filters = %+v, want three", results.Filters)
+		}
+		scope, ok := results.ScopeFilter()
+		if !ok || scope.ID != "profile" || scope.Default != "home" {
+			t.Fatalf("scope = %+v; the first declared filter is the scope", scope)
+		}
+		if results.Filters[1].Default != "any" || results.Filters[2].Kind != FilterText {
+			t.Fatalf("filters = %+v", results.Filters)
+		}
 		sources, _ := desc.Collection("sources")
 		if sources.Refresh.EverySeconds != 120 {
 			t.Fatalf("sources poll = %d", sources.Refresh.EverySeconds)
@@ -766,6 +800,12 @@ func TestPluginProtocolGoldens(t *testing.T) {
 		}
 		if page.Items[0].Status.Tone != resource.ToneSuccess {
 			t.Fatalf("status = %+v", page.Items[0].Status)
+		}
+		if page.Omitted != (Omitted{Suppressed: 2, Dropped: 6}) {
+			t.Fatalf("omitted = %+v", page.Omitted)
+		}
+		if len(page.Coverage) != 4 || page.Coverage[3].State != CoverageUnhealthy {
+			t.Fatalf("coverage = %+v", page.Coverage)
 		}
 	})
 
@@ -874,3 +914,130 @@ func TestPluginMarkerIsSetOnlyForThePluginProtocol(t *testing.T) {
 		t.Fatalf("the marker reached a frozen-protocol provider:\n%s", legacyDoc.Body.Text)
 	}
 }
+
+// Only declared, non-default filters reach the plugin, proven from the outside:
+// the fixture echoes the filters map it actually received.
+func TestOnlyDeclaredNonDefaultFiltersReachThePlugin(t *testing.T) {
+	m, _ := newFixtureManager(t)
+	page, err := m.List(context.Background(), ListRequest{Instance: "fixture", Params: ListParams{
+		Collection: "results",
+		Query:      "filters",
+		Filters: map[string]string{
+			"scope":    "project",      // declared, not the default
+			"source":   "any",          // declared, but IS the default
+			"since":    "2026-08-01",   // declared text
+			"smuggled": "not-a-filter", // never declared
+			"source2":  "notes",        // never declared
+		},
+	}})
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if len(page.Items) != 1 {
+		t.Fatalf("page = %+v", page)
+	}
+	got := page.Items[0].Cells["title"]
+	if got != "scope=project;since=2026-08-01" {
+		t.Fatalf("the plugin received %q; the host must drop undeclared keys and default values", got)
+	}
+}
+
+// Everything at its default is no filters at all: the field is omitted from the
+// request rather than sent as an object full of defaults.
+func TestFiltersAtTheirDefaultsAreNotSent(t *testing.T) {
+	m, _ := newFixtureManager(t)
+	page, err := m.List(context.Background(), ListRequest{Instance: "fixture", Params: ListParams{
+		Collection: "results", Query: "filters",
+		Filters: map[string]string{"scope": "everything", "source": "any"},
+	}})
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if got := page.Items[0].Cells["title"]; got != "(none)" {
+		t.Fatalf("the plugin received %q, want no filters at all", got)
+	}
+}
+
+// A degraded page carries what a one-line notice cannot: the counts it held
+// back, and one row per source.
+func TestPageCarriesOmittedAndCoverage(t *testing.T) {
+	m, _ := newFixtureManager(t)
+	page, err := m.List(context.Background(), ListRequest{Instance: "fixture", Params: ListParams{
+		Collection: "results", Query: "coverage",
+	}})
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if page.Outcome != OutcomeDegraded {
+		t.Fatalf("outcome = %q", page.Outcome)
+	}
+	if page.Omitted != (Omitted{Suppressed: 1, Dropped: 6}) {
+		t.Fatalf("omitted = %+v", page.Omitted)
+	}
+	if len(page.Coverage) != 13 || page.CoverageTruncated {
+		t.Fatalf("coverage = %d rows (truncated=%v), want 13 kept whole", len(page.Coverage), page.CoverageTruncated)
+	}
+	if page.Coverage[0].Source != "notes" || page.Coverage[0].State != CoverageAnswered {
+		t.Fatalf("first row = %+v", page.Coverage[0])
+	}
+	mail := page.Coverage[3]
+	if mail.State != CoverageUnhealthy || mail.Reason == "" {
+		t.Fatalf("mail row = %+v", mail)
+	}
+	if page.Coverage[4].State != CoverageTimeout || page.Coverage[4].ElapsedMs != 2000 {
+		t.Fatalf("calendar row = %+v", page.Coverage[4])
+	}
+	if page.Coverage[5].State != CoverageSkipped || page.Coverage[6].State != CoverageFailed {
+		t.Fatalf("states = %+v", page.Coverage[5:7])
+	}
+	// The host owns the tone, so a plugin cannot paint its own failure green.
+	if page.Coverage[6].State.Tone() != resource.ToneDanger {
+		t.Fatalf("failed tone = %q", page.Coverage[6].State.Tone())
+	}
+}
+
+// A failed page is a claim about the row set, and an empty list under it never
+// reads as "no matches".
+func TestFailedOutcomeKeepsItsNoticesAndCoverage(t *testing.T) {
+	m, _ := newFixtureManager(t)
+	page, err := m.List(context.Background(), ListRequest{Instance: "fixture", Params: ListParams{
+		Collection: "results", Query: "failed",
+	}})
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if page.Outcome != OutcomeFailed || len(page.Items) != 0 {
+		t.Fatalf("page = %+v", page)
+	}
+	if len(page.Notices) != 1 || page.Notices[0].Tone != resource.ToneDanger {
+		t.Fatalf("notices = %+v", page.Notices)
+	}
+	if len(page.Coverage) != 1 || page.Coverage[0].State != CoverageFailed {
+		t.Fatalf("coverage = %+v", page.Coverage)
+	}
+}
+
+// An over-limit coverage ledger is truncated and marked, exactly as over-limit
+// rows are: a page that is merely too big must still explain itself.
+func TestOverLimitCoverageIsTruncatedAndMarked(t *testing.T) {
+	m, _ := newFixtureManager(t)
+	page, err := m.List(context.Background(), ListRequest{Instance: "fixture", Params: ListParams{
+		Collection: "results", Query: "mode:over-limit-page:x",
+	}})
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if len(page.Coverage) != MaxCoverageRows || !page.CoverageTruncated {
+		t.Fatalf("coverage = %d rows (truncated=%v), want %d and marked", len(page.Coverage), page.CoverageTruncated, MaxCoverageRows)
+	}
+	if runeLenTest(page.Coverage[0].Reason) != MaxCoverageReasonChars {
+		t.Fatalf("reason kept %d chars, want it cut to %d", runeLenTest(page.Coverage[0].Reason), MaxCoverageReasonChars)
+	}
+	// A negative count is noise, not a claim that a negative number of rows
+	// was held back.
+	if page.Omitted != (Omitted{Dropped: 9}) {
+		t.Fatalf("omitted = %+v", page.Omitted)
+	}
+}
+
+func runeLenTest(s string) int { return len([]rune(s)) }

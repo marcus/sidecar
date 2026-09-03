@@ -27,6 +27,29 @@
       ],
       "views": [],
       "sort": [],
+      "filters": [
+        {
+          "id": "profile",
+          "label": "Profile",
+          "kind": "choice",
+          "choices": [
+            {"id": "home", "title": "home"},
+            {"id": "docs", "title": "docs"}
+          ],
+          "default": "home"
+        },
+        {
+          "id": "source",
+          "label": "Source",
+          "kind": "choice",
+          "choices": [
+            {"id": "any", "title": "Any"},
+            {"id": "notes", "title": "notes"},
+            {"id": "mail", "title": "mail"}
+          ]
+        },
+        {"id": "since", "label": "Since", "kind": "text"}
+      ],
       "detail": true,
       "refresh": {}
     },

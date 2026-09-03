@@ -19,6 +19,13 @@
     "total": 7,
     "notices": [
       {"tone": "warning", "text": "1 of 4 sources did not answer (mail: checkpoint stale)"}
+    ],
+    "omitted": {"suppressed": 2, "dropped": 6},
+    "coverage": [
+      {"source": "notes", "state": "answered", "elapsedMs": 12},
+      {"source": "shell", "state": "answered", "elapsedMs": 31},
+      {"source": "td", "state": "answered", "elapsedMs": 44},
+      {"source": "mail", "state": "unhealthy", "reason": "checkpoint stale since 2026-08-30", "elapsedMs": 2}
     ]
   }
 }
