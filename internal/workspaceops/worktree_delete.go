@@ -95,6 +95,63 @@ var killWorktreeSessions = func(ctx context.Context, path string) error {
 // finds uncommitted or untracked work in the worktree.
 var ErrWorktreeDirty = errors.New("worktree is dirty (uncommitted or untracked changes)")
 
+// WorktreeRemovedWarning reports a teardown error discovered after Git has
+// already removed the worktree. Existing callers continue to receive a
+// non-nil error, preserving their conservative behaviour; callers that own
+// follow-up cleanup can use errors.As to distinguish this completed removal
+// from a failure that left the checkout in place.
+//
+// Today Cause is a failure closing one or more managed shells rooted in the
+// worktree. DeleteWorktree deliberately attempts the Git removal anyway so a
+// stubborn shell cannot strand both the checkout and its already-forgotten
+// Sidecar records.
+type WorktreeRemovedWarning struct {
+	Cause error
+}
+
+func (e *WorktreeRemovedWarning) Error() string {
+	if e == nil || e.Cause == nil {
+		return "worktree was removed with a teardown warning"
+	}
+	return e.Cause.Error()
+}
+
+func (e *WorktreeRemovedWarning) Unwrap() error {
+	if e == nil {
+		return nil
+	}
+	return e.Cause
+}
+
+func removalResult(shellErr error) error {
+	if shellErr == nil {
+		return nil
+	}
+	return &WorktreeRemovedWarning{Cause: shellErr}
+}
+
+// WorktreeIdentityError is a removal refusal caused by a checkout no longer
+// matching the branch and HEAD the caller pinned. It is typed so a transport
+// can report an identity refusal distinctly from a Git or tmux failure while
+// existing callers continue to receive the same non-nil error text.
+type WorktreeIdentityError struct {
+	Cause error
+}
+
+func (e *WorktreeIdentityError) Error() string {
+	if e == nil || e.Cause == nil {
+		return "worktree identity changed"
+	}
+	return e.Cause.Error()
+}
+
+func (e *WorktreeIdentityError) Unwrap() error {
+	if e == nil {
+		return nil
+	}
+	return e.Cause
+}
+
 // WorktreeRemoval is one caller's stated intent to remove a worktree. It is a
 // struct rather than a list of arguments because the dangerous choice — Force —
 // has to be spelled out at the call site instead of hiding in a fallback.
@@ -111,10 +168,13 @@ type WorktreeRemoval struct {
 	// Path is the worktree to remove.
 	Path string
 	// Branch is the branch the worktree is expected to have checked out.
-	// Required when Force is false; ignored otherwise.
+	// Required when Force is false or ExpectedOID is supplied. A supplied
+	// branch/OID pair is always enforced, including for a forced removal.
 	Branch string
 	// ExpectedOID is the HEAD the caller pinned when the user confirmed.
-	// Required when Force is false; ignored otherwise.
+	// Required when Force is false. When supplied with Force, it remains an
+	// identity fence: Force authorizes dirty content removal, not a different
+	// checkout that appeared after confirmation.
 	ExpectedOID string
 	// Missing means the directory is already gone, so git's record of it is
 	// pruned instead of removed.
@@ -150,9 +210,12 @@ type WorktreeRemoval struct {
 // stops one caller having it and another not; no caller can opt out or spell
 // the session name differently, because none of them supplies it.
 //
-// A removal that has not been forced validates first and kills second, so a
-// refusal costs nobody their session; the kill still precedes the destructive
-// command, which is the guarantee that matters.
+// A removal that has not been forced validates identity and dirtiness first.
+// A forced removal with ExpectedOID still validates its pinned identity: Force
+// authorizes deleting dirty content, not deleting a different checkout. Every
+// validation runs before shell/session teardown, so a refusal costs nobody
+// their session; the kill still precedes the destructive command, which is the
+// guarantee that matters.
 //
 // Interaction with internal/shellliveness: none, deliberately. That subsystem
 // reaps *shells* — sidecar-sh-* sessions recorded in shells.json — and both of
@@ -167,9 +230,16 @@ func DeleteWorktree(ctx context.Context, req WorktreeRemoval) error {
 		return fmt.Errorf("worktree removal has no surviving repository path")
 	}
 
-	if !req.Force && !req.Missing {
-		if err := requireRemovableWorktree(ctx, req); err != nil {
-			return err
+	if !req.Missing {
+		switch {
+		case !req.Force:
+			if err := requireRemovableWorktree(ctx, req); err != nil {
+				return err
+			}
+		case strings.TrimSpace(req.ExpectedOID) != "":
+			if err := requireRemovalIdentity(ctx, req); err != nil {
+				return err
+			}
 		}
 	}
 
@@ -189,14 +259,14 @@ func DeleteWorktree(ctx context.Context, req WorktreeRemoval) error {
 		if err := PruneWorktrees(ctx, req.RepoPath); err != nil {
 			return err
 		}
-		return shellErr
+		return removalResult(shellErr)
 	}
 
 	cmd := exec.CommandContext(ctx, "git", "worktree", "remove", req.Path)
 	cmd.Dir = req.RepoPath
 	output, err := cmd.CombinedOutput()
 	if err == nil {
-		return shellErr
+		return removalResult(shellErr)
 	}
 	if !req.Force {
 		// No --force fallback: the identity and cleanliness checks above are
@@ -210,22 +280,13 @@ func DeleteWorktree(ctx context.Context, req WorktreeRemoval) error {
 	if output, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("git worktree remove: %s: %w", strings.TrimSpace(string(output)), err)
 	}
-	return shellErr
+	return removalResult(shellErr)
 }
 
 // requireRemovableWorktree is the careful half of DeleteWorktree: the checks a
 // removal nobody confirmed has to pass. It reads and never writes.
 func requireRemovableWorktree(ctx context.Context, req WorktreeRemoval) error {
-	if strings.TrimSpace(req.Branch) == "" {
-		return fmt.Errorf("removal identity has no expected branch")
-	}
-	if strings.TrimSpace(req.ExpectedOID) == "" {
-		return fmt.Errorf("removal identity has no expected HEAD OID")
-	}
-	if state := WorktreeOperationState(ctx, req.Path); state != "clean" {
-		return fmt.Errorf("worktree has a Git operation in progress: %s", state)
-	}
-	if err := requireCheckoutIdentity(ctx, req.Path, req.Branch, req.ExpectedOID); err != nil {
+	if err := requireRemovalIdentity(ctx, req); err != nil {
 		return err
 	}
 	dirty, err := WorktreeIsDirty(ctx, req.Path)
@@ -234,6 +295,22 @@ func requireRemovableWorktree(ctx context.Context, req WorktreeRemoval) error {
 	}
 	if dirty {
 		return fmt.Errorf("%w: %q", ErrWorktreeDirty, req.Path)
+	}
+	return nil
+}
+
+func requireRemovalIdentity(ctx context.Context, req WorktreeRemoval) error {
+	if strings.TrimSpace(req.Branch) == "" {
+		return &WorktreeIdentityError{Cause: fmt.Errorf("removal identity has no expected branch")}
+	}
+	if strings.TrimSpace(req.ExpectedOID) == "" {
+		return &WorktreeIdentityError{Cause: fmt.Errorf("removal identity has no expected HEAD OID")}
+	}
+	if state := WorktreeOperationState(ctx, req.Path); state != "clean" {
+		return &WorktreeIdentityError{Cause: fmt.Errorf("worktree has a Git operation in progress: %s", state)}
+	}
+	if err := requireCheckoutIdentity(ctx, req.Path, req.Branch, req.ExpectedOID); err != nil {
+		return &WorktreeIdentityError{Cause: err}
 	}
 	return nil
 }

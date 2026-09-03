@@ -289,6 +289,37 @@ func TestRemovalWithoutForceRefusesAWorktreeWhoseHEADMoved(t *testing.T) {
 	}
 }
 
+func TestForcedRemovalStillEnforcesSuppliedIdentity(t *testing.T) {
+	root := throwawayRepo(t)
+	path, head := worktreeAt(t, root, "topic")
+	git(t, path, "branch", "-m", "replacement")
+
+	killed := false
+	restore := killWorktreeSessions
+	killWorktreeSessions = func(context.Context, string) error {
+		killed = true
+		return nil
+	}
+	t.Cleanup(func() { killWorktreeSessions = restore })
+
+	err := DeleteWorktree(context.Background(), WorktreeRemoval{
+		RepoPath: root, Path: path, Branch: "topic", ExpectedOID: head, Force: true,
+	})
+	var identityErr *WorktreeIdentityError
+	if !errors.As(err, &identityErr) || !strings.Contains(err.Error(), "replacement") || !strings.Contains(err.Error(), "topic") {
+		t.Fatalf("forced removal returned %T %v, want the pinned identity refusal", err, err)
+	}
+	if killed {
+		t.Fatal("identity refusal killed the worktree session")
+	}
+	if _, statErr := os.Stat(path); statErr != nil {
+		t.Fatalf("identity refusal removed the worktree: %v", statErr)
+	}
+	if got := git(t, path, "rev-parse", "HEAD"); got != head {
+		t.Fatalf("identity refusal moved HEAD to %s, want %s", got, head)
+	}
+}
+
 // A caller that has pinned nothing cannot quietly get the careful path's
 // blessing: without Force it must say which branch and which commit it means.
 func TestRemovalWithoutForceDemandsAPinnedIdentity(t *testing.T) {
@@ -605,6 +636,10 @@ func TestAShellThatWillNotCloseStillLetsTheWorktreeGo(t *testing.T) {
 	})
 	if err == nil || !strings.Contains(err.Error(), "shell refused to close") {
 		t.Fatalf("removal returned %v, want the shell failure reported", err)
+	}
+	var warning *WorktreeRemovedWarning
+	if !errors.As(err, &warning) || warning.Cause == nil || !strings.Contains(warning.Cause.Error(), "shell refused to close") {
+		t.Fatalf("removal returned %T %v, want a typed post-removal warning", err, err)
 	}
 	if got := worktreePaths(t, root); len(got) != 1 {
 		t.Fatalf("the worktree survived a shell failure: %v", got)

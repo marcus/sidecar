@@ -3553,3 +3553,77 @@ sidecar terminal-links list --json
 sidecar terminal-links list --describe --json
 ```
 
+## `sidecar worktree`
+
+Manage Sidecar-visible git worktrees
+
+Plan and perform worktree lifecycle operations through Sidecar's shared core.
+
+```
+Usage: sidecar worktree <command>
+```
+
+### `sidecar worktree delete`
+
+Plan or delete a Sidecar-visible git worktree
+
+Delete a git worktree through the same lifecycle the TUI's confirmation uses.
+Sidecar first resolves the target from the owning project's live `git worktree`
+inventory and applies the shared refusal rules: the main, bare, detached, locked,
+missing, and prunable worktrees cannot be deleted. The target may be its Sidecar
+display name, checked-out branch, path basename, absolute path, or sidecar-ws-…
+session name. Use --project with the project slug returned by `create worktree`,
+or run from the project or one of its worktrees.
+
+--plan and --dry-run are aliases. They read the same confirmation facts without
+changing git, tmux, Sidecar state, or a pending-creation journal: target identity,
+dirtiness, remote-branch availability, cleanup choices, and the pinned HEAD OID.
+A real deletion always requires --yes. For a plan-first deletion, use the returned
+absolute path as TARGET and pass its branch and headOid back with --expect-branch
+and --expect-head-oid. Both expectations are required together, so a branch rename
+at the same commit is refused rather than mistaken for the confirmed checkout.
+
+Deleting closes the Sidecar worktree session and any managed shells rooted in the
+worktree before removing its directory, then forgets those shell records. A dirty
+worktree is force-removed only after --yes, matching the warning and decision in
+the TUI confirmation. --delete-local-branch and --delete-remote-branch are explicit
+counterparts to its unchecked branch-cleanup boxes; the default is to keep both.
+If this was a failed `create worktree`, its exact pending-creation journal is cleared
+only after the worktree removal succeeds. Branch and journal cleanup failures are
+reported as warnings after the primary deletion succeeds, as is a rooted shell that
+could not be closed; those warnings do not skip the remaining requested cleanup.
+
+```
+Usage: sidecar worktree delete <name|branch|path> [--project NAME] [--plan|--dry-run | --yes] [options]
+```
+
+**Options:**
+
+- `--project NAME`: Owning project (slug, basename, or path)
+- `--plan`: Resolve and print the deletion plan without changing anything
+- `--dry-run`: Alias for --plan
+- `--yes`: Confirm worktree removal (required unless planning)
+- `--delete-local-branch`: Also delete the checked-out local branch
+- `--delete-remote-branch`: Also delete the branch from origin when it exists
+- `--expect-branch BRANCH`: Refuse if the absolute target no longer checks out this planned branch
+- `--expect-head-oid OID`: Refuse if HEAD differs from a previously returned plan
+- `--json`: Write one structured plan or result object to stdout
+- `-h, --help`: Show this help
+
+**Exit codes:**
+
+- `0`: plan resolved, or worktree deleted (cleanup warnings may be present)
+- `1`: git, tmux, Sidecar state, or primary deletion failure
+- `2`: usage error, including a deletion without --yes
+- `5`: project, target, target state, branch choice, or expected branch/HEAD was refused
+
+**Examples:**
+
+```bash
+# inspect the exact target and copy its path, branch, and headOid
+sidecar worktree delete fix-auth --project sidecar --plan --json
+# delete only if the confirmed checkout identity has not moved
+sidecar worktree delete /path/to/repo-fix-auth --project sidecar --expect-branch fix-auth --expect-head-oid abc123 --yes --json
+sidecar worktree delete /path/to/repo-fix-auth --delete-local-branch --yes
+```
+

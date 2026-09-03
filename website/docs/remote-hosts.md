@@ -160,11 +160,11 @@ Three things are refused on a remote row. None of them is an arbitrary limit; ea
 
 | Refused | Reason |
 |---------|--------|
-| **Delete a worktree** | Removing a checkout resolves its path against a git repository, and carries branch-cleanup decisions (delete the local branch, delete the remote branch) that the host verb has no way to express. `sidecar shell delete` refuses a worktree session on the host side too, so the two surfaces cannot disagree about what delete means |
+| **Delete a worktree** | The Sessions viewer has not yet wired its remote confirmation to the host's `sidecar worktree delete` verb. An agent can run that verb over plain ssh today: plan first, then execute with `--yes`; `sidecar shell delete` still refuses a worktree session so it cannot silently skip the worktree lifecycle |
 | **Merge** | The merge workflow resolves the workspace's path against a git repository and runs `git` and `gh` here |
 | **Open as a project** | Navigation switches this Sidecar's project to a checkout. There is no checkout here to switch to |
 
-These are refused up front rather than offered and then taken back: the footer does not advertise an action the confirmation would decline. Each becomes supported the day it gains a host-side CLI verb of its own, which is exactly how shell delete arrived.
+These are refused up front rather than offered and then taken back: the footer does not advertise an action the confirmation would decline. Worktree deletion now has the host-side verb needed for a future viewer wiring; until that lands, use `ssh HOST sidecar worktree delete TARGET --project PROJECT --plan --json`, then use the returned absolute `path` as the target and re-run with its `branch`, `--expect-branch`, its `headOid`, `--expect-head-oid`, and `--yes`.
 
 ## Clicks in a remote terminal
 
@@ -290,4 +290,5 @@ Structured log lines are the nastiest version of this, because a line of JSON ca
 
 - `sidecar host --help` and `sidecar host <verb> --help` for the full flag and exit-code tables.
 - `sidecar shell delete`, `sidecar shell rename`, `sidecar shell send`, `sidecar shell forget` and `sidecar shell restore` are the same verbs the remote path calls, and they work locally too.
+- `sidecar worktree delete --help` documents the plan-first worktree teardown available locally or through plain ssh.
 - [Workspaces Plugin](./workspaces-plugin) for what those shells and worktrees are, and what the Sessions browser does with them.

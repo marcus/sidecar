@@ -78,7 +78,7 @@ Capability negotiation falls out of the exit-code contract rather than needing a
 
 ## What `--host` does not cover
 
-`--host` is on the agent verbs and on `session status`/`session restore`. It is not on `create shell`, `create worktree`, `shell rename`, `shell send` or `shell delete`. Those are reachable on a host today either from the Sessions browser, which drives them over the same transport, or over plain ssh as shown above — which works precisely because every mutation Sidecar can perform is an ordinary CLI verb rather than a private protocol.
+`--host` is on the agent verbs and on `session status`/`session restore`. It is not on `create shell`, `create worktree`, `worktree delete`, `shell rename`, `shell send` or `shell delete`. Those are reachable on a host today either from the Sessions browser where wired, or over plain ssh as shown above — which works precisely because every mutation Sidecar can perform is an ordinary CLI verb rather than a private protocol. Remote worktree deletion is currently the plain-ssh case: run `sidecar worktree delete TARGET --project PROJECT --plan --json` on the host, then use the returned absolute `path` as the target and re-run with its `branch`, `--expect-branch`, its `headOid`, `--expect-head-oid`, and `--yes`.
 
 The asymmetry is worth knowing rather than working around silently: the documented coordination sequence begins with a creation step that has no `--host` form, so a script that uses `--host` for everything else still shells out for that one line.
 

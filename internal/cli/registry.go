@@ -614,8 +614,77 @@ func RootCommand() *Command {
 		Launch: runSetupLaunch,
 	}
 
-	root.Sub = []*Command{agentCommand(), agentsCmd, contentCommand(), createCmd, helpCmd, hostCommand(), layoutCommand(), notifyCommand(), openCmd, pluginCommand(), projectCommand(), repoCommand(), requestCommand(), sessionCommand(), setupCmd, shellCmd, terminalLinksCommand()}
+	root.Sub = []*Command{agentCommand(), agentsCmd, contentCommand(), createCmd, helpCmd, hostCommand(), layoutCommand(), notifyCommand(), openCmd, pluginCommand(), projectCommand(), repoCommand(), requestCommand(), sessionCommand(), setupCmd, shellCmd, terminalLinksCommand(), worktreeCommand()}
 	return root
+}
+
+func worktreeCommand() *Command {
+	deleteCmd := &Command{
+		Name:    "delete",
+		Summary: "Plan or delete a Sidecar-visible git worktree",
+		Usage:   "sidecar worktree delete <name|branch|path> [--project NAME] [--plan|--dry-run | --yes] [options]",
+		Long: "Delete a git worktree through the same lifecycle the TUI's confirmation uses.\n" +
+			"Sidecar first resolves the target from the owning project's live `git worktree`\n" +
+			"inventory and applies the shared refusal rules: the main, bare, detached, locked,\n" +
+			"missing, and prunable worktrees cannot be deleted. The target may be its Sidecar\n" +
+			"display name, checked-out branch, path basename, absolute path, or sidecar-ws-…\n" +
+			"session name. Use --project with the project slug returned by `create worktree`,\n" +
+			"or run from the project or one of its worktrees.\n\n" +
+			"--plan and --dry-run are aliases. They read the same confirmation facts without\n" +
+			"changing git, tmux, Sidecar state, or a pending-creation journal: target identity,\n" +
+			"dirtiness, remote-branch availability, cleanup choices, and the pinned HEAD OID.\n" +
+			"A real deletion always requires --yes. For a plan-first deletion, use the returned\n" +
+			"absolute path as TARGET and pass its branch and headOid back with --expect-branch\n" +
+			"and --expect-head-oid. Both expectations are required together, so a branch rename\n" +
+			"at the same commit is refused rather than mistaken for the confirmed checkout.\n\n" +
+			"Deleting closes the Sidecar worktree session and any managed shells rooted in the\n" +
+			"worktree before removing its directory, then forgets those shell records. A dirty\n" +
+			"worktree is force-removed only after --yes, matching the warning and decision in\n" +
+			"the TUI confirmation. --delete-local-branch and --delete-remote-branch are explicit\n" +
+			"counterparts to its unchecked branch-cleanup boxes; the default is to keep both.\n" +
+			"If this was a failed `create worktree`, its exact pending-creation journal is cleared\n" +
+			"only after the worktree removal succeeds. Branch and journal cleanup failures are\n" +
+			"reported as warnings after the primary deletion succeeds, as is a rooted shell that\n" +
+			"could not be closed; those warnings do not skip the remaining requested cleanup.",
+		Flags: []Flag{
+			{Name: "--project", Arg: "NAME", Summary: "Owning project (slug, basename, or path)"},
+			{Name: "--plan", Summary: "Resolve and print the deletion plan without changing anything", Bool: true},
+			{Name: "--dry-run", Summary: "Alias for --plan", Bool: true},
+			{Name: "--yes", Summary: "Confirm worktree removal (required unless planning)", Bool: true},
+			{Name: "--delete-local-branch", Summary: "Also delete the checked-out local branch", Bool: true},
+			{Name: "--delete-remote-branch", Summary: "Also delete the branch from origin when it exists", Bool: true},
+			{Name: "--expect-branch", Arg: "BRANCH", Summary: "Refuse if the absolute target no longer checks out this planned branch"},
+			{Name: "--expect-head-oid", Arg: "OID", Summary: "Refuse if HEAD differs from a previously returned plan"},
+			{Name: "--json", Summary: "Write one structured plan or result object to stdout", Bool: true},
+			{Name: "--help", Short: "-h", Summary: "Show this help", Bool: true},
+		},
+		Args: ArgSpec{Min: 1, Max: 1, Description: "Worktree display name, branch, path, or Sidecar session name"},
+		ExitCodes: []ExitCode{
+			{Code: 0, Summary: "plan resolved, or worktree deleted (cleanup warnings may be present)"},
+			{Code: 1, Summary: "git, tmux, Sidecar state, or primary deletion failure"},
+			{Code: 2, Summary: "usage error, including a deletion without --yes"},
+			{Code: 5, Summary: "project, target, target state, branch choice, or expected branch/HEAD was refused"},
+		},
+		Examples: []Example{
+			{Command: "sidecar worktree delete fix-auth --project sidecar --plan --json", Description: "inspect the exact target and copy its path, branch, and headOid"},
+			{Command: "sidecar worktree delete /path/to/repo-fix-auth --project sidecar --expect-branch fix-auth --expect-head-oid abc123 --yes --json", Description: "delete only if the confirmed checkout identity has not moved"},
+			{Command: "sidecar worktree delete /path/to/repo-fix-auth --delete-local-branch --yes"},
+		},
+		Agent: AgentDoc{
+			Invocation: "sidecar worktree delete TARGET --plan --json; then use its path with --expect-branch BRANCH --expect-head-oid OID --yes",
+			Summary:    "Inspect, then delete a worktree through Sidecar's full teardown lifecycle",
+		},
+		Mutates: true,
+		Run:     runWorktreeDelete,
+	}
+	return &Command{
+		Name:    "worktree",
+		Summary: "Manage Sidecar-visible git worktrees",
+		Usage:   "sidecar worktree <command>",
+		Long:    "Plan and perform worktree lifecycle operations through Sidecar's shared core.",
+		Sub:     []*Command{deleteCmd},
+		Run:     runWorktreeRoot,
+	}
 }
 
 // notifyCommand is the agent-facing side of the notification system: post an
