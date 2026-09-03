@@ -369,6 +369,7 @@ func (c *resourceContent) SetSize(size Size) tea.Cmd {
 func (c *resourceContent) View(render Render) string {
 	body := ""
 	if c.res.tabs != nil {
+		c.p.bindPaneSelection(resourceSelectionPane(c.res.view()), render.Origin)
 		body = c.res.tabs.View()
 	}
 	return composePaneLeaf(

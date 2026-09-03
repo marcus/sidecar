@@ -7,6 +7,7 @@ import (
 	"github.com/marcus/sidecar/internal/mouse"
 	appmsg "github.com/marcus/sidecar/internal/msg"
 	"github.com/marcus/sidecar/internal/panelayout"
+	"github.com/marcus/sidecar/internal/resourceview"
 	"github.com/marcus/sidecar/internal/termpreview"
 	"github.com/marcus/sidecar/internal/textselect"
 )
@@ -52,6 +53,10 @@ func (m *Model) previewSelectionPane(kind panelayout.Kind) textselect.Pane {
 		if view := m.previewIssueView(); view != nil {
 			return view
 		}
+	case panelayout.Resource:
+		if res := m.preview.resource; res != nil && res.tabs != nil {
+			return previewResourceSelectionPane(res.tabs.Active())
+		}
 	}
 	return nil
 }
@@ -64,6 +69,22 @@ func (m *Model) clearPreviewPaneSelectionsExcept(keep textselect.Pane) {
 	if view := m.previewIssueView(); view != nil && textselect.Pane(view) != keep {
 		view.ClearSelection()
 	}
+	if res := m.preview.resource; res != nil && res.tabs != nil {
+		for _, view := range res.tabs.All() {
+			if view != nil && textselect.Pane(view) != keep {
+				view.ClearSelection()
+			}
+		}
+	}
+}
+
+// previewResourceSelectionPane lifts a resource viewer into the shared
+// interface without turning a nil viewer into a non-nil interface value.
+func previewResourceSelectionPane(view *resourceview.Model) textselect.Pane {
+	if view == nil {
+		return nil
+	}
+	return view
 }
 
 // pressPreviewPaneSelection arms a selection gesture over one pane's text. A

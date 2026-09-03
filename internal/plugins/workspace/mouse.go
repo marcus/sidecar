@@ -1070,6 +1070,13 @@ func (p *Plugin) handleMouseClick(action mouse.MouseAction) tea.Cmd {
 			// without motion is still the click that just focused the pane.
 			return p.pressPaneSelection(leafID, action)
 		}
+		if leaf.Kind == PaneResource {
+			// The card is passive: a provider document has no clickable
+			// targets, so the press only arms a selection and the click that
+			// just focused the leaf is the whole of what a release without
+			// motion means.
+			return p.pressPaneSelection(leafID, action)
+		}
 		if leaf.Kind == PaneDiff {
 			return nil
 		}

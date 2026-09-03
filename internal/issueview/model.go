@@ -473,6 +473,10 @@ func (m *Model) View() string {
 	if m.height <= 0 {
 		return ""
 	}
+	// Settle the selection before drawing it: a card that has never held one
+	// still has to say so, because an untouched selection state reads as a
+	// one-cell selection at the top-left corner.
+	m.expireSelection()
 	rows := m.visibleRows()
 	bodyWidth := m.contentWidth()
 	useBar := m.needsScrollbar()

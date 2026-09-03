@@ -6,6 +6,7 @@ import (
 	app "github.com/marcus/sidecar/internal/app"
 	"github.com/marcus/sidecar/internal/docview"
 	"github.com/marcus/sidecar/internal/mouse"
+	"github.com/marcus/sidecar/internal/resourceview"
 	"github.com/marcus/sidecar/internal/textselect"
 )
 
@@ -60,6 +61,10 @@ func (p *Plugin) selectionPaneAt(leafID int) textselect.Pane {
 				return view
 			}
 		}
+	case PaneResource:
+		if res := p.resources[leaf.ContentID]; res != nil {
+			return resourceSelectionPane(res.view())
+		}
 	}
 	return nil
 }
@@ -97,6 +102,25 @@ func (p *Plugin) clearPaneSelectionsExcept(keep textselect.Pane) {
 			view.ClearSelection()
 		}
 	}
+	for _, res := range p.resources {
+		if res == nil || res.tabs == nil {
+			continue
+		}
+		for _, view := range res.tabs.All() {
+			if view != nil && textselect.Pane(view) != keep {
+				view.ClearSelection()
+			}
+		}
+	}
+}
+
+// resourceSelectionPane lifts a resource viewer into the shared interface
+// without turning a nil viewer into a non-nil interface value.
+func resourceSelectionPane(view *resourceview.Model) textselect.Pane {
+	if view == nil {
+		return nil
+	}
+	return view
 }
 
 // docSelectionPane lifts a document viewer into the shared interface without

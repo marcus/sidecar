@@ -214,8 +214,12 @@ func (c *resourceContent) SetSize(size Size) tea.Cmd {
 	return nil
 }
 
-func (c *resourceContent) View(Render) string {
-	return c.m.renderPreviewResource(c.res, termpreview.Box{W: c.size.Width, H: c.size.Height})
+// View draws the leaf at its own origin. Where the box is, not only how big it
+// is: a pointer gesture over the card's text is hit-tested against it.
+func (c *resourceContent) View(render Render) string {
+	return c.m.renderPreviewResource(c.res, termpreview.Box{
+		X: render.Origin.X, Y: render.Origin.Y, W: c.size.Width, H: c.size.Height,
+	})
 }
 
 type noteContent struct {

@@ -481,6 +481,8 @@ func (c *appDeckContent) View(render paneframe.Render) string {
 		body = v.Render(c.size.Width, bodyH, workspacediff.RenderOpts{})
 	case *resourceview.Model:
 		v.SetSize(c.size.Width, bodyH)
+		v.SetOrigin(render.Origin.X, render.Origin.Y+paneframe.HeaderRows)
+		v.SetSelection(c.h.selKeys, c.h.selCopyOnSelect)
 		body = v.View()
 	}
 	return ui.FitBlock(c.h.tabHeader(c.node.ID, c.size.Width, render.Origin, render.Focused)+"\n"+body, c.size.Width, c.size.Height)

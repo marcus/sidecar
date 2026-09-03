@@ -21,6 +21,10 @@ func (m *Model) detailLines(width, height int) []string {
 	if width < 1 || height < 1 {
 		return nil
 	}
+	// Settle the selection before drawing it: a box that has never held one
+	// still has to say so, because an untouched selection state reads as a
+	// one-cell selection at the top-left corner.
+	m.expireSelection()
 	inner := scrolledWidth(width)
 	lines := m.detailBlock(inner)
 	start := m.detail.scroll

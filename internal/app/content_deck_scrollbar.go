@@ -10,6 +10,7 @@ import (
 	"github.com/marcus/sidecar/internal/noteview"
 	"github.com/marcus/sidecar/internal/paneframe"
 	"github.com/marcus/sidecar/internal/panelayout"
+	"github.com/marcus/sidecar/internal/resourceview"
 	"github.com/marcus/sidecar/internal/textselect"
 	"github.com/marcus/sidecar/internal/ui"
 )
@@ -195,6 +196,14 @@ func (h *appContentDeck) pressAppContentGesture(action mouse.MouseAction) (tea.C
 			h.mouse.StartDrag(action.X, action.Y, appDeckIssueScrollbarRegion, leafID)
 		}
 		return cmd, true
+	case *resourceview.Model:
+		if action.Region.ID != appDeckLeafRegion {
+			return nil, false
+		}
+		// The card is passive: a provider document has no clickable targets,
+		// so the press only arms a selection and the click that focused this
+		// leaf is the whole of what a release without motion means.
+		return h.pressAppContentSelection(leafID, v, action)
 	case *noteview.Model:
 		if action.Region.ID == appDeckLeafRegion {
 			return nil, false

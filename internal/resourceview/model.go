@@ -6,6 +6,7 @@ import (
 	"github.com/marcus/sidecar/internal/markdown"
 	"github.com/marcus/sidecar/internal/pluginbrowser"
 	"github.com/marcus/sidecar/internal/resource"
+	"github.com/marcus/sidecar/internal/textselect"
 )
 
 // Ref is the resource reference a tab points at. It is aliased rather than
@@ -93,6 +94,13 @@ type Model struct {
 	bodyForW     int
 	bodyForGen   uint64
 	bodyForStyle string
+
+	// Text selection. originX/originY are where the host last drew the card;
+	// selectionKey is the rows the selection was made over, so a card re-laid
+	// out for any reason drops it. See select.go.
+	selection        textselect.Surface
+	selectionKey     string
+	originX, originY int
 
 	// browser is non-nil exactly when ref is one of the plugin shapes: the
 	// shared browser in pane mode, which renders a collection tab or a row's

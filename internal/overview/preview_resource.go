@@ -338,6 +338,7 @@ func (m *Model) renderPreviewResource(res *previewResource, box termpreview.Box)
 	if contentHeight <= 0 {
 		return header
 	}
+	m.bindPreviewPaneSelection(previewResourceSelectionPane(res.tabs.Active()), box)
 	return header + "\n" + res.tabs.View()
 }
 
@@ -394,10 +395,12 @@ func (m *Model) handlePreviewResourceMouse(action mouse.MouseAction) tea.Cmd {
 		return nil
 	}
 	switch action.Type {
-	case mouse.ActionClick, mouse.ActionDoubleClick:
+	case mouse.ActionClick, mouse.ActionDoubleClick, mouse.ActionTripleClick:
 		// The card is passive: a provider document has no clickable targets,
-		// so a press inside it only moves focus.
+		// so the press moves focus and arms a selection, and a release without
+		// motion is still the click that just focused the pane.
 		m.focusPreviewPane(panelayout.Resource)
+		return m.pressPreviewPaneSelection(panelayout.Resource, action)
 	case mouse.ActionScrollUp, mouse.ActionScrollDown:
 		res.pane.Scroll(action.Delta)
 	}
@@ -418,6 +421,12 @@ func (m *Model) previewResourceKey(msg tea.KeyPressMsg) (bool, tea.Cmd) {
 	res := m.preview.resource
 	if res == nil || !res.focused || m.PreviewInteractive() {
 		return false, nil
+	}
+	// Before the pane's own keys: esc clears a selection rather than closing
+	// the pane out from under it, and the copy chord must not fall through to
+	// a card key that happens to share it.
+	if cmd, handled := m.handlePreviewPaneSelectionKey(panelayout.Resource, msg); handled {
+		return true, cmd
 	}
 	// The shared Pane answers the documented Resource keys first, so this
 	// surface cannot quietly rebind one of them. It deliberately does not
