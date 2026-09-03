@@ -1,6 +1,6 @@
 # Host architecture: one descriptor, two classes, both surfaces
 
-**Status:** M1 (td-01b62b), M2a (td-a6d276), M2b (td-0d3539) and M3 (td-44fe20) implemented on branch `plugin-ecosystem`; M4 is design. **Controlling document:** [README.md](README.md). **Contract:** [protocol.md](protocol.md).
+**Status:** M1 (td-01b62b), M2a (td-a6d276), M2b (td-0d3539) and M3 (td-44fe20) implemented on branch `plugin-ecosystem`; M4 is design. **Controlling document:** [README.md](README.md). **Contract:** [docs/reference/plugin-protocol.md](../../../reference/plugin-protocol.md); its rationale is [protocol.md](protocol.md).
 
 This document is the Sidecar-side half: how a plugin is described, enabled, placed, rendered, refreshed, persisted, and reached from the CLI, and which existing seams each of those reuses.
 
