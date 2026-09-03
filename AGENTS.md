@@ -35,7 +35,7 @@ the user asks.
 
 ## Working inside a Sidecar shell
 
-Run `sidecar agents` for what you can do from here, and use it. (`sidecar --agents` was the legacy spelling and may fail on current builds.) The two that earn their keep every session: keep the shell's name describing your current task, and put a file or issue in front of the user rather than describing its path (`sidecar open` works from any context, not only a Sidecar shell). Never edit `shells.json` or rename tmux sessions directly.
+Run `sidecar agents` for what you can do from here, and use it. `sidecar --agents` and `sidecar -a` are equivalent aliases. The two that earn their keep every session: keep the shell's name describing your current task, and put a file or issue in front of the user rather than describing its path (`sidecar open` works from any context, not only a Sidecar shell). Never edit `shells.json` or rename tmux sessions directly.
 
 ### The pane layout is readable and writable
 

@@ -66,9 +66,9 @@ func Run(args []string, stdout, stderr io.Writer) (handled bool, exitCode int) {
 	if args[0] == "help" {
 		return true, runHelpCommand(env, args[1:])
 	}
-	// Spelled as a flag because that is how an agent probes an unfamiliar
-	// binary; "sidecar agents" answers the same way for the same reason.
-	if args[0] == "--agents" || args[0] == "agents" {
+	// The flag aliases match how an agent may probe an unfamiliar binary;
+	// "sidecar agents" answers the same way for the same reason.
+	if isAgentsCommand(args[0]) {
 		_, _ = fmt.Fprint(env.Stdout, RenderAgents(RootCommand()))
 		return true, 0
 	}
@@ -236,6 +236,9 @@ func stripGlobalFlags(args []string) (rest []string, configPath string, ok bool)
 		if arg == "-h" || arg == "--help" {
 			return args, configPath, true
 		}
+		if isAgentsCommand(arg) {
+			return args, configPath, true
+		}
 		name, value, hasValue := arg, "", false
 		if i := strings.IndexByte(arg, '='); i > 0 {
 			name, value, hasValue = arg[:i], arg[i+1:], true
@@ -268,10 +271,22 @@ func stripGlobalFlags(args []string) (rest []string, configPath string, ok bool)
 // belongs to ordinary TUI startup.
 func namesCommand(tok string) bool {
 	switch tok {
-	case "-h", "--help", "help", "--agents", "agents":
+	case "-h", "--help", "help":
+		return true
+	}
+	if isAgentsCommand(tok) {
 		return true
 	}
 	return RootCommand().FindSubcommand(tok) != nil
+}
+
+func isAgentsCommand(tok string) bool {
+	switch tok {
+	case "agents", "--agents", "-a":
+		return true
+	default:
+		return false
+	}
 }
 
 func runShellName(env Env, args []string) int {

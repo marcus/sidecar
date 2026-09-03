@@ -565,14 +565,16 @@ func RootCommand() *Command {
 	agentsCmd := &Command{
 		Name:    "agents",
 		Summary: "List what an agent can do from Sidecar",
-		Usage:   "sidecar --agents",
+		Usage:   "sidecar agents",
 		Long: "List the Sidecar commands worth reaching for, one line each.\n" +
-			"Also spelled \"sidecar --agents\".",
+			"Also available as \"sidecar --agents\" and \"sidecar -a\".",
 		ExitCodes: []ExitCode{
 			{Code: 0, Summary: "success"},
 		},
 		Examples: []Example{
+			{Command: "sidecar agents"},
 			{Command: "sidecar --agents"},
+			{Command: "sidecar -a"},
 		},
 		Run: func(env Env, _ []string) int {
 			_, _ = fmt.Fprint(env.Stdout, RenderAgents(RootCommand()))

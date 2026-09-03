@@ -53,6 +53,30 @@ func TestRunDispatch(t *testing.T) {
 	}
 }
 
+func TestAgentGuidanceAliases(t *testing.T) {
+	var canonical bytes.Buffer
+	handled, code := Run([]string{"agents"}, &canonical, &bytes.Buffer{})
+	if !handled || code != 0 {
+		t.Fatalf("Run(agents) = handled %v code %d", handled, code)
+	}
+	if !strings.Contains(canonical.String(), "Sidecar commands for agents") {
+		t.Fatalf("agents output is not guidance:\n%s", canonical.String())
+	}
+
+	for _, alias := range []string{"--agents", "-a"} {
+		t.Run(alias, func(t *testing.T) {
+			var out, errOut bytes.Buffer
+			handled, code := Run([]string{alias}, &out, &errOut)
+			if !handled || code != 0 || errOut.Len() != 0 {
+				t.Fatalf("Run(%s) = handled %v code %d stderr %q", alias, handled, code, errOut.String())
+			}
+			if out.String() != canonical.String() {
+				t.Fatalf("%s output differs from sidecar agents", alias)
+			}
+		})
+	}
+}
+
 func TestRunRenameJSONSteelThread(t *testing.T) {
 	stateHome, socket := setupShellCLI(t, "stale")
 	t.Setenv("XDG_STATE_HOME", stateHome)

@@ -790,10 +790,10 @@ sidecar agent wait reviewer --until done --timeout 5m
 List what an agent can do from Sidecar
 
 List the Sidecar commands worth reaching for, one line each.
-Also spelled "sidecar --agents".
+Also available as "sidecar --agents" and "sidecar -a".
 
 ```
-Usage: sidecar --agents
+Usage: sidecar agents
 ```
 
 **Exit codes:**
@@ -803,7 +803,9 @@ Usage: sidecar --agents
 **Examples:**
 
 ```bash
+sidecar agents
 sidecar --agents
+sidecar -a
 ```
 
 ## `sidecar content`
