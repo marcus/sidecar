@@ -6,6 +6,7 @@ import (
 
 	"charm.land/lipgloss/v2"
 	"github.com/marcus/sidecar/internal/adapter"
+	"github.com/marcus/sidecar/internal/queryfield"
 	"github.com/marcus/sidecar/internal/styles"
 	"github.com/marcus/sidecar/internal/ui"
 )
@@ -276,7 +277,7 @@ func (p *Plugin) renderSidebarPane(height int) string {
 
 	// Header with count
 	countStr := fmt.Sprintf("%d", len(p.sessions))
-	if p.searchMode && p.searchQuery != "" {
+	if p.searchMode && p.searchQuery() != "" {
 		countStr = fmt.Sprintf("%d/%d", len(sessions), len(p.sessions))
 	} else if p.hasMoreSessions {
 		// Show paginated count (td-7198a5)
@@ -307,11 +308,17 @@ func (p *Plugin) renderSidebarPane(height int) string {
 
 	// Search bar (if in search mode)
 	if p.searchMode {
-		searchLine := fmt.Sprintf("/%s█", p.searchQuery)
-		if len(searchLine) > contentWidth {
-			searchLine = searchLine[:contentWidth]
-		}
-		sb.WriteString(styles.StatusInProgress.Render(searchLine))
+		// The app's query bar, drawn through queryfield.RenderRow. The count of
+		// matches is already in the Sessions header above, so this row carries
+		// no right cell; the × is not drawn because this row registers no hit
+		// region, and a control nothing listens to is worse than no control.
+		row, _ := queryfield.RenderRow(contentWidth, queryfield.Row{
+			Query:       p.searchQuery(),
+			Cursor:      p.searchField.Cursor(),
+			Focused:     true,
+			Placeholder: "search sessions…",
+		})
+		sb.WriteString(row)
 		sb.WriteString("\n")
 		linesUsed++
 	} else if p.filterActive {

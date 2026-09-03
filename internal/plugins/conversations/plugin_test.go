@@ -238,7 +238,7 @@ func TestFilterSessions(t *testing.T) {
 	}
 
 	// Filter by name
-	p.searchQuery = "beta"
+	p.searchField.SetQuery("beta")
 	p.filterSessions()
 	if len(p.searchResults) != 1 {
 		t.Errorf("expected 1 result, got %d", len(p.searchResults))
@@ -248,14 +248,14 @@ func TestFilterSessions(t *testing.T) {
 	}
 
 	// Filter by slug
-	p.searchQuery = "gamma-slug"
+	p.searchField.SetQuery("gamma-slug")
 	p.filterSessions()
 	if len(p.searchResults) != 1 {
 		t.Errorf("expected 1 result, got %d", len(p.searchResults))
 	}
 
 	// No matches
-	p.searchQuery = "nonexistent"
+	p.searchField.SetQuery("nonexistent")
 	p.filterSessions()
 	if len(p.searchResults) != 0 {
 		t.Errorf("expected 0 results, got %d", len(p.searchResults))
@@ -277,7 +277,7 @@ func TestVisibleSessions(t *testing.T) {
 
 	// In search mode with query, should return filtered results
 	p.searchMode = true
-	p.searchQuery = "alpha"
+	p.searchField.SetQuery("alpha")
 	p.filterSessions()
 	visible = p.visibleSessions()
 	if len(visible) != 1 {
@@ -678,8 +678,8 @@ func TestUpdateSearchModeEnter(t *testing.T) {
 	if !p.searchMode {
 		t.Error("expected searchMode to be true after pressing '/'")
 	}
-	if p.searchQuery != "" {
-		t.Errorf("expected empty searchQuery, got %q", p.searchQuery)
+	if p.searchQuery() != "" {
+		t.Errorf("expected empty searchQuery, got %q", p.searchQuery())
 	}
 	if p.cursor != 0 {
 		t.Errorf("expected cursor to reset to 0, got %d", p.cursor)
@@ -698,7 +698,7 @@ func TestUpdateSearchModeExit(t *testing.T) {
 		{ID: "test-2", Name: "beta"},
 	}
 	p.searchMode = true
-	p.searchQuery = "test"
+	p.searchField.SetQuery("test")
 	p.searchResults = []adapter.Session{{ID: "test-1"}}
 	p.cursor = 1
 
@@ -709,8 +709,8 @@ func TestUpdateSearchModeExit(t *testing.T) {
 	if p.searchMode {
 		t.Error("expected searchMode to be false after pressing 'esc'")
 	}
-	if p.searchQuery != "" {
-		t.Errorf("expected searchQuery to be cleared, got %q", p.searchQuery)
+	if p.searchQuery() != "" {
+		t.Errorf("expected searchQuery to be cleared, got %q", p.searchQuery())
 	}
 	if p.searchResults != nil {
 		t.Error("expected searchResults to be nil")
@@ -735,24 +735,24 @@ func TestUpdateSearchTypingCharacters(t *testing.T) {
 	msg := tea.KeyPressMsg{Code: 'a', Text: "a"}
 	_, _ = p.Update(msg)
 
-	if p.searchQuery != "a" {
-		t.Errorf("expected searchQuery 'a', got %q", p.searchQuery)
+	if p.searchQuery() != "a" {
+		t.Errorf("expected searchQuery 'a', got %q", p.searchQuery())
 	}
 
 	// Type 'l'
 	msg = tea.KeyPressMsg{Code: 'l', Text: "l"}
 	_, _ = p.Update(msg)
 
-	if p.searchQuery != "al" {
-		t.Errorf("expected searchQuery 'al', got %q", p.searchQuery)
+	if p.searchQuery() != "al" {
+		t.Errorf("expected searchQuery 'al', got %q", p.searchQuery())
 	}
 
 	// Type 'p'
 	msg = tea.KeyPressMsg{Code: 'p', Text: "p"}
 	_, _ = p.Update(msg)
 
-	if p.searchQuery != "alp" {
-		t.Errorf("expected searchQuery 'alp', got %q", p.searchQuery)
+	if p.searchQuery() != "alp" {
+		t.Errorf("expected searchQuery 'alp', got %q", p.searchQuery())
 	}
 	if len(p.searchResults) != 1 || p.searchResults[0].Name != "alpha" {
 		t.Errorf("expected alpha search result, got %+v", p.searchResults)
@@ -762,8 +762,8 @@ func TestUpdateSearchTypingCharacters(t *testing.T) {
 	// "space" for shortcut matching.
 	msg = tea.KeyPressMsg{Code: tea.KeySpace, Text: " "}
 	_, _ = p.Update(msg)
-	if p.searchQuery != "alp " {
-		t.Errorf("expected searchQuery 'alp ', got %q", p.searchQuery)
+	if p.searchQuery() != "alp " {
+		t.Errorf("expected searchQuery 'alp ', got %q", p.searchQuery())
 	}
 
 	// Verify filtering occurred for the multi-word query.
@@ -781,37 +781,37 @@ func TestUpdateSearchBackspace(t *testing.T) {
 		{ID: "test-2", Name: "beta"},
 	}
 	p.searchMode = true
-	p.searchQuery = "alph"
+	p.searchField.SetQuery("alph")
 	p.filterSessions() // Initialize searchResults
 
 	// Press backspace
 	msg := tea.KeyPressMsg{Code: tea.KeyBackspace}
 	_, _ = p.Update(msg)
 
-	if p.searchQuery != "alp" {
-		t.Errorf("expected searchQuery 'alp', got %q", p.searchQuery)
+	if p.searchQuery() != "alp" {
+		t.Errorf("expected searchQuery 'alp', got %q", p.searchQuery())
 	}
 
 	// Press backspace again
 	_, _ = p.Update(msg)
 
-	if p.searchQuery != "al" {
-		t.Errorf("expected searchQuery 'al', got %q", p.searchQuery)
+	if p.searchQuery() != "al" {
+		t.Errorf("expected searchQuery 'al', got %q", p.searchQuery())
 	}
 
 	// Press backspace until empty
 	_, _ = p.Update(msg)
 	_, _ = p.Update(msg)
 
-	if p.searchQuery != "" {
-		t.Errorf("expected empty searchQuery, got %q", p.searchQuery)
+	if p.searchQuery() != "" {
+		t.Errorf("expected empty searchQuery, got %q", p.searchQuery())
 	}
 
 	// Backspace on empty query should do nothing
 	_, _ = p.Update(msg)
 
-	if p.searchQuery != "" {
-		t.Errorf("expected searchQuery to remain empty, got %q", p.searchQuery)
+	if p.searchQuery() != "" {
+		t.Errorf("expected searchQuery to remain empty, got %q", p.searchQuery())
 	}
 }
 
@@ -833,25 +833,25 @@ func TestUpdateSearchTypingGoto(t *testing.T) {
 	msg := tea.KeyPressMsg{Code: 'g', Text: "g"}
 	_, _ = p.Update(msg)
 
-	if p.searchQuery != "g" {
-		t.Errorf("expected 'g' to be typed into searchQuery, got %q (likely swallowed by goto-top navigation)", p.searchQuery)
+	if p.searchQuery() != "g" {
+		t.Errorf("expected 'g' to be typed into searchQuery, got %q (likely swallowed by goto-top navigation)", p.searchQuery())
 	}
 
 	// Type 'o' — completing "go", the exact scenario from issue #166.
 	msg = tea.KeyPressMsg{Code: 'o', Text: "o"}
 	_, _ = p.Update(msg)
 
-	if p.searchQuery != "go" {
-		t.Errorf("expected searchQuery 'go', got %q", p.searchQuery)
+	if p.searchQuery() != "go" {
+		t.Errorf("expected searchQuery 'go', got %q", p.searchQuery())
 	}
 
 	// 'G' (shift+g) must also be typed, not trigger goto-bottom.
-	p.searchQuery = ""
+	p.searchField.SetQuery("")
 	msg = tea.KeyPressMsg{Code: 'G', Text: "G"}
 	_, _ = p.Update(msg)
 
-	if p.searchQuery != "G" {
-		t.Errorf("expected 'G' to be typed into searchQuery, got %q (likely swallowed by goto-bottom navigation)", p.searchQuery)
+	if p.searchQuery() != "G" {
+		t.Errorf("expected 'G' to be typed into searchQuery, got %q (likely swallowed by goto-bottom navigation)", p.searchQuery())
 	}
 }
 
@@ -865,7 +865,7 @@ func TestUpdateSearchNavigationDown(t *testing.T) {
 		{ID: "test-3", Name: "another-alpha"},
 	}
 	p.searchMode = true
-	p.searchQuery = "alpha"
+	p.searchField.SetQuery("alpha")
 	p.filterSessions()
 	p.height = 20 // Set height for scroll calculations
 
@@ -906,7 +906,7 @@ func TestUpdateSearchNavigationUp(t *testing.T) {
 		{ID: "test-3", Name: "another-alpha"},
 	}
 	p.searchMode = true
-	p.searchQuery = "alpha"
+	p.searchField.SetQuery("alpha")
 	p.filterSessions()
 	p.cursor = 2 // Start at last item
 	p.height = 20
@@ -943,7 +943,7 @@ func TestUpdateSearchNavigationCtrlN(t *testing.T) {
 		{ID: "test-2", Name: "also-alpha"},
 	}
 	p.searchMode = true
-	p.searchQuery = "alpha"
+	p.searchField.SetQuery("alpha")
 	p.filterSessions()
 	p.height = 20
 
@@ -965,7 +965,7 @@ func TestUpdateSearchNavigationCtrlP(t *testing.T) {
 		{ID: "test-2", Name: "also-alpha"},
 	}
 	p.searchMode = true
-	p.searchQuery = "alpha"
+	p.searchField.SetQuery("alpha")
 	p.filterSessions()
 	p.cursor = 1 // Start at second item
 	p.height = 20
@@ -988,7 +988,7 @@ func TestUpdateSearchEnterSelectsSession(t *testing.T) {
 		{ID: "test-2", Name: "beta"},
 	}
 	p.searchMode = true
-	p.searchQuery = "beta"
+	p.searchField.SetQuery("beta")
 	p.filterSessions()
 	p.height = 20
 
@@ -1024,7 +1024,7 @@ func TestUpdateSearchCursorResetOnQuery(t *testing.T) {
 		{ID: "test-3", Name: "beta"},
 	}
 	p.searchMode = true
-	p.searchQuery = "a"
+	p.searchField.SetQuery("a")
 	p.filterSessions()
 	p.cursor = 1 // Move cursor to second result
 	p.height = 20
@@ -1066,8 +1066,8 @@ func TestUpdateSearchEmptyResults(t *testing.T) {
 		_, _ = p.Update(msg)
 	}
 
-	if p.searchQuery != "xyz" {
-		t.Errorf("expected searchQuery 'xyz', got %q", p.searchQuery)
+	if p.searchQuery() != "xyz" {
+		t.Errorf("expected searchQuery 'xyz', got %q", p.searchQuery())
 	}
 	if len(p.searchResults) != 0 {
 		t.Errorf("expected 0 results, got %d", len(p.searchResults))
@@ -4115,5 +4115,66 @@ func TestDiagnosticsWhileDetecting(t *testing.T) {
 	diags = p.Diagnostics()
 	if diags[0].Status != "disabled" {
 		t.Errorf("expected disabled once detection found nothing, got %q", diags[0].Status)
+	}
+}
+
+// M4d-d: the Sessions search bar is the shared query field, so it edits like
+// every other query bar rather than only appending and backspacing.
+func newSessionsSearchPlugin() *Plugin {
+	p := New()
+	p.adapters = map[string]adapter.Adapter{"mock": &mockAdapter{}}
+	p.sessions = []adapter.Session{
+		{ID: "test-1", Name: "release notes"},
+		{ID: "test-2", Name: "release plan"},
+		{ID: "test-3", Name: "unrelated"},
+	}
+	p.height = 20
+	p.searchMode = true
+	return p
+}
+
+func TestSessionsSearchWordDeleteRemovesOneWord(t *testing.T) {
+	p := newSessionsSearchPlugin()
+	p.searchField.SetQuery("release notes")
+	p.filterSessions()
+
+	_, _ = p.Update(tea.KeyPressMsg{Code: tea.KeyBackspace, Mod: tea.ModAlt})
+	if got := p.searchQuery(); got != "release " {
+		t.Fatalf("query after alt+backspace = %q, want %q", got, "release ")
+	}
+	// A word delete is a query change, so the list re-filters.
+	if got := len(p.visibleSessions()); got != 2 {
+		t.Fatalf("visible sessions after the word delete = %d, want 2", got)
+	}
+}
+
+func TestSessionsSearchPasteInsertsAtTheCaret(t *testing.T) {
+	p := newSessionsSearchPlugin()
+	_, _ = p.Update(tea.PasteMsg{Content: "release plan"})
+	if got := p.searchQuery(); got != "release plan" {
+		t.Fatalf("query after paste = %q, want %q", got, "release plan")
+	}
+	if got := len(p.visibleSessions()); got != 1 {
+		t.Fatalf("visible sessions after paste = %d, want 1", got)
+	}
+	// The caret is real: home then a paste lands at the start.
+	_, _ = p.Update(tea.KeyPressMsg{Code: tea.KeyHome})
+	_, _ = p.Update(tea.PasteMsg{Content: "x"})
+	if got := p.searchQuery(); got != "xrelease plan" {
+		t.Fatalf("query after a paste at the caret = %q, want %q", got, "xrelease plan")
+	}
+}
+
+// j and k are text here, not navigation: a bar that ate them could not be asked
+// for "json" or "kubectl". Arrows and ctrl+n/ctrl+p still walk the results.
+func TestSessionsSearchTypesJAndK(t *testing.T) {
+	p := newSessionsSearchPlugin()
+	_, _ = p.Update(tea.KeyPressMsg{Code: 'j', Text: "j"})
+	_, _ = p.Update(tea.KeyPressMsg{Code: 'k', Text: "k"})
+	if got := p.searchQuery(); got != "jk" {
+		t.Fatalf("query after j and k = %q, want %q", got, "jk")
+	}
+	if p.cursor != 0 {
+		t.Fatalf("cursor = %d, want the letters not to have moved it", p.cursor)
 	}
 }

@@ -20,6 +20,7 @@ import (
 	"github.com/marcus/sidecar/internal/modal"
 	"github.com/marcus/sidecar/internal/mouse"
 	"github.com/marcus/sidecar/internal/plugin"
+	"github.com/marcus/sidecar/internal/queryfield"
 	"github.com/marcus/sidecar/internal/startuptrace"
 	"github.com/marcus/sidecar/internal/state"
 	"github.com/marcus/sidecar/internal/ui"
@@ -181,7 +182,7 @@ type Plugin struct {
 
 	// Search state
 	searchMode    bool
-	searchQuery   string
+	searchField   queryfield.Field
 	searchResults []adapter.Session
 
 	// Filter state
@@ -409,7 +410,7 @@ func (p *Plugin) resetState() {
 
 	// Search state
 	p.searchMode = false
-	p.searchQuery = ""
+	p.searchField.Reset()
 	p.searchResults = nil
 
 	// Filter state
@@ -658,6 +659,13 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 
 	case tea.MouseMsg:
 		return p.handleMouse(msg)
+
+	case tea.PasteMsg:
+		// A live Sessions search bar is a text input: a bracketed paste lands
+		// in it exactly as typed characters do.
+		if handled, cmd := p.handleSearchPaste(msg); handled {
+			return p, cmd
+		}
 
 	case tea.KeyPressMsg:
 		// Handle content search modal first if open (td-6ac70a)
