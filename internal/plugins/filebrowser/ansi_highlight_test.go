@@ -21,7 +21,7 @@ func TestContentSearchMarkdownMode(t *testing.T) {
 	p.markdownRenderMode = true
 
 	p.contentSearchMode = true
-	p.contentSearchQuery = "hello"
+	p.contentSearchField.SetQuery("hello")
 	p.updateContentMatches()
 
 	if len(p.contentSearchMatches) != 2 {
@@ -50,7 +50,7 @@ func TestToggleMarkdownDuringSearch(t *testing.T) {
 
 	// Search in raw mode first
 	p.contentSearchMode = true
-	p.contentSearchQuery = "hello"
+	p.contentSearchField.SetQuery("hello")
 	p.updateContentMatches()
 
 	rawMatches := len(p.contentSearchMatches)

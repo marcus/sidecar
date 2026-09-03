@@ -11,6 +11,7 @@ import (
 	"github.com/marcus/sidecar/internal/docview"
 	"github.com/marcus/sidecar/internal/filefind"
 	"github.com/marcus/sidecar/internal/image"
+	"github.com/marcus/sidecar/internal/queryfield"
 	"github.com/marcus/sidecar/internal/styles"
 	"github.com/marcus/sidecar/internal/ui"
 )
@@ -130,7 +131,7 @@ func (p *Plugin) renderView() string {
 func (p *Plugin) inputBarHeight() int {
 	h := 0
 	if p.contentSearchMode {
-		h += inputBarRows
+		h += contentSearchBarRows
 	}
 	if p.fileOpMode != FileOpNone {
 		h += inputBarRows
@@ -165,7 +166,7 @@ func (p *Plugin) fileOpSuggestionRows() int {
 func (p *Plugin) fileOpSuggestionsTopY() int {
 	y := 0
 	if p.contentSearchMode {
-		y += inputBarRows
+		y += contentSearchBarRows
 	}
 	y += inputBarRows
 	if p.fileOpError != "" {
@@ -180,6 +181,13 @@ func (p *Plugin) fileOpSuggestionsTopY() int {
 // region one row above the row it names whenever a bar was open - a click
 // selected the wrong file, and a drop moved one into the wrong directory.
 const inputBarRows = 2
+
+// contentSearchBarRows is the height of the content search bar, which is one
+// row and not two: it draws through queryfield.RenderRow rather than
+// styles.ModalTitle, so it carries no bottom margin. It is counted separately
+// from inputBarRows for exactly the reason that constant exists — a bar
+// measured at the wrong height puts every tree hit region on the wrong row.
+const contentSearchBarRows = 1
 
 // paneHeight returns the outer height of the tree/preview panels, borders
 // included. renderNormalPanes and the geometry helpers below must agree on it,
@@ -429,40 +437,60 @@ func (p *Plugin) registerPreviewSelectionRegions() {
 }
 
 // renderContentSearchBar renders the content search input bar for preview pane.
+//
+// It draws through queryfield.RenderRow, so the preview's search bar is the
+// app's query bar; the match count and the navigation hint are this surface's
+// own right cell. The × is not drawn: this row sits above the panes and the
+// plugin registers no region for it, and a control nothing listens to is worse
+// than no control.
 func (p *Plugin) renderContentSearchBar() string {
-	// Show cursor while typing, hide when committed
-	cursor := ""
-	if !p.contentSearchCommitted {
-		cursor = "█"
-	}
-
 	matchInfo := ""
 	if len(p.contentSearchMatches) > 0 {
-		matchInfo = fmt.Sprintf(" (%d/%d)", p.contentSearchCursor+1, len(p.contentSearchMatches))
+		matchInfo = fmt.Sprintf("(%d/%d)", p.contentSearchCursor+1, len(p.contentSearchMatches))
 		if p.contentSearchCommitted {
 			matchInfo += " [n/N j/k]" // Hint for navigation
 		}
-	} else if p.contentSearchQuery != "" {
-		matchInfo = " (0 matches)"
+	} else if p.contentSearchQuery() != "" {
+		matchInfo = "(0 matches)"
 	}
-
-	searchLine := fmt.Sprintf(" / %s%s%s", p.contentSearchQuery, cursor, matchInfo)
-	return styles.ModalTitle.Render(searchLine)
+	if matchInfo != "" {
+		matchInfo = styles.Muted.Render(matchInfo)
+	}
+	row, _ := queryfield.RenderRow(p.width, queryfield.Row{
+		Query:       p.contentSearchQuery(),
+		Cursor:      p.contentSearchField.Cursor(),
+		Focused:     !p.contentSearchCommitted,
+		Placeholder: "search…",
+		Right:       matchInfo,
+	})
+	return row
 }
 
 // renderTreeSearchBar renders the tree search bar inline within the tree pane.
 func (p *Plugin) renderTreeSearchBar() string {
-	cursor := "█"
 	matchInfo := ""
 	if len(p.searchMatches) > 0 {
-		matchInfo = fmt.Sprintf(" (%d/%d)", p.searchCursor+1, len(p.searchMatches))
-	} else if p.searchQuery != "" {
-		matchInfo = " (no matches)"
+		matchInfo = fmt.Sprintf("(%d/%d)", p.searchCursor+1, len(p.searchMatches))
+	} else if p.searchQuery() != "" {
+		matchInfo = "(no matches)"
 	}
+	if matchInfo != "" {
+		matchInfo = styles.Muted.Render(matchInfo)
+	}
+	row, _ := queryfield.RenderRow(p.treeSearchBarWidth(), queryfield.Row{
+		Query:       p.searchQuery(),
+		Cursor:      p.searchField.Cursor(),
+		Focused:     p.searchMode,
+		Placeholder: "filter…",
+		Right:       matchInfo,
+	})
+	return row
+}
 
-	searchLine := fmt.Sprintf("/%s%s%s", p.searchQuery, cursor, matchInfo)
-	// Use a subtle style that fits inside the pane
-	return styles.StatusInProgress.Render(searchLine)
+// treeSearchBarWidth is the row the tree pane has room for: the pane's width
+// less its two border columns.
+func (p *Plugin) treeSearchBarWidth() int {
+	return max(p.treeWidth-2, 1)
 }
 
 // renderFileOpBar renders the file operation input bar (move/rename/create/delete).
@@ -620,7 +648,7 @@ func (p *Plugin) renderTreePane(visibleHeight int) string {
 	if p.searchMode {
 		if len(p.searchMatches) > 0 {
 			return p.renderSearchResults(&sb, visibleHeight)
-		} else if p.searchQuery != "" {
+		} else if p.searchQuery() != "" {
 			// Show "no matches" when query exists but no results
 			sb.WriteString(styles.Muted.Render("No matching files"))
 			return sb.String()

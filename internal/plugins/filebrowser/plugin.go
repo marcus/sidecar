@@ -22,6 +22,7 @@ import (
 	appmsg "github.com/marcus/sidecar/internal/msg"
 	"github.com/marcus/sidecar/internal/plugin"
 	"github.com/marcus/sidecar/internal/projectsearch"
+	"github.com/marcus/sidecar/internal/queryfield"
 	"github.com/marcus/sidecar/internal/state"
 	"github.com/marcus/sidecar/internal/tabs"
 	"github.com/marcus/sidecar/internal/tty"
@@ -222,9 +223,12 @@ type Plugin struct {
 	treeWidth     int
 	previewWidth  int
 
-	// Search state (tree filename search)
+	// Search state (tree filename search). The query is the app's shared
+	// query field, so the bar edits like every other `/` bar: the caret moves,
+	// alt+backspace deletes a word, home and end work, and a paste arrives
+	// whole. searchQuery() reads it.
 	searchMode    bool
-	searchQuery   string
+	searchField   queryfield.Field
 	searchMatches []filefind.Match
 	searchCursor  int
 
@@ -238,7 +242,7 @@ type Plugin struct {
 	// Content search state (preview pane)
 	contentSearchMode      bool
 	contentSearchCommitted bool // True after Enter confirms query (enables n/N navigation)
-	contentSearchQuery     string
+	contentSearchField     queryfield.Field
 	contentSearchMatches   []ContentMatch
 	contentSearchCursor    int // Index into contentSearchMatches
 
@@ -985,7 +989,7 @@ func (p *Plugin) update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 		if p.markdownRenderMode && p.isMarkdownFile() {
 			p.markdownRendered = nil
 			p.renderMarkdownContent()
-			if p.contentSearchMode && p.contentSearchQuery != "" {
+			if p.contentSearchMode && p.contentSearchQuery() != "" {
 				p.updateContentMatches()
 			}
 		}
@@ -1164,7 +1168,7 @@ func (p *Plugin) update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 			}
 
 			// Re-run search if still in search mode (e.g., navigating files with j/k)
-			if p.contentSearchMode && p.contentSearchQuery != "" {
+			if p.contentSearchMode && p.contentSearchQuery() != "" {
 				targetScroll := p.previewScroll
 				p.updateContentMatches()
 				// Jump to match nearest the target line from project search
@@ -1345,6 +1349,14 @@ func (p *Plugin) update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 		// Normal exit - refresh preview after editing
 		if msg.FilePath != "" {
 			return p, p.loadPreview(msg.FilePath)
+		}
+
+	case tea.PasteMsg:
+		// A live search bar is a text input: a bracketed paste lands in it
+		// exactly as typed characters do. Nothing else in this plugin takes a
+		// paste, so an unclaimed one is simply dropped as before.
+		if handled, cmd := p.handleSearchPaste(msg); handled {
+			return p, cmd
 		}
 
 	case tea.KeyPressMsg:

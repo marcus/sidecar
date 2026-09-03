@@ -381,7 +381,7 @@ func (p *Plugin) resetPreviewModes() {
 	p.selection.Clear()
 	p.contentSearchMode = false
 	p.contentSearchCommitted = false
-	p.contentSearchQuery = ""
+	p.contentSearchField.Reset()
 	p.contentSearchMatches = nil
 	p.contentSearchCursor = 0
 	p.lineJumpMode = false

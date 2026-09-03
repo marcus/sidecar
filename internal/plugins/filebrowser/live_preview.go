@@ -136,7 +136,7 @@ func (p *Plugin) applyPreviewRefresh(msg previewRefreshedMsg) tea.Cmd {
 		p.tabs[p.activeTab].Scroll = p.previewScroll
 	}
 	// A content search is showing match positions computed against the old text.
-	if p.contentSearchMode && p.contentSearchQuery != "" {
+	if p.contentSearchMode && p.contentSearchQuery() != "" {
 		p.updateContentMatches()
 	}
 	return followUp

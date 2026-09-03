@@ -689,7 +689,7 @@ func tabPaths(tabs []FileTab) []string {
 
 func setPreviewModes(p *Plugin) {
 	p.contentSearchMode = true
-	p.contentSearchQuery = "readme"
+	p.contentSearchField.SetQuery("readme")
 	p.blameMode = true
 	p.infoMode = true
 	p.lineJumpMode = true
@@ -698,9 +698,9 @@ func setPreviewModes(p *Plugin) {
 
 func assertPreviewModesKept(t *testing.T, p *Plugin) {
 	t.Helper()
-	if !p.contentSearchMode || p.contentSearchQuery != "readme" || !p.blameMode || !p.infoMode || !p.lineJumpMode || p.lineJumpBuffer != "9" {
+	if !p.contentSearchMode || p.contentSearchQuery() != "readme" || !p.blameMode || !p.infoMode || !p.lineJumpMode || p.lineJumpBuffer != "9" {
 		t.Errorf("preview modes cleared on surviving tab: search=%v q=%q blame=%v info=%v jump=%v buf=%q",
-			p.contentSearchMode, p.contentSearchQuery, p.blameMode, p.infoMode, p.lineJumpMode, p.lineJumpBuffer)
+			p.contentSearchMode, p.contentSearchQuery(), p.blameMode, p.infoMode, p.lineJumpMode, p.lineJumpBuffer)
 	}
 }
 
@@ -818,7 +818,7 @@ func TestTabs_CloseTabsForPath_RemovesAll(t *testing.T) {
 	p.isBinary = true
 	p.isTruncated = true
 	p.contentSearchMode = true
-	p.contentSearchQuery = "src"
+	p.contentSearchField.SetQuery("src")
 	p.blameMode = true
 	p.infoMode = true
 	p.lineJumpMode = true
@@ -850,7 +850,7 @@ func TestTabs_CloseTabsForPath_RemovesAll(t *testing.T) {
 	if p.isBinary || p.isTruncated {
 		t.Error("preview content flags should be cleared")
 	}
-	if p.contentSearchMode || p.contentSearchQuery != "" || p.blameMode || p.infoMode || p.lineJumpMode || p.lineJumpBuffer != "" {
+	if p.contentSearchMode || p.contentSearchQuery() != "" || p.blameMode || p.infoMode || p.lineJumpMode || p.lineJumpBuffer != "" {
 		t.Error("preview modes should be cleared")
 	}
 }

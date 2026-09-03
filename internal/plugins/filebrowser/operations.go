@@ -582,11 +582,11 @@ func (p *Plugin) updateContentMatches() {
 	p.contentSearchMatches = nil
 	p.contentSearchCursor = 0
 
-	if p.contentSearchQuery == "" {
+	if p.contentSearchQuery() == "" {
 		return
 	}
 
-	query := strings.ToLower(p.contentSearchQuery)
+	query := strings.ToLower(p.contentSearchQuery())
 
 	for lineNo, line := range p.getSearchableLines() {
 		lineLower := strings.ToLower(line)
@@ -600,7 +600,7 @@ func (p *Plugin) updateContentMatches() {
 			p.contentSearchMatches = append(p.contentSearchMatches, ContentMatch{
 				LineNo:   lineNo,
 				StartCol: absIdx,
-				EndCol:   absIdx + len(p.contentSearchQuery),
+				EndCol:   absIdx + len(p.contentSearchQuery()),
 			})
 			startIdx = absIdx + 1
 		}
@@ -748,7 +748,7 @@ func (p *Plugin) updateFileOpSuggestions() tea.Cmd {
 // refreshes them when it lands.
 func (p *Plugin) updateSearchMatches() tea.Cmd {
 	p.searchMatches = nil
-	if p.searchQuery == "" {
+	if p.searchQuery() == "" {
 		return nil
 	}
 
@@ -756,7 +756,7 @@ func (p *Plugin) updateSearchMatches() tea.Cmd {
 	cmd := p.ensureFileCache()
 
 	// Use fuzzy filter on cached files (same as Ctrl+P)
-	p.searchMatches = filefind.FuzzyFilter(p.quickOpen.Files, p.searchQuery, 20)
+	p.searchMatches = filefind.FuzzyFilter(p.quickOpen.Files, p.searchQuery(), 20)
 	p.searchCursor = 0
 	p.followSearchCursor()
 	return cmd
@@ -772,12 +772,12 @@ func (p *Plugin) refilterSearchMatches() {
 	}
 
 	p.searchMatches = nil
-	if p.searchQuery == "" {
+	if p.searchQuery() == "" {
 		p.searchCursor = 0
 		p.followSearchCursor()
 		return
 	}
-	p.searchMatches = filefind.FuzzyFilter(p.quickOpen.Files, p.searchQuery, 20)
+	p.searchMatches = filefind.FuzzyFilter(p.quickOpen.Files, p.searchQuery(), 20)
 
 	p.searchCursor = 0
 	for i, match := range p.searchMatches {
@@ -1004,7 +1004,7 @@ func (p *Plugin) toggleMarkdownRender() {
 		p.renderMarkdownContent()
 	}
 	// Re-run search if active (line indices change between modes)
-	if p.contentSearchMode && p.contentSearchQuery != "" {
+	if p.contentSearchMode && p.contentSearchQuery() != "" {
 		p.updateContentMatches()
 	}
 }
@@ -1033,7 +1033,7 @@ func (p *Plugin) handleThemeChanged() {
 		}
 	}
 
-	if p.contentSearchMode && p.contentSearchQuery != "" {
+	if p.contentSearchMode && p.contentSearchQuery() != "" {
 		p.updateContentMatches()
 	}
 }

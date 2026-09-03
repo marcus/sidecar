@@ -237,7 +237,8 @@ func (p *Plugin) applyProjectSearchResult(res projectsearch.Result, cmd tea.Cmd)
 		if res.Query != "" {
 			p.contentSearchMode = true
 			p.contentSearchCommitted = true // Skip input phase, enable n/N navigation
-			p.contentSearchQuery = res.Query
+			p.contentSearchField.SetQuery(res.Query)
+			p.contentSearchField.Blur()
 			p.contentSearchMatches = nil // Will be populated after preview loads
 			p.contentSearchCursor = 0
 			if openCmd == nil {

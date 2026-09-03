@@ -393,7 +393,7 @@ func TestFileCacheBuiltMsg_SearchKeepsTheSelectedMatch(t *testing.T) {
 	p := createTestPlugin(t, tmpDir)
 
 	p.searchMode = true
-	p.searchQuery = "go"
+	p.searchField.SetQuery("go")
 	cmd := p.updateSearchMatches()
 	if cmd == nil {
 		t.Fatal("expected a file scan to be started")

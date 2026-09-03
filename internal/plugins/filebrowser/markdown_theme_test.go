@@ -45,7 +45,7 @@ func TestHandleThemeChangedRerendersPreview(t *testing.T) {
 func TestHandleThemeChangedRefreshesSearchAndClampsState(t *testing.T) {
 	p := newMarkdownPreviewPlugin(t, "# Title\n\nneedle in the body\n")
 	p.contentSearchMode = true
-	p.contentSearchQuery = "needle"
+	p.contentSearchField.SetQuery("needle")
 	p.updateContentMatches()
 	if len(p.contentSearchMatches) == 0 {
 		t.Fatal("expected a search match before the theme change")
