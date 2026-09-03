@@ -138,6 +138,10 @@ Every action a key performs is reachable by the pointer, and both routes call th
 
 This section is specified, like the blank-row rule above: it was decided against the plugin browser's parity work (`docs/plans/active/plugin-ecosystem/browser-parity-and-scope.md`) rather than transcribed from one function, and the functions it names are the ones a new surface composes rather than a single one it calls.
 
+### A detail box follows the list cursor
+
+Wherever a list has a detail box beside it, the detail shows the row under the cursor without waiting for `Enter`, however the cursor got there: `j`/`k`, the arrows, a click, the wheel, or an arrow pressed in the query bar above. The Files plugin is the reference, and the rule it follows is the one every such pair follows: a cursor move schedules the load after a short quiet period (`filebrowser.treePreviewQuiet`, `pluginbrowser.DetailQuiet`), the load is guarded by generation, epoch and row identity so a stale answer is dropped, a superseded load is cancelled rather than left running, and the document already on screen stays until the new one lands, so moving quickly through a list never shows a blank box. `Enter` and a second click then move the keyboard into a document that is already there. A pair that loads only on `Enter` is a bug against this rule.
+
 ## List rows
 
 A list row is composed from pre-styled spans and then, when selected, painted with a background. The pieces:
