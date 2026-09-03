@@ -56,7 +56,7 @@ func TestOverlaysStayInsideTheBox(t *testing.T) {
 			host := &fakeHost{page: testPage(6)}
 			m := newTestModel(t, host)
 			s := m.activeState()
-			s.query = "dex"
+			s.setQuery("dex")
 			run(t, m, m.list(m.desc.Collections[0], s, false))
 			m.SetSize(size[0], size[1])
 			open.do(m)
@@ -88,9 +88,9 @@ func TestHostileDocumentStaysInsideTheBox(t *testing.T) {
 	}
 	m := newTestModel(t, host)
 	s := m.activeState()
-	s.query = "dex"
+	s.setQuery("dex")
 	run(t, m, m.list(m.desc.Collections[0], s, false))
-	run(t, m, m.openDocument("results", "rc:notes:1", false))
+	run(t, m, m.openDocument("results", "rc:notes:1", openReplace))
 	m.focus = FocusDetail
 
 	for _, size := range [][2]int{{160, 45}, {120, 30}, {100, 24}, {80, 20}, {52, 18}, {40, 12}} {
@@ -108,7 +108,7 @@ func TestHostileRowsStayInsideTheBox(t *testing.T) {
 	host := &fakeHost{page: page}
 	m := newTestModel(t, host)
 	s := m.activeState()
-	s.query = "dex"
+	s.setQuery("dex")
 	run(t, m, m.list(m.desc.Collections[0], s, false))
 
 	for _, size := range [][2]int{{160, 45}, {120, 30}, {100, 24}, {80, 20}, {52, 18}, {40, 12}} {
@@ -126,7 +126,7 @@ func TestNoticesStayOnOneRow(t *testing.T) {
 	host := &fakeHost{page: page}
 	m := newTestModel(t, host)
 	s := m.activeState()
-	s.query = "dex"
+	s.setQuery("dex")
 	run(t, m, m.list(m.desc.Collections[0], s, false))
 	for _, size := range [][2]int{{160, 45}, {80, 20}, {52, 18}} {
 		assertBox(t, m, "notices", size[0], size[1])
@@ -140,7 +140,7 @@ func TestSupersededPageLeavesNoStuckSpinner(t *testing.T) {
 	host.page.NextCursor = "next"
 	m := newTestModel(t, host)
 	s := m.activeState()
-	s.query = "dex"
+	s.setQuery("dex")
 	run(t, m, m.list(m.desc.Collections[0], s, false))
 
 	c, _ := m.ActiveCollection()
@@ -149,7 +149,7 @@ func TestSupersededPageLeavesNoStuckSpinner(t *testing.T) {
 	if !s.paging {
 		t.Fatal("an append did not mark the collection as paging")
 	}
-	s.query = "dexter"
+	s.setQuery("dexter")
 	run(t, m, m.list(c, s, false))
 	run(t, m, pageCmd)
 	if s.paging || s.loading {
@@ -214,7 +214,7 @@ func TestMaximalDeclarationsKeepTheModalInsideTheBox(t *testing.T) {
 			m.SetSize(size[0], size[1])
 			run(t, m, m.Refresh())
 			s := m.activeState()
-			s.query = "dex"
+			s.setQuery("dex")
 			run(t, m, m.list(m.desc.Collections[0], s, false))
 			m.SetSize(size[0], size[1])
 			open.do(m)

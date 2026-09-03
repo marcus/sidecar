@@ -23,7 +23,7 @@ func TestAQueryStopsAtTheBoundItIsPersistedAgainst(t *testing.T) {
 	for i := 0; i < resource.MaxQueryChars+8; i++ {
 		m.HandleKey(keyPress("a"))
 	}
-	got := m.activeState().query
+	got := m.activeState().queryText()
 	if len(got) != resource.MaxQueryChars {
 		t.Fatalf("query is %d characters, want it clamped at %d", len(got), resource.MaxQueryChars)
 	}

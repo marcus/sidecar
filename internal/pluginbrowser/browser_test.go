@@ -326,8 +326,8 @@ func TestQueryDebounceRunsOnlyTheNewestKeystroke(t *testing.T) {
 		t.Fatalf("typing listed %d times before the debounce elapsed", len(host.lists))
 	}
 	s := m.activeState()
-	if s.query != "dex" {
-		t.Fatalf("query = %q, want dex", s.query)
+	if s.queryText() != "dex" {
+		t.Fatalf("query = %q, want dex", s.queryText())
 	}
 	// The two superseded ticks do nothing at all.
 	run(t, m, m.Update(QueryDebouncedMsg{Instance: "fixture", Collection: "results", Sequence: s.debounce - 1}))
@@ -359,7 +359,7 @@ func TestStalePageIsDiscarded(t *testing.T) {
 	host := &fakeHost{page: testPage(3)}
 	m := newTestModel(t, host)
 	s := m.activeState()
-	s.query = "dex"
+	s.setQuery("dex")
 	run(t, m, m.list(m.desc.Collections[0], s, false))
 	if len(s.items) != 3 {
 		t.Fatalf("items = %d, want 3", len(s.items))
@@ -390,7 +390,7 @@ func TestEnterOpensThenFocuses(t *testing.T) {
 	}}
 	m := newTestModel(t, host)
 	s := m.activeState()
-	s.query = "dex"
+	s.setQuery("dex")
 	run(t, m, m.list(m.desc.Collections[0], s, false))
 
 	press(t, m, "enter")
@@ -425,7 +425,7 @@ func TestPagingHappensOnDemand(t *testing.T) {
 	host.page = page
 	m := newTestModel(t, host)
 	s := m.activeState()
-	s.query = "dex"
+	s.setQuery("dex")
 	run(t, m, m.list(m.desc.Collections[0], s, false))
 	if len(host.lists) != 1 {
 		t.Fatalf("lists = %d, want the first page only", len(host.lists))
@@ -450,7 +450,7 @@ func TestViewModalChangesSortAndRelists(t *testing.T) {
 	host := &fakeHost{page: testPage(2)}
 	m := newTestModel(t, host)
 	s := m.activeState()
-	s.query = "dex"
+	s.setQuery("dex")
 	run(t, m, m.list(m.desc.Collections[0], s, false))
 	before := len(host.lists)
 
@@ -487,7 +487,7 @@ func TestActionFormCollectsInputs(t *testing.T) {
 	}}
 	m := newTestModel(t, host)
 	s := m.activeState()
-	s.query = "dex"
+	s.setQuery("dex")
 	run(t, m, m.list(m.desc.Collections[0], s, false))
 
 	press(t, m, "a")
@@ -596,7 +596,7 @@ func TestOutcomesRenderHonestly(t *testing.T) {
 	host := &fakeHost{}
 	m := newTestModel(t, host)
 	s := m.activeState()
-	s.query = "dex"
+	s.setQuery("dex")
 
 	host.page = pluginhost.Page{
 		Outcome: pluginhost.OutcomeDegraded,
@@ -632,7 +632,7 @@ func TestSourceURLGoesThroughTheConfirmedPath(t *testing.T) {
 	host := &fakeHost{page: testPage(1)}
 	m := newTestModel(t, host)
 	s := m.activeState()
-	s.query = "dex"
+	s.setQuery("dex")
 	run(t, m, m.list(m.desc.Collections[0], s, false))
 	press(t, m, "o")
 	if len(host.opened) != 1 || host.opened[0] != "https://fixture.example.test/1" {
@@ -656,7 +656,7 @@ func TestViewIsHeldToItsBox(t *testing.T) {
 	host := &fakeHost{page: testPage(40)}
 	m := newTestModel(t, host)
 	s := m.activeState()
-	s.query = "dex"
+	s.setQuery("dex")
 	run(t, m, m.list(m.desc.Collections[0], s, false))
 	for _, size := range [][2]int{{160, 45}, {120, 30}, {100, 24}, {80, 20}, {52, 18}, {40, 12}} {
 		m.SetSize(size[0], size[1])
@@ -679,7 +679,7 @@ func TestNarrowRowsReflow(t *testing.T) {
 	host := &fakeHost{page: testPage(3)}
 	m := newTestModel(t, host)
 	s := m.activeState()
-	s.query = "dex"
+	s.setQuery("dex")
 	run(t, m, m.list(m.desc.Collections[0], s, false))
 
 	m.SetSize(52, 24)
@@ -723,7 +723,7 @@ func TestFooterStatusReportsTheStandingCondition(t *testing.T) {
 	m := newTestModel(t, host)
 	p := &TabPlugin{id: "fixture", name: "fixture", model: m, focused: true}
 	s := m.activeState()
-	s.query = "dex"
+	s.setQuery("dex")
 	run(t, m, m.list(m.desc.Collections[0], s, false))
 	status, isErr := p.FooterStatus()
 	if status != "fixture · results · answered" || isErr {
@@ -751,7 +751,7 @@ func TestUnselectedRowsKeepEveryColumn(t *testing.T) {
 	host := &fakeHost{page: testPage(3)}
 	m := newTestModel(t, host)
 	s := m.activeState()
-	s.query = "dex"
+	s.setQuery("dex")
 	run(t, m, m.list(m.desc.Collections[0], s, false))
 
 	view := strip(m.View())

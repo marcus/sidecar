@@ -9,6 +9,7 @@ import (
 
 	"github.com/marcus/sidecar/internal/contentlink"
 	"github.com/marcus/sidecar/internal/pluginhost"
+	"github.com/marcus/sidecar/internal/queryfield"
 	"github.com/marcus/sidecar/internal/resource"
 )
 
@@ -111,8 +112,7 @@ func (m *Model) BlocksGlobalKeys() bool { return m.overlay.open() }
 func (m *Model) QuitKeyExits() bool { return !m.editingQuery() }
 
 func (m *Model) editingQuery() bool {
-	s := m.activeState()
-	return s != nil && s.editing
+	return m.activeState().editing()
 }
 
 // HandleKey routes one key press and reports whether the browser consumed it.
@@ -139,6 +139,12 @@ func (m *Model) HandleKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	case "j", "down":
 		return m.moveCursor(1), true
 	case "k", "up":
+		// Up from the first row is the other half of the query row's hand-off:
+		// the keyboard goes back to the field with its text intact, which is
+		// what makes the two rows one keyboard path rather than two islands.
+		if m.atFirstRowUnderAQuery() {
+			return m.beginQuery(), true
+		}
 		return m.moveCursor(-1), true
 	case "pgdown":
 		return m.moveCursor(m.pageStep()), true
@@ -209,6 +215,11 @@ func (m *Model) moveCursor(delta int) tea.Cmd {
 	return m.moveTo(target)
 }
 
+// moveTo puts the cursor on a row and schedules the detail that goes with it.
+//
+// The detail following the cursor is what makes the list readable without
+// pressing Enter on every row; the schedule is what stops that costing a
+// process per keypress. Nothing on screen changes until the load lands.
 func (m *Model) moveTo(index int) tea.Cmd {
 	s := m.activeState()
 	if s == nil {
@@ -225,7 +236,7 @@ func (m *Model) moveTo(index int) tea.Cmd {
 	}
 	s.cursor = index
 	m.clampListScroll(s)
-	return nil
+	return m.scheduleDetailForCursor()
 }
 
 // openCursorRow opens the row under the cursor, or focuses the detail box when
@@ -253,7 +264,7 @@ func (m *Model) openCursorRow() tea.Cmd {
 		m.focus = FocusDetail
 		return nil
 	}
-	return m.openDocument(c.ID, item.ID, false)
+	return m.openDocument(c.ID, item.ID, openReplace)
 }
 
 func (m *Model) beginQuery() tea.Cmd {
@@ -262,60 +273,150 @@ func (m *Model) beginQuery() tea.Cmd {
 		return nil
 	}
 	s := m.state(c)
-	s.editing = true
+	s.field.Focus()
 	m.focus = FocusList
 	return nil
 }
 
-// queryKey edits the query line. Every edit schedules one debounce tick; only
-// the newest one spends a process, and the manager kills the superseded call's
-// process group when it does.
+// HasQuery reports that the collection on screen is narrowed by a query, which
+// is the condition the × is drawn under and the filter-clear command offered
+// under. One rule for the key and the pointer.
+func (m *Model) HasQuery() bool {
+	return m.activeState().queryText() != ""
+}
+
+// ClearQuery is the filter-clear command's entry point, for a host that reaches
+// it from the palette rather than from the row.
+func (m *Model) ClearQuery() tea.Cmd { return m.clearQuery() }
+
+// clearQuery empties the query and re-lists, leaving the caret where it is. It
+// is what the row's × and the filter-clear command run, and it is reachable
+// whether or not the row has the keyboard: a query narrowing the list from a
+// blurred row is exactly the one a user wants to drop without typing into it
+// first.
+func (m *Model) clearQuery() tea.Cmd {
+	c, ok := m.ActiveCollection()
+	if !ok || c.Search == pluginhost.SearchNone {
+		return nil
+	}
+	s := m.state(c)
+	if s.queryText() == "" {
+		return nil
+	}
+	s.field.Clear()
+	s.atLimit = false
+	return m.scheduleQuery(s)
+}
+
+// queryKey edits the query line through the app's shared query field, so the
+// caret, word ops, home and end behave here exactly as they do in the workspace
+// sidebar. Every edit schedules one debounce tick; only the newest one spends a
+// process, and the manager kills the superseded call's process group when it
+// does.
+//
+// A key the field leaves unclaimed is the list's: arrows, paging and
+// ctrl+n/ctrl+p navigate the rows underneath while the query keeps the
+// keyboard, and `down` from the row moves onto the list.
 func (m *Model) queryKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	c, ok := m.ActiveCollection()
 	if !ok {
 		return nil, false
 	}
 	s := m.state(c)
-	switch msg.String() {
-	case "esc":
-		s.editing, s.atLimit = false, false
-		return nil, true
-	case "enter":
-		s.editing, s.atLimit = false, false
+	// The same bound the CLI and resource.Reference.Valid enforce, applied
+	// before the field sees the key. A query typed past it would persist,
+	// decode, and then be refused as invalid when the tabs were rebuilt — the
+	// tab would vanish on relaunch. Refusing the keystroke is the honest
+	// answer: what is on screen is what is saved — and the row says so, on the
+	// row that refused it, rather than leaving the pane looking wedged
+	// (td-fcb648).
+	if text := msg.Text; text != "" && !strings.ContainsAny(text, "\n\r\t") {
+		if utf8.RuneCountInString(s.queryText())+utf8.RuneCountInString(text) > resource.MaxQueryChars {
+			s.atLimit = true
+			return nil, true
+		}
+	}
+	before := s.queryText()
+	switch s.field.HandleKey(msg) {
+	case queryfield.KeyIgnored:
+		return m.queryNavigationKey(msg)
+	case queryfield.KeyAccept:
+		s.atLimit = false
 		s.debounce++
 		return m.list(c, s, false), true
-	case "backspace":
-		if s.query == "" {
-			return nil, true
-		}
-		runes := []rune(s.query)
-		s.query = string(runes[:len(runes)-1])
+	case queryfield.KeyExit:
 		s.atLimit = false
-		return m.scheduleQuery(s), true
-	case "ctrl+u":
-		if s.query == "" {
-			return nil, true
-		}
-		s.query = ""
-		s.atLimit = false
-		return m.scheduleQuery(s), true
-	}
-	text := msg.Text
-	if text == "" || strings.ContainsAny(text, "\n\r\t") {
-		return nil, true
-	}
-	// The same bound the CLI and resource.Reference.Valid enforce. A query typed
-	// past it would persist, decode, and then be refused as invalid when the
-	// tabs were rebuilt — the tab would vanish on relaunch. Refusing the
-	// keystroke is the honest answer: what is on screen is what is saved — and
-	// the row says so, on the row that refused it, rather than leaving the pane
-	// looking wedged (td-fcb648).
-	if utf8.RuneCountInString(s.query)+utf8.RuneCountInString(text) > resource.MaxQueryChars {
-		s.atLimit = true
 		return nil, true
 	}
 	s.atLimit = false
-	s.query += text
+	if s.queryText() == before {
+		// A caret that moved is not a query that changed, and a query that did
+		// not change must not cost a process.
+		return nil, true
+	}
+	return m.scheduleQuery(s), true
+}
+
+// queryNavigationKey answers the keys the field left to the list. Down hands
+// the keyboard to the rows, landing on the row under the cursor — which is the
+// first one after any list — and the query text stays exactly where it was.
+//
+// Up is inert: there is nothing above the query row, and a key that jumped
+// somewhere else would make the row above the list feel like a row in it.
+func (m *Model) queryNavigationKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
+	switch msg.String() {
+	case "down", "ctrl+n", "pgdown":
+		if s := m.activeState(); s != nil {
+			s.field.Blur()
+			m.focus = FocusList
+			return m.moveTo(s.cursor), true
+		}
+	}
+	// Anything else is swallowed: a focused query is a text input, and a stray
+	// key must not fall through to a surface command.
+	return nil, true
+}
+
+// atFirstRowUnderAQuery reports that the cursor is on the first row of a list
+// that has a query row above it, which is the one place `k` and `up` mean
+// "back to the query" rather than "up a row".
+func (m *Model) atFirstRowUnderAQuery() bool {
+	if m.focus != FocusList {
+		return false
+	}
+	c, ok := m.ActiveCollection()
+	if !ok || c.Search == pluginhost.SearchNone {
+		return false
+	}
+	s := m.state(c)
+	return s.cursor <= 0
+}
+
+// HandlePaste puts a bracketed paste into the query row and reports whether it
+// took it. A paste is text like any other: it goes through the same field, the
+// same bound and the same debounce a typed key does.
+func (m *Model) HandlePaste(msg tea.PasteMsg) (tea.Cmd, bool) {
+	if m.overlay.open() || !m.editingQuery() {
+		return nil, false
+	}
+	c, ok := m.ActiveCollection()
+	if !ok {
+		return nil, false
+	}
+	s := m.state(c)
+	text := strings.TrimSpace(msg.Content)
+	if text == "" {
+		return nil, true
+	}
+	if utf8.RuneCountInString(s.queryText())+utf8.RuneCountInString(text) > resource.MaxQueryChars {
+		s.atLimit = true
+		return nil, true
+	}
+	before := s.queryText()
+	if s.field.HandlePaste(tea.PasteMsg{Content: text}) != queryfield.KeyHandled || s.queryText() == before {
+		return nil, true
+	}
+	s.atLimit = false
 	return m.scheduleQuery(s), true
 }
 
@@ -345,7 +446,7 @@ func (m *Model) refreshActive() tea.Cmd {
 		cmds = append(cmds, cmd)
 	}
 	if m.detail.loaded && m.detail.id != "" {
-		if cmd := m.openDocument(m.detail.collection, m.detail.id, true); cmd != nil {
+		if cmd := m.openDocument(m.detail.collection, m.detail.id, openRefresh); cmd != nil {
 			cmds = append(cmds, cmd)
 		}
 	}

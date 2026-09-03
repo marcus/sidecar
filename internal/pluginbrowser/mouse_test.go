@@ -20,7 +20,7 @@ func loadedModel(t *testing.T, host *fakeHost) *Model {
 	m := newTestModel(t, host)
 	c, _ := m.ActiveCollection()
 	s := m.state(c)
-	s.query = "rows"
+	s.setQuery("rows")
 	run(t, m, m.list(c, s, false))
 	m.View()
 	return m
@@ -75,9 +75,10 @@ func clickRegion(t *testing.T, m *Model, region mouse.Region) {
 	click(t, m, region.Rect.X, region.Rect.Y)
 }
 
-// A click on a row selects it. It does not open it: the first Enter selects
-// too, and hover selects nothing at all.
-func TestClickOnARowSelectsIt(t *testing.T) {
+// A click on a row selects it and shows it, exactly as an arrow key does: the
+// detail follows the cursor however the cursor moved. It does not move the
+// keyboard — that is the second click's job — and hover selects nothing at all.
+func TestClickOnARowSelectsAndShowsIt(t *testing.T) {
 	host := &fakeHost{page: testPage(12)}
 	m := loadedModel(t, host)
 	row := rowRegion(t, m, 4)
@@ -87,8 +88,14 @@ func TestClickOnARowSelectsIt(t *testing.T) {
 	if s.cursor != 4 {
 		t.Fatalf("cursor = %d, want the clicked row", s.cursor)
 	}
-	if len(host.gets) != 0 {
-		t.Fatalf("a first click opened %d documents", len(host.gets))
+	if len(host.gets) != 1 {
+		t.Fatalf("a click loaded %d documents, want the row under it", len(host.gets))
+	}
+	if got := host.gets[0].Params.ID; got != "rc:notes:5" {
+		t.Fatalf("loaded %q, want the clicked row", got)
+	}
+	if m.focus != FocusList {
+		t.Fatalf("a first click moved the keyboard to %q", m.focus)
 	}
 }
 
@@ -357,8 +364,11 @@ func TestTheOutcomeCellIsNoTargetWithNothingToExplain(t *testing.T) {
 	if !strings.Contains(view, "answered") {
 		t.Fatalf("the outcome word left the query row:\n%s", view)
 	}
+	// Left of the × — which is the row's own control and has its own region —
+	// the outcome's columns belong to the query row like every other column.
 	query := firstRegion(t, m, regionQuery)
-	click(t, m, query.Rect.X+query.Rect.W-2, query.Rect.Y)
+	clear := firstRegion(t, m, regionClear)
+	click(t, m, clear.Rect.X-1, query.Rect.Y)
 	if !m.ConsumesTextInput() {
 		t.Fatal("a click on the right-hand end of the query row did not begin editing")
 	}
@@ -379,8 +389,8 @@ func TestTheQueryLimitHintIsNoTarget(t *testing.T) {
 	}
 	c, _ := m.ActiveCollection()
 	s := m.state(c)
-	s.editing = true
-	s.query = strings.Repeat("a", resource.MaxQueryChars)
+	s.field.Focus()
+	s.setQuery(strings.Repeat("a", resource.MaxQueryChars))
 	press(t, m, "b")
 	if !s.atLimit {
 		t.Fatal("the keystroke past the bound was not refused")
@@ -493,6 +503,9 @@ func TestATripleClickOnARowIsStillAClick(t *testing.T) {
 	if len(host.gets) == 0 {
 		t.Fatal("two presses on a row never opened it")
 	}
+	// The second press already moved the keyboard into the document, so give
+	// it back to the list: otherwise the third press has nothing to prove.
+	m.SetPaneFocus(string(FocusList))
 	if m.focus != FocusList {
 		t.Fatalf("focus is already at %q; the third press would prove nothing", m.focus)
 	}

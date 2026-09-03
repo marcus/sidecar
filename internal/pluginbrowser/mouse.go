@@ -27,6 +27,7 @@ const (
 	regionQuery   = "plugin-query"
 	regionPill    = "plugin-view-pill"
 	regionOutcome = "plugin-outcome"
+	regionClear   = "plugin-query-clear"
 	regionNotice  = "plugin-notice"
 	regionRail    = "plugin-rail"
 )
@@ -64,6 +65,7 @@ type frameGeom struct {
 	pill    mouse.Rect
 	query   mouse.Rect
 	outcome mouse.Rect
+	clear   mouse.Rect
 	rows    []rowRect
 	notices []mouse.Rect
 	listBar barGeom
@@ -198,6 +200,12 @@ func (m *Model) pointerClick(action mouse.MouseAction, double bool) tea.Cmd {
 	case regionPill:
 		m.SetPaneFocus(string(FocusList))
 		return m.openViewModal()
+	case regionClear:
+		// The × drops the query, exactly as the filter-clear command does. It
+		// is registered only where it is drawn, so this arm is unreachable
+		// while the query is empty.
+		m.SetPaneFocus(string(FocusList))
+		return m.clearQuery()
 	case regionOutcome, regionNotice:
 		return m.openCoverage()
 	case regionList:
@@ -345,7 +353,7 @@ func (m *Model) boxAt(region *mouse.Region, x int) barTarget {
 		switch region.ID {
 		case regionDetail:
 			return barDetail
-		case regionList, regionRow, regionQuery, regionPill, regionOutcome, regionNotice:
+		case regionList, regionRow, regionQuery, regionPill, regionOutcome, regionClear, regionNotice:
 			return barList
 		}
 	}
@@ -488,6 +496,12 @@ func (m *Model) registerRegions(listBox, detailBox, rail mouse.Rect) {
 	}
 	if m.geom.outcome.W > 0 {
 		hits.Add(regionOutcome, offsetRect(m.geom.outcome, lx, ly), nil)
+	}
+	// The × is registered after the query row it sits on, so it wins the hit
+	// test: HitMap.Test scans in reverse and the smaller target has to be
+	// found first.
+	if m.geom.clear.W > 0 {
+		hits.Add(regionClear, offsetRect(m.geom.clear, lx, ly), nil)
 	}
 	for i, notice := range m.geom.notices {
 		hits.Add(regionNotice, offsetRect(notice, lx, ly), i)

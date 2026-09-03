@@ -121,7 +121,13 @@ func (m *Model) documentLines(width int) []string {
 		lines = append(lines, toneStyle(errorTone(m.detail.err.Code)).Render(
 			ansi.Truncate("Refresh failed: "+errorHeadline(m.detail.err.Code), width, "…")), "")
 	} else if m.detail.loading {
-		lines = append(lines, styles.Muted.Render(ansi.Truncate("Refreshing…", width, "…")), "")
+		// The card on screen is the row the cursor has left, and saying
+		// "refreshing" about it would be a claim about the wrong document.
+		word := "Refreshing…"
+		if m.detail.id != m.detail.shownID {
+			word = "Loading " + m.detail.id + "…"
+		}
+		lines = append(lines, styles.Muted.Render(ansi.Truncate(word, width, "…")), "")
 	}
 
 	if len(doc.Fields) > 0 {

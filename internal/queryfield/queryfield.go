@@ -298,18 +298,26 @@ type Row struct {
 	Clearable bool
 }
 
+// Rects is where a rendered row's two right-hand cells landed, in the row's own
+// coordinates, so a host can register them.
+//
+// Each is the zero rect when its cell was not drawn — nothing to clear, no
+// right cell, or a row too narrow to hold one — and a host that registers the
+// zero rect registers nothing. That is the rule the whole row follows: a region
+// for a control that is not there is a hole in the query bar, where a click is
+// otherwise "focus the query".
+type Rects struct {
+	Right mouse.Rect
+	Clear mouse.Rect
+}
+
 // RenderRow draws the app's query bar: the `/` prompt and the text in
 // styles.Muted while idle and styles.Title while taking text, a ▌ block caret
 // at the cursor on the focused row, the right cell pinned to the far edge, and
 // the × clear control right of that.
-//
-// The second return is where the × landed, in the row's own coordinates, so the
-// host can register it. It is the zero rect whenever the control is not drawn —
-// there is nothing to clear, the caller did not ask for it, or the row was too
-// narrow to hold it — and a host that registers the zero rect registers nothing.
-func RenderRow(width int, row Row) (string, mouse.Rect) {
+func RenderRow(width int, row Row) (string, Rects) {
 	if width < 1 {
-		return "", mouse.Rect{}
+		return "", Rects{}
 	}
 	prompt := "/ "
 	body := row.Query
@@ -322,12 +330,15 @@ func RenderRow(width int, row Row) (string, mouse.Rect) {
 	}
 
 	right := row.Right
-	clear := mouse.Rect{}
+	rects := Rects{}
 	if row.Clearable && row.Query != "" {
-		if cell := clearCell(); ansi.StringWidth(right)+clearCellWidth < width {
-			right += cell
-			clear = mouse.Rect{X: width - clearCellWidth, W: clearCellWidth, H: 1}
+		if ansi.StringWidth(right)+clearCellWidth < width {
+			right += clearCell()
+			rects.Clear = mouse.Rect{X: width - clearCellWidth, W: clearCellWidth, H: 1}
 		}
+	}
+	if w := ansi.StringWidth(row.Right); w > 0 && w+rects.Clear.W < width {
+		rects.Right = mouse.Rect{X: width - w - rects.Clear.W, W: w, H: 1}
 	}
 
 	rightW := ansi.StringWidth(right)
@@ -344,7 +355,7 @@ func RenderRow(width int, row Row) (string, mouse.Rect) {
 	if right != "" {
 		out += right
 	}
-	return out, clear
+	return out, rects
 }
 
 // clearCell is the × and the column of air that separates it from the count.
@@ -364,7 +375,7 @@ func withCaret(query string, cursor int) string {
 // Render draws this field's row, with the caller's right-hand cell and the ×
 // wherever there is a query to clear. It is the call a surface makes; RenderRow
 // is for a surface whose query state is not a Field.
-func (f *Field) Render(width int, placeholder, right string) (string, mouse.Rect) {
+func (f *Field) Render(width int, placeholder, right string) (string, Rects) {
 	return RenderRow(width, Row{
 		Query:       f.Query(),
 		Cursor:      f.Cursor(),

@@ -11,6 +11,7 @@ import (
 	"github.com/marcus/sidecar/internal/markdown"
 	"github.com/marcus/sidecar/internal/mouse"
 	"github.com/marcus/sidecar/internal/pluginhost"
+	"github.com/marcus/sidecar/internal/queryfield"
 	"github.com/marcus/sidecar/internal/resource"
 	"github.com/marcus/sidecar/internal/state"
 )
@@ -21,6 +22,13 @@ import (
 // ("search as you type costs one process per pause, not one per keystroke")
 // depends on exactly this value.
 const QueryDebounce = 250 * time.Millisecond
+
+// DetailQuiet is how long the cursor has to sit still before the detail box
+// fetches the row under it. It is the file browser's own preview figure
+// (internal/plugins/filebrowser's treePreviewQuiet), because key repeat and
+// trackpad inertia feel the same on both surfaces and a second answer to one
+// question is how two surfaces start disagreeing.
+const DetailQuiet = 80 * time.Millisecond
 
 // listLimit is the page size the browser asks for. The host clamps it; asking
 // for the clamp explicitly means the request the plugin sees does not change
@@ -44,8 +52,12 @@ const (
 type collectionState struct {
 	id string
 
-	query   string
-	editing bool
+	// field is this collection's query bar: the text, the caret and whether
+	// the row owns the keyboard. It is the app's shared queryfield, so the
+	// browser's query bar edits exactly like the workspace sidebar's; one per
+	// collection state is what keeps a query persisted with the tab it was
+	// typed on.
+	field queryfield.Field
 	// debounce is the newest scheduled query tick. A tick whose sequence is not
 	// this one is a keystroke the user has already typed past.
 	debounce uint64
@@ -94,10 +106,55 @@ type collectionState struct {
 	generation uint64
 }
 
+// queryText is what this collection is asking for. The field is the one
+// authority on it: nothing here keeps a second copy that could disagree with
+// what the row is showing.
+func (s *collectionState) queryText() string {
+	if s == nil {
+		return ""
+	}
+	return s.field.Query()
+}
+
+// setQuery replaces the query without touching focus, which is what a restored
+// tab position and a pane restore both want.
+func (s *collectionState) setQuery(query string) {
+	if s != nil {
+		s.field.SetQuery(query)
+	}
+}
+
+// editing reports that the query row owns the keyboard.
+func (s *collectionState) editing() bool { return s != nil && s.field.Focused() }
+
+// openMode is how a document arrives in the detail box.
+type openMode uint8
+
+const (
+	// openReplace is an explicit open: the box shows the loading card for the
+	// row that was asked for, because the user asked for that row.
+	openReplace openMode = iota
+	// openRefresh re-fetches what is already on screen, bypassing cached
+	// freshness and keeping the document until the new one lands.
+	openRefresh
+	// openFollow is the cursor moving. The document already on screen stays
+	// until the new one lands: a box that blanked on every cursor move would
+	// flash ten times on the way down a list and show nothing at nine of them.
+	openFollow
+)
+
 // detailState is the document the browser is showing beside the list.
 type detailState struct {
 	collection string
 	id         string
+	// shownID is the row whose document is on screen. It differs from id while
+	// a follow or a refresh is in flight, which is how the card knows whether
+	// it is being refreshed or replaced, and when to put the scroll back to
+	// the top.
+	shownID string
+	// quiet counts scheduled follow loads. Only the newest tick may spend a
+	// process; every earlier one is a row the cursor has already left.
+	quiet      uint64
 	loading    bool
 	loaded     bool
 	doc        resource.Document
@@ -491,7 +548,7 @@ func (m *Model) list(c pluginhost.Collection, s *collectionState, appendPage boo
 		// query's results it is no longer true of anything (td-c2dc19).
 		m.flash, m.flashErr = "", false
 	}
-	if c.Search == pluginhost.SearchRequired && strings.TrimSpace(s.query) == "" {
+	if c.Search == pluginhost.SearchRequired && strings.TrimSpace(s.queryText()) == "" {
 		s.items = nil
 		// Not abstained: the plugin was never asked, so it claimed nothing.
 		s.outcome = ""
@@ -531,7 +588,7 @@ func (m *Model) list(c pluginhost.Collection, s *collectionState, appendPage boo
 		PaneKey:  paneKey(m.id, m.instance, c.ID),
 		Params: pluginhost.ListParams{
 			Collection: c.ID,
-			Query:      s.query,
+			Query:      s.queryText(),
 			View:       s.view,
 			Sort:       pluginhost.SortOrder{Key: s.sortKey, Dir: string(s.sortDir)},
 			Filters:    pluginhost.NormalizeFilters(c, s.filters),
@@ -565,6 +622,8 @@ func (m *Model) Update(msg tea.Msg) tea.Cmd {
 	case GotMsg:
 		m.applyGot(msg)
 		return nil
+	case DetailQuietMsg:
+		return m.applyDetailQuiet(msg)
 	case ActedMsg:
 		return m.applyActed(msg)
 	case ChangedMsg:
@@ -650,6 +709,80 @@ func (m *Model) applyListed(msg ListedMsg) tea.Cmd {
 	return nil
 }
 
+// DetailQuietMsg fires DetailQuiet after a cursor move. Only the newest
+// sequence may load, and only if the cursor is still on the row it was
+// scheduled for and the plugin has not re-described since.
+//
+// It is exported for the same reason QueryDebouncedMsg is: a pane-mode
+// browser's ticks travel the host's message bus, and a host cannot route a type
+// it cannot name.
+type DetailQuietMsg struct {
+	Instance   string
+	Browser    uint64
+	Collection string
+	ID         string
+	Sequence   uint64
+	// Describe is the describe generation the schedule was made under. A
+	// plugin that re-described in the meantime may not declare this collection
+	// at all any more, and a load against the old declaration would be a
+	// question about a surface that no longer exists.
+	Describe uint64
+}
+
+// scheduleDetailForCursor arms a load for the row under the cursor after the
+// quiet period, leaving what is on screen alone. It is the file browser's
+// schedulePreviewForCursor with this surface's identities: generation, epoch
+// and row identity, all three checked again when the tick lands.
+//
+// A row the box already shows, or is already loading, schedules nothing: the
+// answer is on its way or already here.
+func (m *Model) scheduleDetailForCursor() tea.Cmd {
+	// A pane leaf shows one shape. Its sibling document tab is the host's, and
+	// opening one on every cursor move would be the pane deciding for the user
+	// what their leaf is showing.
+	if m.paneMode() || m.calls.Get == nil {
+		return nil
+	}
+	c, ok := m.ActiveCollection()
+	if !ok || !c.Detail {
+		return nil
+	}
+	item, ok := m.currentItem()
+	if !ok {
+		return nil
+	}
+	if m.detail.collection == c.ID && m.detail.id == item.ID && (m.detail.loaded || m.detail.loading) {
+		return nil
+	}
+	m.detail.quiet++
+	msg := DetailQuietMsg{
+		Instance: m.instance, Browser: m.id,
+		Collection: c.ID, ID: item.ID,
+		Sequence: m.detail.quiet, Describe: m.describeGeneration,
+	}
+	return tea.Tick(DetailQuiet, func(time.Time) tea.Msg { return msg })
+}
+
+func (m *Model) applyDetailQuiet(msg DetailQuietMsg) tea.Cmd {
+	if msg.Instance != m.instance || msg.Browser != m.id {
+		return nil
+	}
+	if msg.Sequence != m.detail.quiet || msg.Describe != m.describeGeneration {
+		return nil
+	}
+	c, ok := m.ActiveCollection()
+	if !ok || c.ID != msg.Collection {
+		return nil
+	}
+	// The row identity, not the row number: a list that re-sorted or re-listed
+	// under the cursor would otherwise load whatever landed in that slot.
+	item, ok := m.currentItem()
+	if !ok || item.ID != msg.ID {
+		return nil
+	}
+	return m.openDocument(msg.Collection, msg.ID, openFollow)
+}
+
 func (m *Model) applyGot(msg GotMsg) {
 	if msg.Instance != m.instance || msg.Browser != m.id || msg.Generation != m.detail.generation {
 		return
@@ -668,6 +801,12 @@ func (m *Model) applyGot(msg GotMsg) {
 	m.detail.err = nil
 	m.detail.doc = msg.Document
 	m.detail.loaded = true
+	// A different row starts at the top; the same row being refreshed keeps
+	// the reader's place.
+	if msg.ID != m.detail.shownID {
+		m.detail.scroll = 0
+	}
+	m.detail.shownID = msg.ID
 	m.detail.invalidateBody()
 }
 
@@ -718,7 +857,7 @@ func (m *Model) applyActed(msg ActedMsg) tea.Cmd {
 	if m.detail.loaded || m.detail.loading {
 		for _, id := range msg.Outcome.Refresh {
 			if id == m.detail.collection {
-				if cmd := m.openDocument(m.detail.collection, m.detail.id, true); cmd != nil {
+				if cmd := m.openDocument(m.detail.collection, m.detail.id, openRefresh); cmd != nil {
 					cmds = append(cmds, cmd)
 				}
 				break
@@ -726,7 +865,7 @@ func (m *Model) applyActed(msg ActedMsg) tea.Cmd {
 		}
 	}
 	if target := msg.Outcome.Open; target != nil && target.ID != "" {
-		if cmd := m.openDocument(target.Collection, target.ID, false); cmd != nil {
+		if cmd := m.openDocument(target.Collection, target.ID, openReplace); cmd != nil {
 			cmds = append(cmds, cmd)
 		}
 	}
@@ -746,7 +885,7 @@ func actionFailure(err *resource.Error) string {
 // openDocument asks for one row's document. A collection the newest describe
 // does not declare is refused here rather than sent, which is the same rule the
 // manager holds one layer down.
-func (m *Model) openDocument(collection, id string, refresh bool) tea.Cmd {
+func (m *Model) openDocument(collection, id string, mode openMode) tea.Cmd {
 	if m.calls.Get == nil || id == "" {
 		return nil
 	}
@@ -758,21 +897,39 @@ func (m *Model) openDocument(collection, id string, refresh bool) tea.Cmd {
 	m.detail.collection = collection
 	m.detail.id = id
 	m.detail.loading = true
-	if !refresh {
+	if mode == openReplace {
 		m.detail.loaded = false
 		m.detail.doc = resource.Document{}
 		m.detail.scroll = 0
+		m.detail.shownID = ""
 	}
 	m.detail.err = nil
 	m.detail.invalidateBody()
 	return m.calls.Get(GetCall{
-		Instance:   m.instance,
-		Browser:    m.id,
+		Instance: m.instance,
+		Browser:  m.id,
+		// One key for the box, not one per row: the detail shows one document
+		// at a time, so a get for a new row supersedes the one still running
+		// for the row the cursor has left.
+		PaneKey:    detailPaneKey(m.id, m.instance),
 		Params:     pluginhost.GetParams{Collection: collection, ID: id},
 		Context:    m.context(),
-		Refresh:    refresh,
+		Refresh:    mode == openRefresh,
 		Generation: m.detail.generation,
 	})
+}
+
+// Close releases what this browser has in flight. A surface that goes away
+// while a slow list or get is running must not leave a child process behind,
+// and the manager cannot know a reader is gone unless the reader says so.
+func (m *Model) Close() {
+	if m == nil || m.calls.Cancel == nil {
+		return
+	}
+	m.calls.Cancel(detailPaneKey(m.id, m.instance))
+	for id := range m.states {
+		m.calls.Cancel(paneKey(m.id, m.instance, id))
+	}
 }
 
 // currentItem is the row under the cursor.
@@ -826,10 +983,10 @@ func (m *Model) restoreTabView() {
 		return
 	}
 	s := m.state(c)
-	if s.loaded || s.loading || s.query != "" {
+	if s.loaded || s.loading || s.queryText() != "" {
 		return
 	}
-	s.query = saved.Query
+	s.setQuery(saved.Query)
 	for _, v := range c.Views {
 		if v.ID == saved.View {
 			s.view = saved.View
@@ -853,7 +1010,7 @@ func (m *Model) persistTabView(c pluginhost.Collection, s *collectionState) {
 		return
 	}
 	view := state.PluginBrowserViewJSON{
-		Query: s.query, View: s.view, Sort: s.sortKey,
+		Query: s.queryText(), View: s.view, Sort: s.sortKey,
 		Filters: pluginhost.NormalizeFilters(c, s.filters),
 	}
 	if tabViewEqual(state.GetPluginBrowserView(m.instance, c.ID), view) {

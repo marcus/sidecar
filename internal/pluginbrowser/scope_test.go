@@ -43,7 +43,7 @@ func newFilteredModel(t *testing.T, host *fakeHost) *Model {
 	host.desc = filteredDescription()
 	run(t, m, m.Refresh())
 	s := m.activeState()
-	s.query = "dex"
+	s.setQuery("dex")
 	run(t, m, m.list(m.desc.Collections[0], s, false))
 	return m
 }
@@ -226,7 +226,7 @@ func TestPaneFiltersRoundTripThroughTheTabRecord(t *testing.T) {
 	m.SetPaneCollection("results")
 	run(t, m, m.Refresh())
 	s := m.activeState()
-	s.query = "dex"
+	s.setQuery("dex")
 	s.filters = map[string]string{"scope": "project", "since": "2026-08-01"}
 
 	saved := m.PaneFilters()
@@ -287,8 +287,8 @@ func TestGlobalTabRemembersItsQueryAndFilters(t *testing.T) {
 	next.SetSize(160, 45)
 	run(t, next, next.Refresh())
 	restored := next.activeState()
-	if restored.query != "dex" || restored.sortKey != "recency" || restored.filters["scope"] != "project" {
-		t.Fatalf("restored state = query %q sort %q filters %v", restored.query, restored.sortKey, restored.filters)
+	if restored.queryText() != "dex" || restored.sortKey != "recency" || restored.filters["scope"] != "project" {
+		t.Fatalf("restored state = query %q sort %q filters %v", restored.queryText(), restored.sortKey, restored.filters)
 	}
 
 	// A pane-mode browser writes nothing here: its position rides on the tab
@@ -299,7 +299,7 @@ func TestGlobalTabRemembersItsQueryAndFilters(t *testing.T) {
 	pane.SetPaneCollection("results")
 	run(t, pane, pane.Refresh())
 	ps := pane.activeState()
-	ps.query = "other"
+	ps.setQuery("other")
 	run(t, pane, pane.list(pane.desc.Collections[0], ps, false))
 	if got := state.GetPluginBrowserView("fixture", "results"); !got.Empty() {
 		t.Fatalf("a pane wrote the global tab's remembered view: %+v", got)

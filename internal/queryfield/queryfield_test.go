@@ -222,15 +222,16 @@ func TestEscapeEnterAndCtrlU(t *testing.T) {
 func TestClearCellIsDrawnAndRegisteredOnlyWhenThereIsAQuery(t *testing.T) {
 	var f Field
 	f.Focus()
-	row, clear := f.Render(60, "filter…", "")
-	if strings.Contains(row, ClearGlyph) || clear.W != 0 {
-		t.Fatalf("an empty query drew a clear control: %q rect=%+v", row, clear)
+	row, rects := f.Render(60, "filter…", "")
+	if strings.Contains(row, ClearGlyph) || rects.Clear.W != 0 {
+		t.Fatalf("an empty query drew a clear control: %q rect=%+v", row, rects.Clear)
 	}
 	typeInto(t, &f, "abc")
-	row, clear = f.Render(60, "filter…", "")
+	row, rects = f.Render(60, "filter…", "")
 	if !strings.Contains(row, ClearGlyph) {
 		t.Fatalf("a non-empty query drew no clear control: %q", row)
 	}
+	clear := rects.Clear
 	if clear.W != clearCellWidth || clear.X != 60-clearCellWidth || clear.H != 1 {
 		t.Fatalf("clear rect = %+v", clear)
 	}
@@ -240,7 +241,7 @@ func TestClearCellIsDrawnAndRegisteredOnlyWhenThereIsAQuery(t *testing.T) {
 		t.Fatalf("the rect %+v covers %q, not the ×", clear, got)
 	}
 	f.Clear()
-	if _, clear = f.Render(60, "filter…", ""); clear.W != 0 {
+	if _, rects = f.Render(60, "filter…", ""); rects.Clear.W != 0 {
 		t.Fatal("clearing the query left the × registered")
 	}
 }
@@ -251,9 +252,9 @@ func TestClearCellIsDroppedOnANarrowRow(t *testing.T) {
 	var f Field
 	f.Focus()
 	typeInto(t, &f, "abc")
-	row, clear := f.Render(6, "filter…", "500 of 550")
-	if clear.W != 0 || strings.Contains(ansi.Strip(row), ClearGlyph) {
-		t.Fatalf("a narrow row kept the ×: %q rect=%+v", ansi.Strip(row), clear)
+	row, rects := f.Render(6, "filter…", "500 of 550")
+	if rects.Clear.W != 0 || strings.Contains(ansi.Strip(row), ClearGlyph) {
+		t.Fatalf("a narrow row kept the ×: %q rect=%+v", ansi.Strip(row), rects.Clear)
 	}
 }
 
@@ -276,9 +277,9 @@ func TestCaretIsDrawnAtTheCursor(t *testing.T) {
 // The idle row is the placeholder, and it never wears a caret.
 func TestIdleRowShowsThePlaceholder(t *testing.T) {
 	var f Field
-	row, clear := f.Render(40, "filter…", "")
+	row, rects := f.Render(40, "filter…", "")
 	plain := ansi.Strip(row)
-	if !strings.Contains(plain, "/ filter…") || strings.Contains(plain, "▌") || clear.W != 0 {
-		t.Fatalf("idle row = %q rect=%+v", plain, clear)
+	if !strings.Contains(plain, "/ filter…") || strings.Contains(plain, "▌") || rects.Clear.W != 0 {
+		t.Fatalf("idle row = %q rect=%+v", plain, rects.Clear)
 	}
 }

@@ -26,6 +26,13 @@ const (
 	cmdSource   = "plugin-source"
 	cmdCoverage = "plugin-coverage"
 
+	// The query row's own commands carry sidecar's own IDs, not plugin-prefixed
+	// ones: the workspace sidebar and global Workspaces already bind
+	// filter-accept and filter-clear for the same two acts, and the footer and
+	// the help sheet key their chips by the ID.
+	cmdFilterAccept = "filter-accept"
+	cmdFilterClear  = "filter-clear"
+
 	// The split's keys carry sidecar's own command IDs rather than plugin-
 	// prefixed ones: they are the same command the file browser, Git and both
 	// Workspace hosts bind, and the footer and the help sheet key their chips
@@ -138,6 +145,17 @@ func (p *TabPlugin) Init(ctx *plugin.Context) error {
 	} {
 		ctx.Keymap.RegisterPluginBinding(b.key, b.command, context)
 	}
+	// The query row is its own context, for the same reason both Workspaces
+	// surfaces give theirs one: while a query owns the keyboard the only
+	// commands that apply are the ones that end or accept it.
+	query := p.queryContext()
+	for _, b := range []struct{ key, command string }{
+		{"enter", cmdFilterAccept},
+		{"esc", cmdFilterClear},
+		{"ctrl+u", cmdFilterClear},
+	} {
+		ctx.Keymap.RegisterPluginBinding(b.key, b.command, query)
+	}
 	// An overlay is its own context: while it owns the keyboard the footer must
 	// describe it, not the list underneath, or the bar advertises keys that are
 	// already spoken for.
@@ -159,9 +177,11 @@ func (p *TabPlugin) Init(ctx *plugin.Context) error {
 // nothing here waits on a process.
 func (p *TabPlugin) Start() tea.Cmd { return nil }
 
-// Stop cancels nothing: the browser owns no process. The manager owns every
-// child and the app cancels it at shutdown.
-func (p *TabPlugin) Stop() {}
+// Stop drops what this browser has in flight. The manager owns every child
+// process, but it cannot know a reader has gone away unless the reader says so,
+// and a tab closed over a slow get would otherwise leave that process running
+// to nobody.
+func (p *TabPlugin) Stop() { p.model.Close() }
 
 func (p *TabPlugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 	switch msg := msg.(type) {
@@ -174,6 +194,12 @@ func (p *TabPlugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 		return p, cmd
 	case tea.MouseMsg:
 		return p, p.model.HandleMouse(msg)
+	case tea.PasteMsg:
+		// A paste is text, and the query row is the only thing on this surface
+		// that takes text. Anywhere else it is nobody's, and swallowing it
+		// would stop the host offering it to whatever is underneath.
+		cmd, _ := p.model.HandlePaste(msg)
+		return p, cmd
 	case plugin.PluginFocusedMsg:
 		return p, p.model.Refresh()
 	}
@@ -201,8 +227,11 @@ func (p *TabPlugin) SetFocused(focused bool) {
 // to one plugin and a shared context would put it on every plugin's footer. An
 // open overlay reports its own, so the footer describes what has the keyboard.
 func (p *TabPlugin) FocusContext() string {
-	if p.model.OverlayOpen() {
+	switch {
+	case p.model.OverlayOpen():
 		return p.modalContext()
+	case p.model.ConsumesTextInput():
+		return p.queryContext()
 	}
 	return p.browseContext()
 }
@@ -211,11 +240,16 @@ func (p *TabPlugin) browseContext() string { return "plugin-" + p.id }
 
 func (p *TabPlugin) modalContext() string { return "plugin-" + p.id + "-modal" }
 
+func (p *TabPlugin) queryContext() string { return "plugin-" + p.id + "-query" }
+
 // Commands are the footer's, in the order the design language asks for:
 // frequency of use, not alphabetical.
 func (p *TabPlugin) Commands() []plugin.Command {
 	if p.model.OverlayOpen() {
 		return p.modalCommands()
+	}
+	if p.model.ConsumesTextInput() {
+		return p.queryCommands()
 	}
 	context := p.browseContext()
 	commands := []plugin.Command{
@@ -270,6 +304,24 @@ func (p *TabPlugin) Commands() []plugin.Command {
 				Category: plugin.CategoryView, Context: context, Priority: 10,
 			},
 		)
+	}
+	return commands
+}
+
+// queryCommands describe the query row while it has the keyboard. Clear is
+// offered only where there is something to clear, which is the same condition
+// the row's × is drawn under: one rule, stated once, for the key and the
+// pointer.
+func (p *TabPlugin) queryCommands() []plugin.Command {
+	context := p.queryContext()
+	commands := []plugin.Command{
+		{ID: cmdFilterAccept, Name: "Search", Description: "Run the query and return to the list", Category: plugin.CategorySearch, Context: context, Priority: 1},
+	}
+	if p.model.HasQuery() {
+		commands = append(commands, plugin.Command{
+			ID: cmdFilterClear, Name: "Clear", Description: "Clear the query, then exit the filter",
+			Category: plugin.CategorySearch, Context: context, Priority: 2,
+		})
 	}
 	return commands
 }

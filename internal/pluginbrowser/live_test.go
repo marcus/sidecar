@@ -45,6 +45,7 @@ func liveCalls(t *testing.T, manager *pluginhost.Manager, opened *[]string) Call
 				doc, err := manager.Get(ctx, pluginhost.GetRequest{
 					Instance: call.Instance, Params: call.Params,
 					Context: call.Context, Refresh: call.Refresh,
+					PaneKey: call.PaneKey,
 				})
 				return GotMsg{
 					Instance: call.Instance, Browser: call.Browser, Collection: call.Params.Collection,
@@ -63,6 +64,7 @@ func liveCalls(t *testing.T, manager *pluginhost.Manager, opened *[]string) Call
 				}
 			}
 		},
+		Cancel: manager.CancelPane,
 		OpenURL: func(url string) tea.Cmd {
 			*opened = append(*opened, url)
 			return nil
@@ -169,14 +171,14 @@ func TestLiveFixtureOutcomes(t *testing.T) {
 	s := m.activeState()
 	c, _ := m.ActiveCollection()
 
-	s.query = "degraded"
+	s.setQuery("degraded")
 	run(t, m, m.list(c, s, false))
 	view := strip(m.View())
 	if !strings.Contains(view, "degraded") || !strings.Contains(view, "did not answer") {
 		t.Fatalf("degraded page:\n%s", view)
 	}
 
-	s.query = "nothing"
+	s.setQuery("nothing")
 	run(t, m, m.list(c, s, false))
 	view = strip(m.View())
 	if !strings.Contains(view, "No matches.") {
@@ -185,7 +187,7 @@ func TestLiveFixtureOutcomes(t *testing.T) {
 
 	// An outcome from a later protocol version must not read as a coverage
 	// guarantee: the host coerces it to degraded.
-	s.query = "future"
+	s.setQuery("future")
 	run(t, m, m.list(c, s, false))
 	view = strip(m.View())
 	if !strings.Contains(view, "coverage was incomplete") {
@@ -221,7 +223,7 @@ func TestLiveHostilePageStaysInsideTheBox(t *testing.T) {
 	m := newLiveBrowser(t, &opened, "-mode=hostile-page")
 	s := m.activeState()
 	c, _ := m.ActiveCollection()
-	s.query = "dex"
+	s.setQuery("dex")
 	run(t, m, m.list(c, s, false))
 
 	// Every size the tab can be, not just the one it was built at: a cell that
@@ -254,5 +256,71 @@ func TestLiveUndeclaredCollectionIsRefused(t *testing.T) {
 	run(t, m, cmd)
 	if s.err == nil || s.err.Code != resource.CodeInvalidRequest {
 		t.Fatalf("err = %+v, want a typed refusal", s.err)
+	}
+}
+
+// The whole of M4d-a's cost claim, over the real host and the real fixture: a
+// ten-row sweep costs one process, the detail on screen never blanks on the way
+// down, and the row it lands on is the one that ends up in the box.
+func TestLiveCursorSweepCostsOneGet(t *testing.T) {
+	var opened []string
+	// A global tab restores its remembered query, and every test in this
+	// package shares one isolated state file: without this the sweep would be
+	// typed onto whatever the last test left behind.
+	clearTabView(t, "fixture", "results")
+	m := newLiveBrowser(t, &opened)
+
+	press(t, m, "/")
+	for _, key := range []string{"s", "w", "e", "e", "p"} {
+		m.HandleKey(keyPress(key))
+	}
+	press(t, m, "enter")
+	if got := len(m.activeState().items); got < 11 {
+		t.Fatalf("the live page has %d rows, too few to sweep", got)
+	}
+
+	// Count what actually reaches the manager. Every one of these is a real
+	// one-shot process with a real process group behind it.
+	gets := 0
+	calls := m.calls
+	inner := calls.Get
+	calls.Get = func(call GetCall) tea.Cmd {
+		gets++
+		return inner(call)
+	}
+	m.SetCalls(calls)
+
+	press(t, m, "enter")
+	if gets != 1 || !m.detail.loaded {
+		t.Fatalf("the first row never opened: gets=%d loaded=%v", gets, m.detail.loaded)
+	}
+	first := m.detail.doc.Title
+	if first == "" {
+		t.Fatal("the live document has no title to watch for")
+	}
+
+	var ticks []tea.Cmd
+	for i := 0; i < 10; i++ {
+		cmd, _ := m.HandleKey(keyPress("j"))
+		ticks = append(ticks, cmd)
+		if !strings.Contains(strip(m.View()), first) {
+			t.Fatalf("the detail blanked on row %d of the sweep:\n%s", i, strip(m.View()))
+		}
+	}
+	if gets != 1 {
+		t.Fatalf("the sweep spent %d live gets before a tick landed", gets)
+	}
+	for _, cmd := range ticks {
+		run(t, m, cmd)
+	}
+	if gets != 2 {
+		t.Fatalf("a ten-row sweep spent %d live gets, want one for the row it landed on", gets-1)
+	}
+	item, ok := m.currentItem()
+	if !ok || m.detail.id != item.ID || !m.detail.loaded {
+		t.Fatalf("the box does not show the row the sweep landed on: detail=%q cursor=%q", m.detail.id, item.ID)
+	}
+	if strings.TrimSpace(strip(m.detailBlock(60)[0])) == "" {
+		t.Fatal("the detail card is blank after the sweep")
 	}
 }

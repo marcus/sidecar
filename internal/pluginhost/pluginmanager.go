@@ -34,6 +34,13 @@ type GetRequest struct {
 	// Refresh bypasses cached freshness for this call and re-caches the
 	// result. A failed refresh leaves the last good document available.
 	Refresh bool
+	// PaneKey identifies the surface asking, exactly as it does for a list. A
+	// second get for the same key supersedes the first: the earlier call's
+	// context is cancelled, which kills its process group. That is what makes
+	// a detail box that follows the cursor affordable — ten rows cost at most
+	// one live process, not ten. Empty means "no pane", and nothing is
+	// superseded, which is what a CLI call wants.
+	PaneKey string
 }
 
 // ActRequest addresses one act call.
@@ -97,6 +104,11 @@ func (m *Manager) List(ctx context.Context, req ListRequest) (Page, error) {
 
 // Get expands one collection row into one document. It shares the resolve
 // cache: a second Enter on the same row costs no process.
+//
+// With a PaneKey it also supersedes: the surface's previous get is cancelled
+// and its process group killed, on the same rule and through the same pending
+// map List uses. A cursor moving down a list is one surface asking a new
+// question, not ten surfaces asking at once.
 func (m *Manager) Get(ctx context.Context, req GetRequest) (resource.Document, error) {
 	provider, err := m.pluginFor(req.Instance, MethodGet)
 	if err != nil {
@@ -107,6 +119,13 @@ func (m *Manager) Get(ctx context.Context, req GetRequest) (resource.Document, e
 			Code:    resource.CodeInvalidRequest,
 			Message: "That plugin does not declare a collection with that id.",
 		}
+	}
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	if req.PaneKey != "" {
+		call := &pendingCall{cancel: cancel}
+		m.supersede(req.PaneKey, call)
+		defer m.clearPending(req.PaneKey, call)
 	}
 	// The cache key carries a NUL separator, which SanitizeLine strips from
 	// every locator, so a get can never collide with a resolve of the same
@@ -154,9 +173,9 @@ type pendingCall struct {
 	cancel context.CancelFunc
 }
 
-// CancelPane cancels whatever list is in flight for a pane, killing its process
-// group. A pane that closes while a slow list is running must not leave a child
-// behind.
+// CancelPane cancels whatever call is in flight for a pane — a list or a get —
+// killing its process group. A pane that closes while a slow call is running
+// must not leave a child behind.
 func (m *Manager) CancelPane(paneKey string) {
 	if paneKey == "" {
 		return

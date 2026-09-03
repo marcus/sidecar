@@ -109,7 +109,8 @@ func (f *Filter) RenderRow(width, matched, total int) (string, mouse.Rect) {
 	if f.Active() {
 		counts = styles.Muted.Render(fmt.Sprintf("%d of %d", matched, total))
 	}
-	return f.field.Render(width, "filter…", counts)
+	row, rects := f.field.Render(width, "filter…", counts)
+	return row, rects.Clear
 }
 
 // NoMatchRow is the honest empty state for a query that matches nothing. A
