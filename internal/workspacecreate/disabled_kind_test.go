@@ -3,8 +3,6 @@ package workspacecreate
 import (
 	"strings"
 	"testing"
-
-	"github.com/marcus/sidecar/internal/styles"
 )
 
 // A disabled kind is disabled everywhere the form can be asked about it: the
@@ -63,13 +61,9 @@ func TestDisabledTerminalSplitRendersOneReasonLine(t *testing.T) {
 // nothing selected at all. And the hint line stops promising a confirm that the
 // disabled state makes a silent no-op.
 func TestDisabledSelectedKindStillReadsAsSelected(t *testing.T) {
-	if got, want := kindDisabledSelected().GetBackground(), styles.ButtonHover.GetBackground(); got != want {
-		t.Fatalf("selected-disabled background = %v, want the selected row's %v", got, want)
-	}
-	if got, want := kindDisabledSelected().GetForeground(), styles.TextMuted; got != want {
-		t.Fatalf("selected-disabled foreground = %v, want muted %v", got, want)
-	}
-
+	// The selected-but-disabled chrome itself belongs to modal.Select and is
+	// proved there; what this modal owes is that the row still reads as the
+	// active kind while it says why it cannot be created.
 	const reason = "Two terminals are already on screen — close one first"
 	f := Open(OpenOpts{
 		Kind:                  KindTerminalSplit,

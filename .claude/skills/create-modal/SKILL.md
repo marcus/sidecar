@@ -1,6 +1,6 @@
 ---
 name: create-modal
-description: Create declarative modals using the modal library API. Covers modal types (confirm, input, select, form), sections (Text, Buttons, Input, Textarea, Checkbox, List, Combo, When, Custom), rendering with OverlayModal, and keyboard/mouse handling. Use when adding modals or dialogs to the application.
+description: Create declarative modals using the modal library API. Covers modal types (confirm, input, select, form), sections (Text, Buttons, Input, Textarea, Checkbox, Select, List, Combo, When, Custom), rendering with OverlayModal, and keyboard/mouse handling. Use when adding modals or dialogs to the application.
 ---
 
 # Creating Declarative Modals
@@ -171,6 +171,28 @@ modal.Checkbox("include-files", "Include untracked files", &includeFiles)
 ```
 - Space toggles
 - Enter does **not** toggle; it submits the modal primary action (if any)
+
+### Select (one choice out of a set)
+```go
+items := []modal.SelectItem{
+    {ID: "shell", Label: "Shell", Description: "new agent/shell session"},
+    {ID: "worktree", Label: "Worktree", Description: "shell in a new worktree"},
+}
+var selectedIdx int
+modal.Select("kind", items, &selectedIdx,
+    modal.WithMaxVisible(6),
+    modal.WithDisabled(func(i int) string { return reasons[i] }),
+    modal.WithOnSelect(func(i int) { rebuildAround(i) }),
+)
+```
+- The default control for a single choice: sort, filter, kind. `modal.List` is the low-level column of rows for lists that are not a single choice.
+- Two shapes, chosen by count: a segmented `[ A | B | C ]` under five choices, a `❯`-cursor full-width list with an aligned description column at five or more (and the list whenever the segments would not fit the width). `WithShape(modal.ShapeList)` / `WithShape(modal.ShapeSegmented)` forces one.
+- Arrows and h/j/k/l move by one and stop at the ends; home/end jump; Enter activates.
+- `WithDisabled(func(i int) string)` keeps a choice visible and muted with its reason in place of its description, and makes it unreachable by key or click.
+- `WithMaxVisible(n)` scrolls the rest, with `↑ more above` / `↓ more below`.
+- A click resolves to a row inside the section — hosts add no glue — and focuses the control.
+- `WithOnSelect(func(i int))` reports every change; `WithSelectAction(id)` makes activation return a fixed action instead of the row's ID, for a selector embedded in a form.
+- See `docs/reference/design-language.md` ("Selectors").
 
 ### List
 ```go

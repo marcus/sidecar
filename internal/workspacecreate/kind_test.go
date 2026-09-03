@@ -1,82 +1,70 @@
 package workspacecreate
 
 import (
-	"fmt"
 	"strings"
 	"testing"
 
-	"charm.land/lipgloss/v2"
-	"github.com/marcus/sidecar/internal/styles"
+	"github.com/charmbracelet/x/ansi"
+	"github.com/marcus/sidecar/internal/mouse"
 )
 
-func TestKindRowStylesHighlightSelectedWithoutFocus(t *testing.T) {
-	assertStyle(t, "selected", kindRowStyle(false, true, false), styles.ButtonFocused)
-	assertStyle(t, "idle", kindRowStyle(false, false, false), styles.Button)
+// The chooser's shapes, styles and click geometry belong to modal.Select and
+// are tested there (internal/modal/select_test.go); what belongs here is that
+// the Create Workspace modal wears them correctly.
 
-	assertStyle(t, "selected while hovered", kindRowStyle(false, true, true), styles.ButtonFocused)
-	assertStyle(t, "hover", kindRowStyle(false, false, true), styles.ButtonHover)
-}
-
+// Opening on the Name field still shows which kind is selected: the frame is
+// idle because the control does not have focus, and the selected segment stays
+// lit because the selection is a different signal from the focus.
 func TestKindControlKeepsShellSelectedWhenNameFocused(t *testing.T) {
 	f := Open(testOpts(KindShell))
-	renderForm(t, f)
+	view := renderForm(t, f)
 	if f.Modal().FocusedID() != FieldName {
 		t.Fatalf("focus = %q, want %s", f.Modal().FocusedID(), FieldName)
 	}
 	if f.Kind() != KindShell {
 		t.Fatalf("kind = %v, want shell", f.Kind())
 	}
-	assertStyle(t, "open-on-name still highlights the selected row", kindRowStyle(false, true, false), styles.ButtonFocused)
-}
+	if !strings.Contains(ansi.Strip(view), "❯ Shell") {
+		t.Fatalf("the selected Shell row is not pointed at while Name has focus:\n%s", ansi.Strip(view))
+	}
+	// The selected row keeps the selected chrome — its own colours, not the
+	// idle fill its neighbours wear.
+	shellRow, worktreeRow := rowLine(view, "❯ Shell"), rowLine(view, "Worktree")
+	if shellRow == "" || worktreeRow == "" {
+		t.Fatalf("could not find the kind rows:\n%s", view)
+	}
+	if styleRun(shellRow) == styleRun(worktreeRow) {
+		t.Fatalf("the selected row wears the same chrome as an idle one:\n%s", view)
+	}
 
-func TestKindFrameStyleMatchesInputBorder(t *testing.T) {
-	if got, want := kindFrameStyle(true, false).GetForeground(), styles.Primary; got != want {
-		t.Fatalf("focused frame = %v, want Primary %v", got, want)
-	}
-	if got, want := kindFrameStyle(true, true).GetForeground(), styles.Primary; got != want {
-		t.Fatalf("focused+hovered frame = %v, want Primary still %v", got, want)
-	}
-	if got, want := kindFrameStyle(false, true).GetForeground(), styles.TextMuted; got != want {
-		t.Fatalf("hovered frame = %v, want TextMuted %v", got, want)
-	}
-	if got, want := kindFrameStyle(false, false).GetForeground(), styles.BorderNormal; got != want {
-		t.Fatalf("idle frame = %v, want BorderNormal %v", got, want)
-	}
-}
-
-func TestKindToggleFrameIsIdleWhenNameFocused(t *testing.T) {
-	rows := kindRowsFor(false)
-	idle := renderKindToggle(rows, 0, false, false, nil, 80)
-	focused := renderKindToggle(rows, 0, true, false, nil, 80)
-	if idle == focused {
-		t.Fatal("focused and idle toggles rendered identically")
-	}
-	if !containsStyle(idle, kindFrameStyle(false, false), kindFrameOpen) {
-		t.Fatalf("idle toggle missing BorderNormal %q:\n%s", kindFrameOpen, idle)
-	}
-	if !containsStyle(focused, kindFrameStyle(true, false), kindFrameOpen) {
-		t.Fatalf("focused toggle missing Primary %q:\n%s", kindFrameOpen, focused)
-	}
-	if !containsStyle(idle, styles.ButtonFocused, " Shell ") {
-		t.Fatalf("idle toggle dropped the selected Shell pill:\n%s", idle)
+	focused := Open(OpenOpts{Kind: KindShell, FocusKind: true})
+	m := focused.Build(52)
+	m.Render(80, 40, mouse.NewHandler())
+	m.SetFocus(FieldKind)
+	withFocus := m.Render(80, 40, mouse.NewHandler())
+	if withFocus == view {
+		t.Fatal("the kind control drew the same with and without focus")
 	}
 }
 
-func TestKindSpansAccountForFrame(t *testing.T) {
-	spans := kindSpans(kindRowsFor(false))
-	if spans[0][0] != len(kindFrameOpen) {
-		t.Fatalf("first span starts at %d, want after %q", spans[0][0], kindFrameOpen)
+// rowLine is the first rendered line containing needle.
+func rowLine(view, needle string) string {
+	for _, line := range strings.Split(view, "\n") {
+		if strings.Contains(ansi.Strip(line), needle) {
+			return line
+		}
 	}
+	return ""
 }
 
-func containsStyle(haystack string, style lipgloss.Style, needle string) bool {
-	return strings.Contains(haystack, style.Render(needle))
-}
-
-func assertStyle(t *testing.T, name string, got, want lipgloss.Style) {
-	t.Helper()
-	if fmt.Sprint(got.GetBackground()) != fmt.Sprint(want.GetBackground()) || got.GetBold() != want.GetBold() {
-		t.Fatalf("%s: background/bold = %v/%v, want %v/%v",
-			name, got.GetBackground(), got.GetBold(), want.GetBackground(), want.GetBold())
+// styleRun is a line's escape sequences with its text removed, which is the
+// chrome a row is wearing.
+func styleRun(line string) string {
+	var b strings.Builder
+	for _, part := range strings.Split(line, "\x1b") {
+		if i := strings.IndexByte(part, 'm'); i >= 0 {
+			b.WriteString(part[:i+1])
+		}
 	}
+	return b.String()
 }

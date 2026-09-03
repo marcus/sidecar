@@ -185,6 +185,12 @@ func (m *Modal) HandleMouse(msg tea.MouseMsg, handler *mouse.Handler) string {
 			}
 		}
 
+		// A mouse-only row inside a selector belongs to that selector's Tab
+		// stop. Focus it before the click is applied, so the arrows that
+		// follow steer the control the pointer just used, and so a form that
+		// rebuilds itself around the new choice remembers the right focus.
+		m.focusSectionForClick(id)
+
 		// Overlay rows are not in the tab order; a click commits without submit.
 		action, _ := m.routeToFocusedSection(overlayClickMsg{id: id})
 		if action == actionOverlayIdle {
@@ -445,6 +451,60 @@ func (m *Modal) routeToFocusedSection(msg tea.Msg) (string, tea.Cmd) {
 		}
 	}
 	return "", nil
+}
+
+// focusClaimer is implemented by a section whose mouse-only rows belong to a
+// Tab stop of its own, so a click on a row can move focus to the control that
+// owns it.
+type focusClaimer interface {
+	// FocusIDForClick names the Tab stop a click on id belongs to, or the
+	// empty string when the section does not own id.
+	FocusIDForClick(id string) string
+}
+
+// focusSectionForClick moves focus to the control owning a clicked mouse-only
+// row, if any section claims it.
+func (m *Modal) focusSectionForClick(id string) {
+	if id == "" {
+		return
+	}
+	for _, section := range m.sections {
+		claimer, ok := asFocusClaimer(section)
+		if !ok {
+			continue
+		}
+		target := claimer.FocusIDForClick(id)
+		if target == "" {
+			continue
+		}
+		for i, fid := range m.focusIDs {
+			if fid != target {
+				continue
+			}
+			if target != m.currentFocusID() {
+				m.notifyAll(overlayBlurMsg{})
+			}
+			m.focusIdx = i
+			return
+		}
+		return
+	}
+}
+
+// asFocusClaimer resolves a section to its focus claimer, seeing through When
+// wrappers whose condition currently holds.
+func asFocusClaimer(s Section) (focusClaimer, bool) {
+	for {
+		if w, ok := s.(*whenSection); ok {
+			if !w.condition() {
+				return nil, false
+			}
+			s = w.inner
+			continue
+		}
+		claimer, ok := s.(focusClaimer)
+		return claimer, ok
+	}
 }
 
 func (m *Modal) notifyAll(msg tea.Msg) {

@@ -119,7 +119,7 @@ func TestKindListReachesTerminalSplit(t *testing.T) {
 
 	for i, row := range rows {
 		click := Open(terminalOpts())
-		click.SetKindFromClick(mouse.Rect{X: 0, Y: 10, W: 40, H: len(rows)}, 5, 10+i)
+		clickKindRow(t, click, 70, i)
 		if click.Kind() != row.Kind {
 			t.Fatalf("click on row %d = %v, want %v", i, click.Kind(), row.Kind)
 		}

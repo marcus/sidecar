@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/marcus/sidecar/internal/agentcatalog"
 	"github.com/marcus/sidecar/internal/mouse"
 	"github.com/marcus/sidecar/internal/workspaceops"
@@ -394,20 +395,82 @@ func TestComboDoesNotOverwriteFocusedFilterOnRebuild(t *testing.T) {
 	}
 }
 
-func TestKindFromClickX(t *testing.T) {
-	rows := kindRowsFor(false)
-	spans := kindSpans(rows)
-	width := spans[len(spans)-1][1] + len(kindFrameClose)
-	if got := KindFromClickX(spans[0][0]+1, 0, width); got != KindShell {
-		t.Fatalf("click Shell = %v, want Shell", got)
+// clickKindRow clicks row idx of the kind chooser exactly as a host does:
+// render, find the row's hit region, hand the modal a click on it. Nothing
+// between the pointer and the control maps the click — the control resolves it.
+func clickKindRow(t *testing.T, f *Form, width, idx int) string {
+	t.Helper()
+	m := f.Build(width)
+	if m == nil {
+		t.Fatal("Build returned nil")
 	}
-	if got := KindFromClickX(spans[1][0]+1, 0, width); got != KindWorktree {
-		t.Fatalf("click Worktree = %v, want Worktree", got)
+	handler := mouse.NewHandler()
+	m.Render(100, 44, handler)
+	id := kindItemID(FieldKind, idx)
+	for _, region := range handler.HitMap.Regions() {
+		if region.ID != id {
+			continue
+		}
+		return m.HandleMouse(tea.MouseClickMsg{
+			X:      region.Rect.X + 1,
+			Y:      region.Rect.Y,
+			Button: tea.MouseLeft,
+		}, handler)
 	}
+	t.Fatalf("kind row %d registered no hit region", idx)
+	return ""
+}
+
+// A click lands on the row it was over, with no host glue in between, and
+// reports the control rather than a row ID a host has no branch for. A
+// Workspaces catalog is five rows, which draws as the vertical list.
+func TestKindClickPicksTheRow(t *testing.T) {
 	f := Open(testOpts(KindShell))
-	f.SetKindFromClickX(spans[1][0]+1, 0, width)
+	if action := clickKindRow(t, f, 52, 1); action != FieldKind {
+		t.Fatalf("clicking a kind row returned %q, want %s", action, FieldKind)
+	}
 	if f.Kind() != KindWorktree {
-		t.Fatalf("click right = %v, want Worktree", f.Kind())
+		t.Fatalf("click on Worktree = %v, want Worktree", f.Kind())
+	}
+	if action := clickKindRow(t, f, 52, 0); action != FieldKind {
+		t.Fatalf("clicking back returned %q", action)
+	}
+	if f.Kind() != KindShell {
+		t.Fatalf("click on Shell = %v, want Shell", f.Kind())
+	}
+	// The click also leaves focus on the control, so the arrows that follow
+	// steer what the pointer just used.
+	if got := f.Build(52).FocusedID(); got != FieldKind {
+		t.Fatalf("focus after a kind click = %q, want %s", got, FieldKind)
+	}
+}
+
+// The pane-only catalog is short enough to draw as the segmented toggle, which
+// is the shape a plugin host's Open Pane modal wears. It is a separate case
+// from the list because the two shapes register their hit regions differently:
+// one region per row against one region per column span, and only this one can
+// put two choices on the same screen line.
+func TestKindClickPicksTheSegmentInThePaneCatalog(t *testing.T) {
+	opts := testOpts(KindFile)
+	opts.PaneKindsOnly = true
+
+	shape := Open(opts)
+	if len(shape.rows) >= 5 {
+		t.Fatalf("the pane catalog has %d rows, which no longer draws segmented", len(shape.rows))
+	}
+	view := ansi.Strip(shape.Build(70).Render(100, 44, mouse.NewHandler()))
+	if !strings.Contains(view, "File") || !strings.Contains(view, "|") || strings.Contains(view, "❯") {
+		t.Fatalf("the pane catalog did not draw as a segmented toggle:\n%s", view)
+	}
+
+	for i, row := range shape.rows {
+		click := Open(opts)
+		if action := clickKindRow(t, click, 70, i); action != FieldKind {
+			t.Fatalf("clicking segment %d returned %q, want %s", i, action, FieldKind)
+		}
+		if click.Kind() != row.Kind {
+			t.Fatalf("click on segment %d = %v, want %v", i, click.Kind(), row.Kind)
+		}
 	}
 }
 

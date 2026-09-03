@@ -1,0 +1,45 @@
+ ◱ Sidecar │   Sessions     Activity     Fixture                                                                             ↖ sidecar   Select Project ▾  ·  ⚙
+╭───────────────────────────────────────────────────────────────────────────────────────────────╮ ╭────────────────────────────────────────────────────────────╮
+│ Fixture · Results                                                  ⇅ Relevance · Everything   │┃│ Fixture · Results                                          │
+│                                                                                               │┃│                                                            │
+│ / dex                                                                    3 results   answered │┃│ Press Enter on a row to open it here.			│
+│                                                                                               │┃│                                                            │
+│     #  TITLE               SOURCE          EXCERPT                                            │┃│ A second Enter moves the keyboard into this box.           │
+│   ───  ──────────────────  ──────────────  ─────────── ╭────────────────────────────────────────────╮                                                        │
+│ ❯   1  dex schema notes    notes           …dex schema │                                            │ ffers 4 plugin action(s), each confirmed by the host.  │
+│     2  dex context --json  shell           …dex contex │  View · Results                            │                                                        │
+│     3  dex retrieval eval  mail            …dex retrie │                                            │                                                        │
+│                                                        │  Current sort: Relevance                   │                                                        │
+│                                                        │                                            │                                                        │
+│                                                        │  [   Relevance    |    Recency   ]         │                                                        │
+│                                                        │                                            │                                                        │
+│                                                        │  Scope  (scope)                            │                                                        │
+│                                                        │    ❯ Everything                            │                                                        │
+│                                                        │      This project                          │                                                        │
+│                                                        │      Notes only                            │                                                        │
+│                                                        │                                            │                                                        │
+│                                                        │  Source                                    │                                                        │
+│                                                        │    ❯ Any                                   │                                                        │
+│                                                        │      notes                                 │                                                        │
+│                                                        │      shell                                 │                                                        │
+│                                                        │      mail                                  │                                                        │
+│                                                        │      calendar                              │                                                        │
+│                                                        │      web                                   │                                                        │
+│                                                        │  ↓ more below                              │                                                        │
+│                                                        │                                            │                                                        │
+│                                                        │  Since                                     │                                                        │
+│                                                        │  ┌────────────────────────────────────┐    │                                                        │
+│                                                        │  │                                    │    │                                                        │
+│                                                        │  └────────────────────────────────────┘    │                                                        │
+│                                                        │                                            │                                                        │
+│                                                        │     Done                                   │                                                        │
+│                                                        │                                            │                                                        │
+│                                                        ╰────────────────────────────────────────────╯                                                        │
+│                                                                                               │┃│                                                            │
+│                                                                                               │┃│                                                            │
+│                                                                                               │┃│                                                            │
+│                                                                                               │┃│                                                            │
+│ ───────────────────────────────────────────────────────────────────────────────────────────── │┃│                                                            │
+│ 3 shown · the rest load on scroll                                                             │┃│                                                            │
+╰───────────────────────────────────────────────────────────────────────────────────────────────╯ ╰────────────────────────────────────────────────────────────╯
+ j, k  Move   enter  Select   esc  Close   1-5  plugins   8/9/0  global   ?  help   q  quit                                        fixture · results · answered
