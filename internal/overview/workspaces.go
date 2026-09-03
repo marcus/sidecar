@@ -879,8 +879,10 @@ func (m *Model) WorkspacesPaste(text string) bool {
 	if !m.WorkspacesFilterFocused() {
 		return false
 	}
-	m.workspaces.Filter().Insert(text)
-	m.workspaces.Reproject()
+	// FilterPaste is the list's own paste entry: it puts the text in at the
+	// caret through the shared query field, whose sanitizer flattens newlines
+	// because a query bar is one line, and reprojects in the same call.
+	m.workspaces.FilterPaste(tea.PasteMsg{Content: text})
 	return true
 }
 

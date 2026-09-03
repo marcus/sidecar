@@ -2,7 +2,6 @@ package workspace
 
 import (
 	"path/filepath"
-	"strings"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/marcus/sidecar/internal/workspacelist"
@@ -256,12 +255,13 @@ func (p *Plugin) handleFilterKey(msg tea.KeyPressMsg) (bool, tea.Cmd) {
 	}
 }
 
-// handleFilterPaste appends pasted text to a focused query.
+// handleFilterPaste puts pasted text into a focused query at the caret. The
+// field's own sanitizer flattens newlines, because a query bar is one line.
 func (p *Plugin) handleFilterPaste(text string) (bool, tea.Cmd) {
 	if !p.filterFocused() || text == "" {
 		return false, nil
 	}
-	p.listFilter.Insert(strings.ReplaceAll(text, "\n", " "))
+	p.listFilter.HandlePaste(tea.PasteMsg{Content: text})
 	return true, p.clampSelectionToFilter()
 }
 
