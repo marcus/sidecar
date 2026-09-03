@@ -1,6 +1,7 @@
 package workspace
 
 import (
+	"context"
 	"encoding/json"
 	"path/filepath"
 	"reflect"
@@ -13,6 +14,7 @@ import (
 	"github.com/marcus/sidecar/internal/config"
 	"github.com/marcus/sidecar/internal/features"
 	"github.com/marcus/sidecar/internal/plugin"
+	"github.com/marcus/sidecar/internal/projectdir"
 	"github.com/marcus/sidecar/internal/resourceview"
 	"github.com/marcus/sidecar/internal/terminallink"
 	"github.com/marcus/sidecar/internal/tty"
@@ -452,25 +454,63 @@ func TestUIRequests_CreateWorktreeDoesNotDuplicateInventoriedRow(t *testing.T) {
 }
 
 func TestUIRequests_CreateWorktreeSelectsAndAcks(t *testing.T) {
+	mainPath := t.TempDir()
+	publicSitePath := t.TempDir()
+	createdPath := t.TempDir()
+	mainKey, err := projectdir.WorktreeKey(mainPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	publicSiteKey, err := projectdir.WorktreeKey(publicSitePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	createdKey, err := projectdir.WorktreeKey(createdPath)
+	if err != nil {
+		t.Fatal(err)
+	}
 	p := &Plugin{
-		worktrees: []*Worktree{{Name: "main", Path: "/tmp/main", Key: "main"}},
+		worktrees: []*Worktree{
+			{Name: "main", Path: mainPath, Key: mainKey},
+			{Name: "public-site", Path: publicSitePath, Key: publicSiteKey},
+		},
 	}
 	focus := true
 	payload, err := json.Marshal(uirequest.CreatePayload{
 		Kind: uirequest.CreateKindWorktree, Session: "sidecar-ws-cli-wt", DisplayName: "cli-wt",
-		Focus: &focus, Path: "/tmp/cli-wt", Branch: "cli-wt",
+		Focus: &focus, Path: createdPath, Branch: "cli-wt",
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	req := uirequest.Request{
 		ID: "req-create-wt", Action: uirequest.ActionCreate, CreatedAt: time.Now().UTC(), TTLMs: 5000,
-		Origin:  uirequest.Origin{WorkDir: "/tmp/main"},
+		Origin:  uirequest.Origin{WorkDir: mainPath},
 		Payload: payload,
 	}
 	_ = p.handleUIRequest(req)
-	if p.selectedWorktree() == nil || p.selectedWorktree().Name != "cli-wt" {
+	if p.selectedWorktree() == nil || p.selectedWorktree().Name != "cli-wt" || p.selectedWorktree().Key != createdKey {
 		t.Fatalf("selected worktree = %#v", p.selectedWorktree())
+	}
+
+	// The inventory order need not match the provisional append order. Before
+	// the request row carried its durable key, this refresh kept index 2 and
+	// silently selected public-site instead of the newly created checkout.
+	p.ctx = &plugin.Context{Epoch: 1, WorkDir: mainPath, ProjectRoot: mainPath, Config: config.Default()}
+	p.operationCtx = context.Background()
+	p.repoSnapshot = &RepoSnapshot{Key: "repo", CanonicalRoot: mainPath}
+	p.refreshOperationID = "refresh-created"
+	_, _ = p.update(RefreshDoneMsg{
+		OperationScope: OperationScope{Epoch: 1, OperationID: "refresh-created", RepoKey: "repo"},
+		Snapshot:       p.repoSnapshot,
+		Worktrees: []*Worktree{
+			{Name: "main", Path: mainPath, Key: mainKey},
+			{Name: "cli-wt", Path: createdPath, Key: createdKey},
+			{Name: "public-site", Path: publicSitePath, Key: publicSiteKey},
+		},
+	})
+	if selected := p.selectedWorktree(); selected == nil || selected.Path != createdPath {
+		t.Fatalf("selected after refresh = %#v, want created worktree %q", selected, createdPath)
 	}
 	acks, err := uirequest.ReadAcks(config.StateDir(), req.ID, req.Action)
 	if err != nil || len(acks) != 1 || acks[0].Status != uirequest.StatusOpened {

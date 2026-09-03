@@ -340,7 +340,12 @@ func (p *Plugin) applyCreateWorktreeRequest(req uirequest.Request, payload uireq
 		}
 	}
 	if idx < 0 {
-		wt := &Worktree{Name: name, Path: payload.Path, Branch: payload.Branch}
+		// The request arrives before the inventory refresh it triggers. Give the
+		// provisional row the same durable path key that snapshotToWorktrees will
+		// assign, or selection restoration falls back to the old numeric index
+		// when the refreshed list is reordered.
+		key, _ := projectdir.WorktreeKey(payload.Path)
+		wt := &Worktree{Key: key, Name: name, Path: payload.Path, Branch: payload.Branch}
 		p.worktrees = append(p.worktrees, wt)
 		idx = len(p.worktrees) - 1
 	}
