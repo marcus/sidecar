@@ -55,6 +55,16 @@ func (f *Filter) Query() string {
 	return f.field.Query()
 }
 
+// Cursor is the caret's rune offset into the query. A surface that caches its
+// rendered row has to key on it: the caret is drawn where it is, so a key that
+// moved only the caret still changed the picture.
+func (f *Filter) Cursor() int {
+	if f == nil {
+		return 0
+	}
+	return f.field.Cursor()
+}
+
 func (f *Filter) SetQuery(query string) {
 	if f != nil {
 		f.field.SetQuery(query)

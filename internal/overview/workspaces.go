@@ -342,6 +342,7 @@ type workspaceListCacheKey struct {
 	sort                        workspacelist.Sort
 	filterQuery                 string
 	filterFocused               bool
+	filterCursor                int
 	pulseFrame                  int
 	scrollbarHover              bool
 	scrollbarDrag               bool
@@ -476,6 +477,11 @@ func (m *Model) workspaceOverlayMask() uint8 {
 	return mask
 }
 
+// workspaceListKey is everything the rendered list depends on. The filter's
+// caret is one of them: it is drawn where it is, so a key that moved only the
+// caret (home, alt+left, a click into the middle of a word) must still redraw
+// the row, or the ▌ stays where it used to be and the next keystroke goes in
+// somewhere the user cannot see.
 func (m *Model) workspaceListKey(layout workspaceListLayout, x, y, contentWidth, contentHeight, panelWidth, panelHeight int, focused bool) workspaceListCacheKey {
 	filter := m.workspaces.Filter()
 	return workspaceListCacheKey{
@@ -483,7 +489,7 @@ func (m *Model) workspaceListKey(layout workspaceListLayout, x, y, contentWidth,
 		layout: layout, x: x, y: y, contentWidth: contentWidth, contentHeight: contentHeight,
 		panelWidth: panelWidth, panelHeight: panelHeight, focused: focused,
 		selectedID: m.workspaces.SelectedID(), scroll: m.workspaces.ScrollOffset(), sort: m.workspaces.Sort(),
-		filterQuery: filter.Query(), filterFocused: filter.Focused(), pulseFrame: m.pulseFrame,
+		filterQuery: filter.Query(), filterFocused: filter.Focused(), filterCursor: filter.Cursor(), pulseFrame: m.pulseFrame,
 		scrollbarHover: m.wsBar.hover, scrollbarDrag: m.wsBar.gesture.Active(),
 		sidebarVisible: m.sidebarVisible, overlayMask: m.workspaceOverlayMask(),
 	}
