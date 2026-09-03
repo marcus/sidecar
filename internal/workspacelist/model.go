@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 	sharedscroll "github.com/marcus/sidecar/internal/scroll"
@@ -20,6 +21,10 @@ const (
 	RegionRow    RegionKind = "workspacelist-row"
 	RegionSort   RegionKind = "workspacelist-sort"
 	RegionFilter RegionKind = "workspacelist-filter"
+	// RegionFilterClear is the × drawn at the right of a non-empty query row.
+	// It is registered only where it is drawn, so the columns it would occupy
+	// belong to the filter row itself whenever there is nothing to clear.
+	RegionFilterClear RegionKind = "workspacelist-filter-clear"
 )
 
 type Region struct {
@@ -287,8 +292,8 @@ func (m *Model) Bottom() bool {
 
 // FilterKey applies a key while the filter owns focus and reprojects when the
 // query changed.
-func (m *Model) FilterKey(key, text string) KeyResult {
-	result := m.filter.HandleKey(key, text)
+func (m *Model) FilterKey(msg tea.KeyPressMsg) KeyResult {
+	result := m.filter.HandleKey(msg)
 	if result == KeyHandled || result == KeyExit {
 		m.reproject()
 	}
@@ -299,8 +304,24 @@ func (m *Model) FilterKey(key, text string) KeyResult {
 // (a paste, a programmatic clear). Selection is preserved by identity.
 func (m *Model) Reproject() { m.reproject() }
 
+// FilterPaste puts a bracketed paste into a focused query and reprojects.
+func (m *Model) FilterPaste(msg tea.PasteMsg) KeyResult {
+	result := m.filter.HandlePaste(msg)
+	if result == KeyHandled {
+		m.reproject()
+	}
+	return result
+}
+
 // FocusFilter is the `/` entry point.
 func (m *Model) FocusFilter() { m.filter.Focus() }
+
+// ClearFilter empties the query and reprojects, keeping focus where it is. It
+// is what the row's × and the filter-clear command run.
+func (m *Model) ClearFilter() {
+	m.filter.Clear()
+	m.reproject()
+}
 
 func (m *Model) ensureVisible() {
 	// Whatever moved the selection — a key, the wheel, a click, a refresh that
@@ -423,6 +444,7 @@ func (m *Model) Render(opts RenderOptions) Rendered {
 			empty = []string{styles.Muted.Render(m.emptyText)}
 		}
 	}
+	filterLine, filterClear := m.filter.RenderRow(opts.Width, matched, total)
 	rendered := RenderSidebar(SidebarOptions{Width: opts.Width, Height: opts.Height, Title: opts.Title, Focused: opts.Focused,
 		SelectedID: m.selectedID, ScrollOffset: m.scroll,
 		// The global list's bar is live: its thumb/track regions ride along
@@ -437,7 +459,7 @@ func (m *Model) Render(opts RenderOptions) Rendered {
 		// The filter row costs a row of chrome, so it appears when the filter is
 		// live and not before — the rule the project sidebar already follows, so
 		// the first heading sits on the same row on both surfaces.
-		FilterActive: m.filter.Active(), FilterLine: m.filter.RenderRow(opts.Width, matched, total),
+		FilterActive: m.filter.Active(), FilterLine: filterLine, FilterClear: filterClear,
 		Sections: sidebarSections, EmptyLines: empty,
 		EmptyActionID: m.emptyActionID, EmptyActionLine: m.emptyActionLine,
 		FooterLines: m.failureLines(failureRows, opts.Width)})

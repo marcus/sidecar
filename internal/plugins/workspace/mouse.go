@@ -258,7 +258,7 @@ func isDiffBodyRegion(regionID string) bool {
 func isBackgroundRegion(regionID string) bool {
 	switch regionID {
 	case regionSidebar, regionPreviewPane, regionPaneDivider,
-		regionWorktreeItem, regionPreviewAction, regionDiffTargetTab, regionListFilter,
+		regionWorktreeItem, regionPreviewAction, regionDiffTargetTab, regionListFilter, regionListFilterClear,
 		regionCreateWorktreeButton, regionShellsPlusButton, regionWorkspacesPlusButton, regionListSortButton,
 		regionStartAgentButton, regionOpenCreateButton, regionOpenSetupButton,
 		regionPaneClose, regionPaneTitle,
@@ -1123,6 +1123,14 @@ func (p *Plugin) handleMouseClick(action mouse.MouseAction) tea.Cmd {
 		// Clicking the filter row focuses the query, the same as `/`.
 		p.focusSidebar()
 		p.focusListFilter()
+	case regionListFilterClear:
+		// The × clears the query and leaves the caret in it, which is what the
+		// filter-clear command does. It is registered only where it is drawn,
+		// so this arm is unreachable while the query is empty.
+		p.focusSidebar()
+		p.focusListFilter()
+		p.listFilter.Clear()
+		return p.clampSelectionToFilter()
 	case regionWorktreeItem:
 		// Click on worktree or shell entry - select it
 		if hit, ok := action.Region.Data.(nestedShellHit); ok {

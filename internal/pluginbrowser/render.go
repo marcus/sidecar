@@ -9,6 +9,7 @@ import (
 
 	"github.com/marcus/sidecar/internal/mouse"
 	"github.com/marcus/sidecar/internal/pluginhost"
+	"github.com/marcus/sidecar/internal/queryfield"
 	"github.com/marcus/sidecar/internal/resource"
 	"github.com/marcus/sidecar/internal/styles"
 	"github.com/marcus/sidecar/internal/ui"
@@ -388,7 +389,7 @@ func viewTitle(c pluginhost.Collection, id string) (string, bool) {
 // it is taking text, and the count and outcome right-aligned. It reports where
 // that right-hand cell landed so the frame can make the outcome clickable.
 //
-// It goes through workspacelist.RenderQueryRow rather than imitating it, so
+// It goes through queryfield.RenderRow rather than imitating it, so
 // this row and the workspace sidebar's cannot drift on what a focused query
 // bar looks like.
 //
@@ -405,7 +406,7 @@ func (m *Model) queryRow(c pluginhost.Collection, s *collectionState, width int)
 		right = styles.Body.Foreground(styles.Warning).Render("query is as long as Sidecar keeps")
 		clickable = false
 	}
-	row := workspacelist.RenderQueryRow(width, workspacelist.QueryRow{
+	row, _ := queryfield.RenderRow(width, queryfield.Row{
 		Query:       s.query,
 		Focused:     s.editing,
 		Placeholder: queryPlaceholder(c),

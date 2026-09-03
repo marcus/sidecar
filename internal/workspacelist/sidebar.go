@@ -6,6 +6,7 @@ import (
 
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/marcus/sidecar/internal/mouse"
 	"github.com/marcus/sidecar/internal/styles"
 	"github.com/marcus/sidecar/internal/ui"
 )
@@ -63,8 +64,12 @@ type SidebarOptions struct {
 	PrefixLines   []string
 	FilterLine    string
 	FilterActive  bool
-	Sections      []SidebarSection
-	EmptyLines    []string
+	// FilterClear is where the filter row drew its × clear control, in the
+	// row's own coordinates. The zero rect means the row drew none, and then
+	// no region is registered for it.
+	FilterClear mouse.Rect
+	Sections    []SidebarSection
+	EmptyLines  []string
 	// EmptyActionID names one of EmptyLines as a pressable control and gives
 	// it a hit region. An empty state that offers an action has to be
 	// clickable for the same reason its key has to be advertised: the two
@@ -211,6 +216,12 @@ func RenderSidebar(opts SidebarOptions) SidebarRendered {
 		y := len(lines)
 		lines = append(lines, fit(opts.FilterLine, width))
 		regions = append(regions, Region{Kind: RegionFilter, X: 0, Y: y, W: width, H: 1})
+		// The × is registered after the row it sits on, so it wins the hit
+		// test: RegionAt scans in reverse, and the smaller, more specific
+		// target has to be found first.
+		if clear := opts.FilterClear; clear.W > 0 && clear.H > 0 {
+			regions = append(regions, Region{Kind: RegionFilterClear, X: clear.X, Y: y, W: clear.W, H: clear.H})
+		}
 	}
 	flat := make([]sidebarFlatRow, 0)
 	for sectionIndex, section := range opts.Sections {

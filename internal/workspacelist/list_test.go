@@ -5,9 +5,41 @@ import (
 	"testing"
 	"time"
 
+	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/marcus/sidecar/internal/styles"
 )
+
+// key builds the key message the app forwards. A single-rune key carries its
+// own text, which is what the query row types.
+func key(s string) tea.KeyPressMsg {
+	switch s {
+	case "esc":
+		return tea.KeyPressMsg{Code: tea.KeyEsc}
+	case "enter":
+		return tea.KeyPressMsg{Code: tea.KeyEnter}
+	case "backspace":
+		return tea.KeyPressMsg{Code: tea.KeyBackspace}
+	case "alt+backspace":
+		return tea.KeyPressMsg{Code: tea.KeyBackspace, Mod: tea.ModAlt}
+	case "ctrl+u":
+		return tea.KeyPressMsg{Code: 'u', Mod: tea.ModCtrl}
+	case "ctrl+a":
+		return tea.KeyPressMsg{Code: 'a', Mod: tea.ModCtrl}
+	case "left":
+		return tea.KeyPressMsg{Code: tea.KeyLeft}
+	case "right":
+		return tea.KeyPressMsg{Code: tea.KeyRight}
+	case "home":
+		return tea.KeyPressMsg{Code: tea.KeyHome}
+	case "down":
+		return tea.KeyPressMsg{Code: tea.KeyDown}
+	case "up":
+		return tea.KeyPressMsg{Code: tea.KeyUp}
+	}
+	r := []rune(s)[0]
+	return tea.KeyPressMsg{Code: r, Text: s}
+}
 
 // Slice 2 of docs/plans/active/global-overview-workspaces.md: the list, filter,
 // and sort component both Workspaces surfaces share. These tests pin the
@@ -341,14 +373,14 @@ func TestSelectionFollowsIdentityThroughRefreshFilterAndSort(t *testing.T) {
 	// falls back to the first visible row rather than to a neighbour by index.
 	m.FocusFilter()
 	for _, r := range "réponse" {
-		m.FilterKey(string(r), string(r))
+		m.FilterKey(key(string(r)))
 	}
 	if m.SelectedID() != "c" {
 		t.Fatalf("filtering to a matching row moved the cursor to %q", m.SelectedID())
 	}
-	m.FilterKey("ctrl+u", "")
+	m.FilterKey(key("ctrl+u"))
 	for _, r := range "modal" {
-		m.FilterKey(string(r), string(r))
+		m.FilterKey(key(string(r)))
 	}
 	if m.SelectedID() != "a" {
 		t.Fatalf("filtering away the selection selected %q, want the first match", m.SelectedID())
@@ -362,11 +394,11 @@ func TestFilterKeyboardContract(t *testing.T) {
 
 	// Navigation stays live while filtering.
 	m.FocusFilter()
-	if result := m.FilterKey("down", ""); result != KeyIgnored {
+	if result := m.FilterKey(key("down")); result != KeyIgnored {
 		t.Fatalf("down was consumed by the filter: %v", result)
 	}
 	for _, r := range "sidecar" {
-		if result := m.FilterKey(string(r), string(r)); result != KeyHandled {
+		if result := m.FilterKey(key(string(r))); result != KeyHandled {
 			t.Fatalf("typing %q was not handled: %v", r, result)
 		}
 	}
@@ -375,7 +407,7 @@ func TestFilterKeyboardContract(t *testing.T) {
 	}
 
 	// Enter accepts: the query stays, focus returns to the list.
-	if result := m.FilterKey("enter", ""); result != KeyAccept || m.Filter().Focused() {
+	if result := m.FilterKey(key("enter")); result != KeyAccept || m.Filter().Focused() {
 		t.Fatalf("enter did not accept: %v focused=%v", result, m.Filter().Focused())
 	}
 	if !m.Filter().Active() || m.Filter().Query() != "sidecar" {
@@ -384,10 +416,10 @@ func TestFilterKeyboardContract(t *testing.T) {
 
 	// First escape clears the query, second releases focus.
 	m.FocusFilter()
-	if result := m.FilterKey("esc", ""); result != KeyHandled || m.Filter().Query() != "" || !m.Filter().Focused() {
+	if result := m.FilterKey(key("esc")); result != KeyHandled || m.Filter().Query() != "" || !m.Filter().Focused() {
 		t.Fatalf("first escape = %v query=%q focused=%v", result, m.Filter().Query(), m.Filter().Focused())
 	}
-	if result := m.FilterKey("esc", ""); result != KeyExit || m.Filter().Focused() {
+	if result := m.FilterKey(key("esc")); result != KeyExit || m.Filter().Focused() {
 		t.Fatalf("second escape = %v focused=%v", result, m.Filter().Focused())
 	}
 	if matched, _ := m.Counts(); matched != 4 {
@@ -729,4 +761,55 @@ func TestPinnedRowsKeepTheirProjectUnderProjectSort(t *testing.T) {
 	if !strings.Contains(view, "sidecar modal look and feel") {
 		t.Fatalf("a pinned row lost the project it has no heading for:\n%s", view)
 	}
+}
+
+// The query row's × is a control only where there is something to clear, and
+// it is a hit target wherever it is drawn — the same rule the shared field
+// states and both Workspaces surfaces inherit.
+func TestFilterClearRegionExistsOnlyWithAQuery(t *testing.T) {
+	var m Model
+	m.SetItems(items())
+	m.FocusFilter()
+	m.Render(RenderOptions{Width: 46, Height: 20})
+
+	rendered := m.Render(RenderOptions{Width: 46, Height: 20})
+	if _, ok := clearRegion(rendered.Regions); ok {
+		t.Fatal("an empty query registered a clear control")
+	}
+
+	for _, r := range "modal" {
+		m.FilterKey(key(string(r)))
+	}
+	rendered = m.Render(RenderOptions{Width: 46, Height: 20})
+	region, ok := clearRegion(rendered.Regions)
+	if !ok {
+		t.Fatalf("a non-empty query registered no clear control: %+v", rendered.Regions)
+	}
+	// The region has to win the hit test against the filter row it sits on.
+	hit, found := RegionAt(rendered.Regions, region.X, region.Y)
+	if !found || hit.Kind != RegionFilterClear {
+		t.Fatalf("a click on the × resolved to %v", hit.Kind)
+	}
+	if !strings.Contains(ansi.Strip(rendered.View), "×") {
+		t.Fatalf("the × was registered but not drawn:\n%s", ansi.Strip(rendered.View))
+	}
+
+	// The command and the control run the same clear.
+	m.ClearFilter()
+	rendered = m.Render(RenderOptions{Width: 46, Height: 20})
+	if _, ok := clearRegion(rendered.Regions); ok {
+		t.Fatal("clearing the query left the × registered")
+	}
+	if matched, _ := m.Counts(); matched != 4 {
+		t.Fatalf("clearing the query did not restore the list: %d rows", matched)
+	}
+}
+
+func clearRegion(regions []Region) (Region, bool) {
+	for _, region := range regions {
+		if region.Kind == RegionFilterClear {
+			return region, true
+		}
+	}
+	return Region{}, false
 }

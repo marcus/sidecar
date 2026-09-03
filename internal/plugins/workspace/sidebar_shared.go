@@ -295,6 +295,7 @@ func (p *Plugin) renderSidebarContent(width, height int) string {
 		}
 	}
 
+	filterLine, filterClear := p.listFilter.RenderRow(width, matched, total)
 	rendered := workspacelist.RenderSidebar(workspacelist.SidebarOptions{
 		Width: width, Height: height, Title: "Workspaces", Focused: p.activePane == PaneSidebar,
 		SelectedID: selectedID, ScrollOffset: p.scrollOffset,
@@ -311,7 +312,8 @@ func (p *Plugin) renderSidebarContent(width, height int) string {
 		FreeScroll:           p.freeScroll,
 		ScrollbarHover:       p.sidebarBar.hover && !p.sidebarBar.gesture.Active(),
 		ScrollbarDrag:        p.sidebarBar.gesture.Active(),
-		PrefixLines:          warnings, FilterActive: p.filterActive(), FilterLine: p.listFilter.RenderRow(width, matched, total),
+		PrefixLines:          warnings, FilterActive: p.filterActive(),
+		FilterLine: filterLine, FilterClear: filterClear,
 		Sections: sections, EmptyLines: empty,
 		EmptyActionID: emptyActionID, EmptyActionLine: emptyActionLine,
 	})
@@ -330,6 +332,8 @@ func (p *Plugin) renderSidebarContent(width, height int) string {
 			id = regionWorktreeItem
 		case workspacelist.RegionFilter:
 			id = regionListFilter
+		case workspacelist.RegionFilterClear:
+			id = regionListFilterClear
 		}
 		p.mouseHandler.HitMap.AddRect(id, sidebarContentX+region.X, sidebarContentY+region.Y, region.W, region.H, data)
 	}
