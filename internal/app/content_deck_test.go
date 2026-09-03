@@ -51,6 +51,12 @@ type deckHostTestPlugin struct {
 	zeroLinkKinds bool
 	consumeText   bool
 	blockGlobal   bool
+	// selection stands for a highlight in a box the plugin draws inside its own
+	// frame, the way the shared plugin browser's detail box does; selectOnPress
+	// makes the next pointer press start one. Both are what the deck's one
+	// selection at a time rule is asked about.
+	selection     bool
+	selectOnPress bool
 }
 
 type queuedAppDeckTestMsg struct{}
@@ -66,9 +72,14 @@ func (p *deckHostTestPlugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 	if size, ok := msg.(tea.WindowSizeMsg); ok {
 		p.width, p.height = size.Width, size.Height
 	}
+	if _, ok := msg.(tea.MouseClickMsg); ok && p.selectOnPress {
+		p.selection = true
+	}
 	p.seen = append(p.seen, msg)
 	return p, nil
 }
+func (p *deckHostTestPlugin) HasSelection() bool { return p.selection }
+func (p *deckHostTestPlugin) ClearSelection()    { p.selection = false }
 func (p *deckHostTestPlugin) PaneFocusStops() []plugin.PaneFocusStop {
 	if p.noFocusStops {
 		return nil

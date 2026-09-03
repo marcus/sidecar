@@ -1155,9 +1155,18 @@ func (m *Model) appContentMouse(msg tea.MouseMsg) (tea.Cmd, bool) {
 
 func (m *Model) updateAppContentPrimaryMouse(h *appContentDeck, msg tea.MouseMsg) tea.Cmd {
 	adjusted := offsetMouse(msg, -h.primaryInner.X, -h.primaryInner.Y)
+	held := h.primaryHasSelection()
 	newPlugin, cmd := h.plugin.Update(adjusted)
 	h.plugin = newPlugin
 	m.adoptAppContentPlugin(h)
+	// The other half of one selection at a time: a plugin that owns a
+	// selectable box inside its own frame answers its own gesture, so the deck
+	// learns a selection started there only by noticing that the plugin now
+	// holds one. Asked here rather than on every frame because this is the
+	// event that could have started it.
+	if !held && h.primaryHasSelection() {
+		h.clearAppContentSelectionsExcept(nil)
+	}
 	return cmd
 }
 

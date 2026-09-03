@@ -357,6 +357,10 @@ func (h *appContentDeck) appContentCardLocal(leafID, x, y int) (int, int) {
 // motion is still the click that focused this leaf.
 func (h *appContentDeck) pressAppContentSelection(leafID int, pane textselect.Pane, action mouse.MouseAction) (tea.Cmd, bool) {
 	h.clearAppContentSelectionsExcept(pane)
+	// The plugin under the deck is on the same screen, and the plugin browser
+	// draws a selectable detail box inside its own frame. One at a time means
+	// one on the screen, not one among the panes the deck happens to own.
+	h.clearPrimarySelection()
 	result := pane.HandleSelectionMouse(action)
 	if !result.Handled {
 		// The press landed on chrome or on the padding below the last row: not
@@ -378,6 +382,31 @@ func (h *appContentDeck) clearAppContentSelectionsExcept(keep textselect.Pane) {
 			pane.ClearSelection()
 		}
 	})
+}
+
+// primarySelectionHolder is a primary plugin that draws a selectable box inside
+// its own frame — the shared plugin browser's detail is the one today. The deck
+// cannot route its gesture, because the plugin owns its own coordinate space,
+// but the one-selection-at-a-time rule is the screen's rather than the deck's,
+// so both halves have to be askable and clearable from here.
+type primarySelectionHolder interface {
+	HasSelection() bool
+	ClearSelection()
+}
+
+// primaryHasSelection reports whether the plugin under the deck is holding a
+// selection of its own.
+func (h *appContentDeck) primaryHasSelection() bool {
+	holder, ok := h.plugin.(primarySelectionHolder)
+	return ok && holder.HasSelection()
+}
+
+// clearPrimarySelection drops the plugin's own selection. A plugin that draws
+// no selectable box has none, and says so by not implementing the interface.
+func (h *appContentDeck) clearPrimarySelection() {
+	if holder, ok := h.plugin.(primarySelectionHolder); ok {
+		holder.ClearSelection()
+	}
 }
 
 // appDeckSelectionCopyCmd delivers what a pane gesture's engine result asked

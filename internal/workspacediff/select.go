@@ -26,7 +26,14 @@ import (
 // through RenderOpts.PaintFile), one window at a time, with line-number gutters
 // the raw patch does not carry — so the only rows this view can answer for are
 // the rows it just drew. Line therefore reads the last painted frame, Scroll is
-// zero, and a selection is dropped as soon as what is on screen changes.
+// zero, and a selection is dropped as soon as what the frame is *of* changes:
+// the file, the scope, the view mode, either cursor, either scroll, the size.
+// Not every byte of it — see expireSelection for why the key cannot be the
+// frame itself, and for the one case the key does not cover: a live re-run that
+// replaces the patch under an unmoved cursor leaves the highlight where it was,
+// over text the reader did not pick. What is copied is still exactly what is
+// highlighted, which is the property that matters, and it is what a terminal's
+// own selection does over output that moves under it.
 //
 // Two consequences are deliberate. A drag past an edge does not scroll the
 // pane: the rows it would reveal cannot be selected without dropping the
@@ -153,8 +160,15 @@ func (v *View) paintSelection(frame string, width, height int) string {
 //
 // The key is what the frame is of, not the bytes it came out as: hover on the
 // divider and the cursor's own highlight change the bytes every frame, and a
-// selection that died on a mouse move would be unusable. Everything that
-// changes which text is on which row is in it.
+// selection that died on a mouse move would be unusable. Everything the reader
+// does that changes which text is on which row is in it.
+//
+// What is not in it is the patch body itself, and cannot be: the right-hand
+// body is the host's, painted through RenderOpts.PaintFile from state this view
+// never sees, so a key built here could not detect a change to it without
+// hashing every frame on the render path. The consequence is bounded and
+// stated at the top of this file: a live re-run under an unmoved cursor keeps
+// the highlight, and the copy still returns exactly the rows under it.
 func (v *View) expireSelection() {
 	key := fmt.Sprintf("%d|%d|%d|%d|%d|%d|%d|%d|%d|%d|%d|%s|%s",
 		v.frameW, v.frameH, v.State, v.Scope, v.Focus, v.ViewMode,
