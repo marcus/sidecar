@@ -6,13 +6,17 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/marcus/sidecar/internal/plugin"
+	"github.com/marcus/sidecar/internal/queryfield"
 	"github.com/marcus/sidecar/internal/styles"
-	"github.com/marcus/sidecar/internal/ui"
 )
 
 // HistorySearchState holds state for commit history search.
+//
+// The query is the app's shared query field rather than a string, so the modal
+// edits like every other `/` bar: the caret moves, alt+backspace deletes a
+// word, home and end work, and a paste arrives whole.
 type HistorySearchState struct {
-	Query     string
+	field     queryfield.Field
 	Matches   []*Commit // Commits matching the query
 	Cursor    int       // Index in matches for n/N navigation
 	Committed bool      // True after Enter (enables n/N)
@@ -29,9 +33,24 @@ func NewHistorySearchState() *HistorySearchState {
 	}
 }
 
+// Query is the text typed into the search modal.
+func (s *HistorySearchState) Query() string {
+	if s == nil {
+		return ""
+	}
+	return s.field.Query()
+}
+
+// SetQuery replaces the text and puts the caret at its end.
+func (s *HistorySearchState) SetQuery(query string) {
+	if s != nil {
+		s.field.SetQuery(query)
+	}
+}
+
 // Reset clears the search state.
 func (s *HistorySearchState) Reset() {
-	s.Query = ""
+	s.field.Reset()
 	s.Matches = nil
 	s.Cursor = 0
 	s.Committed = false
@@ -112,18 +131,17 @@ func (p *Plugin) renderHistorySearchModal(width int) string {
 
 	var sb strings.Builder
 
-	// Header: Search input with cursor
-	cursor := "█"
-	prefix := "/ "
-	available := modalWidth - len(prefix) - 1
-
-	query := state.Query
-	if len(query) > available {
-		query = "..." + query[len(query)-available+3:]
-	}
-
-	header := prefix + query + cursor
-	sb.WriteString(styles.ModalTitle.Render(header))
+	// Header: the app's query bar. It draws through queryfield.RenderRow, so
+	// this modal's `/` row is the same row the rest of the app shows, caret
+	// included. The × is not drawn: a modal overlay registers no hit region
+	// here, and a control nothing listens to is worse than no control.
+	header, _ := queryfield.RenderRow(modalWidth, queryfield.Row{
+		Query:       state.Query(),
+		Cursor:      state.field.Cursor(),
+		Focused:     true,
+		Placeholder: "search commits…",
+	})
+	sb.WriteString(header)
 	sb.WriteString("\n")
 
 	// Options bar
@@ -142,7 +160,7 @@ func (p *Plugin) renderHistorySearchModal(width int) string {
 	sb.WriteString("\n\n")
 
 	// Status line
-	if state.Query == "" {
+	if state.Query() == "" {
 		sb.WriteString(styles.Muted.Render("Type to search commits..."))
 		sb.WriteString("\n")
 	} else if len(state.Matches) == 0 {
@@ -242,8 +260,11 @@ func (p *Plugin) updateHistorySearch(msg tea.KeyPressMsg) (plugin.Plugin, tea.Cm
 		p.historySearchState = state
 	}
 
+	// The modal flag is what means "this bar owns the keyboard", so the field's
+	// focus is derived from it rather than tracked twice.
+	state.field.Focus()
+
 	key := msg.String()
-	text := ui.PrintableKeyText(msg)
 
 	switch key {
 	case "esc":
@@ -284,37 +305,68 @@ func (p *Plugin) updateHistorySearch(msg tea.KeyPressMsg) (plugin.Plugin, tea.Cm
 		}
 		return p, nil
 
-	case "backspace":
-		if len(state.Query) > 0 {
-			state.Query = state.Query[:len(state.Query)-1]
-			state.Matches = p.searchCommits(state.Query, state.UseRegex, state.CaseSensitive)
-			state.Cursor = 0 // Reset cursor when query changes
-		}
-		return p, nil
-
 	case "alt+r":
-		// Toggle regex
+		// Toggle regex. This modal's two option toggles are checked before the
+		// field, so the surface's chord wins whatever the text input would do
+		// with it. Neither is one of the field's word keys today (those are
+		// alt+b, alt+f, alt+d and alt+backspace), so nothing is lost.
 		state.UseRegex = !state.UseRegex
-		state.Matches = p.searchCommits(state.Query, state.UseRegex, state.CaseSensitive)
-		state.Cursor = 0
+		p.rematchHistorySearch()
 		return p, nil
 
 	case "alt+c":
-		// Toggle case sensitivity
+		// Toggle case sensitivity — see alt+r.
 		state.CaseSensitive = !state.CaseSensitive
-		state.Matches = p.searchCommits(state.Query, state.UseRegex, state.CaseSensitive)
-		state.Cursor = 0
+		p.rematchHistorySearch()
 		return p, nil
 
 	default:
-		// Append printable characters to query
-		if text != "" {
-			state.Query += text
-			state.Matches = p.searchCommits(state.Query, state.UseRegex, state.CaseSensitive)
-			state.Cursor = 0 // Reset cursor when query changes
+		// Everything else is the field's: text, the caret keys, word ops, home
+		// and end. j/k and the arrows above still walk the match list, so the
+		// two letters this modal has always spent on navigation stay spent.
+		before := state.Query()
+		state.field.HandleKey(msg)
+		if state.Query() != before {
+			p.rematchHistorySearch()
 		}
 		return p, nil
 	}
+}
+
+// rematchHistorySearch re-runs the search after the query or an option
+// changed, and puts the cursor back on the first match.
+func (p *Plugin) rematchHistorySearch() {
+	state := p.historySearchState
+	if state == nil {
+		return
+	}
+	state.Matches = p.searchCommits(state.Query(), state.UseRegex, state.CaseSensitive)
+	state.Cursor = 0
+}
+
+// handleSearchPaste puts a bracketed paste into whichever of the two git
+// history bars is open. A query bar is a text input, so a paste lands in it
+// exactly as typed characters do.
+func (p *Plugin) handleSearchPaste(msg tea.PasteMsg) (bool, tea.Cmd) {
+	switch {
+	case p.historySearchMode:
+		if p.historySearchState == nil {
+			p.historySearchState = NewHistorySearchState()
+		}
+		state := p.historySearchState
+		state.field.Focus()
+		before := state.Query()
+		state.field.HandlePaste(msg)
+		if state.Query() != before {
+			p.rematchHistorySearch()
+		}
+		return true, nil
+	case p.pathFilterMode:
+		p.pathFilterField.Focus()
+		p.pathFilterField.HandlePaste(msg)
+		return true, nil
+	}
+	return false, nil
 }
 
 // clearSearchState clears the history search state.
@@ -326,42 +378,40 @@ func (p *Plugin) clearSearchState() {
 
 // updatePathFilter handles key events when in path filter mode.
 func (p *Plugin) updatePathFilter(msg tea.KeyPressMsg) (plugin.Plugin, tea.Cmd) {
-	key := msg.String()
-	text := ui.PrintableKeyText(msg)
+	// The modal flag is what means "this bar owns the keyboard".
+	p.pathFilterField.Focus()
 
-	switch key {
+	switch msg.String() {
 	case "esc":
 		// Cancel path filter, close modal
 		p.pathFilterMode = false
-		p.pathFilterInput = ""
+		p.pathFilterField.Reset()
 		return p, nil
 
 	case "enter":
 		// Apply path filter
-		if p.pathFilterInput != "" {
-			p.historyFilterPath = p.pathFilterInput
+		if p.pathFilterInput() != "" {
+			p.historyFilterPath = p.pathFilterInput()
 			p.historyFilterActive = true
 			p.pathFilterMode = false
+			p.pathFilterField.Blur()
 			return p, p.loadFilteredCommits()
 		}
 		// Empty input, just close
 		p.pathFilterMode = false
-		return p, nil
-
-	case "backspace":
-		if len(p.pathFilterInput) > 0 {
-			p.pathFilterInput = p.pathFilterInput[:len(p.pathFilterInput)-1]
-		}
+		p.pathFilterField.Blur()
 		return p, nil
 
 	default:
-		// Append printable characters to path
-		if text != "" {
-			p.pathFilterInput += text
-		}
+		// Everything else is the field's: text, the caret keys, word ops, home
+		// and end.
+		p.pathFilterField.HandleKey(msg)
 		return p, nil
 	}
 }
+
+// pathFilterInput is the path typed into the filter modal.
+func (p *Plugin) pathFilterInput() string { return p.pathFilterField.Query() }
 
 // renderPathFilterModal renders the path filter input modal.
 func (p *Plugin) renderPathFilterModal(width int) string {
@@ -380,17 +430,23 @@ func (p *Plugin) renderPathFilterModal(width int) string {
 	sb.WriteString(styles.ModalTitle.Render("Filter by Path"))
 	sb.WriteString("\n\n")
 
-	// Input with cursor
-	cursor := "█"
+	// Input with the caret drawn where the caret is. This row keeps its own
+	// `Path:` label rather than the query bar's `/` prompt — it is a labelled
+	// input, not a search — but the text and the caret are the shared field's,
+	// so a caret that moved is visible where it actually moved to.
 	prefix := "Path: "
 	available := modalWidth - len(prefix) - 1
 
-	input := p.pathFilterInput
+	input, caret := p.pathFilterInput(), p.pathFilterField.Cursor()
 	if len(input) > available {
-		input = "..." + input[len(input)-available+3:]
+		trimmed := len(input) - available + 3
+		input = "..." + input[trimmed:]
+		caret = max(caret-trimmed+3, 0)
 	}
+	runes := []rune(input)
+	caret = min(max(caret, 0), len(runes))
 
-	sb.WriteString(prefix + input + cursor)
+	sb.WriteString(prefix + string(runes[:caret]) + "▌" + string(runes[caret:]))
 	sb.WriteString("\n\n")
 
 	// Hint

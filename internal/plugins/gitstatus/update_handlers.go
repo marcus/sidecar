@@ -405,7 +405,8 @@ func (p *Plugin) updateStatus(msg tea.KeyPressMsg) (plugin.Plugin, tea.Cmd) {
 		// On commit: filter by path (open modal)
 		if p.cursorOnCommit() {
 			p.pathFilterMode = true
-			p.pathFilterInput = ""
+			p.pathFilterField.Reset()
+			p.pathFilterField.Focus()
 			return p, nil
 		}
 

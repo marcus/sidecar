@@ -124,6 +124,13 @@ func (p *Plugin) updateRemote(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 		return p, nil
 	}
 	switch msg := msg.(type) {
+	case tea.PasteMsg:
+		// A bound pane's search bars are the same text inputs as a local
+		// pane's, so a bracketed paste lands in them the same way.
+		if handled, cmd := p.handleSearchPaste(msg); handled {
+			return p, cmd
+		}
+
 	case app.RefreshMsg:
 		return p, p.reload()
 
@@ -383,7 +390,8 @@ func (p *Plugin) updateRemoteKeys(msg tea.KeyPressMsg) (plugin.Plugin, tea.Cmd) 
 	case "p":
 		if p.cursorOnCommit() {
 			p.pathFilterMode = true
-			p.pathFilterInput = ""
+			p.pathFilterField.Reset()
+			p.pathFilterField.Focus()
 		}
 
 	case "/":
