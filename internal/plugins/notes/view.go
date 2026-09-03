@@ -7,6 +7,7 @@ import (
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/marcus/sidecar/internal/markdown"
+	"github.com/marcus/sidecar/internal/queryfield"
 	"github.com/marcus/sidecar/internal/styles"
 	"github.com/marcus/sidecar/internal/ui"
 	"github.com/marcus/sidecar/internal/workspaceops"
@@ -119,8 +120,8 @@ func (p *Plugin) renderListPane(height int) string {
 	headerLines := 2 // title row + requested blank row
 
 	// Search input line (if in search mode or has query)
-	if p.searchMode || p.searchQuery != "" {
-		sb.WriteString(p.renderSearchInput())
+	if p.searchMode || p.searchQuery() != "" {
+		sb.WriteString(p.renderSearchInput(listInner))
 		sb.WriteString("\n")
 		headerLines++
 	}
@@ -134,7 +135,7 @@ func (p *Plugin) renderListPane(height int) string {
 
 	// Empty state
 	if noteCount == 0 {
-		if p.searchQuery != "" {
+		if p.searchQuery() != "" {
 			// No matches for search - show create prompt
 			sb.WriteString(styles.Muted.Render("No matches"))
 			sb.WriteString("\n\n")
@@ -199,7 +200,7 @@ func (p *Plugin) listHeader(width, noteCount int) notesListHeader {
 		return notesListHeader{}
 	}
 	count := fmt.Sprintf("%d", noteCount)
-	if p.searchQuery != "" {
+	if p.searchQuery() != "" {
 		count = fmt.Sprintf("%d/%d", noteCount, len(p.notes))
 	}
 	count = styles.Muted.Render(count)
@@ -410,7 +411,7 @@ func (p *Plugin) renderEditorStatusHeader(width int) string {
 	}
 
 	leftText := ""
-	if p.noteSearchMode || p.noteSearchQuery != "" {
+	if p.noteSearchMode || p.noteSearchQuery() != "" {
 		leftText = p.renderNoteSearchPrompt()
 	} else if p.previewMode {
 		if p.markdownView {
@@ -598,21 +599,20 @@ func (p *Plugin) renderError() string {
 }
 
 // renderSearchInput renders the search input line.
-func (p *Plugin) renderSearchInput() string {
-	var sb strings.Builder
-
-	// Prefix: "/" to indicate search mode
-	sb.WriteString(styles.Muted.Render("/"))
-
-	// Query text
-	sb.WriteString(styles.Body.Render(p.searchQuery))
-
-	// Cursor (only when in search mode)
-	if p.searchMode {
-		sb.WriteString(styles.ListCursor.Render("_"))
-	}
-
-	return sb.String()
+//
+// It draws through queryfield.RenderRow, so the note list's `/` row is the row
+// the rest of the app shows. The match count is not repeated here — the list
+// header already carries `matched/total` — and the × is not drawn: this row
+// has no registered hit region, and a control nothing listens to is worse than
+// no control.
+func (p *Plugin) renderSearchInput(width int) string {
+	row, _ := queryfield.RenderRow(width, queryfield.Row{
+		Query:       p.searchQuery(),
+		Cursor:      p.searchField.Cursor(),
+		Focused:     p.searchMode,
+		Placeholder: "search notes…",
+	})
+	return row
 }
 
 // Note status icon constants

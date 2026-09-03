@@ -40,7 +40,7 @@ func TestEditorPasteMarksDirtyAndStartsOneDebounce(t *testing.T) {
 func TestSearchPasteInsertsAndRescoresOnce(t *testing.T) {
 	p := newPastePlugin(t)
 	p.searchMode = true
-	p.searchQuery = "pre"
+	p.searchField.SetQuery("pre")
 	p.notes = []Note{
 		{ID: "n1", Title: "prefix match", Content: "body"},
 		{ID: "n2", Title: "other", Content: "nope"},
@@ -50,8 +50,8 @@ func TestSearchPasteInsertsAndRescoresOnce(t *testing.T) {
 	if cmd != nil {
 		t.Fatal("search paste should rescore synchronously")
 	}
-	if p.searchQuery != "prefix match" {
-		t.Fatalf("searchQuery = %q, want newlines converted to spaces", p.searchQuery)
+	if p.searchQuery() != "prefix match" {
+		t.Fatalf("searchQuery = %q, want newlines converted to spaces", p.searchQuery())
 	}
 	if len(p.filteredNotes) != 1 || p.filteredNotes[0].Note.ID != "n1" {
 		t.Fatalf("search paste rescored incorrectly: %+v", p.filteredNotes)

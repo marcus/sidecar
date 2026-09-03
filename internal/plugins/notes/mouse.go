@@ -1068,7 +1068,7 @@ func (p *Plugin) registerListItemRegions() {
 
 	// Calculate visible range
 	headerLines := 2 // title + blank breathing row
-	if p.searchMode || p.searchQuery != "" {
+	if p.searchMode || p.searchQuery() != "" {
 		headerLines++ // + search input
 	}
 	contentHeight := p.height - 2 - headerLines // -2 for borders

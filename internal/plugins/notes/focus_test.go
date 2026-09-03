@@ -125,15 +125,15 @@ func TestNotesTabOutOfTheNotePaneClearsItsSearch(t *testing.T) {
 	p := twoPaneNotes()
 	p.activePane = PaneEditor
 	p.noteSearchCommitted = true
-	p.noteSearchQuery = "needle"
+	p.noteSearchField.SetQuery("needle")
 
 	p.handleKey(tea.KeyPressMsg{Code: tea.KeyTab})
 	if p.activePane != PaneList {
 		t.Fatalf("tab from the note pane focused %v, want the list", p.activePane)
 	}
-	if p.noteSearchCommitted || p.noteSearchQuery != "" {
+	if p.noteSearchCommitted || p.noteSearchQuery() != "" {
 		t.Fatalf("tab left the in-note search standing (committed=%v, query=%q)",
-			p.noteSearchCommitted, p.noteSearchQuery)
+			p.noteSearchCommitted, p.noteSearchQuery())
 	}
 }
 

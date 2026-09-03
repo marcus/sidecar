@@ -300,7 +300,7 @@ func TestOptimisticCreateFailureRestoresExactSnapshotAndFutureLoadsWin(t *testin
 	_, _ = p.Update(tea.KeyPressMsg{Code: 'z', Text: "z"})
 	p.viewFilter = FilterArchived
 	p.searchMode = true
-	p.searchQuery = "changed while pending"
+	p.searchField.SetQuery("changed while pending")
 	p.markdownView = false
 	close(controlled.createRelease)
 	failed := (<-result).(NoteSavedMsg)
@@ -314,8 +314,8 @@ func TestOptimisticCreateFailureRestoresExactSnapshotAndFutureLoadsWin(t *testin
 	if p.cursor != 0 || p.scrollOff != 3 || p.activePane != PaneList || !p.previewMode {
 		t.Fatalf("create rollback navigation = cursor %d scroll %d pane %v preview %v", p.cursor, p.scrollOff, p.activePane, p.previewMode)
 	}
-	if p.viewFilter != FilterActive || p.searchMode || p.searchQuery != "" || !p.markdownView {
-		t.Fatalf("create rollback mode/filter = filter %v search=%v/%q markdown=%v", p.viewFilter, p.searchMode, p.searchQuery, p.markdownView)
+	if p.viewFilter != FilterActive || p.searchMode || p.searchQuery() != "" || !p.markdownView {
+		t.Fatalf("create rollback mode/filter = filter %v search=%v/%q markdown=%v", p.viewFilter, p.searchMode, p.searchQuery(), p.markdownView)
 	}
 	if p.editorTextarea.Value() != beforeTextarea.Value() || p.selection != beforeSelection {
 		t.Fatalf("create rollback editor mismatch: value=%q selection=%+v", p.editorTextarea.Value(), p.selection)

@@ -24,6 +24,7 @@ import (
 	"github.com/marcus/sidecar/internal/mouse"
 	"github.com/marcus/sidecar/internal/msg"
 	"github.com/marcus/sidecar/internal/plugin"
+	"github.com/marcus/sidecar/internal/queryfield"
 	"github.com/marcus/sidecar/internal/state"
 	"github.com/marcus/sidecar/internal/styles"
 	"github.com/marcus/sidecar/internal/tdsetup"
@@ -122,10 +123,13 @@ type Plugin struct {
 	// g key state for g g sequence
 	pendingG bool
 
-	// Search state (NV-style)
-	searchMode    bool        // true when search input is focused
-	searchQuery   string      // current search query
-	filteredNotes []NoteMatch // filtered results
+	// Search state (NV-style). The query is the app's shared query field, so
+	// the bar edits like every other `/` bar: the caret moves, alt+backspace
+	// deletes a word, home and end work, and a paste arrives whole.
+	// searchQuery() reads it.
+	searchMode    bool             // true when search input is focused
+	searchField   queryfield.Field // current search query
+	filteredNotes []NoteMatch      // filtered results
 
 	// Editor state
 	editorNote     *Note          // The note being edited (nil = no note open)
@@ -165,7 +169,7 @@ type Plugin struct {
 	// In-note search (preview pane). List search is searchMode/searchQuery.
 	noteSearchMode      bool
 	noteSearchCommitted bool
-	noteSearchQuery     string
+	noteSearchField     queryfield.Field
 	noteSearchMatches   []noteSearchMatch
 	noteSearchCursor    int
 
@@ -411,7 +415,7 @@ func (p *Plugin) Init(ctx *plugin.Context) error {
 	}
 	p.pendingG = false
 	p.searchMode = false
-	p.searchQuery = ""
+	p.searchField.Reset()
 	p.filteredNotes = nil
 	p.clearNoteSearch()
 	p.mutation = nil
@@ -1302,7 +1306,7 @@ func (p *Plugin) completeNoteNavigation(id string, filter NoteFilter, notes []No
 	finish := func() tea.Cmd {
 		p.viewFilter = filter
 		p.searchMode = false
-		p.searchQuery = ""
+		p.searchField.Reset()
 		p.filteredNotes = nil
 		p.notes = p.reconcileMutation(notes)
 		p.cursor = index
@@ -1346,6 +1350,11 @@ func (p *Plugin) handlePaste(msg tea.PasteMsg) (plugin.Plugin, tea.Cmd) {
 		p.pasteIntoSearch(msg.Content)
 		return p, nil
 	}
+	// The in-note search bar is a text input too, and it owns the preview's
+	// keyboard while it is taking text.
+	if p.handleNoteSearchPaste(msg.Content) {
+		return p, nil
+	}
 	if p.activePane == PaneEditor && p.editorNote != nil {
 		if p.viewFilter != FilterActive {
 			return p, readOnlyPasteToast(p.viewFilter)
@@ -1359,11 +1368,14 @@ func (p *Plugin) handlePaste(msg tea.PasteMsg) (plugin.Plugin, tea.Cmd) {
 }
 
 func (p *Plugin) pasteIntoSearch(content string) {
-	normalized := strings.ReplaceAll(content, "\r\n", "\n")
-	normalized = strings.ReplaceAll(normalized, "\r", "\n")
-	normalized = strings.ReplaceAll(normalized, "\n", " ")
-	p.searchQuery += normalized
-	p.updateFilteredNotes()
+	p.searchField.Focus()
+	before := p.searchQuery()
+	// The field's own sanitizer collapses newlines and tabs, because a query
+	// bar is one line; the paste lands at the caret rather than at the end.
+	p.searchField.HandlePaste(tea.PasteMsg{Content: content})
+	if p.searchQuery() != before {
+		p.updateFilteredNotes()
+	}
 }
 
 func (p *Plugin) pasteIntoEditor(content string) (plugin.Plugin, tea.Cmd) {
@@ -1494,7 +1506,7 @@ func (p *Plugin) applySavedContent(msg NoteContentSavedMsg) {
 		}
 		return p.notes[i].UpdatedAt.After(p.notes[j].UpdatedAt)
 	})
-	if p.searchQuery != "" {
+	if p.searchQuery() != "" {
 		p.updateFilteredNotes()
 	}
 	for i := range p.notes {
@@ -1585,7 +1597,8 @@ func (p *Plugin) handleKey(msg tea.KeyPressMsg) (plugin.Plugin, tea.Cmd) {
 	// Enter search mode with /
 	if key == "/" {
 		p.searchMode = true
-		p.searchQuery = ""
+		p.searchField.Reset()
+		p.searchField.Focus()
 		p.updateFilteredNotes()
 		return p, nil
 	}
@@ -2292,7 +2305,7 @@ func (p *Plugin) toggleMarkdownView() {
 	p.markdownView = !p.markdownView
 	p.invalidateViewSurface()
 	p.ensureViewSurface()
-	if p.noteSearchMode && p.noteSearchQuery != "" {
+	if p.noteSearchMode && p.noteSearchQuery() != "" {
 		p.updateNoteSearchMatches()
 	}
 	visual := p.viewSurface.VisualRowForSource(a.SourceLine, a.SourceCol)
@@ -2706,15 +2719,26 @@ func (p *Plugin) removeExportIfUnowned(path string) {
 	}
 }
 
+// searchQuery is the note list search bar's text.
+func (p *Plugin) searchQuery() string { return p.searchField.Query() }
+
 // handleSearchKey processes keyboard input in search mode.
+//
+// The list bar answers its own keys first — esc leaves, enter is NV's
+// select-or-create, and ctrl+n/ctrl+p and the arrows walk the results — and
+// everything else is the shared query field's, which is where cursor movement,
+// word ops, home, end and paste come from.
 func (p *Plugin) handleSearchKey(msg tea.KeyPressMsg) (plugin.Plugin, tea.Cmd) {
+	// searchMode is what means "this bar owns the keyboard", so the field's
+	// focus is derived from it rather than tracked twice.
+	p.searchField.Focus()
 	key := msg.String()
 
 	switch key {
 	case "esc":
 		// Exit search mode, clear query, show all notes
 		p.searchMode = false
-		p.searchQuery = ""
+		p.searchField.Reset()
 		p.filteredNotes = nil
 		p.cursor = 0
 		p.scrollOff = 0
@@ -2722,8 +2746,8 @@ func (p *Plugin) handleSearchKey(msg tea.KeyPressMsg) (plugin.Plugin, tea.Cmd) {
 
 	case "enter":
 		// NV behavior: if exact match exists, select it; otherwise create new note
-		if p.searchQuery != "" {
-			exactMatch := FindExactTitleMatch(p.notes, p.searchQuery)
+		if p.searchQuery() != "" {
+			exactMatch := FindExactTitleMatch(p.notes, p.searchQuery())
 			if exactMatch != nil {
 				// Select the exact match and open in editor
 				for i, n := range p.notes {
@@ -2733,7 +2757,7 @@ func (p *Plugin) handleSearchKey(msg tea.KeyPressMsg) (plugin.Plugin, tea.Cmd) {
 					}
 				}
 				p.searchMode = false
-				p.searchQuery = ""
+				p.searchField.Reset()
 				p.filteredNotes = nil
 				p.scrollOff = 0
 				if cmd := p.loadNoteIntoEditor(); cmd != nil {
@@ -2763,7 +2787,7 @@ func (p *Plugin) handleSearchKey(msg tea.KeyPressMsg) (plugin.Plugin, tea.Cmd) {
 					}
 				}
 				p.searchMode = false
-				p.searchQuery = ""
+				p.searchField.Reset()
 				p.filteredNotes = nil
 				p.scrollOff = 0
 				if cmd := p.loadNoteIntoEditor(); cmd != nil {
@@ -2783,17 +2807,17 @@ func (p *Plugin) handleSearchKey(msg tea.KeyPressMsg) (plugin.Plugin, tea.Cmd) {
 				}
 			} else {
 				// No matches - create new note with query as title
-				title := p.searchQuery
+				title := p.searchQuery()
 				// Clear search state before creating
 				p.searchMode = false
-				p.searchQuery = ""
+				p.searchField.Reset()
 				p.filteredNotes = nil
 				return p, p.createNoteWithTitle(title)
 			}
 		}
 		// Exit search mode and clear query after selection
 		p.searchMode = false
-		p.searchQuery = ""
+		p.searchField.Reset()
 		p.filteredNotes = nil
 		p.scrollOff = 0
 		return p, nil
@@ -2816,18 +2840,13 @@ func (p *Plugin) handleSearchKey(msg tea.KeyPressMsg) (plugin.Plugin, tea.Cmd) {
 		}
 		return p, nil
 
-	case "backspace":
-		// Remove last rune from query
-		if q := []rune(p.searchQuery); len(q) > 0 {
-			p.searchQuery = string(q[:len(q)-1])
-			p.updateFilteredNotes()
-		}
-		return p, nil
-
 	default:
-		// Add character to search query (only printable runes)
-		if r := []rune(msg.Text); len(r) > 0 && r[0] >= 32 {
-			p.searchQuery += msg.Text
+		// Everything else is the field's: text, the caret keys, word ops, home
+		// and end. ctrl+n/ctrl+p and the arrows above still walk the result
+		// list, which is what the field leaves unclaimed anyway.
+		before := p.searchQuery()
+		p.searchField.HandleKey(msg)
+		if p.searchQuery() != before {
 			p.updateFilteredNotes()
 		}
 		return p, nil
@@ -2836,15 +2855,15 @@ func (p *Plugin) handleSearchKey(msg tea.KeyPressMsg) (plugin.Plugin, tea.Cmd) {
 
 // updateFilteredNotes updates the filtered notes list based on current query.
 func (p *Plugin) updateFilteredNotes() {
-	p.filteredNotes = FilterNotes(p.notes, p.searchQuery)
+	p.filteredNotes = FilterNotes(p.notes, p.searchQuery())
 	// Reset cursor to 0 (or clamp if needed)
 	p.cursor = 0
 	p.scrollOff = 0
 
 	// NV behavior: if exact match exists, select it automatically
-	if p.searchQuery != "" {
+	if p.searchQuery() != "" {
 		for i, match := range p.filteredNotes {
-			if ExactTitleMatch(p.searchQuery, match.Note) {
+			if ExactTitleMatch(p.searchQuery(), match.Note) {
 				p.cursor = i
 				break
 			}
@@ -2854,7 +2873,7 @@ func (p *Plugin) updateFilteredNotes() {
 
 // getDisplayNotes returns the notes to display (filtered or all).
 func (p *Plugin) getDisplayNotes() []Note {
-	if p.searchQuery != "" && len(p.filteredNotes) > 0 {
+	if p.searchQuery() != "" && len(p.filteredNotes) > 0 {
 		notes := make([]Note, len(p.filteredNotes))
 		for i, m := range p.filteredNotes {
 			notes[i] = m.Note
