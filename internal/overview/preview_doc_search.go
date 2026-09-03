@@ -113,6 +113,17 @@ func (m *Model) previewDocFindActive() bool {
 	return m.docPaneFocused() && m.preview.doc.mode == nil && m.preview.doc.view().SearchActive()
 }
 
+// WorkspacesDocFindPaste offers a bracketed paste to the in-file search bar of
+// the focused preview document. The bar is a text field like any other, so it
+// takes a paste exactly as it takes typed characters; docview declines when no
+// search is taking text and the paste carries on down the app's routing.
+func (m *Model) WorkspacesDocFindPaste(msg tea.PasteMsg) (bool, tea.Cmd) {
+	if m == nil || !m.previewDocFindActive() {
+		return false, nil
+	}
+	return m.preview.doc.view().HandleSearchPaste(msg)
+}
+
 // closePreviewDocSearch drops the surface and gives the document back the
 // keyboard.
 func (m *Model) closePreviewDocSearch() {

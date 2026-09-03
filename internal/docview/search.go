@@ -8,8 +8,8 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/marcus/sidecar/internal/plugin"
+	"github.com/marcus/sidecar/internal/queryfield"
 	"github.com/marcus/sidecar/internal/styles"
-	"github.com/marcus/sidecar/internal/ui"
 )
 
 // In-file search for a document pane.
@@ -52,9 +52,15 @@ const (
 )
 
 // searchState is everything a live search knows.
+//
+// The query is a queryfield.Field rather than a string, so the bar edits like
+// every other query bar in the app: the caret moves, alt+backspace deletes a
+// word, home and end work, and a paste arrives whole. The field is focused
+// while the query is being typed and blurred once it is committed, which is
+// what makes n and N navigation rather than text.
 type searchState struct {
 	phase   searchPhase
-	query   string
+	field   queryfield.Field
 	matches []Match
 	cursor  int
 
@@ -78,6 +84,7 @@ func (m *Model) StartSearch() {
 		return
 	}
 	m.search = searchState{phase: searchTyping}
+	m.search.field.Focus()
 	m.clampScroll()
 	m.bumpVisualRevision()
 }
@@ -111,7 +118,7 @@ func (m *Model) SearchQuery() string {
 	if m == nil {
 		return ""
 	}
-	return m.search.query
+	return m.search.field.Query()
 }
 
 // SearchMatches is the current match set, recomputed first if the document or
@@ -151,31 +158,31 @@ func (m *Model) HandleSearchKey(msg tea.KeyMsg) (bool, tea.Cmd) {
 	defer m.bumpVisualRevision()
 	key := press.String()
 
-	// Esc always leaves search entirely, from either phase.
+	// Esc always leaves search entirely, from either phase. This is the one key
+	// the field is never offered: an in-file search is a mode over a document,
+	// not a filter that survives beside a list, and the field's clear-then-blur
+	// would make leaving it a two-press gesture.
 	if key == "esc" {
 		m.CloseSearch()
 		return true, nil
 	}
 
 	if m.search.phase == searchTyping {
-		switch key {
-		case "enter":
-			if m.search.query != "" {
+		if key == "enter" {
+			if m.search.field.Query() != "" {
 				m.search.phase = searchCommitted
+				m.search.field.Blur()
 			}
-		case "backspace":
-			if m.search.query != "" {
-				runes := []rune(m.search.query)
-				m.search.query = string(runes[:len(runes)-1])
-				m.updateMatches()
-			}
-		default:
-			// Everything printable is query text, including n and N: while
-			// typing there is nothing to navigate yet.
-			if text := ui.PrintableKeyText(press); text != "" {
-				m.search.query += text
-				m.updateMatches()
-			}
+			return true, nil
+		}
+		// Everything else is the field's: printable text (including n and N,
+		// which have nothing to navigate yet), the caret keys, word ops, home
+		// and end. A live search still consumes what the field refuses, so a
+		// stray key cannot scroll the document underneath.
+		before := m.search.field.Query()
+		m.search.field.HandleKey(press)
+		if m.search.field.Query() != before {
+			m.updateMatches()
 		}
 		return true, nil
 	}
@@ -201,6 +208,23 @@ func (m *Model) HandleSearchKey(msg tea.KeyMsg) (bool, tea.Cmd) {
 		m.CloseSearch()
 	case "j", "down", "k", "up", "ctrl+d", "pgdown", "ctrl+u", "pgup", "g", "home", "G", "end":
 		m.HandleKey(press)
+	}
+	return true, nil
+}
+
+// HandleSearchPaste puts a bracketed paste into the query while it is being
+// typed, and reports whether search took it. A committed search has no text
+// input on screen, so a paste there belongs to whatever the host would give it
+// to next.
+func (m *Model) HandleSearchPaste(msg tea.PasteMsg) (bool, tea.Cmd) {
+	if m == nil || m.search.phase != searchTyping {
+		return false, nil
+	}
+	defer m.bumpVisualRevision()
+	before := m.search.field.Query()
+	m.search.field.HandlePaste(msg)
+	if m.search.field.Query() != before {
+		m.updateMatches()
 	}
 	return true, nil
 }
@@ -238,11 +262,11 @@ func (m *Model) computeMatches() {
 	m.search.cursor = 0
 	m.search.key = m.currentLayoutKey()
 	m.search.valid = true
-	if m.search.query == "" {
+	if m.search.field.Query() == "" {
 		return
 	}
 
-	query := strings.ToLower(m.search.query)
+	query := strings.ToLower(m.search.field.Query())
 	for line := 0; line < display.lineCount(); line++ {
 		text := strings.ToLower(display.lineText(line))
 		for start := 0; start < len(text); {
@@ -325,7 +349,7 @@ func (m *Model) decorateRow(row string, visualRow int) string {
 // is preserved: the highlight is injected between the escape sequences rather
 // than replacing them.
 func (m *Model) highlightRow(row string, visualRow int) string {
-	if !m.searchActive() || m.search.query == "" {
+	if !m.searchActive() || m.search.field.Query() == "" {
 		return row
 	}
 	m.ensureMatches()
@@ -357,30 +381,40 @@ func (m *Model) highlightRow(row string, visualRow int) string {
 	return InjectHighlights(row, ranges, m.search.cursor)
 }
 
-// searchBar is the one row docview owns when search is live: `/ query█ (3/17)
-// [n/N]`. Rendering it here rather than in each host is what makes overview
-// inherit the whole feature without a line of surface code.
+// searchBar is the one row docview owns when search is live: `/ query▌` with
+// the match count and, once committed, the `[n/N]` hint pinned to the right.
+// Rendering it here rather than in each host is what makes overview inherit the
+// whole feature without a line of surface code.
+//
+// It draws through queryfield.RenderRow, so the pane's search bar is the app's
+// query bar: the same prompt, the same idle-versus-focused colours, and the
+// caret drawn where the caret actually is. The match count is this surface's
+// own right cell. The × is not drawn: docview owns no hit map — its hosts
+// register rects through exported getters — and a control nothing listens to is
+// worse than no control.
 func (m *Model) searchBar() string {
 	m.ensureMatches()
-	cursor := "█"
 	info := ""
-	if m.search.phase == searchCommitted {
-		cursor = ""
-	}
 	switch {
 	case len(m.search.matches) > 0:
-		info = fmt.Sprintf(" (%d/%d)", m.search.cursor+1, len(m.search.matches))
+		info = fmt.Sprintf("(%d/%d)", m.search.cursor+1, len(m.search.matches))
 		if m.search.phase == searchCommitted {
 			info += " [n/N]"
 		}
-	case m.search.query != "":
-		info = " (0 matches)"
+	case m.search.field.Query() != "":
+		info = "(0 matches)"
 	}
-	// MarginBottom is dropped: the bar is exactly one row, and the margin the
-	// modal title style carries would make View return a row more than the
-	// height it was given.
-	style := styles.ModalTitle.MarginBottom(0)
-	return style.Render(fmt.Sprintf(" / %s%s%s", m.search.query, cursor, info))
+	if info != "" {
+		info = styles.Muted.Render(info)
+	}
+	row, _ := queryfield.RenderRow(m.width, queryfield.Row{
+		Query:       m.search.field.Query(),
+		Cursor:      m.search.field.Cursor(),
+		Focused:     m.search.phase == searchTyping,
+		Placeholder: "search…",
+		Right:       info,
+	})
+	return row
 }
 
 // lineCount is how many content lines the layout holds.

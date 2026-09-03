@@ -2184,6 +2184,15 @@ func (p *Plugin) update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 		if p.paneLayoutModal != nil {
 			break
 		}
+		// A live in-file search bar in a document pane owns the keyboard, and
+		// it is a text field: it takes a paste exactly as it takes typed
+		// characters, before the sidebar filter or the terminal see it.
+		if handled, cmd := p.handleDocFindPaste(msg); handled {
+			if cmd != nil {
+				cmds = append(cmds, cmd)
+			}
+			break
+		}
 		// v2: bracketed paste arrives as a dedicated message. A focused list
 		// filter is a text input and takes the paste first; otherwise it goes
 		// to tmux when in interactive mode.

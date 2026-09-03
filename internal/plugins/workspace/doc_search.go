@@ -96,6 +96,18 @@ func (p *Plugin) docFindActive() bool {
 	return doc.view().SearchActive()
 }
 
+// handleDocFindPaste offers a bracketed paste to the in-file search bar of the
+// focused document pane. The bar is a text field like any other, so it takes a
+// paste exactly as it takes typed characters; docview declines when no search
+// is taking text and the paste carries on to the sidebar filter or the
+// terminal.
+func (p *Plugin) handleDocFindPaste(msg tea.PasteMsg) (bool, tea.Cmd) {
+	if !p.docFindActive() {
+		return false, nil
+	}
+	return p.focusedDocPane().view().HandleSearchPaste(msg)
+}
+
 // docPaneByLeaf finds a pane by its tree leaf, which is how a wrapped async
 // message names the pane that issued it.
 func (p *Plugin) docPaneByLeaf(leafID int) *docPane {
