@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/marcus/sidecar/internal/agentcatalog"
 	"github.com/marcus/sidecar/internal/mouse"
 	"github.com/marcus/sidecar/internal/workspaceops"
@@ -420,13 +421,13 @@ func clickKindRow(t *testing.T, f *Form, width, idx int) string {
 	return ""
 }
 
-// A click on the short toggle lands on the segment it was over, with no host
-// glue in between, and reports the control rather than a row ID a host has no
-// branch for.
-func TestKindClickPicksTheSegment(t *testing.T) {
+// A click lands on the row it was over, with no host glue in between, and
+// reports the control rather than a row ID a host has no branch for. A
+// Workspaces catalog is five rows, which draws as the vertical list.
+func TestKindClickPicksTheRow(t *testing.T) {
 	f := Open(testOpts(KindShell))
 	if action := clickKindRow(t, f, 52, 1); action != FieldKind {
-		t.Fatalf("clicking a kind segment returned %q, want %s", action, FieldKind)
+		t.Fatalf("clicking a kind row returned %q, want %s", action, FieldKind)
 	}
 	if f.Kind() != KindWorktree {
 		t.Fatalf("click on Worktree = %v, want Worktree", f.Kind())
@@ -441,6 +442,35 @@ func TestKindClickPicksTheSegment(t *testing.T) {
 	// steer what the pointer just used.
 	if got := f.Build(52).FocusedID(); got != FieldKind {
 		t.Fatalf("focus after a kind click = %q, want %s", got, FieldKind)
+	}
+}
+
+// The pane-only catalog is short enough to draw as the segmented toggle, which
+// is the shape a plugin host's Open Pane modal wears. It is a separate case
+// from the list because the two shapes register their hit regions differently:
+// one region per row against one region per column span, and only this one can
+// put two choices on the same screen line.
+func TestKindClickPicksTheSegmentInThePaneCatalog(t *testing.T) {
+	opts := testOpts(KindFile)
+	opts.PaneKindsOnly = true
+
+	shape := Open(opts)
+	if len(shape.rows) >= 5 {
+		t.Fatalf("the pane catalog has %d rows, which no longer draws segmented", len(shape.rows))
+	}
+	view := ansi.Strip(shape.Build(70).Render(100, 44, mouse.NewHandler()))
+	if !strings.Contains(view, "File") || !strings.Contains(view, "|") || strings.Contains(view, "❯") {
+		t.Fatalf("the pane catalog did not draw as a segmented toggle:\n%s", view)
+	}
+
+	for i, row := range shape.rows {
+		click := Open(opts)
+		if action := clickKindRow(t, click, 70, i); action != FieldKind {
+			t.Fatalf("clicking segment %d returned %q, want %s", i, action, FieldKind)
+		}
+		if click.Kind() != row.Kind {
+			t.Fatalf("click on segment %d = %v, want %v", i, click.Kind(), row.Kind)
+		}
 	}
 }
 
