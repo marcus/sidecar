@@ -124,6 +124,36 @@ func TestBodyCacheIsKeyedOnTheRendererStyle(t *testing.T) {
 	}
 }
 
+// The detail card carries the document's own identity, in the resource card's
+// meta style, wherever the title has not already said it.
+func TestDetailCardShowsTheDocumentIdentity(t *testing.T) {
+	host := &fakeHost{page: testPage(3), doc: resource.Document{
+		Title:    "Fixture row",
+		Identity: "rc:notes:1",
+		Subtitle: "results · 2026-08-14",
+		Status:   &resource.Status{Label: "exact", Tone: resource.ToneSuccess},
+	}}
+	m := newTestModel(t, host)
+	c, _ := m.ActiveCollection()
+	s := m.state(c)
+	s.query = "dex"
+	run(t, m, m.list(c, s, false))
+	press(t, m, "enter")
+
+	view := strip(m.View())
+	for _, want := range []string{"Fixture row", "rc:notes:1", "results · 2026-08-14", "exact"} {
+		if !strings.Contains(view, want) {
+			t.Fatalf("the detail card is missing %q:\n%s", want, view)
+		}
+	}
+	// A document whose title IS its identity does not say it twice.
+	host.doc = resource.Document{Title: "rc:notes:1", Identity: "rc:notes:1"}
+	run(t, m, m.openDocument(c.ID, "rc:notes:1", false))
+	if got := strings.Count(strip(m.View()), "rc:notes:1"); got != 1 {
+		t.Fatalf("the identity appears %d times when it is also the title", got)
+	}
+}
+
 // Every browser refuses the keys Sidecar owns, whatever placement built it. A
 // pane-mode browser used to grant a plugin `1`, `q` or `i` because only the tab
 // placement asked for the surface's reserved set (td-fcb648).

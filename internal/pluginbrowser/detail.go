@@ -108,8 +108,12 @@ func (m *Model) documentLines(width int) []string {
 	}
 	lines := []string{head, ""}
 
-	if doc.Subtitle != "" {
-		lines = append(lines, styles.Subtle.Render(ansi.Truncate(doc.Subtitle, width, "…")), "")
+	// The provider-stable identity, in the resource card's own meta style, and
+	// only where the title has not already said it. It is what a reader quotes
+	// back to the plugin's CLI, so a card that shows a title and hides it is a
+	// card the reader cannot act on outside Sidecar.
+	if meta := metaRow(doc, title, width); meta != "" {
+		lines = append(lines, meta, "")
 	}
 	if m.detail.err != nil {
 		// A refresh that failed keeps the document and says so, rather than
@@ -147,6 +151,24 @@ func (m *Model) documentLines(width int) []string {
 			"no sourceUrl — o is unavailable on this record", width, "…")))
 	}
 	return lines
+}
+
+// metaRow is the identity-and-subtitle line under the title, drawn exactly as
+// resourceview's is: the identity `Muted`, the subtitle `Subtle`, two columns
+// between them. The status is not in it, because this card carries the status
+// as a pill on the title row.
+func metaRow(doc resource.Document, title string, width int) string {
+	var parts []string
+	if doc.Identity != "" && doc.Identity != title {
+		parts = append(parts, styles.Muted.Render(doc.Identity))
+	}
+	if doc.Subtitle != "" {
+		parts = append(parts, styles.Subtle.Render(doc.Subtitle))
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+	return fitStyled(ansi.Truncate(strings.Join(parts, "  "), width, "…"), width)
 }
 
 // sectionRule is the section header the design language names: a bold label,
