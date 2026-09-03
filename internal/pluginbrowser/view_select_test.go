@@ -104,7 +104,7 @@ func TestManyChoiceFilterScrollsInsideItsWindow(t *testing.T) {
 	host.desc = desc
 	run(t, m, m.Refresh())
 	s := m.activeState()
-	s.query = "dex"
+	s.field.SetQuery("dex")
 	run(t, m, m.list(m.desc.Collections[0], s, false))
 
 	press(t, m, "v")

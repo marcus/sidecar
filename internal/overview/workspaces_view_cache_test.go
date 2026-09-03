@@ -3,7 +3,11 @@ package overview
 import (
 	"fmt"
 	"reflect"
+	"strings"
 	"testing"
+
+	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/marcus/sidecar/internal/msg"
 	"github.com/marcus/sidecar/internal/terminalperf"
@@ -210,5 +214,26 @@ func TestGlobalWorkspaceListCacheReplaysExactRegionOrder(t *testing.T) {
 	}
 	if counters.Snapshot().GlobalWorkspaceListRendered != 0 {
 		t.Fatalf("region replay rebuilt list: %+v", counters.Snapshot())
+	}
+}
+
+// M4d-a: the caret is part of the query row's picture, not a detail of the
+// text. The list cache keyed on the query and on whether the row had focus but
+// not on where the caret was, so `home`, `alt+←` and every other caret move
+// left the ▌ drawn where it used to be — and the next keystroke went in
+// somewhere the user could not see.
+func TestGlobalWorkspaceListCacheInvalidatesOnACaretMove(t *testing.T) {
+	m, _ := globalListCacheFixture(t)
+	m.workspaces.FocusFilter()
+	m.workspaces.Filter().SetQuery("space")
+	m.workspaces.Reproject()
+	if got := ansi.Strip(m.WorkspacesView(200, 50)); !strings.Contains(got, "/ space▌") {
+		t.Fatalf("the caret does not start at the end of the query:\n%s", got)
+	}
+	if result := m.workspaces.FilterKey(tea.KeyPressMsg{Code: tea.KeyHome}); result != workspacelist.KeyHandled {
+		t.Fatalf("home in the query = %v, want the field to have taken it", result)
+	}
+	if got := ansi.Strip(m.WorkspacesView(200, 50)); !strings.Contains(got, "/ ▌space") {
+		t.Fatalf("the caret move did not redraw the query row:\n%s", got)
 	}
 }

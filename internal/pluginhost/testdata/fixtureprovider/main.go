@@ -851,6 +851,17 @@ func resultsPage(query, cursor string, filters map[string]string) response {
 			Notices: []notice{{Tone: "warning", Text: "the host sent an empty required query"}}}}
 	case "nothing":
 		return response{Protocol: wire, Page: &page{Outcome: "abstained"}}
+	case "sweep":
+		// One page long enough for a host test to move a cursor down it and
+		// count what that cost. Twelve rows, one page, no cursor: the subject
+		// is the detail box following the cursor, not paging.
+		items := make([]item, 0, 12)
+		for i := 1; i <= 12; i++ {
+			items = append(items, resultItem(i, fmt.Sprintf("sweep row %d", i), "notes"))
+		}
+		return response{Protocol: wire, Page: &page{
+			Outcome: "answered", Items: items, Total: len(items),
+		}}
 	case "degraded":
 		return response{Protocol: wire, Page: &page{
 			Outcome: "degraded",

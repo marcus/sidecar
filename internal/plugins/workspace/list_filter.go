@@ -234,7 +234,7 @@ func (p *Plugin) handleFilterKey(msg tea.KeyPressMsg) (bool, tea.Cmd) {
 	if !p.filterFocused() {
 		return false, nil
 	}
-	switch p.listFilter.HandleKey(msg.String(), msg.Text) {
+	switch p.listFilter.HandleKey(msg) {
 	case workspacelist.KeyIgnored:
 		switch msg.String() {
 		case "up", "ctrl+p":

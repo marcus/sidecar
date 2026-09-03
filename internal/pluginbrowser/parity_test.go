@@ -78,14 +78,14 @@ func TestActionFlashIsClearedByANewList(t *testing.T) {
 	m := newTestModel(t, host)
 	c, _ := m.ActiveCollection()
 	s := m.state(c)
-	s.query = "dex"
+	s.setQuery("dex")
 	run(t, m, m.list(c, s, false))
 	run(t, m, m.startAction("capture"))
 	if flash, _ := m.Flash(); flash == "" {
 		t.Fatal("the act left no line at all")
 	}
 
-	s.query = "something else"
+	s.setQuery("something else")
 	run(t, m, m.list(c, s, false))
 	if flash, _ := m.Flash(); flash != "" {
 		t.Fatalf("the flash %q survived a new page", flash)
@@ -105,7 +105,7 @@ func TestBodyCacheIsKeyedOnTheRendererStyle(t *testing.T) {
 	m := newTestModel(t, host)
 	c, _ := m.ActiveCollection()
 	s := m.state(c)
-	s.query = "dex"
+	s.setQuery("dex")
 	run(t, m, m.list(c, s, false))
 	press(t, m, "enter")
 	m.View()
@@ -136,7 +136,7 @@ func TestDetailCardShowsTheDocumentIdentity(t *testing.T) {
 	m := newTestModel(t, host)
 	c, _ := m.ActiveCollection()
 	s := m.state(c)
-	s.query = "dex"
+	s.setQuery("dex")
 	run(t, m, m.list(c, s, false))
 	press(t, m, "enter")
 
@@ -148,7 +148,7 @@ func TestDetailCardShowsTheDocumentIdentity(t *testing.T) {
 	}
 	// A document whose title IS its identity does not say it twice.
 	host.doc = resource.Document{Title: "rc:notes:1", Identity: "rc:notes:1"}
-	run(t, m, m.openDocument(c.ID, "rc:notes:1", false))
+	run(t, m, m.openDocument(c.ID, "rc:notes:1", openReplace))
 	if got := strings.Count(strip(m.View()), "rc:notes:1"); got != 1 {
 		t.Fatalf("the identity appears %d times when it is also the title", got)
 	}
@@ -201,7 +201,7 @@ func TestQueryLimitSaysSoOnTheQueryRow(t *testing.T) {
 	c, _ := m.ActiveCollection()
 	s := m.state(c)
 	press(t, m, "/")
-	s.query = strings.Repeat("x", resource.MaxQueryChars)
+	s.setQuery(strings.Repeat("x", resource.MaxQueryChars))
 
 	m.HandleKey(keyPress("y"))
 	if !s.atLimit {
@@ -211,8 +211,8 @@ func TestQueryLimitSaysSoOnTheQueryRow(t *testing.T) {
 	if !strings.Contains(view, "as long as Sidecar keeps") {
 		t.Fatalf("the query row does not say the bound was reached:\n%s", view)
 	}
-	if len([]rune(s.query)) != resource.MaxQueryChars {
-		t.Fatalf("the query grew past the bound to %d runes", len([]rune(s.query)))
+	if len([]rune(s.queryText())) != resource.MaxQueryChars {
+		t.Fatalf("the query grew past the bound to %d runes", len([]rune(s.queryText())))
 	}
 
 	m.HandleKey(keyPress("backspace"))
@@ -254,7 +254,7 @@ func TestAnUnqueriedRequiredSearchOffersNoCoverageCard(t *testing.T) {
 	// Once the query has run, the page has made a claim and the card is back.
 	c, _ := m.ActiveCollection()
 	s := m.state(c)
-	s.query = "rows"
+	s.setQuery("rows")
 	host.page = pluginhost.Page{
 		Outcome: pluginhost.OutcomeDegraded,
 		Items:   testPage(2).Items,

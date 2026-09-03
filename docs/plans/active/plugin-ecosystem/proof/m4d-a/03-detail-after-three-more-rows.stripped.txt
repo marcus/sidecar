@@ -1,0 +1,45 @@
+ ◱ Sidecar │   Sessions     Activity     Fixture                                                                             ↖ sidecar   Select Project ▾  ·  ⚙
+╭───────────────────────────────────────────────────────────────────────────────────────────────╮ ╭────────────────────────────────────────────────────────────╮
+│ Fixture · Results                                                  ⇅ Relevance · Everything   │┃│ Fixture row rc:notes:7				exact  │
+│                                                                                               │┃│                                                            │
+│ / sweep                                                               12 results   answered × │┃│ rc:notes:7  results · 2026-08-14     			│
+│                                                                                               │┃│                                                            │
+│     #  TITLE         SOURCE          EXCERPT                                                  │┃│ Collection  results                                        │
+│   ───  ────────────  ──────────────  ────────────────────────────────────────────────  ─────  │┃│ Locator     rc:notes:7                                     │
+│     1  sweep row 1   notes           …sweep row 1 appears here…                        exact  │┃│                                                            │
+│     2  sweep row 2   notes           …sweep row 2 appears here…                        exact  │┃│                                                            │
+│     3  sweep row 3   notes           …sweep row 3 appears here…                        exact  │┃│   Deterministic detail for  rc:notes:7 .                   │
+│     4  sweep row 4   notes           …sweep row 4 appears here…                        exact  │┃│ ── Evidence ─────────────────────────────────────────────  │
+│     5  sweep row 5   notes           …sweep row 5 appears here…                        exact  │┃│                                                            │
+│     6  sweep row 6   notes           …sweep row 6 appears here…                        exact  │┃│   Evidence for rc:notes:7.                                 │
+│ ❯   7  sweep row 7   notes           …sweep row 7 appears here…                        exact  │┃│ ── Attributes ───────────────────────────────────────────  │
+│     8  sweep row 8   notes           …sweep row 8 appears here…                        exact  │┃│ Source  notes                                              │
+│     9  sweep row 9   notes           …sweep row 9 appears here…                        exact  │┃│ ── Timeline ─────────────────────────────────────────────  │
+│    10  sweep row 10  notes           …sweep row 10 appears here…                       exact  │┃│ 2w ago   Note added · first                                │
+│    11  sweep row 11  notes           …sweep row 11 appears here…                       exact  │┃│ 2w ago   Linked from td-3fa2c1                             │
+│    12  sweep row 12  notes           …sweep row 12 appears here…                       exact  │┃│ ── Ambiguous ────────────────────────────────────────────  │
+│                                                                                               │┃│ body wins                                                  │
+│                                                                                               │┃│                                                            │
+│                                                                                               │┃│ no sourceUrl — o is unavailable on this record             │
+│                                                                                               │┃│                                                            │
+│                                                                                               │┃│                                                            │
+│                                                                                               │┃│                                                            │
+│                                                                                               │┃│                                                            │
+│                                                                                               │┃│                                                            │
+│                                                                                               │┃│                                                            │
+│                                                                                               │┃│                                                            │
+│                                                                                               │┃│                                                            │
+│                                                                                               │┃│                                                            │
+│                                                                                               │┃│                                                            │
+│                                                                                               │┃│                                                            │
+│                                                                                               │┃│                                                            │
+│                                                                                               │┃│                                                            │
+│                                                                                               │┃│                                                            │
+│                                                                                               │┃│                                                            │
+│                                                                                               │┃│                                                            │
+│                                                                                               │┃│                                                            │
+│                                                                                               │┃│                                                            │
+│ ───────────────────────────────────────────────────────────────────────────────────────────── │┃│                                                            │
+│ 12 shown                                                                                      │┃│                                                            │
+╰───────────────────────────────────────────────────────────────────────────────────────────────╯ ╰────────────────────────────────────────────────────────────╯
+ j, k  Move   enter  Open   /  Query   v  View   r  Refresh   a  Actions   o  Source   +  Grow   -  Shrink   1-5  plugins          fixture · results · answered

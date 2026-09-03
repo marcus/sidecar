@@ -60,7 +60,7 @@ func TestFilterIDsMayContainAColon(t *testing.T) {
 	host.desc = desc
 	run(t, m, m.Refresh())
 	s := m.activeState()
-	s.query = "dex"
+	s.setQuery("dex")
 	run(t, m, m.list(m.desc.Collections[0], s, false))
 
 	before := len(host.lists)

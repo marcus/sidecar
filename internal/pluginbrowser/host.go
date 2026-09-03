@@ -44,6 +44,11 @@ type Calls struct {
 	// plugin reads is safe. Nil means no context at all.
 	Context func() *pluginhost.Context
 
+	// Cancel drops whatever the host has in flight for a pane key, killing its
+	// process group. A browser calls it for its own keys when it closes; a nil
+	// Cancel means the host keeps no in-flight calls to drop.
+	Cancel func(paneKey string)
+
 	// Now is the clock relative timestamps are measured against. Nil means
 	// time.Now; a test supplies its own so a timeline renders the same string
 	// on every run.
@@ -77,8 +82,13 @@ type ListCall struct {
 type GetCall struct {
 	Instance string
 	Browser  uint64
-	Params   pluginhost.GetParams
-	Context  *pluginhost.Context
+	// PaneKey identifies the asking detail box. A second get for the same key
+	// supersedes the first, which kills the earlier call's process group; that
+	// is what makes a detail box that follows the cursor cost one process
+	// rather than one per row.
+	PaneKey string
+	Params  pluginhost.GetParams
+	Context *pluginhost.Context
 	// Refresh bypasses cached freshness for this call.
 	Refresh bool
 
@@ -143,4 +153,12 @@ type DescribedMsg struct{}
 // having a pane cancel the tab's page out from under it.
 func paneKey(browser uint64, instance, collection string) string {
 	return "pluginbrowser\x00" + strconv.FormatUint(browser, 10) + "\x00" + instance + "\x00" + collection
+}
+
+// detailPaneKey is the identity a get is superseded by. The detail box shows
+// one document at a time, so one browser's box is one key whatever collection
+// the row came from: moving the cursor is one reader changing its mind, and the
+// process answering the row it left has nothing to come back to.
+func detailPaneKey(browser uint64, instance string) string {
+	return "pluginbrowser-detail\x00" + strconv.FormatUint(browser, 10) + "\x00" + instance
 }

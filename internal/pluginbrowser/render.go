@@ -9,6 +9,7 @@ import (
 
 	"github.com/marcus/sidecar/internal/mouse"
 	"github.com/marcus/sidecar/internal/pluginhost"
+	"github.com/marcus/sidecar/internal/queryfield"
 	"github.com/marcus/sidecar/internal/resource"
 	"github.com/marcus/sidecar/internal/styles"
 	"github.com/marcus/sidecar/internal/ui"
@@ -203,11 +204,15 @@ func (m *Model) listLines(width, height int) []string {
 	m.geom.pill = pill
 	lines := []string{title, ""}
 	if c.Search != pluginhost.SearchNone {
-		row, outcome := m.queryRow(c, s, width)
+		row, outcome, clear := m.queryRow(c, s, width)
 		m.geom.query = mouse.Rect{Y: len(lines), W: width, H: 1}
 		if outcome.W > 0 {
 			outcome.Y = len(lines)
 			m.geom.outcome = outcome
+		}
+		if clear.W > 0 {
+			clear.Y = len(lines)
+			m.geom.clear = clear
 		}
 		lines = append(lines, row, "")
 	}
@@ -259,7 +264,7 @@ func clampGeom(g *frameGeom, height int) {
 	}
 	g.notices = notices
 	if g.query.Y >= height {
-		g.query, g.outcome = mouse.Rect{}, mouse.Rect{}
+		g.query, g.outcome, g.clear = mouse.Rect{}, mouse.Rect{}, mouse.Rect{}
 	}
 }
 
@@ -388,15 +393,17 @@ func viewTitle(c pluginhost.Collection, id string) (string, bool) {
 // it is taking text, and the count and outcome right-aligned. It reports where
 // that right-hand cell landed so the frame can make the outcome clickable.
 //
-// It goes through workspacelist.RenderQueryRow rather than imitating it, so
+// It goes through queryfield.RenderRow rather than imitating it, so
 // this row and the workspace sidebar's cannot drift on what a focused query
 // bar looks like.
 //
-// The rect it reports is a target only when the cell in it is the outcome and
-// the outcome has something behind it. A cell nothing opens must register
-// nothing: a region for a control that is not there is a hole in the query row,
-// where a click is otherwise `/`.
-func (m *Model) queryRow(c pluginhost.Collection, s *collectionState, width int) (string, mouse.Rect) {
+// It reports two rects: where the outcome cell landed, and where the × clear
+// control landed. Each is a target only where the control behind it exists —
+// the outcome only when there is a coverage card to open, the × only when there
+// is a query to drop. A cell nothing opens must register nothing: a region for
+// a control that is not there is a hole in the query row, where a click is
+// otherwise `/`.
+func (m *Model) queryRow(c pluginhost.Collection, s *collectionState, width int) (string, mouse.Rect, mouse.Rect) {
 	right := m.outcomeSummary(c, s)
 	clickable := right != "" && m.hasCoverage()
 	if s.atLimit {
@@ -405,17 +412,20 @@ func (m *Model) queryRow(c pluginhost.Collection, s *collectionState, width int)
 		right = styles.Body.Foreground(styles.Warning).Render("query is as long as Sidecar keeps")
 		clickable = false
 	}
-	row := workspacelist.RenderQueryRow(width, workspacelist.QueryRow{
-		Query:       s.query,
-		Focused:     s.editing,
+	row, rects := queryfield.RenderRow(width, queryfield.Row{
+		Query:       s.queryText(),
+		Cursor:      s.field.Cursor(),
+		Focused:     s.editing(),
 		Placeholder: queryPlaceholder(c),
 		Right:       right,
+		// The × is drawn wherever there is a query to drop, and the frame
+		// registers the rect that comes back with it.
+		Clearable: true,
 	})
-	rightW := ansi.StringWidth(right)
-	if !clickable || rightW == 0 || rightW >= width {
-		return row, mouse.Rect{}
+	if !clickable {
+		rects.Right = mouse.Rect{}
 	}
-	return row, mouse.Rect{X: width - rightW, W: rightW, H: 1}
+	return row, rects.Right, rects.Clear
 }
 
 func queryPlaceholder(c pluginhost.Collection) string {
@@ -433,7 +443,7 @@ func (m *Model) outcomeSummary(c pluginhost.Collection, s *collectionState) stri
 	if s.loading {
 		return styles.Muted.Render("refreshing…")
 	}
-	if s.unqueried || (c.Search == pluginhost.SearchRequired && strings.TrimSpace(s.query) == "") {
+	if s.unqueried || (c.Search == pluginhost.SearchRequired && strings.TrimSpace(s.queryText()) == "") {
 		return styles.Subtle.Render("no query")
 	}
 	count := fmt.Sprintf("%d results", len(s.items))
@@ -567,7 +577,7 @@ func (m *Model) emptyLines(c pluginhost.Collection, s *collectionState, width in
 	if !s.loaded && s.loading {
 		return []string{styles.Muted.Render(centre("Loading…", width))}
 	}
-	if s.unqueried || (c.Search == pluginhost.SearchRequired && strings.TrimSpace(s.query) == "") {
+	if s.unqueried || (c.Search == pluginhost.SearchRequired && strings.TrimSpace(s.queryText()) == "") {
 		return []string{
 			styles.Title.Render(centre("This collection needs a query.", width)),
 			"",

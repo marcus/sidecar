@@ -55,9 +55,18 @@ func TestAQueryLineInACollectionPaneOwnsTheKeyboard(t *testing.T) {
 		t.Fatalf("query = %q after typing into it, want %q", got, "1")
 	}
 
-	// Leaving the query hands the keys back.
+	// Leaving the query hands the keys back. Esc clears first and releases the
+	// keyboard on the second press, which is the shared query field's contract
+	// on every surface that has one.
 	if handled, _ := p.handleResourceKey(keyPressMsg("esc")); !handled {
 		t.Fatal("esc in the query line was not handled")
+	}
+	if !p.ConsumesTextInput() || view.Browser().PaneQuery() != "" {
+		t.Fatalf("the first esc did not clear the query: consumes=%v query=%q",
+			p.ConsumesTextInput(), view.Browser().PaneQuery())
+	}
+	if handled, _ := p.handleResourceKey(keyPressMsg("esc")); !handled {
+		t.Fatal("the second esc was not handled")
 	}
 	if p.ConsumesTextInput() {
 		t.Fatal("the pane still claims text input after the query line closed")

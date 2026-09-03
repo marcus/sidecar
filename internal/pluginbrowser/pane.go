@@ -62,7 +62,7 @@ func (m *Model) SetPaneDocument(collection, id string) tea.Cmd {
 	m.paneShape = PaneDocument
 	m.paneCollection = strings.TrimSpace(collection)
 	m.focus = FocusDetail
-	return m.openDocument(m.paneCollection, strings.TrimSpace(id), false)
+	return m.openDocument(m.paneCollection, strings.TrimSpace(id), openReplace)
 }
 
 // ArmPaneDocument points the browser at one row without fetching it. A restored
@@ -132,7 +132,7 @@ func (m *Model) paneVisibleCollections(all []pluginhost.Collection) []pluginhost
 // can see.
 func (m *Model) PaneQuery() string {
 	if s := m.paneState(); s != nil {
-		return s.query
+		return s.queryText()
 	}
 	return ""
 }
@@ -233,7 +233,7 @@ func (m *Model) applyRestore(s *collectionState) {
 		return
 	}
 	m.restore.pending = false
-	s.query = m.restore.query
+	s.setQuery(m.restore.query)
 	c, ok := m.desc.Collection(s.id)
 	if !ok {
 		return
@@ -400,7 +400,7 @@ func (m *Model) PaneRefresh() tea.Cmd {
 		if m.detail.id == "" {
 			return nil
 		}
-		return m.openDocument(m.detail.collection, m.detail.id, true)
+		return m.openDocument(m.detail.collection, m.detail.id, openRefresh)
 	case PaneCollection:
 		c, ok := m.desc.Collection(m.paneCollection)
 		if !ok {

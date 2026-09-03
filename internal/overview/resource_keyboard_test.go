@@ -52,8 +52,17 @@ func TestSessionsSurfaceReportsPaneKeyboardOwnership(t *testing.T) {
 		t.Fatalf("query = %q after typing into it, want %q", got, "1")
 	}
 
+	// Esc clears first and releases the keyboard on the second press, which is
+	// the shared query field's contract on every surface that has one.
 	if handled, _ := m.WorkspacesKey(keyPress("esc")); !handled {
 		t.Fatal("esc in the query line was not handled")
+	}
+	if !m.WorkspacesConsumesTextInput() || view.Browser().PaneQuery() != "" {
+		t.Fatalf("the first esc did not clear the query: consumes=%v query=%q",
+			m.WorkspacesConsumesTextInput(), view.Browser().PaneQuery())
+	}
+	if handled, _ := m.WorkspacesKey(keyPress("esc")); !handled {
+		t.Fatal("the second esc was not handled")
 	}
 	if m.WorkspacesConsumesTextInput() {
 		t.Fatal("the surface still claims text input after the query line closed")

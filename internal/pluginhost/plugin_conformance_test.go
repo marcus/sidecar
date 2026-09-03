@@ -1041,3 +1041,98 @@ func TestOverLimitCoverageIsTruncatedAndMarked(t *testing.T) {
 }
 
 func runeLenTest(s string) int { return len([]rune(s)) }
+
+// A second get for the same pane supersedes the first, exactly as a list does.
+// It is what makes a detail box that follows the cursor affordable: ten rows
+// cost at most one live process, and the ones the cursor left are killed rather
+// than left running to the end of their timeout.
+func TestSupersededGetForAPaneIsKilled(t *testing.T) {
+	m, _ := newFixtureManager(t)
+
+	started := make(chan struct{})
+	done := make(chan error, 1)
+	go func() {
+		close(started)
+		_, err := m.Get(context.Background(), GetRequest{
+			Instance: "fixture",
+			PaneKey:  "pluginbrowser-detail/1",
+			// The fixture sleeps ten minutes; only a kill ends it.
+			Params: GetParams{Collection: "results", ID: "mode:hang:rc:notes:1"},
+		})
+		done <- err
+	}()
+	<-started
+
+	deadline := time.After(10 * time.Second)
+	for {
+		if _, err := m.Get(context.Background(), GetRequest{
+			Instance: "fixture",
+			PaneKey:  "pluginbrowser-detail/1",
+			Params:   GetParams{Collection: "results", ID: "rc:notes:2"},
+		}); err != nil {
+			t.Fatalf("the superseding get failed: %v", err)
+		}
+		select {
+		case err := <-done:
+			if err == nil {
+				t.Fatal("the superseded get returned a document instead of being cancelled")
+			}
+			if OutcomeCode(err) != string(ReasonCanceled) && OutcomeCode(err) != string(ReasonTimeout) {
+				t.Fatalf("superseded get ended with %q, want the process group to have been killed", OutcomeCode(err))
+			}
+			return
+		case <-deadline:
+			t.Fatal("the superseded get was still running 10s after being superseded")
+		case <-time.After(50 * time.Millisecond):
+		}
+	}
+}
+
+// A get with no pane key supersedes nothing: a CLI call and a pane's call are
+// two readers, and one must not cancel the other. The unkeyed reader here is
+// slow on purpose, so the later gets overlap it rather than following it.
+func TestAGetWithNoPaneKeySupersedesNothing(t *testing.T) {
+	m, _ := newFixtureManager(t)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	done := make(chan error, 1)
+	go func() {
+		// The fixture sleeps ten minutes; only a kill ends it.
+		_, err := m.Get(ctx, GetRequest{
+			Instance: "fixture",
+			Params:   GetParams{Collection: "results", ID: "mode:hang:rc:notes:1"},
+		})
+		done <- err
+	}()
+
+	if _, err := m.Get(context.Background(), GetRequest{
+		Instance: "fixture",
+		Params:   GetParams{Collection: "results", ID: "rc:notes:2"},
+	}); err != nil {
+		t.Fatalf("the second unkeyed get failed: %v", err)
+	}
+	if _, err := m.Get(context.Background(), GetRequest{
+		Instance: "fixture",
+		PaneKey:  "pluginbrowser-detail/1",
+		Params:   GetParams{Collection: "results", ID: "rc:notes:3"},
+	}); err != nil {
+		t.Fatalf("the keyed get failed: %v", err)
+	}
+	select {
+	case err := <-done:
+		t.Fatalf("the unkeyed get was ended by another reader: %v", err)
+	case <-time.After(250 * time.Millisecond):
+	}
+
+	// Its own caller can still end it, and the process must go with it.
+	cancel()
+	select {
+	case err := <-done:
+		if err == nil {
+			t.Fatal("the cancelled get returned a document")
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("the unkeyed get outlived its own context")
+	}
+}

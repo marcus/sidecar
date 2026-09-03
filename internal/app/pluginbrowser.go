@@ -138,6 +138,11 @@ func pluginBrowserCalls(instance string) pluginbrowser.Calls {
 				return msg
 			}
 		},
+		Cancel: func(paneKey string) {
+			if manager := ResourceProviderManager(); manager != nil {
+				manager.CancelPane(paneKey)
+			}
+		},
 		OpenURL: func(url string) tea.Cmd {
 			safe, ok := contentlink.SafeHTTPURL(url)
 			if !ok {

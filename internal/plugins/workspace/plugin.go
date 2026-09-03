@@ -64,12 +64,13 @@ const (
 	flashDuration = 1500 * time.Millisecond
 
 	// Hit region IDs
-	regionSidebar       = "sidebar"
-	regionPreviewPane   = "preview-pane"
-	regionPaneDivider   = "pane-divider"
-	regionWorktreeItem  = "workspace-item"
-	regionPreviewAction = "preview-action"
-	regionListFilter    = "workspace-list-filter"
+	regionSidebar         = "sidebar"
+	regionPreviewPane     = "preview-pane"
+	regionPaneDivider     = "pane-divider"
+	regionWorktreeItem    = "workspace-item"
+	regionPreviewAction   = "preview-action"
+	regionListFilter      = "workspace-list-filter"
+	regionListFilterClear = "workspace-list-filter-clear"
 	// Agent choice modal IDs (modal library)
 	agentChoiceListID    = "agent-choice-list"
 	agentChoiceConfirmID = "agent-choice-confirm"

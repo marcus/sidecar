@@ -342,6 +342,7 @@ type workspaceListCacheKey struct {
 	sort                        workspacelist.Sort
 	filterQuery                 string
 	filterFocused               bool
+	filterCursor                int
 	pulseFrame                  int
 	scrollbarHover              bool
 	scrollbarDrag               bool
@@ -476,6 +477,11 @@ func (m *Model) workspaceOverlayMask() uint8 {
 	return mask
 }
 
+// workspaceListKey is everything the rendered list depends on. The filter's
+// caret is one of them: it is drawn where it is, so a key that moved only the
+// caret (home, alt+left, a click into the middle of a word) must still redraw
+// the row, or the ▌ stays where it used to be and the next keystroke goes in
+// somewhere the user cannot see.
 func (m *Model) workspaceListKey(layout workspaceListLayout, x, y, contentWidth, contentHeight, panelWidth, panelHeight int, focused bool) workspaceListCacheKey {
 	filter := m.workspaces.Filter()
 	return workspaceListCacheKey{
@@ -483,7 +489,7 @@ func (m *Model) workspaceListKey(layout workspaceListLayout, x, y, contentWidth,
 		layout: layout, x: x, y: y, contentWidth: contentWidth, contentHeight: contentHeight,
 		panelWidth: panelWidth, panelHeight: panelHeight, focused: focused,
 		selectedID: m.workspaces.SelectedID(), scroll: m.workspaces.ScrollOffset(), sort: m.workspaces.Sort(),
-		filterQuery: filter.Query(), filterFocused: filter.Focused(), pulseFrame: m.pulseFrame,
+		filterQuery: filter.Query(), filterFocused: filter.Focused(), filterCursor: filter.Cursor(), pulseFrame: m.pulseFrame,
 		scrollbarHover: m.wsBar.hover, scrollbarDrag: m.wsBar.gesture.Active(),
 		sidebarVisible: m.sidebarVisible, overlayMask: m.workspaceOverlayMask(),
 	}
@@ -944,7 +950,7 @@ func (m *Model) WorkspacesKey(msg tea.KeyPressMsg) (bool, tea.Cmd) {
 		// Keys the filter ignores are navigation, which stays live while
 		// filtering. Anything else is swallowed: a focused query is a text
 		// input, and a stray key must not reach the app's global switch.
-		if m.workspaces.FilterKey(key, msg.Text) == workspacelist.KeyIgnored {
+		if m.workspaces.FilterKey(msg) == workspacelist.KeyIgnored {
 			m.navigateWorkspaces(key)
 		}
 		return true, m.previewSync()
@@ -1534,6 +1540,7 @@ func (m *Model) WorkspacesWheelAtBoundary(msg tea.MouseWheelMsg) bool {
 	if region, ok := action.Region.Data.(workspacelist.Region); ok {
 		switch region.Kind {
 		case workspacelist.RegionRow, workspacelist.RegionSort, workspacelist.RegionFilter,
+			workspacelist.RegionFilterClear,
 			workspacelist.RegionScrollbarThumb, workspacelist.RegionScrollbarTrack:
 			// The bar's column sits over the sidebar background, so a notch
 			// there scrolls the list exactly as it did before the bar was
@@ -1764,6 +1771,13 @@ func (m *Model) workspacesRegionMouse(action mouse.MouseAction) tea.Cmd {
 		case workspacelist.RegionFilter:
 			focus = m.focusList()
 			m.workspaces.FocusFilter()
+		case workspacelist.RegionFilterClear:
+			// The × clears the query and leaves the caret in it, the same as
+			// the filter-clear command. It is registered only where it is
+			// drawn, so this arm is unreachable while the query is empty.
+			focus = m.focusList()
+			m.workspaces.FocusFilter()
+			m.workspaces.ClearFilter()
 		}
 	case mouse.ActionScrollUp:
 		m.workspaces.Move(action.Delta)

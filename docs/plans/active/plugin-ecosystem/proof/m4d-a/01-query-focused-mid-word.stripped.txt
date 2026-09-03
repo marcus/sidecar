@@ -1,0 +1,45 @@
+ ◱ Sidecar │   Sessions     Activity     Fixture                                                                             ↖ sidecar   Select Project ▾  ·  ⚙
+╭───────────────────────────────────────────────────────────────────────────────────────────────╮ ╭────────────────────────────────────────────────────────────╮
+│ Fixture · Results                                                  ⇅ Relevance · Everything   │┃│ Fixture · Results                                          │
+│                                                                                               │┃│                                                            │
+│ / sweep ▌notes                                                         3 results   answered × │┃│ Press Enter on a row to open it here.			│
+│                                                                                               │┃│                                                            │
+│     #  TITLE                       SOURCE          EXCERPT                                    │┃│ A second Enter moves the keyboard into this box.           │
+│   ───  ──────────────────────────  ──────────────  ──────────────────────────────────  ─────  │┃│                                                            │
+│ ❯   1  sweep notes schema notes    notes           …sweep notes schema notes appears…  exact  │┃│ a  offers 4 plugin action(s), each confirmed by the host.  │
+│     2  sweep notes context --json  shell           …sweep notes context --json appea…  exact  │┃│                                                            │
+│     3  sweep notes retrieval eval  mail            …sweep notes retrieval eval appea…  exact  │┃│                                                            │
+│                                                                                               │┃│                                                            │
+│                                                                                               │┃│                                                            │
+│                                                                                               │┃│                                                            │
+│                                                                                               │┃│                                                            │
+│                                                                                               │┃│                                                            │
+│                                                                                               │┃│                                                            │
+│                                                                                               │┃│                                                            │
+│                                                                                               │┃│                                                            │
+│                                                                                               │┃│                                                            │
+│                                                                                               │┃│                                                            │
+│                                                                                               │┃│                                                            │
+│                                                                                               │┃│                                                            │
+│                                                                                               │┃│                                                            │
+│                                                                                               │┃│                                                            │
+│                                                                                               │┃│                                                            │
+│                                                                                               │┃│                                                            │
+│                                                                                               │┃│                                                            │
+│                                                                                               │┃│                                                            │
+│                                                                                               │┃│                                                            │
+│                                                                                               │┃│                                                            │
+│                                                                                               │┃│                                                            │
+│                                                                                               │┃│                                                            │
+│                                                                                               │┃│                                                            │
+│                                                                                               │┃│                                                            │
+│                                                                                               │┃│                                                            │
+│                                                                                               │┃│                                                            │
+│                                                                                               │┃│                                                            │
+│                                                                                               │┃│                                                            │
+│                                                                                               │┃│                                                            │
+│                                                                                               │┃│                                                            │
+│ ───────────────────────────────────────────────────────────────────────────────────────────── │┃│                                                            │
+│ 3 shown · the rest load on scroll                                                             │┃│                                                            │
+╰───────────────────────────────────────────────────────────────────────────────────────────────╯ ╰────────────────────────────────────────────────────────────╯
+ enter  Search   esc, ctrl+u  Clear   ctrl+c  quit                                                                                 fixture · results · answered
