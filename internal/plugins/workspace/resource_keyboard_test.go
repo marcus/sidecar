@@ -90,10 +90,22 @@ func TestAnOverlayInACollectionPaneBlocksHostGlobals(t *testing.T) {
 func TestACollectionPaneClaimsTheBrowsersKeys(t *testing.T) {
 	p, _ := focusedCollectionPane(t)
 
-	for _, key := range []string{"j", "k", "enter", "/", "v", "r", "a", "o"} {
+	for _, key := range []string{"j", "k", "enter", "r", "o"} {
 		if !p.ClaimsKey(key) {
 			t.Fatalf("a focused collection pane does not claim %q", key)
 		}
+	}
+	// The browser's control keys are claimed where they act. This collection
+	// declares a search and a view, so `/` and `v` are the pane's; it declares
+	// no action, so `a` is inert and stays the host's rather than being
+	// swallowed for nothing (td-fcb648).
+	for _, key := range []string{"/", "v"} {
+		if !p.ClaimsKey(key) {
+			t.Fatalf("a collection that declares one does not claim %q", key)
+		}
+	}
+	if p.ClaimsKey("a") {
+		t.Fatal("a collection with no applicable action still claims `a`")
 	}
 	// Keys the pane does not own stay the host's.
 	for _, key := range []string{"K", "@", "#", "1", "n", "tab"} {

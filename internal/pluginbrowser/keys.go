@@ -24,8 +24,14 @@ var browserOwnedKeys = map[string]bool{
 	"j": true, "k": true, "down": true, "up": true,
 	"pgdown": true, "pgup": true, "home": true, "end": true,
 	"enter": true,
-	"/":     true, "v": true, "r": true, "a": true, "o": true,
+	"/":     true, "v": true, "r": true, "a": true, "o": true, "c": true,
 }
+
+// stateBoundKeys are the browser's control keys that depend on what the
+// collection declares. They are owned — no plugin may take one — but claimed
+// only where they do something, so a key that would be inert falls through to
+// whatever the host binds instead of being swallowed (td-fcb648).
+var stateBoundKeys = map[string]bool{"/": true, "v": true, "a": true, "c": true}
 
 // OwnedKeys reports the keys the browser acts on, for a host that has to answer
 // "does this surface claim that key" without keeping its own copy of the list.
@@ -43,11 +49,32 @@ func (m *Model) ClaimsKey(key string) bool {
 	if m.overlay.open() || m.editingQuery() {
 		return true
 	}
+	if stateBoundKeys[key] {
+		return m.canAct(key)
+	}
 	if browserOwnedKeys[key] {
 		return true
 	}
 	_, granted := m.grantedKeys[key]
 	return granted
+}
+
+// canAct reports whether a state-bound control key would do anything right now.
+// It is the one answer both ClaimsKey and HandleKey read, so a key the browser
+// declines to claim is exactly a key it declines to act on.
+func (m *Model) canAct(key string) bool {
+	c, ok := m.ActiveCollection()
+	switch key {
+	case "/":
+		return ok && c.Search != pluginhost.SearchNone
+	case "v":
+		return ok && m.hasViewControl(c)
+	case "a":
+		return len(m.applicableActions()) > 0
+	case "c":
+		return m.hasCoverage()
+	}
+	return false
 }
 
 // ConsumesTextInput reports that the query line has the keyboard, so the host
@@ -79,6 +106,12 @@ func (m *Model) HandleKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	if action, ok := m.grantedKeys[key]; ok {
 		return m.startAction(action), true
 	}
+	// A control key with nothing behind it is inert and unclaimed. The footer
+	// hint is already absent — the design language says that is the whole of the
+	// message — so swallowing the key here would only make the pane look wedged.
+	if stateBoundKeys[key] && !m.canAct(key) {
+		return nil, false
+	}
 
 	switch key {
 	case "j", "down":
@@ -106,6 +139,8 @@ func (m *Model) HandleKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		return m.refreshActive(), true
 	case "a":
 		return m.openActionMenu(), true
+	case "c":
+		return m.openCoverage(), true
 	case "o":
 		return m.openSource(), true
 	}
@@ -217,10 +252,10 @@ func (m *Model) queryKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	s := m.state(c)
 	switch msg.String() {
 	case "esc":
-		s.editing = false
+		s.editing, s.atLimit = false, false
 		return nil, true
 	case "enter":
-		s.editing = false
+		s.editing, s.atLimit = false, false
 		s.debounce++
 		return m.list(c, s, false), true
 	case "backspace":
@@ -229,12 +264,14 @@ func (m *Model) queryKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		}
 		runes := []rune(s.query)
 		s.query = string(runes[:len(runes)-1])
+		s.atLimit = false
 		return m.scheduleQuery(s), true
 	case "ctrl+u":
 		if s.query == "" {
 			return nil, true
 		}
 		s.query = ""
+		s.atLimit = false
 		return m.scheduleQuery(s), true
 	}
 	text := msg.Text
@@ -244,10 +281,14 @@ func (m *Model) queryKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	// The same bound the CLI and resource.Reference.Valid enforce. A query typed
 	// past it would persist, decode, and then be refused as invalid when the
 	// tabs were rebuilt — the tab would vanish on relaunch. Refusing the
-	// keystroke is the honest answer: what is on screen is what is saved.
+	// keystroke is the honest answer: what is on screen is what is saved — and
+	// the row says so, on the row that refused it, rather than leaving the pane
+	// looking wedged (td-fcb648).
 	if utf8.RuneCountInString(s.query)+utf8.RuneCountInString(text) > resource.MaxQueryChars {
+		s.atLimit = true
 		return nil, true
 	}
+	s.atLimit = false
 	s.query += text
 	return m.scheduleQuery(s), true
 }

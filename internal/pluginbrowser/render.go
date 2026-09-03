@@ -7,6 +7,7 @@ import (
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 
+	"github.com/marcus/sidecar/internal/mouse"
 	"github.com/marcus/sidecar/internal/pluginhost"
 	"github.com/marcus/sidecar/internal/resource"
 	"github.com/marcus/sidecar/internal/styles"
@@ -39,6 +40,11 @@ const (
 	cursorGutter = 2
 	// statusColumnMax bounds the reserved, unlabelled status column.
 	statusColumnMax = 24
+	// scrollbarCols is the single column each scrolling box keeps for its bar.
+	// It is reserved whether or not a thumb is in it, which is the shared
+	// renderer's own convention and what keeps content from reflowing the
+	// moment a page grows past its box.
+	scrollbarCols = 1
 )
 
 // View renders the browser, held to exactly the box it was given. A content
@@ -48,6 +54,11 @@ func (m *Model) View() string {
 	if m.width <= 0 || m.height <= 0 {
 		return ""
 	}
+	// One hit map, cleared here and rebuilt in paint order. Every frame answers
+	// for itself: a region left over from the last one is a target for something
+	// that is no longer on screen.
+	m.pointer().Clear()
+	m.geom = frameGeom{}
 	// A pane leaf shows one tab shape at a time; see pane.go for why.
 	if m.paneMode() {
 		return m.paneView()
@@ -59,14 +70,32 @@ func (m *Model) View() string {
 		strings.Join(m.listLines(listOuter-chromeOverhead, m.height-2), "\n"),
 		listOuter, m.height, listActive)
 	if detailOuter <= 0 {
+		m.registerRegions(mouse.Rect{W: listOuter, H: m.height}, mouse.Rect{}, mouse.Rect{})
 		return m.overlayView(ui.FitBlock(list, m.width, m.height))
 	}
 	detailActive := m.focused && m.focus == FocusDetail && m.innerFocusActive()
 	detail := styles.RenderPanel(
 		strings.Join(m.detailLines(detailOuter-chromeOverhead, m.height-2), "\n"),
 		detailOuter, m.height, detailActive)
-	joined := lipgloss.JoinHorizontal(lipgloss.Top, list, strings.Repeat(" ", paneGap), detail)
+	// The gap between two boxes is a rail, not a blank column: it is the same
+	// handle the pane tree draws, in the same three states.
+	rail := ui.RenderHandle(m.height, true, ui.HandleStateFrom(m.hoverRail, m.railDragging()))
+	joined := lipgloss.JoinHorizontal(lipgloss.Top, list, rail, detail)
+	m.registerRegions(
+		mouse.Rect{W: listOuter, H: m.height},
+		mouse.Rect{X: listOuter + paneGap, W: detailOuter, H: m.height},
+		// Widened one cell into each neighbour's border, as DividerHitBox does
+		// for a pane-tree rail. The cell either side is a border, never a
+		// header row, so nothing clickable is masked.
+		mouse.Rect{X: listOuter - 1, W: paneGap + 2, H: m.height},
+	)
 	return m.overlayView(ui.FitBlock(joined, m.width, m.height))
+}
+
+// railDragging reports that the split is being dragged right now, which is what
+// paints the handle in its drag colour.
+func (m *Model) railDragging() bool {
+	return m.mouse != nil && m.mouse.IsDragging() && m.mouse.DragRegion() == regionRail
 }
 
 // ViewIsSelfConstrained reports that View already returns exactly the box it
@@ -86,7 +115,7 @@ func (m *Model) split() (list, detail int) {
 	if m.width < detailFloor*2 {
 		return m.width, 0
 	}
-	list = m.width * listSharePercent / 100
+	list = m.width * m.listShare() / 100
 	detail = m.width - list - paneGap
 	if detail < detailFloor {
 		return m.width, 0
@@ -101,7 +130,7 @@ func (m *Model) split() (list, detail int) {
 // step moves by and what the scroll window is measured against.
 func (m *Model) tableRows() int {
 	listOuter, _ := m.split()
-	w := listOuter - chromeOverhead
+	w := scrolledWidth(listOuter - chromeOverhead)
 	h := m.height - 2
 	rows := h - m.listChromeRows(w)
 	if m.rowLines(w) > 1 {
@@ -111,6 +140,16 @@ func (m *Model) tableRows() int {
 		return 1
 	}
 	return rows
+}
+
+// scrolledWidth is the columns content keeps once the scrollbar's own column is
+// reserved. The column is reserved whether or not there is a thumb in it, which
+// is what stops the table reflowing the moment a page grows past its box.
+func scrolledWidth(width int) int {
+	if width-scrollbarCols < 1 {
+		return max0(width)
+	}
+	return width - scrollbarCols
 }
 
 func (m *Model) rowLines(width int) int {
@@ -158,38 +197,114 @@ func (m *Model) listLines(width, height int) []string {
 	}
 	s := m.state(c)
 
-	lines := []string{m.titleRow(c, width), ""}
+	title, pill := m.titleRow(c, width)
+	m.geom.pill = pill
+	lines := []string{title, ""}
 	if c.Search != pluginhost.SearchNone {
-		lines = append(lines, m.queryRow(c, s, width), "")
+		row, outcome := m.queryRow(c, s, width)
+		m.geom.query = mouse.Rect{Y: len(lines), W: width, H: 1}
+		if outcome.W > 0 {
+			outcome.Y = len(lines)
+			m.geom.outcome = outcome
+		}
+		lines = append(lines, row, "")
 	}
 
+	bodyTop := len(lines)
 	body := m.tableBlock(c, s, width, height-len(lines)-1-len(s.notices)-1)
+	shiftGeom(&m.geom, bodyTop)
 	lines = append(lines, body...)
 
 	lines = append(lines, styles.Muted.Render(strings.Repeat("─", width)))
 	for _, notice := range s.notices {
+		m.geom.notices = append(m.geom.notices, mouse.Rect{Y: len(lines), W: width, H: 1})
 		lines = append(lines, m.noticeLine(notice, width))
 	}
 	lines = append(lines, m.summaryRow(c, s, width))
+	clampGeom(&m.geom, height)
 	return fitLines(lines, width, height)
 }
 
-// titleRow is the pane's first inner row: the surface's identity on the left,
-// the View control right-aligned. Sidecar never writes a title into a border.
-func (m *Model) titleRow(c pluginhost.Collection, width int) string {
-	left := styles.Title.Render(ansi.Truncate(m.Name()+" · "+c.Title, width, "…"))
-	if !m.hasViewControl(c) {
-		return left
+// shiftGeom moves the table block's own coordinates into the list box's, which
+// is the one place the two frames of reference meet.
+func shiftGeom(g *frameGeom, top int) {
+	for i := range g.rows {
+		g.rows[i].rect.Y += top
 	}
-	// The same degradation ladder the workspace list's sort pill uses: the
-	// control sheds its word before it sheds its glyph.
-	for _, label := range []string{m.viewPillLabel(c), workspacelist.SortGlyph} {
-		pill := styles.RenderPillWithStyle(label, styles.Button, nil)
-		if ansi.StringWidth(left)+2+ansi.StringWidth(pill) <= width {
-			return padBetween(left, pill, width)
+	g.listBar.track.Y += top
+	g.listBar.thumb.Y += top
+}
+
+// clampGeom drops anything the box did not have room for. fitLines cuts the
+// block to height, and a target on a row that was cut is a target for something
+// nobody can see.
+func clampGeom(g *frameGeom, height int) {
+	rows := g.rows[:0]
+	for _, row := range g.rows {
+		if row.rect.Y < height {
+			if row.rect.Y+row.rect.H > height {
+				row.rect.H = height - row.rect.Y
+			}
+			rows = append(rows, row)
 		}
 	}
-	return left
+	g.rows = rows
+	notices := g.notices[:0]
+	for _, notice := range g.notices {
+		if notice.Y < height {
+			notices = append(notices, notice)
+		}
+	}
+	g.notices = notices
+	if g.query.Y >= height {
+		g.query, g.outcome = mouse.Rect{}, mouse.Rect{}
+	}
+}
+
+// titleRow is the pane's first inner row: the surface's identity on the left,
+// the View control right-aligned, and the control's placement so the frame can
+// give it a hit rect. Sidecar never writes a title into a border.
+//
+// The control is placed through ui.ReserveHeaderControls, which is what keeps
+// it whole: a pill clipped to "⇅ Relev…" is a target whose meaning a reader
+// cannot recover but whose click still fires. The rung that does not fit is
+// dropped entirely, and its hit rect with it.
+func (m *Model) titleRow(c pluginhost.Collection, width int) (string, mouse.Rect) {
+	titleText := m.Name() + " · " + c.Title
+	left := styles.Title.Render(ansi.Truncate(titleText, width, "…"))
+	if !m.hasViewControl(c) {
+		return left, mouse.Rect{}
+	}
+	titleW := ansi.StringWidth(ansi.Truncate(titleText, width, "…"))
+	// The same three-rung ladder the workspace list's header uses: the control
+	// sheds its applied view before its sort word, and its sort word before its
+	// glyph.
+	for _, label := range m.viewPillLadder(c) {
+		pill := styles.RenderPillWithStyle(label, styles.Button, nil)
+		pillW := ansi.StringWidth(pill)
+		reserve := ui.ReserveHeaderControls(width, ui.HeaderControl{Width: pillW})
+		if len(reserve.Controls) == 0 || reserve.Controls[0].Width == 0 {
+			continue
+		}
+		col := reserve.Controls[0].Col
+		if col < titleW+1 {
+			continue
+		}
+		row := left + strings.Repeat(" ", col-titleW) + pill
+		return row, mouse.Rect{X: col, W: pillW, H: 1}
+	}
+	return left, mouse.Rect{}
+}
+
+// viewPillLadder is the control's forms, widest first.
+func (m *Model) viewPillLadder(c pluginhost.Collection) []string {
+	full := m.viewPillLabel(c)
+	word := workspacelist.SortGlyph + " " + sortLabel(c, m.state(c).sortKey)
+	ladder := []string{full}
+	if word != full {
+		ladder = append(ladder, word)
+	}
+	return append(ladder, workspacelist.SortGlyph)
 }
 
 // hasViewControl reports whether the collection has anything the View modal
@@ -231,26 +346,32 @@ func viewTitle(c pluginhost.Collection, id string) (string, bool) {
 	return "", false
 }
 
-// queryRow is the search line: the query on the left, the count and the
-// outcome on the right. Neither moves when a notice appears.
-func (m *Model) queryRow(c pluginhost.Collection, s *collectionState, width int) string {
-	left := styles.Muted.Render("/") + " "
-	if s.query == "" && !s.editing {
-		left += styles.Subtle.Render("  " + queryPlaceholder(c))
-	} else {
-		left += styles.Body.Render(s.query)
-		if s.editing {
-			left += styles.ListCursor.Render("▏")
-		}
-	}
+// queryRow is the search line, drawn as the app's filter row: muted prompt and
+// placeholder while idle, the title style, the text and a ▌ block caret while
+// it is taking text, and the count and outcome right-aligned. It reports where
+// that right-hand cell landed so the frame can make the outcome clickable.
+//
+// It goes through workspacelist.RenderQueryRow rather than imitating it, so
+// this row and the workspace sidebar's cannot drift on what a focused query
+// bar looks like.
+func (m *Model) queryRow(c pluginhost.Collection, s *collectionState, width int) (string, mouse.Rect) {
 	right := m.outcomeSummary(c, s)
-	if right == "" {
-		return fitStyled(left, width)
+	if s.atLimit {
+		// Query-bound feedback for a keystroke the bound refused, on the row
+		// that refused it.
+		right = styles.Body.Foreground(styles.Warning).Render("query is as long as Sidecar keeps")
 	}
-	if ansi.StringWidth(left)+2+ansi.StringWidth(right) > width {
-		return fitStyled(left, width)
+	row := workspacelist.RenderQueryRow(width, workspacelist.QueryRow{
+		Query:       s.query,
+		Focused:     s.editing,
+		Placeholder: queryPlaceholder(c),
+		Right:       right,
+	})
+	rightW := ansi.StringWidth(right)
+	if rightW == 0 || rightW >= width {
+		return row, mouse.Rect{}
 	}
-	return padBetween(left, right, width)
+	return row, mouse.Rect{X: width - rightW, W: rightW, H: 1}
 }
 
 func queryPlaceholder(c pluginhost.Collection) string {
@@ -295,18 +416,22 @@ func (m *Model) tableBlock(c pluginhost.Collection, s *collectionState, width, h
 	if height < 1 {
 		return nil
 	}
+	// The bar's column is reserved on every table, so the columns underneath do
+	// not reflow when a page grows past its box.
+	inner := scrolledWidth(width)
 	if len(s.items) == 0 {
-		return centreBlock(m.emptyLines(c, s, width), width, height)
+		return centreBlock(m.emptyLines(c, s, inner), width, height)
 	}
-	narrow := m.rowLines(width) > 1
-	cols := layoutColumns(c, s, width, narrow)
+	narrow := m.rowLines(inner) > 1
+	cols := layoutColumns(c, s, inner, narrow)
 
 	var lines []string
 	if !narrow {
-		lines = append(lines, headerRow(cols, width), headerRule(cols, width))
+		lines = append(lines, headerRow(cols, inner), headerRule(cols, inner))
 	}
-	rows := height - len(lines)
-	perRow := m.rowLines(width)
+	top := len(lines)
+	rows := height - top
+	perRow := m.rowLines(inner)
 	visible := rows / perRow
 	if visible < 1 {
 		visible = 1
@@ -317,15 +442,53 @@ func (m *Model) tableBlock(c pluginhost.Collection, s *collectionState, width, h
 		end = len(s.items)
 	}
 	for i := s.scroll; i < end; i++ {
-		lines = append(lines, m.itemRows(c, cols, s, i, width, narrow)...)
+		rendered := m.itemRows(c, cols, s, i, inner, narrow)
+		m.geom.rows = append(m.geom.rows, rowRect{
+			index: i,
+			rect:  mouse.Rect{Y: len(lines), W: inner, H: len(rendered)},
+		})
+		lines = append(lines, rendered...)
 	}
 	if s.paging {
-		lines = append(lines, styles.Subtle.Render(ansi.Truncate("  loading more…", width, "…")))
+		lines = append(lines, styles.Subtle.Render(ansi.Truncate("  loading more…", inner, "…")))
 	}
 	for len(lines) < height {
 		lines = append(lines, "")
 	}
-	return lines[:height]
+	lines = lines[:height]
+	m.geom.listBar = m.joinScrollbar(lines, top, inner, width, ui.ScrollbarParams{
+		TotalItems:   len(s.items),
+		ScrollOffset: s.scroll,
+		VisibleItems: visible,
+		TrackHeight:  max0(height - top),
+	}, m.listBar.style())
+	return lines
+}
+
+// joinScrollbar draws the shared scrollbar down the reserved column beside a
+// block of rows, in place, and reports where it landed. Nothing else in the
+// browser decides what a scrollbar looks like.
+func (m *Model) joinScrollbar(lines []string, top, inner, width int, params ui.ScrollbarParams, style ui.ScrollbarStyle) barGeom {
+	if params.TrackHeight < 1 || inner < 1 || width-inner != scrollbarCols {
+		return barGeom{}
+	}
+	bar, geo := ui.RenderScrollbarWithState(params, style)
+	if bar == "" {
+		return barGeom{}
+	}
+	cells := strings.Split(bar, "\n")
+	for i := 0; i < params.TrackHeight && top+i < len(lines); i++ {
+		lines[top+i] = fitStyled(lines[top+i], inner) + cells[i]
+	}
+	if !geo.HasThumb {
+		return barGeom{}
+	}
+	return barGeom{
+		has:    true,
+		track:  mouse.Rect{X: inner, Y: top, W: scrollbarCols, H: params.TrackHeight},
+		thumb:  mouse.Rect{X: inner, Y: top + geo.ThumbRect.Min.Y, W: scrollbarCols, H: geo.ThumbRect.Dy()},
+		params: params,
+	}
 }
 
 // setListWindow keeps the cursor inside the visible rows.

@@ -9,6 +9,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/marcus/sidecar/internal/markdown"
+	"github.com/marcus/sidecar/internal/mouse"
 	"github.com/marcus/sidecar/internal/pluginhost"
 	"github.com/marcus/sidecar/internal/resource"
 )
@@ -47,6 +48,11 @@ type collectionState struct {
 	// debounce is the newest scheduled query tick. A tick whose sequence is not
 	// this one is a keystroke the user has already typed past.
 	debounce uint64
+	// atLimit records that a keystroke was refused because the query is as long
+	// as the protocol allows. It is the query row's own feedback, cleared by the
+	// next edit that is accepted, because a bound reached silently reads as a
+	// wedged pane.
+	atLimit bool
 
 	view    string
 	sortKey string
@@ -83,11 +89,14 @@ type detailState struct {
 	scroll     int
 	generation uint64
 
-	// body is the rendered body cached per width and generation, so a resize
-	// during a drag does not re-run the markdown renderer every frame.
-	body       []string
-	bodyForW   int
-	bodyForGen uint64
+	// body is the rendered body cached per width, generation and renderer style
+	// key, so a resize during a drag does not re-run the markdown renderer every
+	// frame — and a theme change does, because the cached lines carry the old
+	// palette in their escape sequences.
+	body         []string
+	bodyForW     int
+	bodyForGen   uint64
+	bodyForStyle string
 }
 
 // Model is one protocol plugin in one content box.
@@ -151,6 +160,18 @@ type Model struct {
 	// binding validates its watch set once per generation rather than on every
 	// reconcile.
 	describeGeneration uint64
+
+	// Pointer. One handler owns the hit map, which View clears and rebuilds in
+	// paint order; geom is where the frame's targets ended up, in the
+	// coordinates of the box that drew them. See mouse.go.
+	mouse     *mouse.Handler
+	geom      frameGeom
+	listBar   browserBar
+	docBar    browserBar
+	hoverRail bool
+	// share is the list's percentage of the box. Zero until it is read from
+	// state, because a browser is built before it knows how wide it will be.
+	share int
 }
 
 // New builds a browser for one configured instance.
@@ -165,7 +186,7 @@ func New(instance, name string, calls Calls, renderer *markdown.Renderer) *Model
 	if name == "" {
 		name = instance
 	}
-	return &Model{
+	m := &Model{
 		id:           nextBrowserID.Add(1),
 		instance:     instance,
 		focused:      true,
@@ -177,7 +198,15 @@ func New(instance, name string, calls Calls, renderer *markdown.Renderer) *Model
 		grantedKeys:  make(map[string]string),
 		reservedKeys: make(map[string]bool),
 		detail:       detailState{bodyForW: -1},
+		mouse:        mouse.NewHandler(),
 	}
+	// Every browser is a Sidecar surface, so every browser refuses the keys
+	// Sidecar owns. Seeding it here rather than at one call site is what stops
+	// the next placement from forgetting: a pane-mode browser used to grant a
+	// plugin `1`, `q` or `i` because only the tab placement asked for the
+	// surface's reserved set (td-fcb648).
+	m.SetReservedKeys(surfaceReservedKeys())
+	return m
 }
 
 // nextBrowserID hands each browser a distinct identity for the lifetime of the
@@ -427,6 +456,12 @@ func (m *Model) ensureListed() tea.Cmd {
 // process: that is the protocol's rule, and it is what keeps a search box free
 // until there is something to search for.
 func (m *Model) list(c pluginhost.Collection, s *collectionState, appendPage bool) tea.Cmd {
+	if !appendPage {
+		// A new page is a new subject. The line an act left behind described the
+		// rows that were on screen when it ran, and standing beside a different
+		// query's results it is no longer true of anything (td-c2dc19).
+		m.flash, m.flashErr = "", false
+	}
 	if c.Search == pluginhost.SearchRequired && strings.TrimSpace(s.query) == "" {
 		s.items = nil
 		s.outcome = pluginhost.OutcomeAbstained
@@ -601,18 +636,23 @@ func (m *Model) applyActed(msg ActedMsg) tea.Cmd {
 		m.flash, m.flashErr = actionFailure(err), true
 		return nil
 	}
-	m.flashErr = msg.Outcome.Status != pluginhost.ActDone
-	m.flash = msg.Outcome.Message
-	if m.flash == "" {
-		if m.flashErr {
-			m.flash = "The action failed."
+	flashErr := msg.Outcome.Status != pluginhost.ActDone
+	flash := msg.Outcome.Message
+	if flash == "" {
+		if flashErr {
+			flash = "The action failed."
 		} else {
-			m.flash = "Done."
+			flash = "Done."
 		}
 	}
-	if m.flashErr {
+	if flashErr {
+		m.flash, m.flashErr = flash, flashErr
 		return nil
 	}
+	// The line is set after the refreshes this outcome asked for, not before:
+	// a new page clears the standing line, and the refresh an act triggers is
+	// the one page the act's own line is still true of.
+	defer func() { m.flash, m.flashErr = flash, flashErr }()
 
 	var cmds []tea.Cmd
 	for _, id := range msg.Outcome.Refresh {

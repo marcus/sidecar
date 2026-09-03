@@ -5,6 +5,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/marcus/sidecar/internal/mouse"
 	"github.com/marcus/sidecar/internal/pluginhost"
 	"github.com/marcus/sidecar/internal/resource"
 	"github.com/marcus/sidecar/internal/styles"
@@ -408,13 +409,16 @@ func (m *Model) paneView() string {
 	inner := m.width - chromeOverhead
 	active := m.focused && m.innerFocusActive()
 	var lines []string
+	box := mouse.Rect{W: m.width, H: m.height}
 	if m.paneShape == PaneDocument {
 		lines = m.detailLines(inner, m.height-2)
+		m.registerRegions(mouse.Rect{}, box, mouse.Rect{})
 	} else {
 		lines = m.listLines(inner, m.height-2)
+		m.registerRegions(box, mouse.Rect{}, mouse.Rect{})
 	}
-	box := styles.RenderPanel(strings.Join(lines, "\n"), m.width, m.height, active)
-	return m.overlayView(ui.FitBlock(box, m.width, m.height))
+	panel := styles.RenderPanel(strings.Join(lines, "\n"), m.width, m.height, active)
+	return m.overlayView(ui.FitBlock(panel, m.width, m.height))
 }
 
 // paneOpenRow is Enter in pane mode: the host opens the document as a second

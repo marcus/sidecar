@@ -20,6 +20,12 @@ type State struct {
 	ConversationsSideWidth int `json:"conversationsSideWidth,omitempty"`
 	WorkspaceSidebarWidth  int `json:"workspaceSidebarWidth,omitempty"`
 	DiffTabFileListWidth   int `json:"diffTabFileListWidth,omitempty"`
+	// PluginBrowserSplit is the shared plugin browser's list share, as a
+	// percentage of the content box, keyed by plugin instance ID. It is keyed
+	// per plugin rather than held globally because two plugins' tables are two
+	// different shapes: a split dragged wide for a four-column results table is
+	// the wrong one for a two-column source list.
+	PluginBrowserSplit map[string]int `json:"pluginBrowserSplit,omitempty"`
 	// NotificationCentreWidth is the app-level right panel's width in columns.
 	// It belongs to the shell rather than a plugin, but it is the same kind of
 	// preference as the pane widths above and is persisted the same way.
@@ -581,6 +587,35 @@ func SetGitStatusSidebarWidth(width int) error {
 		current = &State{}
 	}
 	current.GitStatusSidebarWidth = width
+	mu.Unlock()
+	return Save()
+}
+
+// GetPluginBrowserSplit returns the saved list share for one plugin browser,
+// as a percentage of its content box. Returns 0 when nothing is saved for that
+// instance, which means "use the browser's default".
+func GetPluginBrowserSplit(instance string) int {
+	mu.RLock()
+	defer mu.RUnlock()
+	if current == nil || instance == "" {
+		return 0
+	}
+	return current.PluginBrowserSplit[instance]
+}
+
+// SetPluginBrowserSplit saves one plugin browser's list share.
+func SetPluginBrowserSplit(instance string, percent int) error {
+	if instance == "" {
+		return nil
+	}
+	mu.Lock()
+	if current == nil {
+		current = &State{}
+	}
+	if current.PluginBrowserSplit == nil {
+		current.PluginBrowserSplit = make(map[string]int)
+	}
+	current.PluginBrowserSplit[instance] = percent
 	mu.Unlock()
 	return Save()
 }

@@ -17,13 +17,14 @@ import (
 // Command IDs. They are what the footer's key chips are keyed by, so they are
 // stable strings rather than derived from anything a plugin says.
 const (
-	cmdMove    = "plugin-move"
-	cmdOpen    = "plugin-open"
-	cmdQuery   = "plugin-query"
-	cmdView    = "plugin-view"
-	cmdRefresh = "plugin-refresh"
-	cmdActions = "plugin-actions"
-	cmdSource  = "plugin-source"
+	cmdMove     = "plugin-move"
+	cmdOpen     = "plugin-open"
+	cmdQuery    = "plugin-query"
+	cmdView     = "plugin-view"
+	cmdRefresh  = "plugin-refresh"
+	cmdActions  = "plugin-actions"
+	cmdSource   = "plugin-source"
+	cmdCoverage = "plugin-coverage"
 
 	cmdModalMove   = "plugin-modal-move"
 	cmdModalSelect = "plugin-modal-select"
@@ -123,6 +124,7 @@ func (p *TabPlugin) Init(ctx *plugin.Context) error {
 		{"v", cmdView},
 		{"r", cmdRefresh},
 		{"a", cmdActions},
+		{"c", cmdCoverage},
 		{"o", cmdSource},
 	} {
 		ctx.Keymap.RegisterPluginBinding(b.key, b.command, context)
@@ -232,10 +234,16 @@ func (p *TabPlugin) Commands() []plugin.Command {
 			Category: plugin.CategoryActions, Context: context, Priority: 6,
 		})
 	}
+	if p.model.hasCoverage() {
+		commands = append(commands, plugin.Command{
+			ID: cmdCoverage, Name: "Coverage", Description: "What this page's claim means",
+			Category: plugin.CategoryView, Context: context, Priority: 7,
+		})
+	}
 	if p.hasSource() {
 		commands = append(commands, plugin.Command{
 			ID: cmdSource, Name: "Source", Description: "Open the source URL",
-			Category: plugin.CategoryActions, Context: context, Priority: 7,
+			Category: plugin.CategoryActions, Context: context, Priority: 8,
 		})
 	}
 	return commands
@@ -282,13 +290,16 @@ func (p *TabPlugin) ClaimsKey(key string) bool { return p.model.ClaimsKey(key) }
 // QuitKeyExits reports whether `q` reaches sidecar's quit flow.
 func (p *TabPlugin) QuitKeyExits() bool { return p.model.QuitKeyExits() }
 
-// WheelAtBoundary drops an inertia event that cannot move the surface.
+// WheelAtBoundary drops an inertia event that cannot move the surface. It is
+// answered for the box under the pointer, because that is the box the notch
+// would have scrolled.
 func (p *TabPlugin) WheelAtBoundary(msg tea.MouseWheelMsg) bool {
+	mi := msg.Mouse()
 	switch msg.Button {
 	case tea.MouseWheelUp:
-		return p.model.ScrollAtBoundary(-1)
+		return p.model.ScrollAtBoundaryAt(mi.X, mi.Y, -1)
 	case tea.MouseWheelDown:
-		return p.model.ScrollAtBoundary(1)
+		return p.model.ScrollAtBoundaryAt(mi.X, mi.Y, 1)
 	default:
 		return false
 	}
@@ -327,7 +338,9 @@ func (p *TabPlugin) ContentLinkSurfaces() []contentlink.Surface {
 	if _, ok := p.model.DetailDocument(); !ok {
 		return nil
 	}
-	w := p.detailOuter - chromeOverhead
+	// The scrollbar's reserved column is chrome, not text: a locator cannot be
+	// in it, and claiming it would put a link target under the bar.
+	w := scrolledWidth(p.detailOuter - chromeOverhead)
 	h := p.height - 2
 	if w < 1 || h < 1 {
 		return nil

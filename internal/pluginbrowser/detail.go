@@ -11,14 +11,17 @@ import (
 	"github.com/marcus/sidecar/internal/pluginhost"
 	"github.com/marcus/sidecar/internal/resource"
 	"github.com/marcus/sidecar/internal/styles"
+	"github.com/marcus/sidecar/internal/ui"
 )
 
-// detailLines is the whole detail box, already fitted to its width and height.
+// detailLines is the whole detail box, already fitted to its width and height,
+// with the shared scrollbar down its reserved column.
 func (m *Model) detailLines(width, height int) []string {
 	if width < 1 || height < 1 {
 		return nil
 	}
-	lines := m.detailBlock(width)
+	inner := scrolledWidth(width)
+	lines := m.detailBlock(inner)
 	start := m.detail.scroll
 	if start > max0(len(lines)-1) {
 		start = max0(len(lines) - 1)
@@ -30,7 +33,14 @@ func (m *Model) detailLines(width, height int) []string {
 	if end > len(lines) {
 		end = len(lines)
 	}
-	return fitLines(append([]string(nil), lines[start:end]...), width, height)
+	view := fitLines(append([]string(nil), lines[start:end]...), inner, height)
+	m.geom.docBar = m.joinScrollbar(view, 0, inner, width, ui.ScrollbarParams{
+		TotalItems:   len(lines),
+		ScrollOffset: start,
+		VisibleItems: height,
+		TrackHeight:  height,
+	}, m.docBar.style())
+	return fitLines(view, width, height)
 }
 
 // detailBlock is the unscrolled card, which is what both the viewport and the
@@ -263,20 +273,36 @@ func fieldGrid(fields []resource.Field, width int) []string {
 	return lines
 }
 
-// renderedBody renders the document's own body once per width and generation.
+// renderedBody renders the document's own body once per width, generation and
+// renderer style key. The style key is part of the key because the cached lines
+// carry their palette in their own escape sequences: without it a theme change
+// repaints everything around the body and leaves the body in the old colours
+// until a resize happens to invalidate it (td-83a3fa).
 func (m *Model) renderedBody(width int) []string {
 	doc := m.detail.doc
 	if doc.Body == nil || doc.Body.Text == "" {
 		return nil
 	}
-	if m.detail.body != nil && m.detail.bodyForW == width && m.detail.bodyForGen == m.detail.generation {
+	style := m.styleKey()
+	if m.detail.body != nil && m.detail.bodyForW == width &&
+		m.detail.bodyForGen == m.detail.generation && m.detail.bodyForStyle == style {
 		return m.detail.body
 	}
 	out := m.renderBody(doc.Body, width)
 	m.detail.body = out
 	m.detail.bodyForW = width
 	m.detail.bodyForGen = m.detail.generation
+	m.detail.bodyForStyle = style
 	return out
+}
+
+// styleKey is the renderer's palette identity, or the empty string when there
+// is no renderer to ask.
+func (m *Model) styleKey() string {
+	if m.renderer == nil {
+		return ""
+	}
+	return m.renderer.StyleKey()
 }
 
 // renderBody is the sanitized markdown path: raw HTML dropped, images inert alt
@@ -303,7 +329,7 @@ func (m *Model) maxDetailScroll() int {
 	if detailOuter <= 0 {
 		return 0
 	}
-	lines := len(m.detailBlock(detailOuter - chromeOverhead))
+	lines := len(m.detailBlock(scrolledWidth(detailOuter - chromeOverhead)))
 	maxScroll := lines - (m.height - 2)
 	if maxScroll < 0 {
 		return 0

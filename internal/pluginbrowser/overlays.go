@@ -23,6 +23,7 @@ const (
 	actionListID     = "action-list"
 	actionRunID      = "run"
 	actionCancelID   = "cancel"
+	coverageDoneID   = "coverage-done"
 	formInputPrefix  = "input:"
 	overlayModalCols = 46
 )
@@ -35,6 +36,7 @@ const (
 	overlayActions
 	overlayForm
 	overlayConfirm
+	overlayCoverage
 )
 
 // formInput is one control of an action's form. Exactly one of the four value
@@ -102,17 +104,6 @@ func (m *Model) overlayKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	return tea.Batch(cmd, m.applyOverlayAction(action)), true
 }
 
-// HandleMouse routes a mouse event into the open modal.
-func (m *Model) HandleMouse(msg tea.MouseMsg) tea.Cmd {
-	if !m.overlay.open() || m.overlay.box == nil {
-		return nil
-	}
-	if m.overlay.mouse == nil {
-		m.overlay.mouse = mouse.NewHandler()
-	}
-	return m.applyOverlayAction(m.overlay.box.HandleMouse(msg, m.overlay.mouse))
-}
-
 func (m *Model) applyOverlayAction(action string) tea.Cmd {
 	switch m.overlay.kind {
 	case overlayView:
@@ -121,6 +112,11 @@ func (m *Model) applyOverlayAction(action string) tea.Cmd {
 		return m.applyMenuAction(action)
 	case overlayForm, overlayConfirm:
 		return m.applyFormAction(action)
+	case overlayCoverage:
+		if action != "" {
+			m.closeOverlay()
+		}
+		return nil
 	}
 	return nil
 }
@@ -311,10 +307,13 @@ func (m *Model) applicableActions() []pluginhost.Action {
 
 // openActionMenu offers what the current selection can reach. A menu with one
 // entry still opens: the confirm step is the point, not the choosing.
+//
+// A selection that can reach none opens nothing and says nothing. The Actions
+// hint is already absent from the footer, and a surface that announces it has
+// nothing to offer is a design failure — the missing hint said it first.
 func (m *Model) openActionMenu() tea.Cmd {
 	actions := m.applicableActions()
 	if len(actions) == 0 {
-		m.flash, m.flashErr = "This plugin offers no action here.", false
 		return nil
 	}
 	m.overlay = overlay{kind: overlayActions, width: m.modalWidth(), actions: actions}
@@ -607,6 +606,63 @@ func indexOfChoice(decl pluginhost.ActionInput, value string) int {
 		}
 	}
 	return 0
+}
+
+// hasCoverage reports whether there is anything to explain beyond the word
+// already on the row. A page that answered with no notices has nothing more to
+// say, so the control is absent and its key is inert — restating the outcome in
+// a modal would be the same failure as announcing that there is no action here.
+func (m *Model) hasCoverage() bool {
+	s := m.activeState()
+	if s == nil || !s.loaded {
+		return false
+	}
+	return len(s.notices) > 0 || s.outcome != pluginhost.OutcomeAnswered
+}
+
+// openCoverage explains the claim the page on screen is making: the outcome
+// word, what that word means, and every notice in full rather than truncated to
+// the row it was drawn on.
+//
+// It is what the outcome cell and a notice open under the pointer, and `c`
+// opens by key, because nothing a click does may be reachable only by click.
+// M4b gives it the plugin's own per-source coverage data; the shape it has here
+// is what the host can already say honestly.
+func (m *Model) openCoverage() tea.Cmd {
+	c, ok := m.ActiveCollection()
+	if !ok || !m.hasCoverage() {
+		return nil
+	}
+	s := m.state(c)
+	m.overlay = overlay{kind: overlayCoverage, width: m.modalWidth()}
+	box := modal.New("Coverage · "+c.Title, modal.WithWidth(m.overlay.width), modal.WithHints(false)).
+		AddSection(modal.Text(string(s.outcome))).
+		AddSection(modal.Text(outcomeDefinition(s.outcome)))
+	if len(s.notices) > 0 {
+		box = box.AddSection(modal.Spacer())
+		for _, notice := range s.notices {
+			box = box.AddSection(modal.Text(noticeGlyph(notice.Tone) + "  " + notice.Text))
+		}
+	}
+	box = box.AddSection(modal.Spacer()).AddSection(modal.Buttons(modal.Btn(" Done ", coverageDoneID)))
+	m.overlay.box = box
+	m.primeOverlay(coverageDoneID)
+	return nil
+}
+
+// outcomeDefinition is Sidecar's sentence for each word in the outcome
+// vocabulary. It is the host's, not the plugin's, for the same reason
+// errorHeadline is: a plugin must not be able to reframe what its own claim
+// means.
+func outcomeDefinition(outcome pluginhost.PageOutcome) string {
+	switch outcome {
+	case pluginhost.OutcomeDegraded:
+		return "Some source that should have answered could not, so this page is not a fact about the query."
+	case pluginhost.OutcomeAbstained:
+		return "Nothing matched and every source was fine, so an empty page is a fact about the query."
+	default:
+		return "The plugin asked everything it should have, so this page is what there is."
+	}
 }
 
 // OverlayOpen reports whether a modal is up, for a host deciding whether the
