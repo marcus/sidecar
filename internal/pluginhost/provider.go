@@ -22,8 +22,8 @@
 // A process boundary is crash isolation, not a sandbox. Enabling a plugin
 // trusts that executable with the user's full OS privileges.
 //
-// See docs/reference/terminal-resource-provider-protocol.md and
-// docs/plans/active/plugin-ecosystem/protocol.md.
+// See docs/reference/plugin-protocol.md and
+// docs/reference/terminal-resource-provider-protocol.md.
 package pluginhost
 
 import (
