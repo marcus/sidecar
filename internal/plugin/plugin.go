@@ -74,6 +74,27 @@ type PaneFocusProvider interface {
 	SetPaneFocusActive(active bool)
 }
 
+// PaneFocusRingHost is an optional capability for a plugin that hands Tab and
+// Shift+Tab to the app even on a deck holding nothing but the plugin's own
+// Primary leaf. The app cycles PaneFocusStops for it there, exactly as it does
+// once a second leaf is open.
+//
+// It is opt-in because Tab is not a spare key. Files, Git and Notes each route
+// it themselves and do more with it than move focus — Notes saves the editor's
+// buffer on the way out — so a host that took Tab from a Primary-only deck on
+// the strength of two projected stops would quietly replace that. Nor can the
+// keymap answer the question: several surfaces switch panes on a hard-coded tab
+// that is registered nowhere, which internal/app already says out loud where
+// the notification centre asks the same thing. So the plugin says so itself,
+// and a plugin that says nothing keeps the key.
+type PaneFocusRingHost interface {
+	PaneFocusProvider
+
+	// HostOwnsPaneFocusRing reports that the plugin binds no Tab of its own,
+	// so the app's ring is the whole of what the key does here.
+	HostOwnsPaneFocusRing() bool
+}
+
 // ContentLinkProvider is an optional capability for plugins that expose exact
 // read-only rendered text rectangles for app-owned content-link decoration.
 // Hosts read it after View so its geometry describes the frame just rendered.

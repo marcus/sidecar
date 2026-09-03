@@ -4,6 +4,8 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+
+	"github.com/marcus/sidecar/internal/plugin"
 )
 
 // twoPanePlugin is git status in its ordinary shape: a visible sidebar and a
@@ -98,5 +100,29 @@ func TestGitStatusTabTogglesPanesUnchanged(t *testing.T) {
 	p.updateStatusDiffPane(tab)
 	if p.activePane != PaneSidebar {
 		t.Fatalf("tab from the diff pane focused %v, want the sidebar", p.activePane)
+	}
+}
+
+// Git does not hand Tab to the app's Primary-only focus ring: its own handler
+// is the whole of what the key does, on a deck with a passive leaf or without
+// one. Declaring plugin.PaneFocusRingHost here would replace that.
+func TestGitStatusKeepsItsOwnTab(t *testing.T) {
+	if _, ok := plugin.Plugin(twoPanePlugin()).(plugin.PaneFocusRingHost); ok {
+		t.Fatal("Git hands Tab to the app; its own handler is what moves the focus")
+	}
+}
+
+// With nothing selected, tab does nothing at all: Git's guard has always asked
+// for a selected diff file or a preview commit, and the ring is one stop long
+// without one.
+func TestGitStatusTabWithNothingSelectedDoesNothing(t *testing.T) {
+	p := twoPanePlugin()
+	p.selectedDiffFile = ""
+	if stops := p.PaneFocusStops(); len(stops) != 1 {
+		t.Fatalf("git with nothing selected projects %d stops, want the sidebar alone", len(stops))
+	}
+	p.updateStatus(tea.KeyPressMsg{Code: tea.KeyTab})
+	if p.activePane != PaneSidebar {
+		t.Fatalf("tab with nothing selected focused %v, want the sidebar it started on", p.activePane)
 	}
 }

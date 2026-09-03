@@ -1290,8 +1290,17 @@ func (m Model) appContentWheelAtBoundary(wheel tea.MouseWheelMsg) (boundary, own
 
 func (m *Model) handleAppContentKey(key tea.KeyPressMsg) (tea.Cmd, bool) {
 	h := m.activeContentDeck()
-	if h == nil || h.deck.Leaf(panelayout.Document)+h.deck.Leaf(panelayout.Issue)+h.deck.Leaf(panelayout.Note)+h.deck.Leaf(panelayout.Diff)+h.deck.Leaf(panelayout.Resource) == 0 {
+	if h == nil {
 		return nil, false
+	}
+	if h.deck.Leaf(panelayout.Document)+h.deck.Leaf(panelayout.Issue)+h.deck.Leaf(panelayout.Note)+h.deck.Leaf(panelayout.Diff)+h.deck.Leaf(panelayout.Resource) == 0 {
+		// A deck showing only its Primary leaf still has a ring whenever the
+		// plugin projects one, and Tab is how the app moves round every other
+		// ring it owns. Without this, a surface with two windows of its own —
+		// the plugin browser's list and the document box beside it — could be
+		// reached only by binding Tab itself, which is the app's key everywhere
+		// else. Nothing but Tab is answered here: the plugin owns its keys.
+		return m.cyclePrimaryPaneFocus(h, key)
 	}
 	leaf := panelayout.Find(h.deck.Tree(), h.deck.FocusedLeaf())
 	if leaf == nil {
@@ -1492,6 +1501,42 @@ func (h *appContentDeck) focusRing() ([]appDeckFocusStop, plugin.PaneFocusProvid
 		}
 	}
 	return ring, provider
+}
+
+// cyclePrimaryPaneFocus answers Tab for a deck holding nothing but its Primary
+// leaf, by cycling the focused plugin's own projected stops.
+//
+// Only for a plugin that has handed the key over, through
+// plugin.PaneFocusRingHost. Every other surface routes Tab itself — Files and
+// Git move to their content pane, Notes saves the editor on the way out — and
+// taking it here on the strength of two projected stops would quietly replace
+// behaviour those plugins still own. Once a second leaf is open the deck's ring
+// is larger than any one plugin's and the key is the app's outright, which is
+// the rung above this one.
+//
+// A provider with fewer than two stops declines as well: one stop is not a
+// ring, and swallowing Tab there would give the user nowhere to go.
+func (m *Model) cyclePrimaryPaneFocus(h *appContentDeck, key tea.KeyPressMsg) (tea.Cmd, bool) {
+	if key.Code != tea.KeyTab {
+		return nil, false
+	}
+	if h.info != nil || h.appContentSearchActive() {
+		return nil, false
+	}
+	provider, ok := h.plugin.(plugin.PaneFocusRingHost)
+	if !ok || !provider.HostOwnsPaneFocusRing() {
+		return nil, false
+	}
+	if len(provider.PaneFocusStops()) < 2 {
+		return nil, false
+	}
+	if consumer, ok := h.plugin.(plugin.TextInputConsumer); ok && consumer.ConsumesTextInput() {
+		// A surface taking text has the key: Tab there is the field's.
+		return nil, false
+	}
+	cmd := h.cycleCombinedFocus(key.Mod.Contains(tea.ModShift))
+	m.persistAppContentDeck(h)
+	return cmd, true
 }
 
 func (h *appContentDeck) cycleCombinedFocus(reverse bool) tea.Cmd {

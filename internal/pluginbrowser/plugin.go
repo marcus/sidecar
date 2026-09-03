@@ -17,13 +17,21 @@ import (
 // Command IDs. They are what the footer's key chips are keyed by, so they are
 // stable strings rather than derived from anything a plugin says.
 const (
-	cmdMove    = "plugin-move"
-	cmdOpen    = "plugin-open"
-	cmdQuery   = "plugin-query"
-	cmdView    = "plugin-view"
-	cmdRefresh = "plugin-refresh"
-	cmdActions = "plugin-actions"
-	cmdSource  = "plugin-source"
+	cmdMove     = "plugin-move"
+	cmdOpen     = "plugin-open"
+	cmdQuery    = "plugin-query"
+	cmdView     = "plugin-view"
+	cmdRefresh  = "plugin-refresh"
+	cmdActions  = "plugin-actions"
+	cmdSource   = "plugin-source"
+	cmdCoverage = "plugin-coverage"
+
+	// The split's keys carry sidecar's own command IDs rather than plugin-
+	// prefixed ones: they are the same command the file browser, Git and both
+	// Workspace hosts bind, and the footer and the help sheet key their chips
+	// by the ID.
+	cmdResizeGrow   = "resize-pane-grow"
+	cmdResizeShrink = "resize-pane-shrink"
 
 	cmdModalMove   = "plugin-modal-move"
 	cmdModalSelect = "plugin-modal-select"
@@ -123,7 +131,9 @@ func (p *TabPlugin) Init(ctx *plugin.Context) error {
 		{"v", cmdView},
 		{"r", cmdRefresh},
 		{"a", cmdActions},
+		{"c", cmdCoverage},
 		{"o", cmdSource},
+		{"+", cmdResizeGrow}, {"-", cmdResizeShrink},
 	} {
 		ctx.Keymap.RegisterPluginBinding(b.key, b.command, context)
 	}
@@ -232,11 +242,32 @@ func (p *TabPlugin) Commands() []plugin.Command {
 			Category: plugin.CategoryActions, Context: context, Priority: 6,
 		})
 	}
+	if p.model.hasCoverage() {
+		commands = append(commands, plugin.Command{
+			ID: cmdCoverage, Name: "Coverage", Description: "What this page's claim means",
+			Category: plugin.CategoryView, Context: context, Priority: 7,
+		})
+	}
 	if p.hasSource() {
 		commands = append(commands, plugin.Command{
 			ID: cmdSource, Name: "Source", Description: "Open the source URL",
-			Category: plugin.CategoryActions, Context: context, Priority: 7,
+			Category: plugin.CategoryActions, Context: context, Priority: 8,
 		})
+	}
+	// Last, and so the first pair a narrow footer drops: the rail is also a
+	// pointer target, and of everything here it is the one gesture that is not
+	// the only way to reach what it does.
+	if p.model.canResizeSplit() {
+		commands = append(commands,
+			plugin.Command{
+				ID: cmdResizeGrow, Name: "Grow", Description: "Grow the list",
+				Category: plugin.CategoryView, Context: context, Priority: 9,
+			},
+			plugin.Command{
+				ID: cmdResizeShrink, Name: "Shrink", Description: "Shrink the list",
+				Category: plugin.CategoryView, Context: context, Priority: 10,
+			},
+		)
 	}
 	return commands
 }
@@ -282,17 +313,26 @@ func (p *TabPlugin) ClaimsKey(key string) bool { return p.model.ClaimsKey(key) }
 // QuitKeyExits reports whether `q` reaches sidecar's quit flow.
 func (p *TabPlugin) QuitKeyExits() bool { return p.model.QuitKeyExits() }
 
-// WheelAtBoundary drops an inertia event that cannot move the surface.
+// WheelAtBoundary drops an inertia event that cannot move the surface. It is
+// answered for the box under the pointer, because that is the box the notch
+// would have scrolled.
 func (p *TabPlugin) WheelAtBoundary(msg tea.MouseWheelMsg) bool {
+	mi := msg.Mouse()
 	switch msg.Button {
 	case tea.MouseWheelUp:
-		return p.model.ScrollAtBoundary(-1)
+		return p.model.ScrollAtBoundaryAt(mi.X, mi.Y, -1)
 	case tea.MouseWheelDown:
-		return p.model.ScrollAtBoundary(1)
+		return p.model.ScrollAtBoundaryAt(mi.X, mi.Y, 1)
 	default:
 		return false
 	}
 }
+
+// HostOwnsPaneFocusRing hands Tab and Shift+Tab to the app on a deck holding
+// nothing but this browser's Primary leaf. It is the same statement
+// browserOwnedKeys makes by leaving `tab` out: the focus ring is the host's on
+// every other surface, and a protocol plugin gets it without binding anything.
+func (p *TabPlugin) HostOwnsPaneFocusRing() bool { return true }
 
 // PaneFocusStops projects the browser's two windows into the app-owned ring.
 func (p *TabPlugin) PaneFocusStops() []plugin.PaneFocusStop {
@@ -327,7 +367,9 @@ func (p *TabPlugin) ContentLinkSurfaces() []contentlink.Surface {
 	if _, ok := p.model.DetailDocument(); !ok {
 		return nil
 	}
-	w := p.detailOuter - chromeOverhead
+	// The scrollbar's reserved column is chrome, not text: a locator cannot be
+	// in it, and claiming it would put a link target under the bar.
+	w := scrolledWidth(p.detailOuter - chromeOverhead)
 	h := p.height - 2
 	if w < 1 || h < 1 {
 		return nil

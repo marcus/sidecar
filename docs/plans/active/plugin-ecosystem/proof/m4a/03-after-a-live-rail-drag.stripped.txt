@@ -1,0 +1,45 @@
+ ◱ Sidecar │   Sessions     Activity     Fixture                                                                             ↖ sidecar   Select Project ▾  ·  ⚙
+╭────────────────────────────────────────────────────────────────────────────╮ ╭───────────────────────────────────────────────────────────────────────────────╮
+│ Fixture · Results                                            ⇅ Relevance   │┃│ TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT…┃ │
+│                                                                            │┃│                                                                             ┃ │
+│ / mode:over-limit-page:dex                           500 of 550   answered │┃│ SSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSS…┃ │
+│                                                                            │┃│                                                                             │ │
+│     #  TITLE                                          SOURCE          EX…  │┃│ f0-LLLLLLLLLLLLLLLLLLLLL…                                                   │ │
+│   ───  ─────────────────────────────────────────────  ──────────────  ───  │┃│ VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV…│ │
+│        TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT…                     ┃ │┃│ f1-LLLLLLLLLLLLLLLLLLLLL…                                                   │ │
+│ ❯      row 1                                                             ┃ │┃│ VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV…│ │
+│        row 2                                                             │ │┃│ f2-LLLLLLLLLLLLLLLLLLLLL…                                                   │ │
+│        row 3                                                             │ │┃│ VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV…│ │
+│        row 4                                                             │ │┃│ f3-LLLLLLLLLLLLLLLLLLLLL…                                                   │ │
+│        row 5                                                             │ │┃│ VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV…│ │
+│        row 6                                                             │ │┃│ f4-LLLLLLLLLLLLLLLLLLLLL…                                                   │ │
+│        row 7                                                             │ │┃│ VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV…│ │
+│        row 8                                                             │ │┃│ f5-LLLLLLLLLLLLLLLLLLLLL…                                                   │ │
+│        row 9                                                             │ │┃│ VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV…│ │
+│        row 10                                                            │ │┃│ f6-LLLLLLLLLLLLLLLLLLLLL…                                                   │ │
+│        row 11                                                            │ │┃│ VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV…│ │
+│        row 12                                                            │ │┃│ f7-LLLLLLLLLLLLLLLLLLLLL…                                                   │ │
+│        row 13                                                            │ │┃│ VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV…│ │
+│        row 14                                                            │ │┃│ f8-LLLLLLLLLLLLLLLLLLLLL…                                                   │ │
+│        row 15                                                            │ │┃│ VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV…│ │
+│        row 16                                                            │ │┃│ f9-LLLLLLLLLLLLLLLLLLLLL…                                                   │ │
+│        row 17                                                            │ │┃│ VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV…│ │
+│        row 18                                                            │ │┃│ f10-LLLLLLLLLLLLLLLLLLLL…                                                   │ │
+│        row 19                                                            │ │┃│ VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV…│ │
+│        row 20                                                            │ │┃│ f11-LLLLLLLLLLLLLLLLLLLL…                                                   │ │
+│        row 21                                                            │ │┃│ VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV…│ │
+│        row 22                                                            │ │┃│ f12-LLLLLLLLLLLLLLLLLLLL…                                                   │ │
+│        row 23                                                            │ │┃│ VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV…│ │
+│        row 24                                                            │ │┃│ f13-LLLLLLLLLLLLLLLLLLLL…                                                   │ │
+│        row 25                                                            │ │┃│ VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV…│ │
+│        row 26                                                            │ │┃│ f14-LLLLLLLLLLLLLLLLLLLL…                                                   │ │
+│        row 27                                                            │ │┃│ VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV…│ │
+│        row 28                                                            │ │┃│ f15-LLLLLLLLLLLLLLLLLLLL…                                                   │ │
+│        row 29                                                            │ │┃│ VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV…│ │
+│        row 30                                                            │ │┃│ f16-LLLLLLLLLLLLLLLLLLLL…                                                   │ │
+│        row 31                                                            │ │┃│ VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV…│ │
+│        row 32                                                            │ │┃│ f17-LLLLLLLLLLLLLLLLLLLL…                                                   │ │
+│ ────────────────────────────────────────────────────────────────────────── │┃│ VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV…│ │
+│ 500 of 550 shown · the plugin sent more than Sidecar keeps                 │┃│ f18-LLLLLLLLLLLLLLLLLLLL…                                                   │ │
+╰────────────────────────────────────────────────────────────────────────────╯ ╰───────────────────────────────────────────────────────────────────────────────╯
+ j, k  Move   enter  Open   /  Query   v  View   r  Refresh   a  Actions   1-5  plugins   8/9/0  global   ?  help   q  quit        fixture · results · answered
