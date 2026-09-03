@@ -1,6 +1,10 @@
 package filebrowser
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/marcus/sidecar/internal/plugin"
+)
 
 // twoPaneBrowser is the file browser in its ordinary shape: a visible tree and
 // a preview with a file loaded in it.
@@ -99,5 +103,28 @@ func TestFileBrowserTabTogglesPanesUnchanged(t *testing.T) {
 	p.handlePreviewKey("tab")
 	if p.activePane != PaneTree {
 		t.Fatalf("tab from the preview focused %v, want the tree", p.activePane)
+	}
+}
+
+// Files does not hand Tab to the app's Primary-only focus ring: its own handler
+// is the whole of what the key does, on a deck with a passive leaf or without
+// one. Declaring plugin.PaneFocusRingHost here would replace that.
+func TestFileBrowserKeepsItsOwnTab(t *testing.T) {
+	if _, ok := plugin.Plugin(twoPaneBrowser()).(plugin.PaneFocusRingHost); ok {
+		t.Fatal("Files hands Tab to the app; its own handler is what moves the focus")
+	}
+}
+
+// With no file open, tab does nothing at all — the preview pane is not drawn,
+// so the guard has nowhere to send the focus and the ring is one stop long.
+func TestFileBrowserTabWithNothingOpenDoesNothing(t *testing.T) {
+	p := twoPaneBrowser()
+	p.previewFile = ""
+	if stops := p.PaneFocusStops(); len(stops) != 1 {
+		t.Fatalf("a browser with nothing open projects %d stops, want the tree alone", len(stops))
+	}
+	p.handleTreeKey("tab")
+	if p.activePane != PaneTree {
+		t.Fatalf("tab with no file open focused %v, want the tree it started on", p.activePane)
 	}
 }

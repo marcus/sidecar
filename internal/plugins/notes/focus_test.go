@@ -4,6 +4,8 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+
+	"github.com/marcus/sidecar/internal/plugin"
 )
 
 // twoPaneNotes is the surface with a note open in the right pane, resting in
@@ -104,5 +106,46 @@ func TestNotesTabTogglesPanesUnchanged(t *testing.T) {
 	p.handleKey(tab)
 	if p.activePane != PaneList {
 		t.Fatalf("tab from the note pane focused %v, want the list", p.activePane)
+	}
+}
+
+// Notes does not hand Tab to the app's Primary-only focus ring: its own handler
+// does more than move focus — leaving the note pane drops a committed in-note
+// search, and leaving an edit saves the buffer. Declaring
+// plugin.PaneFocusRingHost here would replace both.
+func TestNotesKeepsItsOwnTab(t *testing.T) {
+	if _, ok := plugin.Plugin(twoPaneNotes()).(plugin.PaneFocusRingHost); ok {
+		t.Fatal("Notes hands Tab to the app; its own handler is what moves the focus")
+	}
+}
+
+// Tab out of the resting note pane clears the in-note search it was showing,
+// which is the part of the key that is not focus at all.
+func TestNotesTabOutOfTheNotePaneClearsItsSearch(t *testing.T) {
+	p := twoPaneNotes()
+	p.activePane = PaneEditor
+	p.noteSearchCommitted = true
+	p.noteSearchQuery = "needle"
+
+	p.handleKey(tea.KeyPressMsg{Code: tea.KeyTab})
+	if p.activePane != PaneList {
+		t.Fatalf("tab from the note pane focused %v, want the list", p.activePane)
+	}
+	if p.noteSearchCommitted || p.noteSearchQuery != "" {
+		t.Fatalf("tab left the in-note search standing (committed=%v, query=%q)",
+			p.noteSearchCommitted, p.noteSearchQuery)
+	}
+}
+
+// With no note open there is no second window, and tab does nothing at all.
+func TestNotesTabWithNothingOpenDoesNothing(t *testing.T) {
+	p := twoPaneNotes()
+	p.editorNote = nil
+	if stops := p.PaneFocusStops(); len(stops) != 1 {
+		t.Fatalf("notes with nothing open projects %d stops, want the list alone", len(stops))
+	}
+	p.handleKey(tea.KeyPressMsg{Code: tea.KeyTab})
+	if p.activePane != PaneList {
+		t.Fatalf("tab with no note open focused %v, want the list it started on", p.activePane)
 	}
 }
