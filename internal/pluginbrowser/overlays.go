@@ -208,14 +208,14 @@ func (m *Model) openViewModal() tea.Cmd {
 	m.overlay.sortIdx = indexOfSort(c, s.sortKey)
 	m.overlay.viewIdx = indexOfView(c, s.view)
 
-	sortItems := make([]modal.ListItem, 0, len(c.Sort))
+	sortItems := make([]modal.SelectItem, 0, len(c.Sort))
 	for _, key := range c.Sort {
-		sortItems = append(sortItems, modal.ListItem{ID: "sort:" + key.ID, Label: key.Label})
+		sortItems = append(sortItems, modal.SelectItem{ID: "sort:" + key.ID, Label: key.Label})
 	}
-	viewItems := make([]modal.ListItem, 0, len(c.Views)+1)
-	viewItems = append(viewItems, modal.ListItem{ID: "view:", Label: "all"})
+	viewItems := make([]modal.SelectItem, 0, len(c.Views)+1)
+	viewItems = append(viewItems, modal.SelectItem{ID: "view:", Label: "all"})
 	for _, v := range c.Views {
-		viewItems = append(viewItems, modal.ListItem{ID: "view:" + v.ID, Label: v.Title})
+		viewItems = append(viewItems, modal.SelectItem{ID: "view:" + v.ID, Label: v.Title})
 	}
 
 	box := modal.New("View · "+c.Title, modal.WithWidth(m.overlay.width), modal.WithHints(false)).
@@ -225,7 +225,8 @@ func (m *Model) openViewModal() tea.Cmd {
 	if len(sortItems) > 0 {
 		box = box.
 			AddSection(modal.Spacer()).
-			AddSection(modal.List(viewSortListID, sortItems, &m.overlay.sortIdx, modal.WithMaxVisible(len(sortItems))))
+			AddSection(modal.Select(viewSortListID, sortItems, &m.overlay.sortIdx,
+				modal.WithMaxVisible(min(len(sortItems), maxFilterChoicesVisible))))
 	}
 	if len(c.Views) > 0 {
 		box = box.
@@ -233,7 +234,8 @@ func (m *Model) openViewModal() tea.Cmd {
 			AddSection(modal.Custom(func(int, string, string) modal.RenderedSection {
 				return modal.RenderedSection{Content: "View"}
 			}, nil)).
-			AddSection(modal.List(viewViewsListID, viewItems, &m.overlay.viewIdx, modal.WithMaxVisible(len(viewItems))))
+			AddSection(modal.Select(viewViewsListID, viewItems, &m.overlay.viewIdx,
+				modal.WithMaxVisible(min(len(viewItems), maxFilterChoicesVisible))))
 	}
 	// The filters block, after the sort list and before Done, one control per
 	// declared filter in declared order — which is the order that matters,
@@ -271,14 +273,14 @@ func (m *Model) openViewModal() tea.Cmd {
 			box = box.AddSection(modal.Input(filterTextPfx+control.decl.ID, &control.text))
 			continue
 		}
-		items := make([]modal.ListItem, 0, len(control.decl.Choices))
+		items := make([]modal.SelectItem, 0, len(control.decl.Choices))
 		for _, choice := range control.decl.Choices {
-			items = append(items, modal.ListItem{
+			items = append(items, modal.SelectItem{
 				ID:    filterChoicePfx + control.decl.ID + ":" + choice.ID,
 				Label: choice.Title,
 			})
 		}
-		box = box.AddSection(modal.List(
+		box = box.AddSection(modal.Select(
 			filterChoicePfx+control.decl.ID, items, &control.choice,
 			modal.WithMaxVisible(min(len(items), maxFilterChoicesVisible)),
 		))
@@ -297,9 +299,10 @@ func (m *Model) openViewModal() tea.Cmd {
 	return nil
 }
 
-// maxFilterChoicesVisible bounds how tall one filter's radio group draws. A
-// filter may declare 64 options; a modal that spent 64 rows on one control
-// would push every other control off the box, and the list scrolls.
+// maxFilterChoicesVisible bounds how tall ONE selector in this modal draws —
+// each filter's choices, and the sort and view lists beside them. A filter may
+// declare 64 options; a modal that spent 64 rows on one control would push
+// every other control off the box, and a Select scrolls.
 const maxFilterChoicesVisible = 6
 
 func filterFocusID(control filterControl) string {

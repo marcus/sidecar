@@ -159,9 +159,9 @@ func (m *Model) ensureViewFlyout() {
 		}
 	}()
 
-	items := make([]modal.ListItem, len(workspacelist.SortModes))
+	items := make([]modal.SelectItem, len(workspacelist.SortModes))
 	for i, mode := range workspacelist.SortModes {
-		items[i] = modal.ListItem{ID: sortActionID(mode), Label: mode.Label(), Data: mode}
+		items[i] = modal.SelectItem{ID: sortActionID(mode), Label: mode.Label(), Data: mode}
 	}
 
 	m.viewFlyout = modal.New("View",
@@ -172,7 +172,12 @@ func (m *Model) ensureViewFlyout() {
 			return modal.RenderedSection{Content: "Current sort: " + m.workspaces.Sort().Label()}
 		}, nil)).
 		AddSection(modal.Spacer()).
-		AddSection(modal.List(viewFlyoutSortListID, items, &m.viewFlyoutSortIdx, modal.WithMaxVisible(len(items)))).
+		// The list shape rather than the segmented one, because this flyout is
+		// a menu and because the project sidebar's twin flyout names a mode in
+		// a sentence ("Manual — shells and worktrees") that no segment could
+		// hold. The two surfaces are one model and must not diverge here.
+		AddSection(modal.Select(viewFlyoutSortListID, items, &m.viewFlyoutSortIdx,
+			modal.WithShape(modal.ShapeList), modal.WithMaxVisible(len(items)))).
 		// Remotes sit above the filter line because they answer the same
 		// question a step earlier: "why is that row not here?" is a question
 		// about which machines are on before it is a question about the query.
