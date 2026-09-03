@@ -354,12 +354,19 @@ func viewTitle(c pluginhost.Collection, id string) (string, bool) {
 // It goes through workspacelist.RenderQueryRow rather than imitating it, so
 // this row and the workspace sidebar's cannot drift on what a focused query
 // bar looks like.
+//
+// The rect it reports is a target only when the cell in it is the outcome and
+// the outcome has something behind it. A cell nothing opens must register
+// nothing: a region for a control that is not there is a hole in the query row,
+// where a click is otherwise `/`.
 func (m *Model) queryRow(c pluginhost.Collection, s *collectionState, width int) (string, mouse.Rect) {
 	right := m.outcomeSummary(c, s)
+	clickable := right != "" && m.hasCoverage()
 	if s.atLimit {
 		// Query-bound feedback for a keystroke the bound refused, on the row
-		// that refused it.
+		// that refused it. It is a message, not a control.
 		right = styles.Body.Foreground(styles.Warning).Render("query is as long as Sidecar keeps")
+		clickable = false
 	}
 	row := workspacelist.RenderQueryRow(width, workspacelist.QueryRow{
 		Query:       s.query,
@@ -368,7 +375,7 @@ func (m *Model) queryRow(c pluginhost.Collection, s *collectionState, width int)
 		Right:       right,
 	})
 	rightW := ansi.StringWidth(right)
-	if rightW == 0 || rightW >= width {
+	if !clickable || rightW == 0 || rightW >= width {
 		return row, mouse.Rect{}
 	}
 	return row, mouse.Rect{X: width - rightW, W: rightW, H: 1}

@@ -220,3 +220,48 @@ func TestQueryLimitSaysSoOnTheQueryRow(t *testing.T) {
 		t.Fatal("the hint outlived the edit that cleared the bound")
 	}
 }
+
+// A `search: required` collection nobody has typed into has made no claim, so
+// there is no coverage card to open and `c` is inert. The stored outcome is
+// `abstained` only because the page is empty; reading that word out would tell
+// the reader every source was fine with a query that was never run.
+func TestAnUnqueriedRequiredSearchOffersNoCoverageCard(t *testing.T) {
+	host := &fakeHost{page: testPage(3)}
+	host.described = true
+	host.status = pluginhost.Status{Instance: "fixture", State: pluginhost.StateReady}
+	host.desc = pluginhost.Description{
+		Info: pluginhost.Info{Kind: "fixture", Name: "Fixture"},
+		Collections: []pluginhost.Collection{{
+			ID: "req", Title: "Req", Search: pluginhost.SearchRequired,
+			Columns: []pluginhost.Column{{ID: "name", Label: "Name", Primary: true}},
+		}},
+	}
+	m := New("fixture", "fixture", host.calls(), nil)
+	m.SetSize(160, 45)
+	run(t, m, m.Refresh())
+
+	if m.hasCoverage() {
+		t.Fatal("a collection nobody has queried claims it has coverage to explain")
+	}
+	if m.ClaimsKey("c") {
+		t.Fatal("the browser claims `c` on a page that has explained nothing")
+	}
+	press(t, m, "c")
+	if m.overlay.kind == overlayCoverage {
+		t.Fatalf("the coverage card opened on an unqueried surface:\n%s", strip(m.View()))
+	}
+
+	// Once the query has run, the page has made a claim and the card is back.
+	c, _ := m.ActiveCollection()
+	s := m.state(c)
+	s.query = "rows"
+	host.page = pluginhost.Page{
+		Outcome: pluginhost.OutcomeDegraded,
+		Items:   testPage(2).Items,
+		Total:   2,
+	}
+	run(t, m, m.list(c, s, false))
+	if !m.hasCoverage() || !m.ClaimsKey("c") {
+		t.Fatal("a degraded page after a real query still offers no coverage card")
+	}
+}

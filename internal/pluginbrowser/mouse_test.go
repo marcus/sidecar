@@ -337,3 +337,60 @@ func longDocument() resource.Document {
 	}
 	return resource.Document{Title: "Fixture row", Identity: "rc:notes:1", Fields: fields}
 }
+
+// The query row's right-hand cell is a target only when there is a coverage
+// card behind it. A page that answered with no notices has none, so those
+// columns belong to the query row like every other column on it — a region for
+// a control that is not there would be a hole a click falls into.
+func TestTheOutcomeCellIsNoTargetWithNothingToExplain(t *testing.T) {
+	host := &fakeHost{page: testPage(3)}
+	m := loadedModel(t, host)
+	if m.hasCoverage() {
+		t.Fatal("an answered page with no notices claims there is coverage to show")
+	}
+	if regions := regionsWithID(m, regionOutcome); len(regions) != 0 {
+		t.Fatalf("the outcome cell registered %d target(s) with no card behind it: %+v", len(regions), regions)
+	}
+	// And the cell is still on the row, so this is the click landing on the
+	// query row rather than the summary having disappeared.
+	view := strip(m.View())
+	if !strings.Contains(view, "answered") {
+		t.Fatalf("the outcome word left the query row:\n%s", view)
+	}
+	query := firstRegion(t, m, regionQuery)
+	click(t, m, query.Rect.X+query.Rect.W-2, query.Rect.Y)
+	if !m.ConsumesTextInput() {
+		t.Fatal("a click on the right-hand end of the query row did not begin editing")
+	}
+}
+
+// The query-bound hint replaces the count while it stands. It is a message the
+// row is making, not a control, so it registers nothing.
+func TestTheQueryLimitHintIsNoTarget(t *testing.T) {
+	host := &fakeHost{page: pluginhost.Page{
+		Outcome: pluginhost.OutcomeDegraded,
+		Items:   testPage(3).Items,
+		Total:   3,
+		Notices: []pluginhost.Notice{{Text: "1 of 13 sources did not answer in time"}},
+	}}
+	m := loadedModel(t, host)
+	if len(regionsWithID(m, regionOutcome)) != 1 {
+		t.Fatal("a degraded page with a notice offers no outcome target to lose")
+	}
+	c, _ := m.ActiveCollection()
+	s := m.state(c)
+	s.editing = true
+	s.query = strings.Repeat("a", resource.MaxQueryChars)
+	press(t, m, "b")
+	if !s.atLimit {
+		t.Fatal("the keystroke past the bound was not refused")
+	}
+	m.View()
+	view := strip(m.View())
+	if !strings.Contains(view, "query is as long as Sidecar keeps") {
+		t.Fatalf("the refused keystroke said nothing:\n%s", view)
+	}
+	if regions := regionsWithID(m, regionOutcome); len(regions) != 0 {
+		t.Fatalf("the limit hint is registered as the outcome control: %+v", regions)
+	}
+}

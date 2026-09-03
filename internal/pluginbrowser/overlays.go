@@ -613,11 +613,27 @@ func indexOfChoice(decl pluginhost.ActionInput, value string) int {
 // say, so the control is absent and its key is inert — restating the outcome in
 // a modal would be the same failure as announcing that there is no action here.
 func (m *Model) hasCoverage() bool {
-	s := m.activeState()
+	c, ok := m.ActiveCollection()
+	if !ok {
+		return false
+	}
+	s := m.state(c)
 	if s == nil || !s.loaded {
 		return false
 	}
-	return len(s.notices) > 0 || s.outcome != pluginhost.OutcomeAnswered
+	if len(s.notices) > 0 {
+		return true
+	}
+	// A `search: required` collection nobody has typed into was never asked
+	// anything, so it has made no claim to explain. The stored outcome there is
+	// `abstained` only because the page is empty, and the row already says "no
+	// query" rather than that word; a card that read it out would tell the
+	// reader every source was fine with a query that was never run. M4b gives
+	// the browser its own unqueried state and the footer stops saying it too.
+	if c.Search == pluginhost.SearchRequired && strings.TrimSpace(s.query) == "" {
+		return false
+	}
+	return s.outcome != pluginhost.OutcomeAnswered
 }
 
 // openCoverage explains the claim the page on screen is making: the outcome
