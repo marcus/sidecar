@@ -41,6 +41,10 @@ Two rows are spent on separation rather than on content, and both are cheap in a
 
 These two are the one part of this section that is specified rather than transcribed: they were decided against the plugin-ecosystem mockups, not read out of a function, so no Go names them yet and the usual rule — the code wins — has nothing to point at. `docs/plans/active/plugin-ecosystem/mockups/recall-studio.tui.yaml` is the reference for what they look like, and any surface built to them should keep matching it.
 
+### A query bar shows its focus
+
+A query bar has two visibly different states, and the difference is more than a caret. Idle, the prompt (`/`) and the placeholder are `TextMuted`. Taking text, the prompt swaps to `styles.Title`, the text is `Body`, a `▌` block caret follows it, and the count of what the query matched against what exists is right-aligned on the same row. `workspacelist.Filter.RenderRow` is the function that draws this for the workspace sidebar and is the one any new query bar should call rather than imitate. Clicking the row focuses it; `Esc` blurs it and keeps the text.
+
 ### Gradient borders
 
 The border is not a single colour. `styles.RenderGradientBorder` walks the perimeter and asks the gradient for the colour at each border cell's own coordinates, so the corner glyphs and every dash and pipe between them carry their own hex. `styles.Gradient.PositionAt` normalises the cell into the box, projects it onto the angle's direction vector, and divides by the largest projection the box can produce, which puts the top-left corner exactly at position 0 and the bottom-right corner exactly at 1. `ColorAt` then interpolates linearly between the stops, which `NewGradient` spreads evenly from 0 to 1.
@@ -90,6 +94,8 @@ Hints are ordered by frequency of use rather than alphabetically, and they come 
 
 A standing plugin condition, meaning something that stays true until someone fixes it, is right-aligned on the same line as a toast-styled block. Transient messages are not footer material; they are notifications.
 
+Two things the footer does not carry. A condition that belongs to a surface, such as the scope a list is filtered to or the outcome of the page it shows, lives on that surface's own rows as a pill or an indicator beside the control that changes it, so the reader finds the state where they would go to change it; a sentence about it in the footer is a symptom of a surface with nowhere to put its state. And a surface never announces that it has nothing to offer. An action that does not apply is absent from the hints and inert on its key; a line such as "no action here" is a design failure, because the missing hint already said so.
+
 ## The tab strip inside a pane leaf
 
 A leaf that holds more than one document does not grow a title. Its header row *is* the tab strip. `internal/tabs/strip.go` `LayoutStrip` packs tabs left to right joined by a single column, gives leftover width to the active tab, and marks overflow with a muted `<` or `>` at the end it ran out on. Each tab is rendered through the same `styles.RenderTab` the header uses, so a leaf tab and a global tab are visibly the same control, and each carries a per-tab close control, `ui.CloseButtonLabel`, which is `×`, appended after a space inside the tab. When a tab is too narrow to hold both a label and a close control, the close control is dropped before the label is squeezed to nothing. Close regions are registered after tab regions so the `×` wins the cells it occupies.
@@ -101,6 +107,21 @@ Document tabs truncate from the start rather than the end, because the end of a 
 A split places its children as outer boxes and leaves a one-column gap between them. `paneframe.RenderDividerHandle` draws the rail in that gap through `ui.RenderHandle`: `┃` for a vertical rail, `━` for a horizontal one, with the visible bar stopped one cell short at each end so it never collides with the neighbouring panes' corners while the divider keeps its full allocated geometry. At rest the rail is `Blend(BorderMuted, BorderNormal, 0.30)`, which is subordinate to an unfocused border without dropping to the muted-border contrast; hovered it is `#00BCD4`, and while dragging `#FF9800`.
 
 The pointer target is wider than the paint. `DividerHitBox` widens the one-cell divider by one cell of the leaf on each side, on both axes. That is safe precisely because the cell either side is a leaf's own border and never its header row, which sits one cell further in, so a tab or close button is never masked. `DividerHitBoxFor` declines to take that cell from a borderless neighbour, which owns every cell in its placement.
+
+## Pointer parity
+
+Every action a key performs is reachable by the pointer, and both routes call the same method on the same model, so a click can never do something a key cannot and a keyboard-only surface is a surface with a bug. The rules a surface follows, with the Go that already implements each:
+
+- **Clicking a pane focuses it.** A click anywhere inside a pane's box moves focus there before anything else happens, through the same call the focus ring uses (`paneframe.FocusLeafAt` for a pane tree, a surface's own `SetPaneFocus` for the boxes inside one plugin). Focus is a reading of where the pointer went, so the border chrome above follows it.
+- **The wheel scrolls the box under the pointer**, not the focused one, by `mouse.WheelScrollLines` per notch. A wheel at a box's boundary is offered to the host through `WheelBoundaryConsumer` rather than lost.
+- **A scrollbar appears whenever content overflows** and is a drag target. `ui.RenderScrollbarWithState` draws it, `ui.RegionScrollbarThumb` and `ui.RegionScrollbarTrack` are its regions, and a press on the track jumps while a drag on the thumb follows, as the file browser and the Sessions surface already do.
+- **A list row selects on click and opens on a second click** on the already-selected row or on a double click, which is exactly `Enter` twice. Hover does not select.
+- **A text field focuses on click** and shows it as the query-bar rule above describes.
+- **A pill or control on a header row is a hit target.** It is placed through `ui.ReserveHeaderControls`, which is what lets it be dropped whole rather than clipped, and its region is registered from the placement so a dropped control cannot keep a live target.
+- **Two boxes inside one surface are separated by a drag rail**, drawn with `ui.RenderHandle`, widened as `paneframe.DividerHitBox` widens the pane-tree rail, and persisted through `internal/state` so the split survives a relaunch. A blank column between two boxes is a rail that has not been drawn yet.
+- **Regions are registered in paint order through `mouse.HitMap`, with the rail last**, because `HitMap.Test` scans in reverse and the smallest, most specific target must win.
+
+This section is specified, like the blank-row rule above: it was decided against the plugin browser's parity work (`docs/plans/active/plugin-ecosystem/browser-parity-and-scope.md`) rather than transcribed from one function, and the functions it names are the ones a new surface composes rather than a single one it calls.
 
 ## List rows
 

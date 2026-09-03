@@ -1,10 +1,10 @@
 # Plugin ecosystem: protocol plugins, embedded plugins, one host
 
-**Status:** M1 through M3 merged to `main` on 2026-09-03 (merge ce052436), behind the `plugin_protocol` flag; the recall reference plugin (td-26c2b4) is in review in its own repository; M4 (freeze, migration, docs site, flag flip) is next. Implemented: M1 (descriptor and generalized global host, td-01b62b), M2a (the protocol host half — `internal/pluginhost`, `plugins.external`, the fixture and conformance suite, and the `sidecar plugin` CLI — td-a6d276), M2b (the shared browser `internal/pluginbrowser` and the protocol global tab, td-0d3539) and M3 (collection and row tabs in the Resource leaf on both surfaces, the `resources` live-refresh binding, `sidecar open --plugin`, `sidecar plugin changed`, and the layout spec's `collection`/`query`, td-44fe20). M0's mockups are in [mockups/](mockups/) and the protocol revisions they surfaced are still pending the maintainer's confirmation, so none of them is implemented. M4 is proposed. Decisions settled with the maintainer on 2026-09-02. **Tracking:** td-f9f007.
+**Status:** M1 through M3 merged to `main` on 2026-09-03 (merge ce052436), behind the `plugin_protocol` flag; the recall reference plugin (td-26c2b4) is in review in its own repository; M4 is split: M4a (pointer and focus parity in the shared browser), M4b (scope filters, coverage, outcome honesty), and M4c (authoring guide and protocol reference) are proposed in [browser-parity-and-scope.md](browser-parity-and-scope.md) and M4d (freeze, migration, docs site, flag flip) follows them. Implemented: M1 (descriptor and generalized global host, td-01b62b), M2a (the protocol host half — `internal/pluginhost`, `plugins.external`, the fixture and conformance suite, and the `sidecar plugin` CLI — td-a6d276), M2b (the shared browser `internal/pluginbrowser` and the protocol global tab, td-0d3539) and M3 (collection and row tabs in the Resource leaf on both surfaces, the `resources` live-refresh binding, `sidecar open --plugin`, `sidecar plugin changed`, and the layout spec's `collection`/`query`, td-44fe20). M0's mockups are in [mockups/](mockups/) and the protocol revisions they surfaced are still pending the maintainer's confirmation, so none of them is implemented. M4 is proposed. Decisions settled with the maintainer on 2026-09-02. **Tracking:** td-f9f007.
 
 **Related:** [Terminal resource providers](../../implemented/terminal-resource-providers.md) built the executable protocol, the `Resource` leaf, and the trust posture this plan extends; its protocol stays frozen and keeps working. [Hosting Herdr plugins in Sidecar](../../deprecated/herdr-plugin-support.md) is superseded by this plan. [Pane switcher everywhere](../pane-switcher-everywhere.md) and [Cross-project td issue links](../cross-project-issue-links.md) are the two nearest live plans and neither conflicts.
 
-**Reading order:** this file, then [protocol.md](protocol.md) (the contract an external plugin author implements), then [host.md](host.md) (what changes inside Sidecar). [mockups/](mockups/) holds the M0 screen mockups once they exist.
+**Reading order:** this file, then [protocol.md](protocol.md) (the contract an external plugin author implements), then [host.md](host.md) (what changes inside Sidecar), then [browser-parity-and-scope.md](browser-parity-and-scope.md) (the M4a–M4c work in progress). [mockups/](mockups/) holds the M0 screen mockups.
 
 ## Decision first
 
@@ -103,11 +103,23 @@ Each milestone ends net-better than the tree before it, lands on main, and is ga
 - `sidecar open --plugin ID [--collection C] [--query Q] [ROW]` with `--provider` as the locator form's alias; layout spec `collection`/`query`; `contentpanes.Source` gains `ListCollection` and `GetCollectionItem`, whose remote twin runs `sidecar content read --kind resource --operation collection|item` on the host that owns the pane.
 - **Evidence:** `go test ./...` green; parity tests that the Resource viewer answers every tab shape on both surfaces and that `livepanes.Set.Kinds()` lists `resources` on both; twin keyboard-ownership tests on both surfaces (`/` then a digit reaches the query, an open overlay blocks host globals); a persistence round trip proving a collection tab restores with its query, and an isolated `tmux-drive.sh` run proving the same across a relaunch; a watched-file change re-listing within the latency window in an isolated run; `sidecar open --plugin` from a terminal pane landing beside it.
 
-### M4. Recall, freeze, migrate, document
+### M4a. Pointer and focus parity in the shared browser — proposed, td-62b81c
 
-- Recall's `sidecar-plugin` subcommand in its own repository against the draft; revise host and protocol from what it finds; freeze `sidecar.plugin/v1`.
+The browser gains the pointer model, scrollbars, drag rail, focused query row, header-control pill and Tab reachability the rest of Sidecar has, by composing `internal/mouse`, `internal/paneframe`, `ui.Scrollbar`, `workspacelist.Filter` and `ui.ReserveHeaderControls` rather than adding a second implementation of any of them. Details, evidence and the folded-in review chores are in [browser-parity-and-scope.md](browser-parity-and-scope.md#m4a-pointer-and-focus-parity-in-the-shared-browser--sidecar-only).
+
+### M4b. Scope, coverage, and honesty — proposed, td-9ca6a7 (sidecar) and td-786e42 (recall repo)
+
+Applies `filters[]`, `omitted`, `failed` and a new `coverage[]` to the protocol and the host, so the scope a list is narrowed to is visible in the pill and one keystroke wide, and a degraded page can show why. Recall declares its scope as filters and fixes the project mapping that made every documents source answer empty. Gated on four decisions listed in [browser-parity-and-scope.md](browser-parity-and-scope.md#decisions-to-confirm).
+
+### M4c. Plugin authoring guide and protocol reference — proposed, td-40eb97
+
+`docs/reference/plugin-protocol.md` becomes the single authority for the contract and `docs/guides/active/creating-plugins.md` takes an author from a CLI to a plugin that passes `sidecar plugin check`. Runs beside M4a.
+
+### M4d. Freeze, migrate, flag flip, site docs
+
+- Recall's `sidecar-plugin` subcommand (td-26c2b4, approved) has been revised against the draft once; M4b revises both again; then freeze `sidecar.plugin/v1`.
 - DEX and ongoing subcommands follow against the frozen contract, each in its own repository. Anything they cannot express is a v2 note, not a v1 change.
-- `terminalResources.providers` migration; `terminal-links` aliases; flag flip; site docs (a "Plugins" page replacing "Terminal resources", with the protocol reference linked); `docs/reference/cli.md`.
+- `terminalResources.providers` migration; `terminal-links` aliases; flag flip; site docs (a "Plugins" page replacing "Terminal resources", linking the M4c reference and guide); `docs/reference/cli.md`.
 - Move this plan set to `docs/plans/implemented/` and fix inbound links.
 - **Evidence:** recall, DEX, and ongoing each listed by `sidecar plugin list --describe` on a machine with all three; the three mockups from M0 compared against real screenshots.
 
@@ -134,7 +146,7 @@ Do not schedule these because the protocol exists:
 
 ## Protocol revisions pending from the M0 recall mockup
 
-Writing recall's screens against its real `--help` surfaced facts the draft cannot carry. Each is a proposed revision to [protocol.md](protocol.md), applied after the maintainer confirms; none blocks M1.
+Writing recall's screens against its real `--help` surfaced facts the draft cannot carry. Each is a proposed revision to [protocol.md](protocol.md), applied after the maintainer confirms. M4b applies the `failed` outcome, `omitted`, and `filters[]` rows below and adds `coverage[]`; the rest wait for M4d.
 
 | Gap | Proposed revision |
 | --- | --- |
@@ -146,6 +158,8 @@ Writing recall's screens against its real `--help` surfaced facts the draft cann
 | `status.label` length is unbounded but the host must fit it in a reserved column | Add a 24-char bound under Limits |
 | The narrow reflow rule names only the secondary column | State it fully: rank and primary on line one; status label, the remaining short columns, and the secondary text folded into line two |
 | An empty detail box in a `Tab` placement | Host rule, for [host.md](host.md): show the plugin's next collection (recall's `sources`) rather than a blank card, so `abstained` is verifiable in place |
+| A degraded page can name only what fits in four 200-char notices, so thirteen sources' states are unreadable | Add optional `page.coverage[]` (`{source, state, reason?}`, bounded 64) read only by the host's coverage modal; notices stay the one-line summary. Applied in M4b |
+| `outcome` has been used for the health of what rows describe as well as for the row set | State the rule: `outcome` describes only this page's row set. Applied in M4b |
 
 ## Open questions
 
@@ -158,6 +172,7 @@ Not blocking M0 or M1; each has a default the plan proceeds under.
 
 ## Changelog
 
+- 2026-09-03: M4 split into M4a–M4d after nt-addf11 and two audits (the browser's pointer and focus gaps; recall's project mapping answering empty for every documents source). [browser-parity-and-scope.md](browser-parity-and-scope.md) controls M4a–M4c; `coverage[]` and the row-set rule join the pending table. The pointer and footer rules the work adds to every surface are in `docs/reference/design-language.md`.
 - 2026-09-02: opened. Decisions 1–11 settled in conversation with the maintainer; Herdr plugin-hosting plan superseded.
 - 2026-09-02: decision 12 (theme awareness) and the pending-revisions table added from the M0 recall mockup.
 - 2026-09-02: M1 implemented on branch `plugin-ecosystem` (td-01b62b). One deviation from the design: `tabRef.global` is the surface ID rather than an index into the global slice, because the persisted value is an ID already and carrying one identity instead of two removes a whole class of staleness.
