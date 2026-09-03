@@ -188,8 +188,12 @@ func (c *diffContent) SetSize(size Size) tea.Cmd {
 	return nil
 }
 
-func (c *diffContent) View(Render) string {
-	return c.m.renderPreviewDiff(c.diff, termpreview.Box{W: c.size.Width, H: c.size.Height})
+// View draws the leaf at its own origin. Where the box is, not only how big it
+// is: a pointer gesture over the patch is hit-tested against it.
+func (c *diffContent) View(render Render) string {
+	return c.m.renderPreviewDiff(c.diff, termpreview.Box{
+		X: render.Origin.X, Y: render.Origin.Y, W: c.size.Width, H: c.size.Height,
+	})
 }
 
 // resourceContent is the external-resource leaf: one Resource pane per surface,

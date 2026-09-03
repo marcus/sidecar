@@ -13,6 +13,7 @@ import (
 	"github.com/marcus/sidecar/internal/resourceview"
 	"github.com/marcus/sidecar/internal/textselect"
 	"github.com/marcus/sidecar/internal/ui"
+	"github.com/marcus/sidecar/internal/workspacediff"
 )
 
 // Scrollbar gestures on deck-hosted document panes.
@@ -196,6 +197,14 @@ func (h *appContentDeck) pressAppContentGesture(action mouse.MouseAction) (tea.C
 			h.mouse.StartDrag(action.X, action.Y, appDeckIssueScrollbarRegion, leafID)
 		}
 		return cmd, true
+	case *workspacediff.View:
+		if action.Region.ID != appDeckLeafRegion {
+			return nil, false
+		}
+		// The deck registers no inner Diff regions, so the whole frame is
+		// text here: the press arms a selection and the click that focused
+		// this leaf is the whole of what a release without motion means.
+		return h.pressAppContentSelection(leafID, v, action)
 	case *resourceview.Model:
 		if action.Region.ID != appDeckLeafRegion {
 			return nil, false

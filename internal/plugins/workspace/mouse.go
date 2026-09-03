@@ -246,6 +246,18 @@ func (p *Plugin) isModalViewMode() bool {
 	}
 }
 
+// isDiffTextRegion reports the Diff regions whose cells are text rather than a
+// row the pane answers a click on. A file row and a commit row are targets; the
+// patch body and the panes' own backgrounds are prose.
+func isDiffTextRegion(regionID string) bool {
+	switch regionID {
+	case regionDiffTabDiffPane, regionCommitFileDiffPane, regionDiffTabFileListPane:
+		return true
+	default:
+		return false
+	}
+}
+
 // isDiffBodyRegion reports the Diff inner hits that cover the leaf body and
 // therefore skip the regionPaneLeaf click arm. Tab chips are not included —
 // they already go through selectDiffTab.
@@ -1233,6 +1245,14 @@ func (p *Plugin) handleMouseClick(action mouse.MouseAction) tea.Cmd {
 			return nil
 		}
 		cmd := view.HandleClick(action.Region.ID, action.Region.Data)
+		if isDiffTextRegion(action.Region.ID) {
+			// The patch body and the pane behind it are text. The click that
+			// focused the pane has already happened above; the press also arms
+			// a selection so the motion after it selects.
+			if _, leaf := p.activeDiffPane(); leaf != nil {
+				return tea.Batch(cmd, p.pressPaneSelection(leaf.ID, action))
+			}
+		}
 		if action.Region.ID == regionDiffTabMinimap && p.fullFileDiff != nil {
 			clickRow := action.Y - action.Region.Rect.Y
 			totalLines := p.fullFileDiff.TotalLines()

@@ -315,6 +315,7 @@ func (c *diffContent) SetSize(size Size) tea.Cmd {
 func (c *diffContent) View(render Render) string {
 	body := ""
 	if view := c.diff.view(); view != nil {
+		c.p.bindPaneSelection(view, render.Origin)
 		c.p.attachDiffPaintTo(view)
 		bodyH := maxInt(c.size.Height-terminalHeaderRows, 0)
 		view.SetSize(c.size.Width, bodyH)

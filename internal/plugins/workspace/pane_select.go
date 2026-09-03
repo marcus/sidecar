@@ -8,6 +8,7 @@ import (
 	"github.com/marcus/sidecar/internal/mouse"
 	"github.com/marcus/sidecar/internal/resourceview"
 	"github.com/marcus/sidecar/internal/textselect"
+	"github.com/marcus/sidecar/internal/workspacediff"
 )
 
 // Text selection in this surface's content panes.
@@ -65,6 +66,10 @@ func (p *Plugin) selectionPaneAt(leafID int) textselect.Pane {
 		if res := p.resources[leaf.ContentID]; res != nil {
 			return resourceSelectionPane(res.view())
 		}
+	case PaneDiff:
+		if diff := p.diffs[leaf.ContentID]; diff != nil {
+			return diffSelectionPane(diff.view())
+		}
 	}
 	return nil
 }
@@ -102,6 +107,14 @@ func (p *Plugin) clearPaneSelectionsExcept(keep textselect.Pane) {
 			view.ClearSelection()
 		}
 	}
+	for _, diff := range p.diffs {
+		if diff == nil {
+			continue
+		}
+		if view := diff.view(); view != nil && textselect.Pane(view) != keep {
+			view.ClearSelection()
+		}
+	}
 	for _, res := range p.resources {
 		if res == nil || res.tabs == nil {
 			continue
@@ -117,6 +130,15 @@ func (p *Plugin) clearPaneSelectionsExcept(keep textselect.Pane) {
 // resourceSelectionPane lifts a resource viewer into the shared interface
 // without turning a nil viewer into a non-nil interface value.
 func resourceSelectionPane(view *resourceview.Model) textselect.Pane {
+	if view == nil {
+		return nil
+	}
+	return view
+}
+
+// diffSelectionPane lifts a diff viewer into the shared interface without
+// turning a nil viewer into a non-nil interface value.
+func diffSelectionPane(view *workspacediff.View) textselect.Pane {
 	if view == nil {
 		return nil
 	}

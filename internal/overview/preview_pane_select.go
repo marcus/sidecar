@@ -10,6 +10,7 @@ import (
 	"github.com/marcus/sidecar/internal/resourceview"
 	"github.com/marcus/sidecar/internal/termpreview"
 	"github.com/marcus/sidecar/internal/textselect"
+	"github.com/marcus/sidecar/internal/workspacediff"
 )
 
 // Text selection in the global browser's non-document content panes.
@@ -57,6 +58,10 @@ func (m *Model) previewSelectionPane(kind panelayout.Kind) textselect.Pane {
 		if res := m.preview.resource; res != nil && res.tabs != nil {
 			return previewResourceSelectionPane(res.tabs.Active())
 		}
+	case panelayout.Diff:
+		if diff := m.preview.diff; diff != nil {
+			return previewDiffSelectionPane(diff.view())
+		}
 	}
 	return nil
 }
@@ -69,6 +74,11 @@ func (m *Model) clearPreviewPaneSelectionsExcept(keep textselect.Pane) {
 	if view := m.previewIssueView(); view != nil && textselect.Pane(view) != keep {
 		view.ClearSelection()
 	}
+	if diff := m.preview.diff; diff != nil {
+		if view := diff.view(); view != nil && textselect.Pane(view) != keep {
+			view.ClearSelection()
+		}
+	}
 	if res := m.preview.resource; res != nil && res.tabs != nil {
 		for _, view := range res.tabs.All() {
 			if view != nil && textselect.Pane(view) != keep {
@@ -76,6 +86,15 @@ func (m *Model) clearPreviewPaneSelectionsExcept(keep textselect.Pane) {
 			}
 		}
 	}
+}
+
+// previewDiffSelectionPane lifts a diff viewer into the shared interface
+// without turning a nil viewer into a non-nil interface value.
+func previewDiffSelectionPane(view *workspacediff.View) textselect.Pane {
+	if view == nil {
+		return nil
+	}
+	return view
 }
 
 // previewResourceSelectionPane lifts a resource viewer into the shared

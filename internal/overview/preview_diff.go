@@ -270,6 +270,7 @@ func (m *Model) renderPreviewDiff(diff *previewDiff, box termpreview.Box) string
 	}
 	body := ""
 	if view != nil {
+		m.bindPreviewPaneSelection(view, box)
 		body = view.Render(box.W, contentHeight, workspacediff.RenderOpts{
 			Truncate: func(s string, w int, _ string) string { return termpreview.TruncateANSI(s, w) },
 			Handle:   m.dividerHandleState(previewDiffDividerKind, 0),
@@ -400,6 +401,12 @@ func (m *Model) previewDiffPaneKey(msg tea.KeyPressMsg) (bool, tea.Cmd) {
 	if diff == nil || !diff.focused || m.PreviewInteractive() {
 		return false, nil
 	}
+	// Before the pane's own keys: esc clears a selection rather than closing
+	// the pane out from under it, and the copy chord must not fall through to
+	// a diff key that happens to share it.
+	if cmd, handled := m.handlePreviewPaneSelectionKey(panelayout.Diff, msg); handled {
+		return true, cmd
+	}
 	switch msg.String() {
 	case "q", "esc":
 		return true, m.closePreviewDiff()
@@ -469,8 +476,20 @@ func (m *Model) handlePreviewDiffMouse(action mouse.MouseAction) tea.Cmd {
 		}
 		switch action.Type {
 		case mouse.ActionClick:
-			return view.HandleClick(action.Region.ID, action.Region.Data)
+			cmd := view.HandleClick(action.Region.ID, action.Region.Data)
+			if isPreviewDiffTextRegion(action.Region.ID) {
+				// The patch body and the panes' own backgrounds are text. The
+				// click that focused the pane has already happened; the press
+				// also arms a selection so the motion after it selects.
+				return tea.Batch(cmd, m.pressPreviewPaneSelection(panelayout.Diff, action))
+			}
+			return cmd
 		case mouse.ActionDoubleClick:
+			if isPreviewDiffTextRegion(action.Region.ID) {
+				// Word by double click, line by triple, exactly as the
+				// terminal beside it answers the same gesture.
+				return m.pressPreviewPaneSelection(panelayout.Diff, action)
+			}
 			return view.HandleDoubleClick(action.Region.ID, action.Region.Data)
 		case mouse.ActionScrollUp, mouse.ActionScrollDown:
 			return view.HandleWheel(action.Region.ID, action.Delta)
@@ -482,12 +501,25 @@ func (m *Model) handlePreviewDiffMouse(action mouse.MouseAction) tea.Cmd {
 		return nil
 	}
 	switch action.Type {
-	case mouse.ActionClick, mouse.ActionDoubleClick:
+	case mouse.ActionClick, mouse.ActionDoubleClick, mouse.ActionTripleClick:
 		m.focusPreviewPane(panelayout.Diff)
+		return m.pressPreviewPaneSelection(panelayout.Diff, action)
 	case mouse.ActionScrollUp, mouse.ActionScrollDown:
 		if view := m.preview.diff.view(); view != nil {
 			view.ScrollContent(action.Delta, view.Height())
 		}
 	}
 	return nil
+}
+
+// isPreviewDiffTextRegion reports the Diff regions whose cells are text rather
+// than a row the pane answers a click on. A file row and a commit row are
+// targets; the patch body and the panes' own backgrounds are prose.
+func isPreviewDiffTextRegion(regionID string) bool {
+	switch regionID {
+	case workspacediff.RegionDiffPane, workspacediff.RegionCommitDiff, workspacediff.RegionFileListPane:
+		return true
+	default:
+		return false
+	}
 }

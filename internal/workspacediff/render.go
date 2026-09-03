@@ -72,9 +72,12 @@ func (v *View) Render(width, height int, opts RenderOpts) string {
 	inner := contentWidth(width)
 	if inner < width {
 		opts.ContentBaseX += ContentInset
-		return indentLines(v.render(inner, height, opts), ContentInset)
+		// The inset is part of the frame a pointer lands on, so the selection
+		// is recorded and painted after it: the columns the engine names are
+		// the columns the reader sees.
+		return v.paintSelection(indentLines(v.render(inner, height, opts), ContentInset), width, height)
 	}
-	return v.render(width, height, opts)
+	return v.paintSelection(v.render(width, height, opts), width, height)
 }
 
 // indentLines shifts every line right by pad columns.
