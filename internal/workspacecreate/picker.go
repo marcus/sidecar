@@ -428,6 +428,13 @@ func (f *Form) HandleKey(msg tea.KeyPressMsg) (string, tea.Cmd) {
 		return "", nil
 	}
 	action, cmd := f.modal.HandleKey(msg)
+	if action == FieldKind {
+		// The kind list reports an activation as its own ID, so a CLICK on a
+		// row tells a host "the kind control was used" rather than naming a
+		// row the host has no branch for. From the keyboard that same gesture
+		// is Enter on the form, which is the modal's primary action.
+		action = ActionCreate
+	}
 	if action == "cancel" && f.step == StepTarget {
 		f.BackToKind()
 		return "", cmd

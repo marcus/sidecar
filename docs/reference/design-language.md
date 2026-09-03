@@ -165,6 +165,18 @@ Structure is carried by a seven-step neutral ramp rather than by saturation. The
 
 Buttons come from `styles.Button`, `ButtonFocused` and `ButtonHover`, each with two columns of padding; destructive actions use the `ButtonDanger` family. A modal's own hint line is the same key-chip row the footer uses. See `pane-switcher.png` for a live one, including the segmented control whose active segment takes the `Primary` fill.
 
+### Selectors
+
+One choice out of a known set is `modal.Select`, wherever it appears: the Create Workspace kind chooser, the plugin browser's View modal (sort, views, and every choice filter), and the View flyouts on both Workspaces surfaces. `modal.List` remains the low-level column of rows for lists that are not a single choice.
+
+**Two shapes, chosen by count.** Under five choices it draws as a segmented `[ A | B | C ]` — `styles.Button` for an idle segment, `ButtonFocused` for the selected one, `ButtonHover` under the pointer, `styles.Muted` separators, and a frame in the colours of a modal input border so "this control is active" is never confused with "this choice is selected". At five or more it draws as a full-width `❯`-cursor list with the label column aligned across every row and the description column aligned after it, each row filled to the same right edge so the control reads as one block. The count is the rule; the width is the floor under it, because a row of segments too wide for its column would be truncated into a stub while the list always fits. `WithShape` forces one shape where a surface has a reason — a menu of sentences, or a twin surface whose labels are sentences.
+
+**Movement stops at the ends.** Arrows and `h`/`j`/`k`/`l` move by one and hold at the first and last row rather than wrapping; the ends of a short list are easier to feel than to count, and a wrap reads as a lost keypress. `home` and `end` jump. `Enter` activates the selection.
+
+**A disabled choice stays visible and says why.** `WithDisabled` answers per choice why it cannot be taken right now; that reason replaces the description on the row, the row keeps the control's fill in muted text (selected chrome if it is still the active choice), and neither the keyboard nor a click can land on it. A rule stated on the row is read before the row is entered, which is the difference between a control that explains itself and one that refuses after the fact.
+
+**A click resolves inside the control.** Every drawn row registers its own hit region, so a click lands on the row it was over and no host maps coordinates to choices. The click also focuses the control, so the arrows that follow steer what the pointer just used. In the segmented shape a separator belongs to the segment on its left, the first segment owns the frame and the last reaches the right edge, so no click near the control misses it. `WithMaxVisible` caps the drawn rows: anything past it scrolls with `↑ more above` and `↓ more below`, which is what keeps a filter of twenty choices from pushing the rest of a modal off the box.
+
 ## Empty and loading states
 
 An empty surface says what is true and offers the next action. It does not disappear, and it does not show a spinner for something that is not loading. `workspaces-split.txt` is the pattern: a short statement of the state, one line naming the way out, and the action itself as a button. An empty section within a list also says so rather than vanishing, because a section that disappears is indistinguishable from a section that failed to load.

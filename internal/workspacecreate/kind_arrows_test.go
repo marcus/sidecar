@@ -7,48 +7,11 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/marcus/sidecar/internal/mouse"
-	"github.com/marcus/sidecar/internal/styles"
 )
 
-// Every row of the kind list reaches the same right edge. The rows are drawn
-// with a filled background, so a row sized to its own text leaves the list
-// with an edge whose shape is an accident of the longest description.
-func TestKindListRowsFillTheContentColumn(t *testing.T) {
-	rows := kindRowsForOpts(rowOpts{allowTerminalSplit: true, showNotes: true})
-	const contentWidth = 64
-	for _, line := range strings.Split(renderKindList(rows, 0, false, false, nil, contentWidth), "\n") {
-		if got := ansi.StringWidth(line); got != contentWidth {
-			t.Fatalf("row width = %d, want the full content column %d: %q", got, contentWidth, ansi.Strip(line))
-		}
-	}
-}
-
-// A disabled row is muted text on the list's own fill, not bare text: the
-// list is one block, and a row that dropped the fill would read as a hole in
-// it rather than as a choice that is unavailable.
-func TestDisabledKindRowKeepsTheListFill(t *testing.T) {
-	if got, want := kindRowStyle(true, false, false).GetBackground(), styles.Button.GetBackground(); got != want {
-		t.Fatalf("disabled row background = %v, want the list's own %v", got, want)
-	}
-	if got, want := kindRowStyle(true, false, false).GetForeground(), styles.TextMuted; got != want {
-		t.Fatalf("disabled row foreground = %v, want muted %v", got, want)
-	}
-
-	const reason = "Two terminals are already on screen — close one first"
-	rows := kindRowsForOpts(rowOpts{allowTerminalSplit: true, showNotes: true})
-	disabled := func(k Kind) string {
-		if k == KindTerminalSplit {
-			return reason
-		}
-		return ""
-	}
-	const contentWidth = 64
-	for _, line := range strings.Split(renderKindList(rows, 0, false, false, disabled, contentWidth), "\n") {
-		if got := ansi.StringWidth(line); got != contentWidth {
-			t.Fatalf("row width = %d, want %d even with a disabled row: %q", got, contentWidth, ansi.Strip(line))
-		}
-	}
-}
+// The kind list's row fill and its disabled-row rule belong to modal.Select
+// and are proved in internal/modal/select_test.go; the bytes this modal draws
+// with them are pinned by TestKindControlRendersAsBefore.
 
 // The kind step is steerable with arrows alone: open, arrow down to the row,
 // Enter. Up/down reach the list from the Name field the modal opens on, with

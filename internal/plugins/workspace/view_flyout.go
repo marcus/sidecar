@@ -53,9 +53,9 @@ func (p *Plugin) ensureViewFlyout() {
 	}
 	p.viewFlyoutWidth = modalW
 
-	items := make([]modal.ListItem, len(projectSortModes))
+	items := make([]modal.SelectItem, len(projectSortModes))
 	for i, mode := range projectSortModes {
-		items[i] = modal.ListItem{ID: workspacelist.SortActionID(mode), Label: sortMenuLabel(mode), Data: mode}
+		items[i] = modal.SelectItem{ID: workspacelist.SortActionID(mode), Label: sortMenuLabel(mode), Data: mode}
 	}
 
 	p.viewFlyout = modal.New("View",
@@ -66,7 +66,12 @@ func (p *Plugin) ensureViewFlyout() {
 			return modal.RenderedSection{Content: "Current sort: " + p.listSort.Label()}
 		}, nil)).
 		AddSection(modal.Spacer()).
-		AddSection(modal.List(viewFlyoutSortListID, items, &p.viewFlyoutSortIdx, modal.WithMaxVisible(len(items)))).
+		// The list shape rather than the segmented one: this flyout is a menu,
+		// and "Manual — shells and worktrees" is a sentence no segment could
+		// hold. The global Workspaces flyout forces the same shape, because
+		// the two surfaces are one model.
+		AddSection(modal.Select(viewFlyoutSortListID, items, &p.viewFlyoutSortIdx,
+			modal.WithShape(modal.ShapeList), modal.WithMaxVisible(len(items)))).
 		// The filter line appears only when a filter is doing something. A
 		// permanent "Filter: none" is a row of chrome spent saying nothing,
 		// and it dilutes the line that matters when a query is live. The

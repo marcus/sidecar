@@ -262,7 +262,7 @@ func TestSwitcherProviderSelectionTracksInstance(t *testing.T) {
 
 	// Click the second provider's row.
 	click := newForm()
-	click.SetKindFromClick(mouse.Rect{X: 0, Y: 10, W: 40, H: len(click.rows)}, 5, 10+idxs[1])
+	clickKindRow(t, click, 70, idxs[1])
 	if got := click.selectedProviderID(); got != "linear-eng" {
 		t.Fatalf("click selected provider = %q, want linear-eng", got)
 	}

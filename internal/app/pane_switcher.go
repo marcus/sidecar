@@ -329,19 +329,6 @@ func (m *Model) handlePaneSwitcherMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	action := md.HandleMouse(msg, m.paneSwitcherMouse)
-	if action == workspacecreate.FieldKind {
-		if click, ok := msg.(tea.MouseClickMsg); ok {
-			// The form knows which shape its kind list is drawn in this session
-			// and maps the click accordingly.
-			for _, region := range m.paneSwitcherMouse.HitMap.Regions() {
-				if region.ID != workspacecreate.FieldKind {
-					continue
-				}
-				m.paneSwitcher.SetKindFromClick(region.Rect, click.X, click.Y)
-				break
-			}
-		}
-	}
 	action = m.paneSwitcher.TranslateMouseAction(action)
 	m.paneSwitcher.SyncAfterInput()
 	return m, m.applyPaneSwitcherAction(action)

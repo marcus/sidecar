@@ -473,19 +473,6 @@ func (p *Plugin) handleCreateModalMouse(msg tea.MouseMsg) tea.Cmd {
 	}
 
 	action := m.HandleMouse(msg, p.mouseHandler)
-	if action == workspacecreate.FieldKind {
-		if click, ok := msg.(tea.MouseClickMsg); ok {
-			// The form knows which shape its kind list is drawn in this
-			// session (vertical description list or short toggle) and maps
-			// the click accordingly.
-			for _, region := range p.mouseHandler.HitMap.Regions() {
-				if region.ID == workspacecreate.FieldKind {
-					p.createForm.SetKindFromClick(region.Rect, click.X, click.Y)
-					break
-				}
-			}
-		}
-	}
 	if picked := p.createForm.TranslateMouseAction(action); picked != action {
 		action = picked
 	}

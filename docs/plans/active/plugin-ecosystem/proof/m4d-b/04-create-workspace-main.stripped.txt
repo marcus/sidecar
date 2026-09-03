@@ -1,0 +1,45 @@
+ ◱ Sidecar │   Sessions     Activity     Fixture                                                                             ↖ sidecar   Select Project ▾  ·  ⚙
+╭─────────────────────────────────────────────────────────────╮ ╭──────────────────────────────────────────────────────────────────────────────────────────────╮
+│ Workspaces                               ⇅ Activity     +   │┃│                                                                                              │
+│                                                             │┃│ No workspace selected                                                                        │
+│ no sessions                                                 │┃│                                                                                              │
+│                                                     ╭──────────────────────────────────────────────────╮                                                     │
+│                                                     │                                                  │                                                     │
+│                                                     │  Create Workspace                                │                                                     │
+│                                                     │                                                  │                                                     │
+│                                                     │      Shell            new agent/shell session    │                                                     │
+│                                                     │    ❯ Worktree         shell in a new worktree    │                                                     │
+│                                                     │      Terminal split   terminal beside curren…    │                                                     │
+│                                                     │      File             open a file in a split     │                                                     │
+│                                                     │      Git diff         open a diff in a split     │                                                     │
+│                                                     │      td issue         open an issue in a spl…    │                                                     │
+│                                                     │      Note             open a note in a split     │                                                     │
+│                                                     │                                                  │                                                     │
+│                                                     │  Project                                         │                                                     │
+│                                                     │  ┌──────────────────────────────────────────┐    │                                                     │
+│                                                     │  │sidecar                                   │    │                                                     │
+│                                                     │  └──────────────────────────────────────────┘    │                                                     │
+│                                                     │  Name                                            │                                                     │
+│                                                     │  ┌──────────────────────────────────────────┐    │                                                     │
+│                                                     │  │feature name                              │    │                                                     │
+│                                                     │  └──────────────────────────────────────────┘    │                                                     │
+│                                                     │  Base Branch                                     │                                                     │
+│                                                     │  ┌──────────────────────────────────────────┐    │                                                     │
+│                                                     │  │main                                      │    │                                                     │
+│                                                     │  └──────────────────────────────────────────┘    │                                                     │
+│                                                     │  Agent                                           │                                                     │
+│                                                     │  ┌──────────────────────────────────────────┐    │                                                     │
+│                                                     │  │Claude Code                               │    │                                                     │
+│                                                     │  └──────────────────────────────────────────┘    │                                                     │
+│                                                     │    [ ] Auto-approve all actions                  │                                                     │
+│                                                     │        (Adds --dangerously-skip-permissions)     │                                                     │
+│                                                     │                                                  │                                                     │
+│                                                     │     Create        Cancel                         │                                                     │
+│                                                     │  ↑↓ type · Enter to confirm · Esc to cancel      │                                                     │
+│                                                     │                                                  │                                                     │
+│                                                     ╰──────────────────────────────────────────────────╯                                                     │
+│                                                             │┃│                                                                                              │
+│                                                             │┃│                                                                                              │
+│                                                             │┃│                                                                                              │
+╰─────────────────────────────────────────────────────────────╯ ╰──────────────────────────────────────────────────────────────────────────────────────────────╯
+ enter  Create   esc  Cancel   ctrl+c  quit

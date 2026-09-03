@@ -101,7 +101,12 @@ type Form struct {
 	// providerID is the instance behind the selected row when that row is a
 	// resource provider; every resource row shares KindResource, so the Kind
 	// alone cannot say which one was chosen.
-	providerID       string
+	providerID string
+	// kindIdx mirrors the selected row for the kind control, which owns a
+	// plain index the way every other modal section owns its value. selectRow
+	// is the only writer on this side; the control writes it directly and
+	// then reports the change back through selectRow.
+	kindIdx          int
 	rows             []kindRow
 	showNotes        bool
 	step             FormStep
@@ -360,6 +365,7 @@ func (f *Form) selectRow(idx int) {
 		return
 	}
 	row := f.rows[idx]
+	f.kindIdx = idx
 	if f.kind == row.Kind && f.providerID == row.ProviderID {
 		return
 	}
@@ -384,16 +390,6 @@ func (f *Form) SetKind(k Kind) {
 func (f *Form) firstRowOfKind(k Kind) int {
 	for i, row := range f.rows {
 		if row.Kind == k {
-			return i
-		}
-	}
-	return 0
-}
-
-// indexOfRow is the row's position in this form's catalog.
-func (f *Form) indexOfRow(row kindRow) int {
-	for i := range f.rows {
-		if f.rows[i].Kind == row.Kind && f.rows[i].ProviderID == row.ProviderID {
 			return i
 		}
 	}
@@ -646,6 +642,7 @@ func (f *Form) build(width int, prevFocus string) {
 		f.syncBaseIdx()
 	}
 
+	f.kindIdx = f.selectedRowIndex()
 	f.modalWidth = width
 	f.cachedKind = f.kind
 	f.cachedStep = f.step
@@ -658,7 +655,7 @@ func (f *Form) build(width int, prevFocus string) {
 	}
 
 	sections := []modal.Section{
-		kindControl(FieldKind, f.rows, f.selectedRowIndex, func(row kindRow) { f.selectRow(f.indexOfRow(row)) }, f.kindDisabledReason),
+		kindControl(FieldKind, f.rows, &f.kindIdx, f.selectRow, f.kindDisabledReason),
 		modal.Spacer(),
 	}
 	if f.showProject {

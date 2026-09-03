@@ -281,11 +281,19 @@ type response struct {
 // resource identifier for a request that carried nothing readable.
 var wire = resourceProtocol
 
+// wideFilters declares the source filter with twenty choices instead of four.
+// A filter that outgrows its control is a shape the host has to handle — the
+// selector windows and scrolls it — and nothing in the ordinary fixture is
+// long enough to show it.
+var wideFilters bool
+
 func main() {
 	mode := flag.String("mode", "", "hostile behaviour to simulate")
 	pidfile := flag.String("pidfile", "", "where a forked descendant records its pid")
 	sleep := flag.Duration("sleep", 0, "how long the descendant mode sleeps")
+	wide := flag.Bool("wide-filters", false, "declare the source filter with twenty choices")
 	flag.Parse()
+	wideFilters = *wide
 
 	if *mode == "descendant" {
 		// A descendant that outlives its parent and keeps holding the inherited
@@ -591,6 +599,33 @@ func describeResponse() response {
 	return describePluginResponse()
 }
 
+// sourceChoices is the Source filter's options: four ordinarily, twenty under
+// -wide-filters, which is what a filter too long for its control looks like.
+func sourceChoices() []filterChoice {
+	if !wideFilters {
+		return []filterChoice{
+			{ID: "any", Title: "Any"},
+			{ID: "notes", Title: "notes"},
+			{ID: "shell", Title: "shell"},
+			{ID: "mail", Title: "mail"},
+		}
+	}
+	names := []string{
+		"any", "notes", "shell", "mail", "calendar", "web", "slack", "td",
+		"git", "docs", "tickets", "chat", "wiki", "drive", "pdfs", "bookmarks",
+		"contacts", "invoices", "photos", "podcasts",
+	}
+	choices := make([]filterChoice, 0, len(names))
+	for _, name := range names {
+		title := name
+		if name == "any" {
+			title = "Any"
+		}
+		choices = append(choices, filterChoice{ID: name, Title: title})
+	}
+	return choices
+}
+
 func describeResourceResponse() response {
 	return response{
 		Protocol: wire,
@@ -648,12 +683,7 @@ func describePluginResponse() response {
 					{
 						// No stated default: the first declared choice is it.
 						ID: "source", Label: "Source", Kind: "choice",
-						Choices: []filterChoice{
-							{ID: "any", Title: "Any"},
-							{ID: "notes", Title: "notes"},
-							{ID: "shell", Title: "shell"},
-							{ID: "mail", Title: "mail"},
-						},
+						Choices: sourceChoices(),
 					},
 					{ID: "since", Label: "Since", Kind: "text"},
 				},
