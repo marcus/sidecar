@@ -1,6 +1,6 @@
 # Browser parity, scope, and plugin authoring (M4a–M4c)
 
-**Status:** M4a implemented 2026-09-03 (td-62b81c); M4c implemented 2026-09-03 (td-40eb97); M4b is gated on the four decisions under [Decisions to confirm](#decisions-to-confirm). Controlling document for milestones M4a, M4b and M4c of [README.md](README.md); M4d (freeze, migrate, flag flip, site docs) stays in the README. **Tracking:** td-f9f007 (epic); per-milestone issues are listed with each milestone.
+**Status:** M4a implemented 2026-09-03 (td-62b81c); M4c implemented 2026-09-03 (td-40eb97); M4b is ready to start; its decisions are settled under [Decisions](#decisions). Controlling document for milestones M4a, M4b and M4c of [README.md](README.md); M4d (freeze, migrate, flag flip, site docs) stays in the README. **Tracking:** td-f9f007 (epic); per-milestone issues are listed with each milestone.
 
 **Reading order:** [README.md](README.md) for the settled decisions and the milestone map, this file for the work, [host.md](host.md#the-shared-browser) for how the browser is built today, and [mockups/README.md](mockups/README.md) for the screens M4b implements. The design rules this work adds to Sidecar as a whole live in [docs/reference/design-language.md](../../../reference/design-language.md) under *Pointer parity* and *The footer*, not here.
 
@@ -58,35 +58,36 @@ Captures are under [proof/m4a/](proof/m4a/README.md), which also records how the
 
 ### M4b. Scope, coverage, and honesty — protocol, host, recall
 
-Applies four protocol revisions now rather than at freeze, because recall cannot be honest without them and the freeze is what M4d does once recall is. **Tracking:** td-9ca6a7 (sidecar: protocol and host), td-786e42 (recall repo: the plugin and the scope mapping; filed there, mirrored on td-35bcd1 which records the root cause).
+Applies four protocol revisions now rather than at freeze, because recall cannot be honest without them and the freeze is what M4d does once recall is. **Tracking:** td-9ca6a7 (sidecar: protocol and host), td-786e42 (recall repo: the plugin's filters, coverage, and outcomes). The contract text lives in `docs/reference/plugin-protocol.md` since M4c; revisions are applied there, and the README's pending table loses each row as it lands.
 
-**Protocol revisions**, each moving from the README's pending table into [the protocol reference](../../../reference/plugin-protocol.md) as applied:
+**Protocol revisions.**
 
 | Revision | Shape |
 | --- | --- |
-| `filters[]` on a collection's describe | `{id, label, kind: "choice"\|"text", choices?: [{id, title}], default?: string}`; bounded 8 per collection, 32 choices per filter. `list.params.filters{}` carries `{id: value}` and is persisted with the collection tab and with the global tab's remembered query. A filter the collection did not declare is dropped. |
+| `filters[]` on a collection's describe | `{id, label, kind: "choice"\|"text", choices?: [{id, title}], default?: string}`; bounded 8 per collection, 64 choices per filter, 32-char ids and titles. `kind: "choice"` requires `choices`; `default` names a choice id, or is the initial text. The **first declared filter is the collection's scope**: its current choice title is always folded into the pill so the user can see what a page covers. |
+| `list.params.filters{}` | `{id: value}` for every filter whose value is not its default; a missing key means the default. Persisted with the collection tab and with the global tab's remembered query. A key the collection did not declare is dropped by the host before the call. |
 | `page.omitted` | `{suppressed, dropped}` counts, rendered in the summary row as data ("8 shown · 1 below floor · 6 over budget"). |
 | `page.outcome: "failed"` | Every asked source failed; the host renders an error card over an empty list, never "no matches". |
-| `page.coverage[]` | Optional `{source, state: "answered"\|"timeout"\|"unhealthy"\|"skipped"\|"failed", reason?}`, bounded 64 rows and 200-char reasons. Read only by the coverage modal; notices stay the one-line summary. |
+| `page.coverage[]` | Optional `{source, state: "answered"\|"timeout"\|"unhealthy"\|"skipped"\|"failed", reason?, elapsedMs?}`, bounded 64 rows and 200-char reasons. Read only by the coverage modal; notices stay the one-line summary. |
 
-And one rule stated rather than added: `outcome` describes the row set of *this* page and nothing else (td-e476aa item 1). A collection whose rows are all present answers `answered` even when what the rows describe is unhealthy.
+And one rule stated rather than added: **`outcome` describes the row set of this page and nothing else** (td-e476aa item 1). A collection whose rows are all present answers `answered` even when what the rows describe is unhealthy; the rows carry their own status pills for that.
 
 **Host.**
 
-- The View modal grows the filters block the mockup draws: after the sort list, one control per declared filter (`choice` as a radio group, `text` as an input), then Done. Changing one relists with `params.filters`.
-- The pill folds applied filters into its label: one applied filter shows its chosen title (`⇅ rank · This project`), more than one shows a count (`⇅ rank · 3 filters`), and the ladder sheds the suffix before the sort word before the glyph.
-- The coverage modal opens from the outcome pill, from a notice, and from one host key chosen from the free set in `keymap/hostkeys.go` and recorded in host.md. It shows the outcome and its definition, every notice untruncated, `omitted` as two lines, and the `coverage[]` table when present, with a Retry button that is `r`.
-- The `search: required` empty query stops reporting `abstained` in the footer (td-c2dc19 item 2); the browser carries an internal *unqueried* state and the footer says so.
-- The fixture plugin declares filters and returns `omitted`, `failed` and `coverage[]`; the conformance suite and `testdata/protocol/` grow the canonical JSON.
+- The View modal grows the filters block the mockup draws: after the sort list, one control per declared filter in declared order (`choice` as a radio group, `text` as an input), then Done. Changing one relists with `params.filters`.
+- The pill: `⇅ <sort> · <scope choice title>` always, where the scope is the first declared filter; when any other filter is applied, `· N filters` follows; a collection with no filters keeps today's label. The ladder sheds the filters count, then the scope title, then the sort word, then keeps the glyph.
+- The coverage card that M4a built becomes the coverage modal: the outcome and its one-sentence definition, every notice untruncated, `omitted` as two lines, and, when `coverage[]` is present, a table with columns Source, State (as a tone pill), Elapsed and Reason, held to its box and scrollable. Retry is a button bound to `r`. Opened by clicking the outcome cell or a notice, or by `c` as M4a bound it, and recorded in host.md.
+- A `search: required` collection with no query is an internal *unqueried* state, not `abstained`: the footer says the collection is waiting for a query, and the coverage card is unavailable (td-c2dc19 item 2, already half-done in M4a).
+- The fixture plugin declares three filters (one with a default, one without, one text), returns `omitted`, `failed` and a 13-row `coverage[]`; the conformance suite and `testdata/protocol/` grow the canonical JSON; `sidecar plugin check --list` prints the applied filters.
 
-**Recall** (in the recall repository):
+**Recall** (in the recall repository; the shapes above are the spec, and sidecar's fixture stands in until recall lands).
 
-- Declare on `results`: `scope` (choice: `project` "This project", `all` "Everything"; default `project` when project context is present, `all` otherwise), `source` (choice: any, then each configured source ID), `type` (choice from the profile's record types), `since` (text, RFC 3339 date). Read `params.filters` in `sidecarListResults`; stop applying `sidecarProjectScope` unconditionally; delete the "scoped to project" notice, which the pill now says.
-- Fix the mapping. Project context restricts to what is *under* `project.root`: a documents source whose location is `root` or inside it answers with paths under `root`; a td source answers when its workspace root is `root`; an adapter that cannot evaluate the restriction reports `filter_unsupported` and degrades coverage instead of answering success-empty. `project.name` is never compared against a documents `Project` field again.
-- Emit `omitted` from the suppressed and dropped ledger, `failed` from recall's own failed state, `coverage[]` from the `--explain` ledger, and `answered` for the `sources` collection.
+- Recall is global. The plugin never applies the project context on its own: `sidecarProjectScope` stops being called from `list` and `get`, and the "scoped to project" notice is deleted. The context kind stays declared so a later explicit *This project* filter can use `project.root` once recall maps a project to paths under that root rather than to a documents subfolder name; that mapping is deferred and noted on td-786e42, not built here.
+- Declare on `results`, in this order: `profile` (choice: every profile in the config, default the configured default profile, currently `home`); `source` (choice: "Any" plus every configured source id; a source outside the chosen profile answers with recall's own typed error naming the profile that has it, which the host shows as a card); `type` (choice: "Any" plus the record types the config declares); `since` (text, RFC 3339 date). Read `params.filters` in `sidecarListResults` and resolve the profile per call.
+- Emit `omitted` from the suppressed and dropped ledger, `failed` from recall's failed state, `coverage[]` from the per-source ledger the `--explain` tier already holds (state, reason, elapsed), and `answered` for the `sources` collection.
 - Either read `params.view` or stop declaring the field; declare nothing that is not read.
 
-**Evidence:** conformance JSON for each revision; browser tests that a filter change relists with the new params and that the pill label follows the ladder; a persistence round trip carrying `filters`; the coverage modal rendered from a fixture page with 13 coverage rows, held to its box. Live: the Recall tab in `clara-home` with the query `specialized` shows 8 rows under *This project*, more under *Everything*, and the coverage modal names `clara-home-semantic (unhealthy)` with its reason; a stripped capture compared with `mockups/recall-studio.scope-picker.txt` and `recall-studio.results-degraded.txt`. td-35bcd1's proof case (`project.name = "nosuchproject"`) answers `degraded` with a `filter_unsupported` row, not `abstained`.
+**Evidence:** conformance JSON for each revision; browser tests that a filter change relists with the new params, that the pill label follows the ladder, and that an undeclared key never reaches the plugin; a persistence round trip carrying `filters`; the coverage modal rendered from the 13-row fixture page and held to its box. Live: the Recall tab with the query `specialized` shows 8 rows under the `home` profile with no project chosen, switching the profile to `docs` in the View modal changes the set and the pill reads `⇅ rank · docs`, and the coverage modal lists every source with its state; a stripped capture compared with `mockups/recall-studio.scope-picker.txt` and `recall-studio.results-degraded.txt`. td-35bcd1's proof case (`project.name = "nosuchproject"`) answers the same rows as no context at all.
 
 ### M4c. Plugin authoring guide and protocol reference — implemented, td-40eb97
 
@@ -111,16 +112,17 @@ Runs beside M4a. The two documents, the example plugin and the test that keeps i
 
 M4a and M4c are independent (disjoint files) and run as two parallel lanes in one worktree each. M4b's host half follows M4a because both edit the pill, the modal and the notice rows; its recall half starts as soon as the decisions below are confirmed and lands in the recall repository on its own schedule, with the fixture standing in for it in sidecar's tests. M4d follows all three.
 
-## Decisions to confirm
+## Decisions
 
-Each has a default the work proceeds under; a different answer changes M4b only.
+Settled with the maintainer on 2026-09-03.
 
-1. **Default scope on a project surface is *This project*, widened per tab through the View modal; global surfaces default to *Everything*.** The project context kind exists so a plugin can narrow to the project the surface shows, and the pill makes the narrowing visible and one keystroke wide. The alternative, defaulting to *Everything* everywhere, makes the context kind decorative for recall.
-2. **`filters[]` is applied now, not at freeze.** The mockups already draw it, recall needs it, and applying it after freeze would be a v2 change for the same work.
-3. **Coverage detail is data (`coverage[]`), not notice text.** Recall already holds the per-source ledger; four 200-char notices cannot carry thirteen sources.
-4. **`outcome` describes only the row set.** Stated as a protocol rule; recall's `sources` collection changes from `degraded` to `answered` as a consequence.
+1. **Recall is global first.** A fresh query searches the configured default profile with no project narrowing. The View modal lets the user change the profile, choosing from every profile the config declares, and narrow further by source, type and date. What is applied is always visible in the pill.
+2. **`filters[]` is a protocol feature, applied now.** Any plugin can declare choosers; the host draws them and persists them.
+3. **A degraded page explains itself with a table**, one row per source with its state, elapsed time and reason, carried as `coverage[]` data.
+4. **`outcome` describes only the row set.** Health of what the rows describe is shown on the rows.
 
 ## Changelog
 
 - 2026-09-03: opened from nt-addf11 and two audits of the browser and of recall's plugin subcommand.
 - 2026-09-03: M4c implemented (td-40eb97). M4a implemented and reviewed (td-62b81c); review added the rail's keys, narrowed the Primary-only Tab rule to plugins that hand the ring over, and closed three pointer gaps.
+- 2026-09-03: M4b decisions settled: global first with a profile chooser over every configured profile, `filters[]` now, `coverage[]` as a table, `outcome` describes only the row set. The silent project scope is removed from recall rather than made visible.

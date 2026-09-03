@@ -109,7 +109,7 @@ The browser gains the pointer model, scrollbars, drag rail, focused query row, h
 
 ### M4b. Scope, coverage, and honesty — proposed, td-9ca6a7 (sidecar) and td-786e42 (recall repo)
 
-Applies `filters[]`, `omitted`, `failed` and a new `coverage[]` to the protocol and the host, so the scope a list is narrowed to is visible in the pill and one keystroke wide, and a degraded page can show why. Recall declares its scope as filters and fixes the project mapping that made every documents source answer empty. Gated on four decisions listed in [browser-parity-and-scope.md](browser-parity-and-scope.md#decisions-to-confirm).
+Applies `filters[]`, `omitted`, `failed` and a new `coverage[]` to the protocol and the host, so the scope a list is narrowed to is visible in the pill and one keystroke wide, and a degraded page can show why. Recall becomes global first with a profile chooser and stops applying the project context on its own, which is what made every documents source answer empty. Decisions are settled in [browser-parity-and-scope.md](browser-parity-and-scope.md#decisions).
 
 ### M4c. Plugin authoring guide and protocol reference — implemented, td-40eb97
 
