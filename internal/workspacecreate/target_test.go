@@ -49,7 +49,7 @@ func TestPickerTargetsMatchCLITargets(t *testing.T) {
 		if err != nil {
 			t.Fatalf("picker File %q: %v", raw, err)
 		}
-		if got != want {
+		if !got.Equal(want) {
 			t.Fatalf("picker file target = %+v, want the CLI's %+v", got, want)
 		}
 		return want
@@ -75,7 +75,7 @@ func TestPickerTargetsMatchCLITargets(t *testing.T) {
 		if err != nil {
 			t.Fatalf("picker diff %q: %v", raw, err)
 		}
-		if got != want {
+		if !got.Equal(want) {
 			t.Fatalf("picker diff target = %+v, want the CLI's %+v", got, want)
 		}
 	}
@@ -93,7 +93,7 @@ func TestPickerTargetsMatchCLITargets(t *testing.T) {
 		if err != nil {
 			t.Fatalf("picker %v %q: %v", tc.kind, tc.raw, err)
 		}
-		if got != tc.want {
+		if !got.Equal(tc.want) {
 			t.Fatalf("picker target = %+v, want %+v", got, tc.want)
 		}
 	}
@@ -107,7 +107,7 @@ func TestPickerTargetsMatchCLITargets(t *testing.T) {
 	if err != nil {
 		t.Fatalf("picker resource: %v", err)
 	}
-	if got != want {
+	if !got.Equal(want) {
 		t.Fatalf("picker resource target = %+v, want %+v", got, want)
 	}
 	if _, err := ResolvePickerTarget(dir, KindResource, "jira-work", ""); err == nil {

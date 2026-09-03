@@ -149,7 +149,7 @@ func TestSharedSuggestionFoldsResolveLikeTheCLI(t *testing.T) {
 			if err != nil {
 				t.Fatalf("TargetFor: %v", err)
 			}
-			if got != tc.want {
+			if !got.Equal(tc.want) {
 				t.Fatalf("target = %+v, want %+v", got, tc.want)
 			}
 			// Where the CLI classifies the same raw token, it must answer
@@ -157,12 +157,12 @@ func TestSharedSuggestionFoldsResolveLikeTheCLI(t *testing.T) {
 			switch tc.kind {
 			case KindDiff:
 				viaCLI, err := uirequest.ResolveDiffSpec(dir, got.Value)
-				if err != nil || viaCLI != got {
+				if err != nil || !viaCLI.Equal(got) {
 					t.Fatalf("CLI diff resolution = %+v/%v, want %+v", viaCLI, err, got)
 				}
 			case KindIssue:
 				viaCLI, err := uirequest.ResolveTarget(dir, got.Value, 0, uirequest.ResolveOptions{})
-				if err != nil || viaCLI != got {
+				if err != nil || !viaCLI.Equal(got) {
 					t.Fatalf("CLI issue resolution = %+v/%v, want %+v", viaCLI, err, got)
 				}
 			}

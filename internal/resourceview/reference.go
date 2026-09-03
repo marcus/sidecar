@@ -3,6 +3,7 @@ package resourceview
 import (
 	"fmt"
 
+	"github.com/marcus/sidecar/internal/resource"
 	"github.com/marcus/sidecar/internal/terminallink"
 )
 
@@ -38,9 +39,12 @@ func ReferenceForLocator(matchers []terminallink.ResourceMatcher, provider, loca
 // is no span a matcher could have claimed, and a row is addressed by its
 // collection and ID. Everything else is today's matched locator, and a locator
 // no live matcher recognizes is refused out loud rather than opened blind.
-func ReferenceForRequest(matchers []terminallink.ResourceMatcher, provider, matcher, collection, query, value string) (Ref, string) {
+func ReferenceForRequest(matchers []terminallink.ResourceMatcher, provider, matcher, collection, query, value string, filters map[string]string) (Ref, string) {
 	if collection != "" {
-		ref := Ref{Instance: provider, Collection: collection, Query: query, Locator: value}
+		ref := Ref{
+			Instance: provider, Collection: collection, Query: query, Locator: value,
+			Filters: resource.FilterValues(filters),
+		}
 		if !ref.Valid() {
 			return Ref{}, fmt.Sprintf("plugin %s cannot open collection %q as asked", provider, collection)
 		}

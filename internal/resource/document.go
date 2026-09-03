@@ -1,6 +1,11 @@
 package resource
 
-import "time"
+import (
+	"net/url"
+	"sort"
+	"strings"
+	"time"
+)
 
 // Tone is the coarse severity of a status pill. It is presentation-neutral on
 // purpose: the host maps it to a palette, the provider does not choose colors.
@@ -165,6 +170,133 @@ type Reference struct {
 	View     string
 	Sort     string
 	CursorID string
+	// Filters is the applied filter set, sorted by ID. It is a slice rather
+	// than a map because a reference is copied everywhere and compared as a
+	// value: a map would alias between two tabs and would give one state two
+	// spellings depending on iteration order.
+	Filters []FilterValue
+}
+
+// FilterValue is one applied filter. Both halves are bounded because both
+// survive a relaunch.
+type FilterValue struct {
+	ID    string
+	Value string
+}
+
+// SortFilterValues returns the applied set in a stable order, dropping empty
+// ids and keeping the LAST value for a repeated one. Callers hand it whatever
+// they have; this is the only spelling of an applied set that reaches state.
+func SortFilterValues(in []FilterValue) []FilterValue {
+	if len(in) == 0 {
+		return nil
+	}
+	seen := make(map[string]string, len(in))
+	for _, f := range in {
+		id := strings.TrimSpace(f.ID)
+		if id == "" {
+			continue
+		}
+		seen[id] = f.Value
+	}
+	if len(seen) == 0 {
+		return nil
+	}
+	ids := make([]string, 0, len(seen))
+	for id := range seen {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	out := make([]FilterValue, 0, len(ids))
+	for _, id := range ids {
+		out = append(out, FilterValue{ID: id, Value: seen[id]})
+	}
+	return out
+}
+
+// FilterMap projects an applied set onto the map shape the protocol sends.
+func FilterMap(in []FilterValue) map[string]string {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make(map[string]string, len(in))
+	for _, f := range in {
+		if f.ID == "" {
+			continue
+		}
+		out[f.ID] = f.Value
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+// EncodeFilters renders an applied set as one canonical, comparable string:
+// url.Values form, sorted by key and percent-escaped. It exists because
+// contentlink.Ref travels through every open journey as a comparable value, and
+// one more string keeps it comparable where a map would not.
+func EncodeFilters(in []FilterValue) string {
+	values := url.Values{}
+	for _, f := range SortFilterValues(in) {
+		values.Set(f.ID, f.Value)
+	}
+	if len(values) == 0 {
+		return ""
+	}
+	return values.Encode()
+}
+
+// DecodeFilters is the inverse. Anything unparseable is no filters at all: a
+// half-read applied set would send the plugin a scope nobody chose.
+func DecodeFilters(encoded string) []FilterValue {
+	encoded = strings.TrimSpace(encoded)
+	if encoded == "" {
+		return nil
+	}
+	values, err := url.ParseQuery(encoded)
+	if err != nil {
+		return nil
+	}
+	out := make([]FilterValue, 0, len(values))
+	for id, list := range values {
+		if len(list) == 0 {
+			continue
+		}
+		out = append(out, FilterValue{ID: id, Value: list[0]})
+	}
+	return SortFilterValues(out)
+}
+
+// FilterValues is the inverse: a map becomes the sorted slice a reference
+// carries.
+func FilterValues(in map[string]string) []FilterValue {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make([]FilterValue, 0, len(in))
+	for id, value := range in {
+		out = append(out, FilterValue{ID: id, Value: value})
+	}
+	return SortFilterValues(out)
+}
+
+// Equal reports whether two references name the same thing in the same view
+// position. It exists because a reference carries an applied filter set, which
+// makes the struct uncomparable with ==; every field still takes part, so this
+// is value equality and not a looser identity test.
+func (r Reference) Equal(other Reference) bool {
+	if r.Instance != other.Instance || r.Matcher != other.Matcher || r.Locator != other.Locator ||
+		r.Collection != other.Collection || r.Query != other.Query || r.View != other.View ||
+		r.Sort != other.Sort || r.CursorID != other.CursorID || len(r.Filters) != len(other.Filters) {
+		return false
+	}
+	for i, f := range r.Filters {
+		if f != other.Filters[i] {
+			return false
+		}
+	}
+	return true
 }
 
 // Shape reports which alternative this reference is, or ShapeInvalid when it is
@@ -219,6 +351,14 @@ func (r Reference) Valid() bool {
 }
 
 func (r Reference) viewPositionInBounds() bool {
+	if len(r.Filters) > MaxFilters {
+		return false
+	}
+	for _, f := range r.Filters {
+		if f.ID == "" || runeLen(f.ID) > MaxFilterIDChars || runeLen(f.Value) > MaxFilterValueChars {
+			return false
+		}
+	}
 	return runeLen(r.Collection) <= MaxCollectionIDChars &&
 		runeLen(r.Query) <= MaxQueryChars &&
 		runeLen(r.View) <= MaxViewIDChars &&

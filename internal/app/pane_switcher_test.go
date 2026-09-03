@@ -322,7 +322,7 @@ func TestPaneSwitcherAnswersResolveAndOpenLikeTheCLI(t *testing.T) {
 			if err != nil {
 				t.Fatalf("TargetFor(%q) = %v", tc.raw, err)
 			}
-			if got != tc.want {
+			if !got.Equal(tc.want) {
 				t.Fatalf("target = %+v, want %+v", got, tc.want)
 			}
 

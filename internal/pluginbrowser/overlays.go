@@ -1,15 +1,18 @@
 package pluginbrowser
 
 import (
+	"fmt"
 	"strings"
 
 	"charm.land/bubbles/v2/textarea"
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/marcus/sidecar/internal/modal"
 	"github.com/marcus/sidecar/internal/mouse"
 	"github.com/marcus/sidecar/internal/pluginhost"
+	"github.com/marcus/sidecar/internal/styles"
 	"github.com/marcus/sidecar/internal/ui"
 	"github.com/marcus/sidecar/internal/workspacelist"
 )
@@ -17,15 +20,21 @@ import (
 // Overlay IDs. They are constants because a click resolves to one of these
 // rather than to a position, and the sections are rebuilt on every describe.
 const (
-	viewSortListID   = "view-sort"
-	viewViewsListID  = "view-views"
-	viewDoneID       = "done"
-	actionListID     = "action-list"
-	actionRunID      = "run"
-	actionCancelID   = "cancel"
-	coverageDoneID   = "coverage-done"
-	formInputPrefix  = "input:"
-	overlayModalCols = 46
+	viewSortListID  = "view-sort"
+	viewViewsListID = "view-views"
+	viewDoneID      = "done"
+	actionListID    = "action-list"
+	actionRunID     = "run"
+	actionCancelID  = "cancel"
+	coverageDoneID  = "coverage-done"
+	// coverageModalCols is the coverage modal's own width. It is wider than the
+	// rest because it carries a four-column table.
+	coverageModalCols = 72
+	coverageRetryID   = "coverage-retry"
+	filterChoicePfx   = "filter:"
+	filterTextPfx     = "filtertext:"
+	formInputPrefix   = "input:"
+	overlayModalCols  = 46
 )
 
 type overlayKind int
@@ -50,6 +59,16 @@ type formInput struct {
 	flag   bool
 }
 
+// filterControl is one declared filter's control inside the View modal.
+// Exactly one of the two value fields is live, decided by the declared kind.
+type filterControl struct {
+	decl pluginhost.Filter
+	// choice indexes decl.Choices for a choice filter.
+	choice int
+	// text is the input of a text filter.
+	text textinput.Model
+}
+
 // overlay is whatever modal the browser has open. There is at most one: the
 // browser never stacks, because a stack is a second focus model.
 type overlay struct {
@@ -61,6 +80,8 @@ type overlay struct {
 	// View modal.
 	sortIdx int
 	viewIdx int
+	// filters is one control per declared filter, in declared order.
+	filters []filterControl
 
 	// Action menu and form.
 	actions   []pluginhost.Action
@@ -100,6 +121,13 @@ func (m *Model) overlayKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	if m.overlay.kind == overlayForm && msg.String() == "ctrl+enter" {
 		return m.submitAction(), true
 	}
+	// Retry has a key as well as a button, because nothing this modal does may
+	// be reachable only by pointer — and `r` is what refresh is everywhere else
+	// on this surface.
+	if m.overlay.kind == overlayCoverage && msg.String() == "r" {
+		m.closeOverlay()
+		return m.refreshActive(), true
+	}
 	action, cmd := m.overlay.box.HandleKey(msg)
 	return tea.Batch(cmd, m.applyOverlayAction(action)), true
 }
@@ -113,10 +141,16 @@ func (m *Model) applyOverlayAction(action string) tea.Cmd {
 	case overlayForm, overlayConfirm:
 		return m.applyFormAction(action)
 	case overlayCoverage:
-		if action != "" {
+		switch action {
+		case "":
+			return nil
+		case coverageRetryID:
 			m.closeOverlay()
+			return m.refreshActive()
+		default:
+			m.closeOverlay()
+			return nil
 		}
-		return nil
 	}
 	return nil
 }
@@ -198,6 +232,54 @@ func (m *Model) openViewModal() tea.Cmd {
 			}, nil)).
 			AddSection(modal.List(viewViewsListID, viewItems, &m.overlay.viewIdx, modal.WithMaxVisible(len(viewItems))))
 	}
+	// The filters block, after the sort list and before Done, one control per
+	// declared filter in declared order — which is the order that matters,
+	// because the first is the collection's scope.
+	m.overlay.filters = make([]filterControl, 0, len(c.Filters))
+	for _, decl := range c.Filters {
+		control := filterControl{decl: decl}
+		value := decl.Value(s.filters)
+		switch decl.Kind {
+		case pluginhost.FilterText:
+			ti := textinput.New()
+			ti.Prompt = ""
+			ti.SetValue(value)
+			control.text = ti
+		default:
+			control.choice = indexOfFilterChoice(decl, value)
+		}
+		m.overlay.filters = append(m.overlay.filters, control)
+	}
+	for i := range m.overlay.filters {
+		control := &m.overlay.filters[i]
+		label := control.decl.Label
+		if i == 0 {
+			// The scope is what the pill always carries, so the modal says
+			// which control that is rather than leaving it to be inferred from
+			// position.
+			label += "  (scope)"
+		}
+		box = box.
+			AddSection(modal.Spacer()).
+			AddSection(modal.Custom(func(int, string, string) modal.RenderedSection {
+				return modal.RenderedSection{Content: styles.Muted.Render(label)}
+			}, nil))
+		if control.decl.Kind == pluginhost.FilterText {
+			box = box.AddSection(modal.Input(filterTextPfx+control.decl.ID, &control.text))
+			continue
+		}
+		items := make([]modal.ListItem, 0, len(control.decl.Choices))
+		for _, choice := range control.decl.Choices {
+			items = append(items, modal.ListItem{
+				ID:    filterChoicePfx + control.decl.ID + ":" + choice.ID,
+				Label: choice.Title,
+			})
+		}
+		box = box.AddSection(modal.List(
+			filterChoicePfx+control.decl.ID, items, &control.choice,
+			modal.WithMaxVisible(min(len(items), maxFilterChoicesVisible)),
+		))
+	}
 	box = box.AddSection(modal.Spacer()).AddSection(modal.Buttons(modal.Btn(" Done ", viewDoneID)))
 
 	m.overlay.box = box
@@ -205,8 +287,32 @@ func (m *Model) openViewModal() tea.Cmd {
 	if len(sortItems) == 0 {
 		focus = viewViewsListID
 	}
+	if len(sortItems) == 0 && len(c.Views) == 0 && len(m.overlay.filters) > 0 {
+		focus = filterFocusID(m.overlay.filters[0])
+	}
 	m.primeOverlay(focus)
 	return nil
+}
+
+// maxFilterChoicesVisible bounds how tall one filter's radio group draws. A
+// filter may declare 64 options; a modal that spent 64 rows on one control
+// would push every other control off the box, and the list scrolls.
+const maxFilterChoicesVisible = 6
+
+func filterFocusID(control filterControl) string {
+	if control.decl.Kind == pluginhost.FilterText {
+		return filterTextPfx + control.decl.ID
+	}
+	return filterChoicePfx + control.decl.ID
+}
+
+func indexOfFilterChoice(decl pluginhost.Filter, value string) int {
+	for i, choice := range decl.Choices {
+		if choice.ID == value {
+			return i
+		}
+	}
+	return 0
 }
 
 func (m *Model) applyViewAction(action string) tea.Cmd {
@@ -219,9 +325,17 @@ func (m *Model) applyViewAction(action string) tea.Cmd {
 	switch {
 	case action == "":
 		return nil
-	case action == "cancel" || action == viewDoneID:
+	case action == "cancel":
+		// Esc discards uncommitted text; the radios have already been applied
+		// as they were picked.
 		m.closeOverlay()
 		return nil
+	case action == viewDoneID:
+		return m.applyViewClose(c, s)
+	case strings.HasPrefix(action, filterTextPfx):
+		// Enter inside a text input is a commit, not a submission of the modal:
+		// the user is still choosing.
+		return m.applyViewClose(c, s)
 	case strings.HasPrefix(action, "sort:"):
 		key := strings.TrimPrefix(action, "sort:")
 		if key == s.sortKey {
@@ -241,8 +355,76 @@ func (m *Model) applyViewAction(action string) tea.Cmd {
 		s.view = id
 		m.closeOverlay()
 		return m.list(c, s, false)
+	case strings.HasPrefix(action, filterChoicePfx):
+		rest := strings.TrimPrefix(action, filterChoicePfx)
+		id, choice, ok := strings.Cut(rest, ":")
+		if !ok {
+			return nil
+		}
+		// Picking a radio also commits whatever was typed into the text
+		// filters, because both are one statement of what this page should
+		// cover and applying half of it would list something nobody asked for.
+		changed := m.commitFilterText(c, s)
+		changed = m.setFilter(c, s, id, choice) || changed
+		m.closeOverlay()
+		if !changed {
+			return nil
+		}
+		return m.list(c, s, false)
 	}
 	return nil
+}
+
+// applyViewClose commits the text filters a Done (or an Enter in an input)
+// leaves standing, and relists if anything moved. Esc is a cancel and discards
+// them: an uncommitted edit is not a choice.
+func (m *Model) applyViewClose(c pluginhost.Collection, s *collectionState) tea.Cmd {
+	changed := m.commitFilterText(c, s)
+	m.closeOverlay()
+	if !changed {
+		return nil
+	}
+	return m.list(c, s, false)
+}
+
+// commitFilterText folds every text control's value into the applied set and
+// reports whether anything changed.
+func (m *Model) commitFilterText(c pluginhost.Collection, s *collectionState) bool {
+	changed := false
+	for i := range m.overlay.filters {
+		control := &m.overlay.filters[i]
+		if control.decl.Kind != pluginhost.FilterText {
+			continue
+		}
+		if m.setFilter(c, s, control.decl.ID, strings.TrimSpace(control.text.Value())) {
+			changed = true
+		}
+	}
+	return changed
+}
+
+// setFilter records one filter's value and reports whether it moved. A value
+// equal to the filter's default is stored as an ABSENCE, because that is what
+// the wire means by a missing key and two spellings of one state is how a pill
+// and a request start disagreeing.
+func (m *Model) setFilter(c pluginhost.Collection, s *collectionState, id, value string) bool {
+	decl, ok := c.Filter(id)
+	if !ok {
+		return false
+	}
+	before := decl.Value(s.filters)
+	if value == before {
+		return false
+	}
+	if value == decl.Default {
+		delete(s.filters, id)
+		return true
+	}
+	if s.filters == nil {
+		s.filters = make(map[string]string, len(c.Filters))
+	}
+	s.filters[id] = value
+	return true
 }
 
 func defaultDir(c pluginhost.Collection, key string) pluginhost.SortDir {
@@ -621,17 +803,13 @@ func (m *Model) hasCoverage() bool {
 	if s == nil || !s.loaded {
 		return false
 	}
-	if len(s.notices) > 0 {
-		return true
-	}
 	// A `search: required` collection nobody has typed into was never asked
-	// anything, so it has made no claim to explain. The stored outcome there is
-	// `abstained` only because the page is empty, and the row already says "no
-	// query" rather than that word; a card that read it out would tell the
-	// reader every source was fine with a query that was never run. M4b gives
-	// the browser its own unqueried state and the footer stops saying it too.
-	if c.Search == pluginhost.SearchRequired && strings.TrimSpace(s.query) == "" {
+	// anything, so it has made no claim to explain (td-c2dc19).
+	if s.unqueried {
 		return false
+	}
+	if len(s.notices) > 0 || len(s.coverage) > 0 || s.omitted.Any() {
+		return true
 	}
 	return s.outcome != pluginhost.OutcomeAnswered
 }
@@ -650,20 +828,124 @@ func (m *Model) openCoverage() tea.Cmd {
 		return nil
 	}
 	s := m.state(c)
-	m.overlay = overlay{kind: overlayCoverage, width: m.modalWidth()}
-	box := modal.New("Coverage · "+c.Title, modal.WithWidth(m.overlay.width), modal.WithHints(false)).
-		AddSection(modal.Text(string(s.outcome))).
+	m.overlay = overlay{kind: overlayCoverage, width: m.coverageModalWidth()}
+	width := m.overlay.width
+	box := modal.New("Coverage · "+c.Title, modal.WithWidth(width), modal.WithHints(false)).
+		AddSection(modal.Text(outcomeStyle(s.outcome).Render(string(s.outcome)))).
 		AddSection(modal.Text(outcomeDefinition(s.outcome)))
 	if len(s.notices) > 0 {
 		box = box.AddSection(modal.Spacer())
 		for _, notice := range s.notices {
+			// Untruncated: the row it was drawn on had one line, this does not.
 			box = box.AddSection(modal.Text(noticeGlyph(notice.Tone) + "  " + notice.Text))
 		}
 	}
-	box = box.AddSection(modal.Spacer()).AddSection(modal.Buttons(modal.Btn(" Done ", coverageDoneID)))
+	if s.omitted.Any() {
+		// Two lines, one per count, because they are two different reasons a
+		// row is missing and a reader acts on them differently.
+		box = box.AddSection(modal.Spacer()).
+			AddSection(modal.Text(fmt.Sprintf("%d below the relevance floor", s.omitted.Suppressed))).
+			AddSection(modal.Text(fmt.Sprintf("%d over the budget", s.omitted.Dropped)))
+	}
+	if len(s.coverage) > 0 {
+		lines := coverageTable(s.coverage, width)
+		if s.coverageTruncated {
+			lines = append(lines, styles.Subtle.Render("the plugin sent more sources than Sidecar keeps"))
+		}
+		box = box.AddSection(modal.Spacer()).
+			AddSection(modal.Custom(func(int, string, string) modal.RenderedSection {
+				return modal.RenderedSection{Content: strings.Join(lines, "\n")}
+			}, nil))
+	}
+	box = box.AddSection(modal.Spacer()).AddSection(modal.Buttons(
+		modal.Btn(" Retry ", coverageRetryID, modal.BtnPrimary()),
+		modal.Btn(" Done ", coverageDoneID),
+	))
 	m.overlay.box = box
-	m.primeOverlay(coverageDoneID)
+	// Deliberately no explicit focus: setting one scrolls the body to it, and
+	// this modal opens on the outcome — the sentence the reader came for — with
+	// the table below it. Focus still lands on Retry, because it is the first
+	// focusable, and `r` works wherever the body happens to be scrolled to.
+	m.primeOverlay("")
 	return nil
+}
+
+// coverageModalWidth is wider than the browser's other modals, because this one
+// carries a four-column table and a table squeezed to 46 columns is four
+// ellipses. It is still held to the box: the modal never exceeds the frame it
+// floats over, and the body scrolls when it is taller.
+func (m *Model) coverageModalWidth() int {
+	w := coverageModalCols
+	if m.width > 0 && w > m.width-4 {
+		w = m.width - 4
+	}
+	if w < 20 {
+		w = 20
+	}
+	return w
+}
+
+// coverageTable renders the per-source ledger: Source, State as a tone pill,
+// Elapsed, and the plugin's own reason. The state's colour is the host's, from
+// CoverageState.Tone, so a plugin cannot paint its own failure green.
+func coverageTable(rows []pluginhost.Coverage, width int) []string {
+	sourceW, stateW, elapsedW := 6, 5, 7
+	for _, row := range rows {
+		sourceW = max(sourceW, ansi.StringWidth(row.Source))
+		stateW = max(stateW, ansi.StringWidth(string(row.State)))
+		elapsedW = max(elapsedW, ansi.StringWidth(elapsedLabel(row.ElapsedMs)))
+	}
+	sourceW = min(sourceW, 20)
+	// What is left after the three fixed columns and their gaps belongs to the
+	// reason, which is the one column whose content is unbounded prose.
+	reasonW := width - sourceW - stateW - elapsedW - 3*columnGap
+	out := make([]string, 0, len(rows)+2)
+	head := padRight("SOURCE", sourceW) + gap() + padRight("STATE", stateW) + gap() +
+		padLeft("ELAPSED", elapsedW)
+	if reasonW >= 6 {
+		head += gap() + padRight("REASON", reasonW)
+	}
+	out = append(out, styles.Muted.Render(head))
+	for _, row := range rows {
+		line := padRight(ansi.Truncate(row.Source, sourceW, "…"), sourceW) + gap() +
+			fitStyled(toneStyle(row.State.Tone()).Render(string(row.State)), stateW) + gap() +
+			padLeft(elapsedLabel(row.ElapsedMs), elapsedW)
+		if reasonW >= 6 {
+			line += gap() + styles.Muted.Render(ansi.Truncate(row.Reason, reasonW, "…"))
+		}
+		out = append(out, fitStyled(line, width))
+	}
+	return out
+}
+
+func gap() string { return strings.Repeat(" ", columnGap) }
+
+func padRight(s string, width int) string {
+	if pad := width - ansi.StringWidth(s); pad > 0 {
+		return s + strings.Repeat(" ", pad)
+	}
+	return s
+}
+
+func padLeft(s string, width int) string {
+	if pad := width - ansi.StringWidth(s); pad > 0 {
+		return strings.Repeat(" ", pad) + s
+	}
+	return s
+}
+
+// elapsedLabel is how long a source took. A plugin that did not say gets an
+// em dash rather than "0ms", because zero milliseconds is a measurement and
+// silence is not.
+func elapsedLabel(ms int) string {
+	switch {
+	case ms <= 0:
+		return "—"
+	case ms < 1000:
+		return fmt.Sprintf("%dms", ms)
+	default:
+		return fmt.Sprintf("%.1fs", float64(ms)/1000)
+	}
 }
 
 // outcomeDefinition is Sidecar's sentence for each word in the outcome
@@ -674,6 +956,8 @@ func outcomeDefinition(outcome pluginhost.PageOutcome) string {
 	switch outcome {
 	case pluginhost.OutcomeDegraded:
 		return "Some source that should have answered could not, so this page is not a fact about the query."
+	case pluginhost.OutcomeFailed:
+		return "Every source this page needed failed, so it is not an answer at all — not even an empty one."
 	case pluginhost.OutcomeAbstained:
 		return "Nothing matched and every source was fine, so an empty page is a fact about the query."
 	default:

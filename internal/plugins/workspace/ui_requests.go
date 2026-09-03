@@ -624,7 +624,7 @@ func (p *Plugin) performTargetOpen(req uirequest.Request, root, surface string) 
 		opened = p.diffPaneShows(spec)
 	case uirequest.TargetKindResource:
 		ref, refusal := resourceview.ReferenceForRequest(p.resourceMatchers,
-			req.Target.Provider, req.Target.Matcher, req.Target.Collection, req.Target.Query, req.Target.Value)
+			req.Target.Provider, req.Target.Matcher, req.Target.Collection, req.Target.Query, req.Target.Value, req.Target.Filters)
 		if refusal != "" {
 			return openOutcome{status: uirequest.StatusDeclined, reason: refusal}, nil
 		}

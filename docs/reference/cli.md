@@ -2049,7 +2049,8 @@ Pass --sessions=ROW for a durable inventory ID or display name; a following
 bare word is the open target, not the row. Mutually exclusive with --shell
 and --project.
 --diff with no spec is the working tree. --plugin names a configured plugin instance:
-with --collection it opens that collection's tab (add --query to open it searched, or a
+with --collection it opens that collection's tab (add --query to open it searched,
+--filter id=value for one of the collection's own declared filters, or a
 positional row id to open that row's document instead), and without --collection it
 opens a matched locator through the plugin's matchers. --provider is the older spelling
 of the locator form and still works. Either way the instance is required for a resource:
@@ -2087,6 +2088,7 @@ Usage: sidecar open [options] [<target>]
 - `--provider ID`: Alias for --plugin's locator form, kept for the frozen resource protocol
 - `--collection C`: With --plugin, the collection to open as a tab
 - `--query Q`: With --collection, the query the tab opens searched on
+- `--filter ID=VALUE`: With --collection, one applied filter (repeatable)
 - `--shell NAME`: Target a registered shell by display name or tmux name
 - `--project NAME`: Target a project's Workspaces surface (slug, basename, or path)
 - `--sessions [=ROW]`: Target the global Sessions surface (optional row as --sessions=ID)
@@ -2126,6 +2128,8 @@ sidecar open abc1234
 sidecar open --provider jira-work CASH-1245
 # a collection tab beside the terminal, opened searched
 sidecar open --plugin recall --collection results --query dex --split right
+# the same tab, scoped by one of the collection's own filters
+sidecar open --plugin recall --collection results --query dex --filter profile=docs
 # one row's document tab
 sidecar open --plugin ongoing --collection projects recall
 # structured result for the agent

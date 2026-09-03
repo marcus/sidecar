@@ -48,7 +48,7 @@ func TestOverviewHostPickerDataResolvesLikeTheCLI(t *testing.T) {
 		if err != nil {
 			t.Fatalf("CLI ResolveDiffSpec: %v", err)
 		}
-		if got != want {
+		if !got.Equal(want) {
 			t.Fatalf("overview diff target = %+v, want the CLI's %+v", got, want)
 		}
 	})
@@ -68,7 +68,7 @@ func TestOverviewHostPickerDataResolvesLikeTheCLI(t *testing.T) {
 		if err != nil {
 			t.Fatalf("CLI ResolveTarget: %v", err)
 		}
-		if got != want {
+		if !got.Equal(want) {
 			t.Fatalf("overview issue target = %+v, want the CLI's %+v", got, want)
 		}
 	})
@@ -105,7 +105,7 @@ func TestOverviewHostPickerDataResolvesLikeTheCLI(t *testing.T) {
 		if err != nil {
 			t.Fatalf("CLI ResolveFileTarget: %v", err)
 		}
-		if got != want {
+		if !got.Equal(want) {
 			t.Fatalf("overview file target = %+v, want the CLI's %+v", got, want)
 		}
 	})

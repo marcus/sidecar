@@ -482,6 +482,7 @@ func (v *resourceViewer) arm(ctx SurfaceContext, ref contentlink.Ref, id int, st
 	// so the first page is the one the user was reading rather than the
 	// collection's default followed by a correction.
 	rf.View, rf.Sort, rf.CursorID = state.View, state.Sort, state.CursorID
+	rf.Filters = resource.FilterValues(state.Filters)
 	v.view.Arm(id, rf, ctx.Epoch)
 	v.view.SetPendingScroll(state.Scroll)
 }
@@ -513,6 +514,7 @@ func (v *resourceViewer) snapshot(ref contentlink.Ref) TabState {
 	return TabState{
 		Ref: refFromResource(ref, rf), Scroll: v.view.Scroll(),
 		View: rf.View, Sort: rf.Sort, CursorID: rf.CursorID,
+		Filters: resource.FilterMap(rf.Filters),
 	}
 }
 
@@ -523,12 +525,14 @@ func resourceRef(ref contentlink.Ref) resource.Reference {
 	return resource.Reference{
 		Instance: ref.Provider, Matcher: ref.Matcher, Locator: ref.Value,
 		Collection: ref.Collection, Query: ref.Query,
+		Filters: resource.DecodeFilters(ref.Filters),
 	}
 }
 
 func refFromResource(ref contentlink.Ref, rf resource.Reference) contentlink.Ref {
 	ref.Provider, ref.Matcher, ref.Value = rf.Instance, rf.Matcher, rf.Locator
 	ref.Collection, ref.Query = rf.Collection, rf.Query
+	ref.Filters = resource.EncodeFilters(rf.Filters)
 	return ref
 }
 

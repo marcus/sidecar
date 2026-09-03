@@ -176,7 +176,7 @@ func TestReferencesAreTheOnlyThingPersisted(t *testing.T) {
 	// The struct has no field that could carry a title, body, or URL. This
 	// asserts what it does carry, which is the reference and nothing else.
 	want := PersistedTab{Provider: "jira-work", Matcher: "issue-key", Locator: "CASH-1"}
-	if got[0] != want {
+	if !got[0].Equal(want) {
 		t.Errorf("persisted = %+v, want %+v", got[0], want)
 	}
 }

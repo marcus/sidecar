@@ -31,6 +31,7 @@ func runOpen(env Env, args []string) int {
 	collectionFlag := ""
 	queryFlag := ""
 	querySet := false
+	var filterFlags map[string]string
 	sessions := false
 	sessionsRow := ""
 	var positional []string
@@ -86,6 +87,22 @@ func runOpen(env Env, args []string) int {
 			}
 			queryFlag, querySet = val, true
 			i = next
+		case arg == "--filter" || strings.HasPrefix(arg, "--filter="):
+			val, next, ok := takeFlagArg(arg, args, i, "--filter")
+			if !ok {
+				cliErrf(env.Stderr, "--filter requires id=value\n\n%s", openHelp)
+				return 2
+			}
+			i = next
+			id, value, ok := parseFilterFlag(val)
+			if !ok {
+				cliErrf(env.Stderr, "--filter takes id=value, not %q\n\n%s", val, openHelp)
+				return 2
+			}
+			if filterFlags == nil {
+				filterFlags = map[string]string{}
+			}
+			filterFlags[id] = value
 		case arg == "--shell":
 			if i+1 >= len(args) {
 				cliErrf(env.Stderr, "--shell requires a shell name\n\n%s", openHelp)
@@ -230,6 +247,10 @@ func runOpen(env Env, args []string) int {
 		cliErrf(env.Stderr, "--query needs a --collection to search\n\n%s", openHelp)
 		return 2
 	}
+	if len(filterFlags) > 0 && collectionFlag == "" {
+		cliErrf(env.Stderr, "--filter needs a --collection to narrow\n\n%s", openHelp)
+		return 2
+	}
 	if collectionFlag != "" && wantDiff {
 		cliErrf(env.Stderr, "--collection and --diff name different kinds of target\n\n%s", openHelp)
 		return 2
@@ -311,7 +332,7 @@ func runOpen(env Env, args []string) int {
 	}
 	var target uirequest.Target
 	if collectionFlag != "" {
-		target, err = uirequest.ResolveCollectionTarget(pluginFlag, collectionFlag, queryFlag, raw)
+		target, err = uirequest.ResolveCollectionTarget(pluginFlag, collectionFlag, queryFlag, raw, filterFlags)
 	} else {
 		target, err = uirequest.ResolveTarget(dest.Origin.WorkDir, raw, lineNo, uirequest.ResolveOptions{Diff: wantDiff, Provider: providerFlag})
 	}

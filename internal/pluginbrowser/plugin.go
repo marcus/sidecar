@@ -37,6 +37,7 @@ const (
 	cmdModalSelect = "plugin-modal-select"
 	cmdModalClose  = "plugin-modal-close"
 	cmdModalSubmit = "plugin-modal-submit"
+	cmdModalRetry  = "plugin-modal-retry"
 )
 
 // TabPlugin hosts one browser as a navbar surface. Its Calls are built once, at
@@ -145,6 +146,7 @@ func (p *TabPlugin) Init(ctx *plugin.Context) error {
 		{"j", cmdModalMove}, {"k", cmdModalMove},
 		{"enter", cmdModalSelect},
 		{"ctrl+enter", cmdModalSubmit},
+		{"r", cmdModalRetry},
 		{"esc", cmdModalClose},
 	} {
 		ctx.Keymap.RegisterPluginBinding(b.key, b.command, modal)
@@ -286,6 +288,15 @@ func (p *TabPlugin) modalCommands() []plugin.Command {
 			Category: plugin.CategoryActions, Context: context, Priority: 3,
 		})
 	}
+	if p.model.overlay.kind == overlayCoverage {
+		// Retry is a button and a key. The hint is what makes the key
+		// discoverable, which is the same rule every other key on this surface
+		// follows.
+		commands = append(commands, plugin.Command{
+			ID: cmdModalRetry, Name: "Retry", Description: "Ask again",
+			Category: plugin.CategoryActions, Context: context, Priority: 3,
+		})
+	}
 	return append(commands, plugin.Command{
 		ID: cmdModalClose, Name: "Close", Description: "Close the overlay",
 		Category: plugin.CategoryNavigation, Context: context, Priority: 4,
@@ -412,7 +423,14 @@ func (p *TabPlugin) FooterStatus() (string, bool) {
 	if !s.loaded {
 		return m.instance + " · " + c.ID, false
 	}
-	return m.instance + " · " + c.ID + " · " + string(s.outcome), s.outcome == pluginhost.OutcomeDegraded
+	if s.unqueried {
+		// Nothing was asked, so there is no outcome to report. Saying
+		// "abstained" here would tell the reader every source was fine with a
+		// query that was never run (td-c2dc19).
+		return m.instance + " · " + c.ID + " · waiting for a query", false
+	}
+	degraded := s.outcome == pluginhost.OutcomeDegraded || s.outcome == pluginhost.OutcomeFailed
+	return m.instance + " · " + c.ID + " · " + string(s.outcome), degraded
 }
 
 // Diagnostics report what the host knows about this instance without running

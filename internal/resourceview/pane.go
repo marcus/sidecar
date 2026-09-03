@@ -325,7 +325,7 @@ func (s paneSnapshot) equal(other paneSnapshot) bool {
 		return false
 	}
 	for i := range s.tabs {
-		if s.tabs[i] != other.tabs[i] {
+		if !s.tabs[i].Equal(other.tabs[i]) {
 			return false
 		}
 	}

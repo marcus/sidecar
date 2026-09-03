@@ -7,6 +7,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/marcus/sidecar/internal/app"
 	"github.com/marcus/sidecar/internal/mouse"
+	"github.com/marcus/sidecar/internal/resource"
 	"github.com/marcus/sidecar/internal/resourceview"
 	"github.com/marcus/sidecar/internal/targetactivation"
 	"github.com/marcus/sidecar/internal/terminallink"
@@ -230,6 +231,7 @@ func (p *Plugin) activateResolvedTerminalLink(link terminalLink, context termina
 			Locator:    plan.Locator,
 			Collection: plan.Collection,
 			Query:      plan.Query,
+			Filters:    resource.DecodeFilters(plan.Filters),
 		})
 	case targetactivation.PlanOpenDiff:
 		return p.revalidateTerminalLink(link, context, termPanel)

@@ -445,6 +445,7 @@ func resourceTabJSON(tab contentpanes.TabState) (state.PaneResourceTabJSON, bool
 	case ref.Collection != "" && ref.Matcher == "" && ref.Value == "":
 		out.Collection = ref.Collection
 		out.Query, out.View, out.Sort, out.CursorID = ref.Query, tab.View, tab.Sort, tab.CursorID
+		out.Filters = tab.Filters
 	case ref.Collection != "" && ref.Matcher == "" && ref.Value != "":
 		out.Collection, out.Locator = ref.Collection, ref.Value
 	case ref.Collection == "" && ref.Matcher != "" && ref.Value != "":
@@ -469,6 +470,7 @@ func resourceTabState(tab state.PaneResourceTabJSON) (contentpanes.TabState, boo
 	case tab.Collection != "" && tab.Matcher == "" && tab.Locator == "":
 		ref.Collection, ref.Query = tab.Collection, tab.Query
 		out.View, out.Sort, out.CursorID = tab.View, tab.Sort, tab.CursorID
+		out.Filters = tab.Filters
 	case tab.Collection != "" && tab.Matcher == "" && tab.Locator != "":
 		ref.Collection, ref.Value = tab.Collection, tab.Locator
 	case tab.Collection == "" && tab.Matcher != "" && tab.Locator != "":

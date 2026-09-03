@@ -315,7 +315,25 @@ func TargetFromSpan(span terminallink.Span) (Target, bool) {
 // with no row opens the collection tab and carries its opening query; a
 // collection with a row opens that row's document tab, and a query there would
 // be describing a search nobody is running.
-func ResolveCollectionTarget(plugin, collection, query, row string) (Target, error) {
+// Equal reports whether two targets name the same thing. It is spelled out
+// because a resource target carries an applied filter map, which makes the
+// struct uncomparable with ==; every field still takes part.
+func (t Target) Equal(other Target) bool {
+	if t.Kind != other.Kind || t.Value != other.Value || t.Line != other.Line ||
+		t.Provider != other.Provider || t.Matcher != other.Matcher ||
+		t.Collection != other.Collection || t.Query != other.Query ||
+		len(t.Filters) != len(other.Filters) {
+		return false
+	}
+	for id, value := range t.Filters {
+		if other.Filters[id] != value {
+			return false
+		}
+	}
+	return true
+}
+
+func ResolveCollectionTarget(plugin, collection, query, row string, filters map[string]string) (Target, error) {
 	plugin = strings.TrimSpace(plugin)
 	collection = strings.TrimSpace(collection)
 	row = strings.TrimSpace(row)
@@ -344,8 +362,34 @@ func ResolveCollectionTarget(plugin, collection, query, row string) (Target, err
 	if row != "" && query != "" {
 		return Target{}, fmt.Errorf("a row id and a query name different things to open; pass one")
 	}
+	if len(filters) > resource.MaxFilters {
+		return Target{}, fmt.Errorf("a collection carries at most %d filters", resource.MaxFilters)
+	}
+	var applied map[string]string
+	for id, value := range filters {
+		id = strings.TrimSpace(id)
+		if id == "" {
+			return Target{}, fmt.Errorf("a filter needs an id")
+		}
+		if utf8.RuneCountInString(id) > resource.MaxFilterIDChars {
+			return Target{}, fmt.Errorf("filter id %q is longer than %d characters", id, resource.MaxFilterIDChars)
+		}
+		if utf8.RuneCountInString(value) > resource.MaxFilterValueChars {
+			return Target{}, fmt.Errorf("filter %q value is longer than %d characters", id, resource.MaxFilterValueChars)
+		}
+		if strings.ContainsFunc(id, isControl) || strings.ContainsFunc(value, isControl) {
+			return Target{}, fmt.Errorf("filter ids and values cannot contain control characters")
+		}
+		if applied == nil {
+			applied = make(map[string]string, len(filters))
+		}
+		applied[id] = value
+	}
+	if row != "" && len(applied) > 0 {
+		return Target{}, fmt.Errorf("a row id and a filter name different things to open; pass one")
+	}
 	return Target{
 		Kind: TargetKindResource, Value: row,
-		Provider: plugin, Collection: collection, Query: query,
+		Provider: plugin, Collection: collection, Query: query, Filters: applied,
 	}, nil
 }

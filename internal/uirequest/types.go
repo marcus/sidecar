@@ -131,9 +131,12 @@ type LayoutPane struct {
 	// with a collection and one target it opens that row's document tab.
 	Collection string `json:"collection,omitempty"`
 	Query      string `json:"query,omitempty"`
-	Run        string `json:"run,omitempty"`
-	Type       string `json:"type,omitempty"`
-	Name       string `json:"name,omitempty"`
+	// Filters is the collection tab's applied filter set, {id: value}. Like
+	// Query it needs a Collection to apply to.
+	Filters map[string]string `json:"filters,omitempty"`
+	Run     string            `json:"run,omitempty"`
+	Type    string            `json:"type,omitempty"`
+	Name    string            `json:"name,omitempty"`
 	// Session carries a shell pane's tmux session. Set means CARRY that live
 	// leaf; empty with run/type/name means open a new split beside the origin.
 	Session string `json:"session,omitempty"`
@@ -227,7 +230,7 @@ func validateSpecPane(pane LayoutPane) error {
 	}
 	switch kind {
 	case panelayout.Primary:
-		if len(pane.Targets) > 0 || pane.Provider != "" || pane.Collection != "" || pane.Query != "" || pane.Run != "" || pane.Type != "" || pane.Name != "" || pane.Session != "" {
+		if len(pane.Targets) > 0 || pane.Provider != "" || pane.Collection != "" || pane.Query != "" || len(pane.Filters) > 0 || pane.Run != "" || pane.Type != "" || pane.Name != "" || pane.Session != "" {
 			return fmt.Errorf("the primary pane takes no other fields; it carries the host's own terminal")
 		}
 		return nil
@@ -251,6 +254,9 @@ func validateSpecPane(pane LayoutPane) error {
 		}
 		if pane.Query != "" {
 			return fmt.Errorf("\"query\" needs a \"collection\" to search; a matched locator is not searched")
+		}
+		if len(pane.Filters) > 0 {
+			return fmt.Errorf("\"filters\" needs a \"collection\" to narrow; a matched locator has no filters")
 		}
 		if len(pane.Targets) == 0 {
 			return fmt.Errorf("a resource pane needs at least one target, or a \"collection\" to list")
@@ -521,6 +527,10 @@ type Target struct {
 	// Query is the collection tab's opening query. It is meaningful only
 	// alongside Collection with no Value: a row's document is not searched.
 	Query string `json:"query,omitempty"`
+	// Filters is the collection tab's applied filter set, {id: value}. It is
+	// meaningful only alongside Collection, for the same reason Query is, and
+	// the host drops a key the collection never declared at call time.
+	Filters map[string]string `json:"filters,omitempty"`
 }
 
 // Options specifies optional placement flags. There is deliberately no focus

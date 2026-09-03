@@ -32,6 +32,7 @@ import (
 	"path"
 	"strings"
 
+	"github.com/marcus/sidecar/internal/resource"
 	"github.com/marcus/sidecar/internal/terminallink"
 	"github.com/marcus/sidecar/internal/uirequest"
 )
@@ -93,9 +94,12 @@ type Plan struct {
 	// collection tab; with one it opens that row's document tab.
 	Collection string
 	Query      string
-	Session    string
-	Task       string
-	Note       string
+	// Filters is the applied filter set of a plugin collection, in
+	// resource.EncodeFilters form so a Plan stays a comparable value.
+	Filters string
+	Session string
+	Task    string
+	Note    string
 }
 
 // PlanKindsFromSpans lists every plan kind a scanned terminal-link span can
@@ -174,6 +178,7 @@ func Resolve(target uirequest.Target) (Plan, error) {
 			return Plan{
 				Kind: PlanOpenResource, PluginID: WorkspacePluginID,
 				Provider: provider, Collection: collection, Query: target.Query, Locator: value,
+				Filters: resource.EncodeFilters(resource.FilterValues(target.Filters)),
 			}, nil
 		}
 		if err := plainValue(value, "resource"); err != nil {

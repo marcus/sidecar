@@ -177,7 +177,7 @@ func (m *Model) applyOpenOnPreview(req uirequest.Request, targetWorkspace worksp
 		}
 	case uirequest.TargetKindResource:
 		ref, refusal := resourceview.ReferenceForRequest(m.previewResourceMatchers(),
-			req.Target.Provider, req.Target.Matcher, req.Target.Collection, req.Target.Query, req.Target.Value)
+			req.Target.Provider, req.Target.Matcher, req.Target.Collection, req.Target.Query, req.Target.Value, req.Target.Filters)
 		if refusal != "" {
 			m.ackOpen(req, uirequest.StatusDeclined, refusal, surface, 0)
 			return nil

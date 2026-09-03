@@ -12,6 +12,7 @@ import (
 	"github.com/marcus/sidecar/internal/mouse"
 	"github.com/marcus/sidecar/internal/pluginhost"
 	"github.com/marcus/sidecar/internal/resource"
+	"github.com/marcus/sidecar/internal/state"
 )
 
 // QueryDebounce is how long the browser waits after a keystroke before it
@@ -57,13 +58,28 @@ type collectionState struct {
 	view    string
 	sortKey string
 	sortDir pluginhost.SortDir
+	// filters is the applied set: only values that differ from their filter's
+	// declared default. A missing key means the default, exactly as it does on
+	// the wire, so there is one spelling of "nothing is applied".
+	filters map[string]string
 
 	items      []pluginhost.Item
 	outcome    pluginhost.PageOutcome
 	notices    []pluginhost.Notice
+	omitted    pluginhost.Omitted
+	coverage   []pluginhost.Coverage
 	total      int
 	nextCursor string
 	truncated  bool
+	// coverageTruncated records that the plugin sent more coverage rows than
+	// the host keeps, so the modal can say the table is not the whole ledger.
+	coverageTruncated bool
+	// unqueried is the browser's own state for a `search: required` collection
+	// nobody has typed into. It is NOT `abstained`: nothing was asked, so no
+	// claim was made, and the stored outcome of the empty page is an artefact
+	// rather than an answer (td-c2dc19). Every surface that would otherwise
+	// read the outcome word asks this first.
+	unqueried bool
 
 	cursor int
 	scroll int
@@ -177,6 +193,11 @@ type Model struct {
 	// share is the list's percentage of the box. Zero until it is read from
 	// state, because a browser is built before it knows how wide it will be.
 	share int
+
+	// tabViewRestored records that a global tab has already reinstated its
+	// remembered query, view, sort and filters. It happens once: a second pass
+	// would overwrite what the user has typed since.
+	tabViewRestored bool
 }
 
 // New builds a browser for one configured instance.
@@ -324,6 +345,8 @@ func (m *Model) state(c pluginhost.Collection) *collectionState {
 		return s
 	}
 	s := &collectionState{id: c.ID}
+	// Filters start empty, which IS the declared defaults: a missing key means
+	// the default everywhere, so there is nothing to seed.
 	for _, key := range c.Sort {
 		if key.Default != "" {
 			s.sortKey, s.sortDir = key.ID, key.Default
@@ -385,6 +408,7 @@ func (m *Model) readDescription() bool {
 		if s := m.paneState(); s != nil {
 			m.applyRestore(s)
 		}
+		m.restoreTabView()
 	}
 	return before != m.described || beforeState != status.State
 }
@@ -469,8 +493,13 @@ func (m *Model) list(c pluginhost.Collection, s *collectionState, appendPage boo
 	}
 	if c.Search == pluginhost.SearchRequired && strings.TrimSpace(s.query) == "" {
 		s.items = nil
-		s.outcome = pluginhost.OutcomeAbstained
+		// Not abstained: the plugin was never asked, so it claimed nothing.
+		s.outcome = ""
+		s.unqueried = true
 		s.notices = nil
+		s.omitted = pluginhost.Omitted{}
+		s.coverage = nil
+		s.coverageTruncated = false
 		s.total = 0
 		s.nextCursor = ""
 		s.cursor, s.scroll = 0, 0
@@ -480,6 +509,7 @@ func (m *Model) list(c pluginhost.Collection, s *collectionState, appendPage boo
 		s.generation++
 		return nil
 	}
+	s.unqueried = false
 	if m.calls.List == nil {
 		return nil
 	}
@@ -494,6 +524,7 @@ func (m *Model) list(c pluginhost.Collection, s *collectionState, appendPage boo
 	} else {
 		s.loading = true
 	}
+	m.persistTabView(c, s)
 	call := ListCall{
 		Instance: m.instance,
 		Browser:  m.id,
@@ -503,6 +534,7 @@ func (m *Model) list(c pluginhost.Collection, s *collectionState, appendPage boo
 			Query:      s.query,
 			View:       s.view,
 			Sort:       pluginhost.SortOrder{Key: s.sortKey, Dir: string(s.sortDir)},
+			Filters:    pluginhost.NormalizeFilters(c, s.filters),
 			Cursor:     cursor,
 			Limit:      listLimit,
 		},
@@ -588,6 +620,9 @@ func (m *Model) applyListed(msg ListedMsg) tea.Cmd {
 			s.nextCursor = ""
 			s.outcome = pluginhost.OutcomeDegraded
 			s.notices = nil
+			s.omitted = pluginhost.Omitted{}
+			s.coverage = nil
+			s.coverageTruncated = false
 			s.cursor, s.scroll = 0, 0
 		}
 		return nil
@@ -600,7 +635,11 @@ func (m *Model) applyListed(msg ListedMsg) tea.Cmd {
 		s.cursor, s.scroll = 0, 0
 	}
 	s.outcome = msg.Page.Outcome
+	s.unqueried = false
 	s.notices = msg.Page.Notices
+	s.omitted = msg.Page.Omitted
+	s.coverage = msg.Page.Coverage
+	s.coverageTruncated = msg.Page.CoverageTruncated
 	s.total = msg.Page.Total
 	s.nextCursor = msg.Page.NextCursor
 	s.truncated = msg.Page.Truncated
@@ -762,3 +801,75 @@ func (d *detailState) invalidateBody() {
 // Flash is the standing line an act outcome left, and whether it is an error.
 // The host puts it in the footer; the browser never renders a footer of its own.
 func (m *Model) Flash() (string, bool) { return m.flash, m.flashErr }
+
+// A global protocol tab has no pane to be persisted with, so it remembers its
+// own view position: the query it was last asked, the view and sort that were
+// chosen, and the filters that were applied. A pane-mode browser persists
+// nothing here — its position rides on the tab record the surface writes, and
+// two authorities on one position is how they start disagreeing.
+
+// restoreTabView reinstates a remembered view position for the collection on
+// screen, exactly once, before anything is listed. A collection the user has
+// already touched this session is left alone: what is on screen wins over what
+// was on screen last time.
+func (m *Model) restoreTabView() {
+	if m.paneMode() || m.tabViewRestored {
+		return
+	}
+	c, ok := m.ActiveCollection()
+	if !ok {
+		return
+	}
+	m.tabViewRestored = true
+	saved := state.GetPluginBrowserView(m.instance, c.ID)
+	if saved.Empty() {
+		return
+	}
+	s := m.state(c)
+	if s.loaded || s.loading || s.query != "" {
+		return
+	}
+	s.query = saved.Query
+	for _, v := range c.Views {
+		if v.ID == saved.View {
+			s.view = saved.View
+			break
+		}
+	}
+	for _, key := range c.Sort {
+		if key.ID == saved.Sort {
+			s.sortKey, s.sortDir = saved.Sort, defaultDir(c, saved.Sort)
+			break
+		}
+	}
+	s.filters = adoptFilters(c, saved.Filters)
+}
+
+// persistTabView writes the position a list is about to be run with. It writes
+// only when something moved, for the reason persistSplit does: a save per
+// keystroke is a file write per keystroke.
+func (m *Model) persistTabView(c pluginhost.Collection, s *collectionState) {
+	if m.paneMode() {
+		return
+	}
+	view := state.PluginBrowserViewJSON{
+		Query: s.query, View: s.view, Sort: s.sortKey,
+		Filters: pluginhost.NormalizeFilters(c, s.filters),
+	}
+	if tabViewEqual(state.GetPluginBrowserView(m.instance, c.ID), view) {
+		return
+	}
+	_ = state.SetPluginBrowserView(m.instance, c.ID, view)
+}
+
+func tabViewEqual(a, b state.PluginBrowserViewJSON) bool {
+	if a.Query != b.Query || a.View != b.View || a.Sort != b.Sort || len(a.Filters) != len(b.Filters) {
+		return false
+	}
+	for id, value := range a.Filters {
+		if b.Filters[id] != value {
+			return false
+		}
+	}
+	return true
+}

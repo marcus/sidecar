@@ -10,6 +10,7 @@ import (
 
 	"github.com/marcus/sidecar/internal/pluginhost"
 	"github.com/marcus/sidecar/internal/resource"
+	"github.com/marcus/sidecar/internal/state"
 )
 
 // fakeHost is an in-memory stand-in for the plugin host. It records every call
@@ -157,6 +158,12 @@ func testPage(n int) pluginhost.Page {
 // newTestModel builds a described browser with a loaded results page.
 func newTestModel(t *testing.T, host *fakeHost) *Model {
 	t.Helper()
+	// A global tab remembers its query, view, sort and filters between
+	// launches, and every test in this package shares one isolated state file.
+	// Clearing the entry is what makes each test start where a first launch
+	// does rather than where the previous test left off.
+	clearTabView(t, "fixture", "results")
+	clearTabView(t, "fixture", "sources")
 	host.described = true
 	host.status = pluginhost.Status{Instance: "fixture", State: pluginhost.StateReady}
 	host.desc = testDescription()
@@ -166,6 +173,14 @@ func newTestModel(t *testing.T, host *fakeHost) *Model {
 	m.SetReservedKeys(map[string]bool{"1": true, "q": true})
 	run(t, m, m.Refresh())
 	return m
+}
+
+// clearTabView forgets one global tab's remembered view position.
+func clearTabView(t *testing.T, instance, collection string) {
+	t.Helper()
+	if err := state.SetPluginBrowserView(instance, collection, state.PluginBrowserViewJSON{}); err != nil {
+		t.Fatalf("clearing the remembered view: %v", err)
+	}
 }
 
 // run executes a command and feeds whatever it produced back into the model,
