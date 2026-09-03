@@ -1,10 +1,10 @@
 # Plugin ecosystem: protocol plugins, embedded plugins, one host
 
-**Status:** M1 through M3 merged to `main` on 2026-09-03 (merge ce052436), behind the `plugin_protocol` flag; the recall reference plugin (td-26c2b4) is in review in its own repository; M4 is split: M4a (pointer and focus parity in the shared browser), M4b (scope filters, coverage, outcome honesty), and M4c (authoring guide and protocol reference) are proposed in [browser-parity-and-scope.md](browser-parity-and-scope.md) and M4d (freeze, migration, docs site, flag flip) follows them. Implemented: M1 (descriptor and generalized global host, td-01b62b), M2a (the protocol host half — `internal/pluginhost`, `plugins.external`, the fixture and conformance suite, and the `sidecar plugin` CLI — td-a6d276), M2b (the shared browser `internal/pluginbrowser` and the protocol global tab, td-0d3539) and M3 (collection and row tabs in the Resource leaf on both surfaces, the `resources` live-refresh binding, `sidecar open --plugin`, `sidecar plugin changed`, and the layout spec's `collection`/`query`, td-44fe20). M0's mockups are in [mockups/](mockups/) and the protocol revisions they surfaced are still pending the maintainer's confirmation, so none of them is implemented. M4 is proposed. Decisions settled with the maintainer on 2026-09-02. **Tracking:** td-f9f007.
+**Status:** M1 through M3 merged to `main` on 2026-09-03 (merge ce052436), behind the `plugin_protocol` flag; the recall reference plugin (td-26c2b4) is in review in its own repository; M4 is split: M4a (pointer and focus parity in the shared browser) and M4b (scope filters, coverage, outcome honesty) are proposed in [browser-parity-and-scope.md](browser-parity-and-scope.md), M4c (authoring guide and protocol reference) is implemented there, and M4d (freeze, migration, docs site, flag flip) follows them. Implemented: M1 (descriptor and generalized global host, td-01b62b), M2a (the protocol host half — `internal/pluginhost`, `plugins.external`, the fixture and conformance suite, and the `sidecar plugin` CLI — td-a6d276), M2b (the shared browser `internal/pluginbrowser` and the protocol global tab, td-0d3539) and M3 (collection and row tabs in the Resource leaf on both surfaces, the `resources` live-refresh binding, `sidecar open --plugin`, `sidecar plugin changed`, and the layout spec's `collection`/`query`, td-44fe20). M0's mockups are in [mockups/](mockups/) and the protocol revisions they surfaced are still pending the maintainer's confirmation, so none of them is implemented. M4 is proposed. Decisions settled with the maintainer on 2026-09-02. **Tracking:** td-f9f007.
 
 **Related:** [Terminal resource providers](../../implemented/terminal-resource-providers.md) built the executable protocol, the `Resource` leaf, and the trust posture this plan extends; its protocol stays frozen and keeps working. [Hosting Herdr plugins in Sidecar](../../deprecated/herdr-plugin-support.md) is superseded by this plan. [Pane switcher everywhere](../pane-switcher-everywhere.md) and [Cross-project td issue links](../cross-project-issue-links.md) are the two nearest live plans and neither conflicts.
 
-**Reading order:** this file, then [protocol.md](protocol.md) (the contract an external plugin author implements), then [host.md](host.md) (what changes inside Sidecar), then [browser-parity-and-scope.md](browser-parity-and-scope.md) (the M4a–M4c work in progress). [mockups/](mockups/) holds the M0 screen mockups.
+**Reading order:** this file, then [docs/reference/plugin-protocol.md](../../../reference/plugin-protocol.md) (the contract an external plugin author implements) with [protocol.md](protocol.md) beside it (why that contract has the shape it has), then [host.md](host.md) (what changes inside Sidecar), then [browser-parity-and-scope.md](browser-parity-and-scope.md) (the M4a–M4c work in progress). [mockups/](mockups/) holds the M0 screen mockups, and [docs/guides/active/creating-plugins.md](../../../guides/active/creating-plugins.md) is the authoring guide the reference is written for.
 
 ## Decision first
 
@@ -68,7 +68,7 @@ Each milestone ends net-better than the tree before it, lands on main, and is ga
 ### M0. Mockups and contract review
 
 - Mock up the browser in both placements using the TUI mockup tool the maintainer uses for screen design: a global tab (recall results plus detail), a narrow pane with a collection tab (ongoing projects with views and sort), a document tab with sections (a DEX person with fields and timeline), the action form, the degraded and setup states. Files land in [mockups/](mockups/) as `.tui.yaml` with rendered text snapshots beside them.
-- Walk [protocol.md](protocol.md) as recall's author: write recall's `describe` and one `list` and `get` response by hand against the real CLI's `--json` output. Every field recall cannot fill or needs and cannot express is a protocol revision before any host code.
+- Walk the contract (then this plan's draft, now [docs/reference/plugin-protocol.md](../../../reference/plugin-protocol.md)) as recall's author: write recall's `describe` and one `list` and `get` response by hand against the real CLI's `--json` output. Every field recall cannot fill or needs and cannot express is a protocol revision before any host code.
 - Do the same on paper for DEX (`context`, `timeline`, `log` as an `act` with `multiline`) and ongoing (`list --view --sort`, `show`, `favorite`/`set` as actions with `choice` inputs) to confirm the vocabulary generalizes. Record what each needed in the protocol's changelog.
 - **Evidence:** three mockup files reviewed on the canvas; a protocol revision commit that cites what recall, DEX, and ongoing each forced.
 
@@ -84,7 +84,7 @@ Each milestone ends net-better than the tree before it, lands on main, and is ga
 - `internal/pluginhost` (a rename and extension of `resourceprovider`): the new envelope, `list`/`get`/`act`, the describe snapshot with context kinds, collections and actions, cancellation of superseded `list` calls per pane, and the new limits. Old providers are dispatched with the old identifier by the same manager, the same cache, and the same concurrency budget.
 - `plugins.external[]` with `Config.PluginInstances()` as the one ordered list both sections load into; `scope: "project"` refused with a message naming what to do instead.
 - Protocol descriptors projected from configured instances (`plugin.ProtocolDescriptors`), so `sidecar plugin list` reports them.
-- The fixture plugin speaks both identifiers from one binary and simulates every hostile case in [protocol.md](protocol.md#fixtures); the conformance suite runs against the real process, with canonical JSON under `internal/pluginhost/testdata/protocol/`.
+- The fixture plugin speaks both identifiers from one binary and simulates every hostile case in [the reference's fixtures section](../../../reference/plugin-protocol.md#fixtures); the conformance suite runs against the real process, with canonical JSON under `internal/pluginhost/testdata/protocol/`.
 - `sidecar plugin list --describe|check|call|add|remove|enable|disable`, all with `--json` and Agent docs; `terminal-links` unchanged as the frozen section's surface.
 - Everything behind the `plugin_protocol` feature flag, default off.
 - **Evidence:** `go test ./...` green; the fixture driven from an isolated config through `plugin list`, `check --list/--get`, `call describe|list|get|act`, and `add/disable/remove`; every hostile fixture case bounded, including an `act` that never returns ending in a killed process group at its configured timeout.
@@ -111,9 +111,9 @@ The browser gains the pointer model, scrollbars, drag rail, focused query row, h
 
 Applies `filters[]`, `omitted`, `failed` and a new `coverage[]` to the protocol and the host, so the scope a list is narrowed to is visible in the pill and one keystroke wide, and a degraded page can show why. Recall declares its scope as filters and fixes the project mapping that made every documents source answer empty. Gated on four decisions listed in [browser-parity-and-scope.md](browser-parity-and-scope.md#decisions-to-confirm).
 
-### M4c. Plugin authoring guide and protocol reference — proposed, td-40eb97
+### M4c. Plugin authoring guide and protocol reference — implemented, td-40eb97
 
-`docs/reference/plugin-protocol.md` becomes the single authority for the contract and `docs/guides/active/creating-plugins.md` takes an author from a CLI to a plugin that passes `sidecar plugin check`. Runs beside M4a.
+[docs/reference/plugin-protocol.md](../../../reference/plugin-protocol.md) is the single authority for the contract, [docs/guides/active/creating-plugins.md](../../../guides/active/creating-plugins.md) takes an author from a CLI to a plugin that passes `sidecar plugin check`, and `docs/guides/examples/hello-plugin/` is that plugin, run through the real host by a test in `internal/pluginhost` so it cannot rot. [protocol.md](protocol.md) keeps the rationale and nothing else. Deviations are recorded in [browser-parity-and-scope.md](browser-parity-and-scope.md#m4c-plugin-authoring-guide-and-protocol-reference--implemented-td-40eb97).
 
 ### M4d. Freeze, migrate, flag flip, site docs
 
@@ -146,7 +146,7 @@ Do not schedule these because the protocol exists:
 
 ## Protocol revisions pending from the M0 recall mockup
 
-Writing recall's screens against its real `--help` surfaced facts the draft cannot carry. Each is a proposed revision to [protocol.md](protocol.md), applied after the maintainer confirms. M4b applies the `failed` outcome, `omitted`, and `filters[]` rows below and adds `coverage[]`; the rest wait for M4d.
+Writing recall's screens against its real `--help` surfaced facts the draft cannot carry. Each is a proposed revision to [the protocol reference](../../../reference/plugin-protocol.md), applied after the maintainer confirms. M4b applies the `failed` outcome, `omitted`, and `filters[]` rows below and adds `coverage[]`; the rest wait for M4d.
 
 | Gap | Proposed revision |
 | --- | --- |
@@ -172,6 +172,7 @@ Not blocking M0 or M1; each has a default the plan proceeds under.
 
 ## Changelog
 
+- 2026-09-03: M4c implemented (td-40eb97). The contract now lives at [docs/reference/plugin-protocol.md](../../../reference/plugin-protocol.md) and `protocol.md` keeps only why it has that shape; [the authoring guide](../../../guides/active/creating-plugins.md) and its runnable example landed with it. Deviations are in [browser-parity-and-scope.md](browser-parity-and-scope.md#m4c-plugin-authoring-guide-and-protocol-reference--implemented-td-40eb97).
 - 2026-09-03: M4 split into M4a–M4d after nt-addf11 and two audits (the browser's pointer and focus gaps; recall's project mapping answering empty for every documents source). [browser-parity-and-scope.md](browser-parity-and-scope.md) controls M4a–M4c; `coverage[]` and the row-set rule join the pending table. The pointer and footer rules the work adds to every surface are in `docs/reference/design-language.md`.
 - 2026-09-02: opened. Decisions 1–11 settled in conversation with the maintainer; Herdr plugin-hosting plan superseded.
 - 2026-09-02: decision 12 (theme awareness) and the pending-revisions table added from the M0 recall mockup.
