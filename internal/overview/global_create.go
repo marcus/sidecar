@@ -590,19 +590,6 @@ func (m *Model) handleCreateShellMouse(msg tea.MouseMsg) tea.Cmd {
 		prevStep = m.createForm.Step()
 	}
 	action := md.HandleMouse(msg, m.createMouse)
-	if action == workspacecreate.FieldKind {
-		if click, ok := msg.(tea.MouseClickMsg); ok {
-			// The form knows which shape its kind list is drawn in this
-			// session and maps the click accordingly.
-			for _, region := range m.createMouse.HitMap.Regions() {
-				if region.ID != workspacecreate.FieldKind {
-					continue
-				}
-				m.createForm.SetKindFromClick(region.Rect, click.X, click.Y)
-				break
-			}
-		}
-	}
 	if action == workspacecreate.FieldSkip {
 		_, _ = md.HandleKey(tea.KeyPressMsg{Code: tea.KeySpace, Text: " "})
 	}

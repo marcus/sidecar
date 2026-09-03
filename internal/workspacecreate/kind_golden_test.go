@@ -44,14 +44,14 @@ func kindGoldenCases() []struct {
 		width int
 		focus string
 	}{
-		{name: "segmented-two-rows", opts: testOpts(KindShell), width: 52, focus: FieldKind},
-		{name: "segmented-two-rows-unfocused", opts: testOpts(KindShell), width: 52, focus: FieldName},
-		{name: "segmented-four-rows", opts: paneOnly(), width: 70, focus: FieldKind},
-		{name: "list-six-rows", opts: full(), width: 70, focus: FieldKind},
-		{name: "list-six-rows-narrow", opts: full(), width: 52, focus: FieldKind},
-		{name: "list-six-rows-unfocused", opts: full(), width: 70, focus: FieldName},
+		{name: "list-five-rows", opts: testOpts(KindShell), width: 52, focus: FieldKind},
+		{name: "list-five-rows-unfocused", opts: testOpts(KindShell), width: 52, focus: FieldName},
+		{name: "segmented-three-rows", opts: paneOnly(), width: 70, focus: FieldKind},
+		{name: "list-seven-rows", opts: full(), width: 70, focus: FieldKind},
+		{name: "list-seven-rows-narrow", opts: full(), width: 52, focus: FieldKind},
+		{name: "list-seven-rows-unfocused", opts: full(), width: 70, focus: FieldName},
 		{
-			name: "list-eight-rows-with-providers",
+			name: "list-nine-rows-with-providers",
 			opts: func() OpenOpts {
 				opts := full()
 				opts.Providers = []ProviderItem{{ID: "jira-work"}, {ID: "linear-eng"}}

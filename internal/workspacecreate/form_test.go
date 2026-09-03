@@ -394,20 +394,53 @@ func TestComboDoesNotOverwriteFocusedFilterOnRebuild(t *testing.T) {
 	}
 }
 
-func TestKindFromClickX(t *testing.T) {
-	rows := kindRowsFor(false)
-	spans := kindSpans(rows)
-	width := spans[len(spans)-1][1] + len(kindFrameClose)
-	if got := KindFromClickX(spans[0][0]+1, 0, width); got != KindShell {
-		t.Fatalf("click Shell = %v, want Shell", got)
+// clickKindRow clicks row idx of the kind chooser exactly as a host does:
+// render, find the row's hit region, hand the modal a click on it. Nothing
+// between the pointer and the control maps the click — the control resolves it.
+func clickKindRow(t *testing.T, f *Form, width, idx int) string {
+	t.Helper()
+	m := f.Build(width)
+	if m == nil {
+		t.Fatal("Build returned nil")
 	}
-	if got := KindFromClickX(spans[1][0]+1, 0, width); got != KindWorktree {
-		t.Fatalf("click Worktree = %v, want Worktree", got)
+	handler := mouse.NewHandler()
+	m.Render(100, 44, handler)
+	id := kindItemID(FieldKind, idx)
+	for _, region := range handler.HitMap.Regions() {
+		if region.ID != id {
+			continue
+		}
+		return m.HandleMouse(tea.MouseClickMsg{
+			X:      region.Rect.X + 1,
+			Y:      region.Rect.Y,
+			Button: tea.MouseLeft,
+		}, handler)
 	}
+	t.Fatalf("kind row %d registered no hit region", idx)
+	return ""
+}
+
+// A click on the short toggle lands on the segment it was over, with no host
+// glue in between, and reports the control rather than a row ID a host has no
+// branch for.
+func TestKindClickPicksTheSegment(t *testing.T) {
 	f := Open(testOpts(KindShell))
-	f.SetKindFromClickX(spans[1][0]+1, 0, width)
+	if action := clickKindRow(t, f, 52, 1); action != FieldKind {
+		t.Fatalf("clicking a kind segment returned %q, want %s", action, FieldKind)
+	}
 	if f.Kind() != KindWorktree {
-		t.Fatalf("click right = %v, want Worktree", f.Kind())
+		t.Fatalf("click on Worktree = %v, want Worktree", f.Kind())
+	}
+	if action := clickKindRow(t, f, 52, 0); action != FieldKind {
+		t.Fatalf("clicking back returned %q", action)
+	}
+	if f.Kind() != KindShell {
+		t.Fatalf("click on Shell = %v, want Shell", f.Kind())
+	}
+	// The click also leaves focus on the control, so the arrows that follow
+	// steer what the pointer just used.
+	if got := f.Build(52).FocusedID(); got != FieldKind {
+		t.Fatalf("focus after a kind click = %q, want %s", got, FieldKind)
 	}
 }
 
