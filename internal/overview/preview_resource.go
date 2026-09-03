@@ -7,6 +7,7 @@ import (
 	"github.com/marcus/sidecar/internal/contentservice"
 	"github.com/marcus/sidecar/internal/mouse"
 	"github.com/marcus/sidecar/internal/panelayout"
+	"github.com/marcus/sidecar/internal/resource"
 	"github.com/marcus/sidecar/internal/resourceview"
 	"github.com/marcus/sidecar/internal/terminallink"
 	"github.com/marcus/sidecar/internal/termpreview"
@@ -208,7 +209,7 @@ func (m *Model) openPreviewResourceRefResult(ref resourceview.Ref, fromTerminal 
 	}
 	return m.openPreviewContent(contentlink.Ref{
 		Kind: contentlink.KindResource, Provider: ref.Instance, Matcher: ref.Matcher, Value: ref.Locator,
-		Collection: ref.Collection, Query: ref.Query,
+		Collection: ref.Collection, Query: ref.Query, Filters: resource.EncodeFilters(ref.Filters),
 	}, "Resource"), nil
 }
 

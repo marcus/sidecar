@@ -4,6 +4,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/marcus/sidecar/internal/contentlink"
 	"github.com/marcus/sidecar/internal/panelayout"
+	"github.com/marcus/sidecar/internal/resource"
 	"github.com/marcus/sidecar/internal/resourceview"
 	"github.com/marcus/sidecar/internal/state"
 	"github.com/marcus/sidecar/internal/terminallink"
@@ -181,7 +182,7 @@ func (p *Plugin) openResourcePaneForSurfaceMode(root, surface string, ref resour
 	}
 	return p.openWorkspaceContent(root, surface, contentlink.Ref{
 		Kind: contentlink.KindResource, Provider: ref.Instance, Matcher: ref.Matcher, Value: ref.Locator,
-		Collection: ref.Collection, Query: ref.Query,
+		Collection: ref.Collection, Query: ref.Query, Filters: resource.EncodeFilters(ref.Filters),
 	}, "Resource")
 }
 

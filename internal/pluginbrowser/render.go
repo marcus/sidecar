@@ -298,33 +298,68 @@ func (m *Model) titleRow(c pluginhost.Collection, width int) (string, mouse.Rect
 	return left, mouse.Rect{}
 }
 
-// viewPillLadder is the control's forms, widest first.
+// viewPillLadder is the control's forms, widest first. It sheds from the right,
+// dropping what a reader can most afford to lose first: the count of the other
+// filters, then the scope's own title, then the applied view, then the sort
+// word, keeping the glyph — which still says the control is there and what it
+// opens.
 func (m *Model) viewPillLadder(c pluginhost.Collection) []string {
-	full := m.viewPillLabel(c)
-	word := workspacelist.SortGlyph + " " + sortLabel(c, m.state(c).sortKey)
+	s := m.state(c)
+	word := workspacelist.SortGlyph + " " + sortLabel(c, s.sortKey)
+	withView := word
+	if title, ok := viewTitle(c, s.view); ok {
+		withView += " · " + title
+	}
+	withScope := withView
+	if scope, ok := c.ScopeFilter(); ok {
+		withScope += " · " + scope.DisplayValue(s.filters)
+	}
+	full := withScope
+	if n := m.appliedNonScopeFilters(c, s); n > 0 {
+		full += fmt.Sprintf(" · %d %s", n, plural(n, "filter"))
+	}
 	ladder := []string{full}
-	if word != full {
-		ladder = append(ladder, word)
+	for _, rung := range []string{withScope, withView, word} {
+		if rung != ladder[len(ladder)-1] {
+			ladder = append(ladder, rung)
+		}
 	}
 	return append(ladder, workspacelist.SortGlyph)
+}
+
+// appliedNonScopeFilters counts what is applied beyond the scope. The scope is
+// always shown by name, so counting it again would be saying one thing twice.
+func (m *Model) appliedNonScopeFilters(c pluginhost.Collection, s *collectionState) int {
+	if len(s.filters) == 0 || len(c.Filters) < 2 {
+		return 0
+	}
+	n := 0
+	for _, f := range c.Filters[1:] {
+		if value, ok := s.filters[f.ID]; ok && value != f.Default {
+			n++
+		}
+	}
+	return n
+}
+
+func plural(n int, word string) string {
+	if n == 1 {
+		return word
+	}
+	return word + "s"
 }
 
 // hasViewControl reports whether the collection has anything the View modal
 // could offer. A control that opens an empty modal is worse than no control.
 func (m *Model) hasViewControl(c pluginhost.Collection) bool {
-	return len(c.Sort) > 0 || len(c.Views) > 0
+	return len(c.Sort) > 0 || len(c.Views) > 0 || len(c.Filters) > 0
 }
 
 // viewPillLabel folds the applied view into the sort pill's label rather than
 // spending a row on a chip line, because the list-row grammar has no chip line
 // to give it.
 func (m *Model) viewPillLabel(c pluginhost.Collection) string {
-	s := m.state(c)
-	label := workspacelist.SortGlyph + " " + sortLabel(c, s.sortKey)
-	if title, ok := viewTitle(c, s.view); ok {
-		label += " · " + title
-	}
-	return label
+	return m.viewPillLadder(c)[0]
 }
 
 func sortLabel(c pluginhost.Collection, id string) string {
@@ -398,7 +433,7 @@ func (m *Model) outcomeSummary(c pluginhost.Collection, s *collectionState) stri
 	if s.loading {
 		return styles.Muted.Render("refreshing…")
 	}
-	if c.Search == pluginhost.SearchRequired && strings.TrimSpace(s.query) == "" {
+	if s.unqueried || (c.Search == pluginhost.SearchRequired && strings.TrimSpace(s.query) == "") {
 		return styles.Subtle.Render("no query")
 	}
 	count := fmt.Sprintf("%d results", len(s.items))
@@ -410,6 +445,8 @@ func (m *Model) outcomeSummary(c pluginhost.Collection, s *collectionState) stri
 
 func outcomeStyle(outcome pluginhost.PageOutcome) lipgloss.Style {
 	switch outcome {
+	case pluginhost.OutcomeFailed:
+		return styles.Body.Foreground(styles.Error)
 	case pluginhost.OutcomeDegraded:
 		return styles.Body.Foreground(styles.Warning)
 	case pluginhost.OutcomeAbstained:
@@ -530,7 +567,7 @@ func (m *Model) emptyLines(c pluginhost.Collection, s *collectionState, width in
 	if !s.loaded && s.loading {
 		return []string{styles.Muted.Render(centre("Loading…", width))}
 	}
-	if c.Search == pluginhost.SearchRequired && strings.TrimSpace(s.query) == "" {
+	if s.unqueried || (c.Search == pluginhost.SearchRequired && strings.TrimSpace(s.query) == "") {
 		return []string{
 			styles.Title.Render(centre("This collection needs a query.", width)),
 			"",
@@ -538,6 +575,16 @@ func (m *Model) emptyLines(c pluginhost.Collection, s *collectionState, width in
 		}
 	}
 	switch s.outcome {
+	case pluginhost.OutcomeFailed:
+		// An error card, never "no matches": every source that was asked
+		// failed, so the empty list is not a fact about the query at all.
+		return []string{
+			styles.Body.Foreground(styles.Error).Render(centre("Nothing could be asked.", width)),
+			"",
+			styles.Muted.Render(centre("Every source this page needed failed, so it says nothing about the query.", width)),
+			"",
+			styles.Muted.Render(centre("c  what failed      r  try again", width)),
+		}
 	case pluginhost.OutcomeDegraded:
 		return []string{
 			styles.Title.Render(centre("No matches, and coverage was incomplete.", width)),
@@ -594,6 +641,14 @@ func (m *Model) summaryRow(c pluginhost.Collection, s *collectionState, width in
 		if s.truncated {
 			parts = append(parts, "the plugin sent more than Sidecar keeps")
 		}
+	}
+	// What the plugin held back is data, not free text: it renders on the same
+	// row as what is shown, in the same grammar.
+	if s.omitted.Suppressed > 0 {
+		parts = append(parts, fmt.Sprintf("%d below floor", s.omitted.Suppressed))
+	}
+	if s.omitted.Dropped > 0 {
+		parts = append(parts, fmt.Sprintf("%d over budget", s.omitted.Dropped))
 	}
 	left := styles.Muted.Render(strings.Join(parts, " · "))
 	if m.flash != "" {

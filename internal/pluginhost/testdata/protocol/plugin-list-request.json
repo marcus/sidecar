@@ -16,6 +16,7 @@
     "query": "dex",
     "view": "",
     "sort": {"key": "", "dir": ""},
+    "filters": {"profile": "docs", "since": "2026-08-01"},
     "cursor": "",
     "limit": 100
   }

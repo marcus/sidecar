@@ -238,6 +238,7 @@ func specLeafJSON(item *ItemPlan) *state.PaneLayoutJSON {
 				tab := state.PaneResourceTabJSON{Provider: t.Provider}
 				if t.Collection != "" {
 					tab.Collection, tab.Query, tab.Locator = t.Collection, t.Query, t.Value
+					tab.Filters = t.Filters
 				} else {
 					tab.Matcher, tab.Locator = t.Matcher, t.Value
 				}

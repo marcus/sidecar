@@ -151,6 +151,21 @@ func (m *Model) PaneSort() string {
 	return ""
 }
 
+// PaneFilters is the applied filter set, as the map the wire and the persisted
+// record both use. It is a copy: a tab's state must not be editable through
+// what the host saved.
+func (m *Model) PaneFilters() map[string]string {
+	s := m.paneState()
+	if s == nil || len(s.filters) == 0 {
+		return nil
+	}
+	out := make(map[string]string, len(s.filters))
+	for k, v := range s.filters {
+		out[k] = v
+	}
+	return out
+}
+
 func (m *Model) PaneCursorID() string {
 	s := m.paneState()
 	if s == nil || s.cursor < 0 || s.cursor >= len(s.items) {
@@ -188,11 +203,11 @@ func (m *Model) paneState() *collectionState {
 //
 // cursorID is the row the cursor was on. It is applied when the page it names
 // arrives, because the row's position in a re-listed page is not knowable here.
-func (m *Model) RestorePaneView(query, view, sort, cursorID string) {
+func (m *Model) RestorePaneView(query, view, sort, cursorID string, filters map[string]string) {
 	if m == nil || m.paneCollection == "" {
 		return
 	}
-	m.restore = paneRestore{query: query, view: view, sort: sort, cursorID: cursorID, pending: true}
+	m.restore = paneRestore{query: query, view: view, sort: sort, cursorID: cursorID, filters: filters, pending: true}
 	if s, ok := m.states[m.paneCollection]; ok {
 		m.applyRestore(s)
 	}
@@ -205,6 +220,7 @@ type paneRestore struct {
 	view     string
 	sort     string
 	cursorID string
+	filters  map[string]string
 	pending  bool
 }
 
@@ -234,7 +250,41 @@ func (m *Model) applyRestore(s *collectionState) {
 			break
 		}
 	}
+	// A restored filter is adopted only where the newest describe still
+	// declares it, and only where its value is still one the control can show:
+	// a plugin that dropped a filter, or renamed a choice, must not have the
+	// host asking for it forever. The host would drop the key at call time
+	// anyway; dropping it here is what stops the View modal opening on a value
+	// nothing can select.
+	s.filters = adoptFilters(c, m.restore.filters)
 	m.pendingCursorID = m.restore.cursorID
+}
+
+// adoptFilters keeps the restored values a live declaration can still express.
+func adoptFilters(c pluginhost.Collection, restored map[string]string) map[string]string {
+	if len(restored) == 0 {
+		return nil
+	}
+	out := make(map[string]string, len(restored))
+	for _, f := range c.Filters {
+		value, ok := restored[f.ID]
+		if !ok {
+			continue
+		}
+		if f.Kind == pluginhost.FilterChoice {
+			if _, known := f.OptionTitle(value); !known {
+				continue
+			}
+		}
+		if value == f.Default {
+			continue
+		}
+		out[f.ID] = value
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }
 
 // restoreCursor puts the cursor back on the row a restored tab was reading, if

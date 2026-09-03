@@ -149,7 +149,7 @@ func TestGlobalResourceClickOpensFocusesAndAddsTabs(t *testing.T) {
 		t.Fatal("a resource click started typing in the pane")
 	}
 	if refs := resolver.refs(); len(refs) != 1 ||
-		refs[0] != (resourceview.Ref{Instance: "jira-work", Matcher: "project-key", Locator: "CASH-1245"}) {
+		!refs[0].Equal(resourceview.Ref{Instance: "jira-work", Matcher: "project-key", Locator: "CASH-1245"}) {
 		t.Fatalf("resolver asked for %#v", resolver.refs())
 	}
 	if view := res.view(); view == nil || view.State() != resourceview.StateReady {

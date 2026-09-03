@@ -203,7 +203,7 @@ func TestWorkspaceHostPickerDataResolvesLikeTheCLI(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CLI ResolveDiffSpec: %v", err)
 	}
-	if got != want {
+	if !got.Equal(want) {
 		t.Fatalf("workspace diff target = %+v, want the CLI's %+v", got, want)
 	}
 
@@ -234,7 +234,7 @@ func TestWorkspaceHostPickerDataResolvesLikeTheCLI(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CLI ResolveFileTarget: %v", err)
 	}
-	if got != wantFile {
+	if !got.Equal(wantFile) {
 		t.Fatalf("workspace file target = %+v, want the CLI's %+v", got, wantFile)
 	}
 }

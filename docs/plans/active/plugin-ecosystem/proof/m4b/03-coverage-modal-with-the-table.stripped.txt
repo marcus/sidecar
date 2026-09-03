@@ -1,0 +1,45 @@
+ ◱ Sidecar │   Sessions     Activity     Fixture                                                                             ↖ sidecar   Select Project ▾  ·  ⚙
+╭───────────────────────────────────────────────────────────────────────────────────────────────╮ ╭────────────────────────────────────────────────────────────╮
+│ Fixture · Results                                     ⇅ Relevance · This project · 1 filter   │┃│ Fixture · Results                                          │
+│                                                                                               │┃│                                                            │
+│ / coverage                                                               2 results   degraded │┃│ Press Enter on a row to open it here.			│
+│                                                                                               │┃│                                                            │
+│     #  TITLE                    SOURCE          EXCERPT                                       │┃│ A second Enter moves the keyboard into this box.           │
+│   ───  ──────────────────── ╭──────────────────────────────────────────────────────────────────────────────────────────────────╮                             │
+│ ❯   1  coverage schema note │                                                                                                  │ ach confirmed by the host.  │
+│     2  coverage context --j │  Coverage · Results                                                                              │                             │
+│                             │                                                                                                  │                             │
+│                             │  degraded                                                                                        │                             │
+│                             │  Some source that should have answered could not, so this page is not a fact about the query.    │                             │
+│                             │                                                                                                  │                             │
+│                             │  ⚠  5 of 13 sources did not answer (mail: checkpoint stale)                                      │                             │
+│                             │                                                                                                  │                             │
+│                             │  1 below the relevance floor                                                                     │                             │
+│                             │  6 over the budget                                                                               │                             │
+│                             │                                                                                                  │                             │
+│                             │  SOURCE    STATE      ELAPSED  REASON                                                            │                             │
+│                             │  notes     answered      12ms                                                                    │                             │
+│                             │  shell     answered      31ms                                                                    │                             │
+│                             │  td        answered      44ms                                                                    │                             │
+│                             │  mail      unhealthy      2ms  checkpoint stale since 2026-08-30                                 │                             │
+│                             │  calendar  timeout       2.0s  no answer within the 2s budget                                    │                             │
+│                             │  web       skipped          —  not in the selected profile                                       │                             │
+│                             │  slack     failed         8ms  auth token expired                                                │                             │
+│                             │  drive     answered      77ms                                                                    │                             │
+│                             │  photos    skipped          —  not in the selected profile                                       │                             │
+│                             │  music     answered       5ms                                                                    │                             │
+│                             │  books     unhealthy     19ms  index rebuilt 4 minutes ago                                       │                             │
+│                             │  contacts  answered       6ms                                                                    │                             │
+│                             │  archive   timeout       2.0s  no answer within the 2s budget                                    │                             │
+│                             │                                                                                                  │                             │
+│                             │     Retry        Done                                                                            │                             │
+│                             │                                                                                                  │                             │
+│                             ╰──────────────────────────────────────────────────────────────────────────────────────────────────╯                             │
+│                                                                                               │┃│                                                            │
+│                                                                                               │┃│                                                            │
+│                                                                                               │┃│                                                            │
+│ ───────────────────────────────────────────────────────────────────────────────────────────── │┃│                                                            │
+│ ⚠  5 of 13 sources did not answer (mail: checkpoint stale)                                    │┃│                                                            │
+│ 2 shown · 1 below floor · 6 over budget                                                       │┃│                                                            │
+╰───────────────────────────────────────────────────────────────────────────────────────────────╯ ╰────────────────────────────────────────────────────────────╯
+ j, k  Move   enter  Select   r  Retry   esc  Close   1-5  plugins   8/9/0  global   ?  help   q  quit                             fixture · results · degraded

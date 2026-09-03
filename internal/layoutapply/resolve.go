@@ -26,7 +26,7 @@ func ResolveTargets(kind panelayout.Kind, spec uirequest.LayoutPane, root string
 		if len(spec.Targets) == 1 {
 			row = spec.Targets[0]
 		}
-		tgt, err := uirequest.ResolveCollectionTarget(spec.Provider, spec.Collection, spec.Query, row)
+		tgt, err := uirequest.ResolveCollectionTarget(spec.Provider, spec.Collection, spec.Query, row, spec.Filters)
 		if err != nil {
 			return nil, err.Error()
 		}

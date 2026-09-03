@@ -5,6 +5,7 @@ import (
 	"github.com/marcus/sidecar/internal/app"
 	"github.com/marcus/sidecar/internal/features"
 	appmsg "github.com/marcus/sidecar/internal/msg"
+	"github.com/marcus/sidecar/internal/resource"
 	"github.com/marcus/sidecar/internal/resourceview"
 	"github.com/marcus/sidecar/internal/uirequest"
 )
@@ -46,6 +47,7 @@ func (p *Plugin) openResourcePaneMsg(msg app.OpenResourcePaneMsg) tea.Cmd {
 		ref := resourceview.Ref{
 			Instance: msg.Provider, Collection: msg.Collection,
 			Query: msg.Query, Locator: msg.Locator,
+			Filters: resource.DecodeFilters(msg.Filters),
 		}
 		if !ref.Valid() {
 			return nil

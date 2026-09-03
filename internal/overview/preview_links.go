@@ -16,6 +16,7 @@ import (
 	"github.com/marcus/sidecar/internal/paneframe"
 	"github.com/marcus/sidecar/internal/panelayout"
 	"github.com/marcus/sidecar/internal/panesearch"
+	"github.com/marcus/sidecar/internal/resource"
 	"github.com/marcus/sidecar/internal/resourceview"
 	"github.com/marcus/sidecar/internal/styles"
 	"github.com/marcus/sidecar/internal/targetactivation"
@@ -187,6 +188,7 @@ func (m *Model) activatePreviewPlan(plan targetactivation.Plan) (tea.Cmd, bool) 
 			Locator:    plan.Locator,
 			Collection: plan.Collection,
 			Query:      plan.Query,
+			Filters:    resource.DecodeFilters(plan.Filters),
 		})
 	default:
 		return nil, false

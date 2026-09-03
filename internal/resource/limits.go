@@ -80,6 +80,13 @@ const (
 	// collection tab remembers.
 	MaxViewIDChars = 64
 	MaxSortIDChars = 64
+	// MaxFilters, MaxFilterIDChars and MaxFilterValueChars bound the applied
+	// filter set a collection tab remembers. They match
+	// pluginhost.MaxFilters/MaxFilterIDChars/MaxFilterValueChars; this package
+	// cannot import that one, so a test over there pins them together.
+	MaxFilters          = 8
+	MaxFilterIDChars    = 32
+	MaxFilterValueChars = 64
 )
 
 // Timeouts. describe is local and must be fast; resolve may cross a network.

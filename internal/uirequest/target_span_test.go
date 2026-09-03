@@ -1,6 +1,8 @@
 package uirequest
 
 import (
+	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/marcus/sidecar/internal/terminallink"
@@ -67,9 +69,50 @@ func TestTargetFromSpan(t *testing.T) {
 			if ok != tc.ok {
 				t.Fatalf("ok = %v, want %v", ok, tc.ok)
 			}
-			if ok && got != tc.want {
+			if ok && !got.Equal(tc.want) {
 				t.Fatalf("got %+v, want %+v", got, tc.want)
 			}
 		})
+	}
+}
+
+// A collection target carries its applied filters, bounded on the way in
+// because they are persisted with the tab and sent to a child process.
+func TestResolveCollectionTargetCarriesFilters(t *testing.T) {
+	got, err := ResolveCollectionTarget("recall", "results", "dex", "", map[string]string{
+		"profile": "docs", "since": "2026-08-01",
+	})
+	if err != nil {
+		t.Fatalf("ResolveCollectionTarget: %v", err)
+	}
+	if len(got.Filters) != 2 || got.Filters["profile"] != "docs" {
+		t.Fatalf("filters = %v", got.Filters)
+	}
+
+	refusals := []struct {
+		name    string
+		row     string
+		filters map[string]string
+	}{
+		{"a row and a filter", "rc:notes:1", map[string]string{"profile": "docs"}},
+		{"an empty id", "", map[string]string{" ": "docs"}},
+		{"a control character", "", map[string]string{"profile": "do\x00cs"}},
+		{"an over-long id", "", map[string]string{strings.Repeat("p", 33): "docs"}},
+		{"an over-long value", "", map[string]string{"profile": strings.Repeat("v", 65)}},
+	}
+	for _, tc := range refusals {
+		t.Run(tc.name, func(t *testing.T) {
+			if _, err := ResolveCollectionTarget("recall", "results", "", tc.row, tc.filters); err == nil {
+				t.Fatal("accepted a filter set it cannot persist or send")
+			}
+		})
+	}
+
+	many := map[string]string{}
+	for i := 0; i < 9; i++ {
+		many[fmt.Sprintf("f%d", i)] = "x"
+	}
+	if _, err := ResolveCollectionTarget("recall", "results", "", "", many); err == nil {
+		t.Fatal("accepted more filters than a collection may declare")
 	}
 }

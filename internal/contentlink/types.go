@@ -50,6 +50,10 @@ type Ref struct {
 	// identity: retyping a query re-lists the tab that is already open instead
 	// of forking a second one.
 	Query string
+	// Filters is the applied filter set in resource.EncodeFilters form. It is
+	// a canonical string rather than a map so a Ref stays a comparable value,
+	// which every open journey and several tests depend on.
+	Filters string
 }
 
 // KindSet bounds the reference kinds a rendered surface allows the host to

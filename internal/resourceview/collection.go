@@ -113,7 +113,7 @@ func (m *Model) bindPlugin(ref resource.Reference) {
 	switch ref.Shape() {
 	case resource.ShapeCollection:
 		m.browser.SetPaneCollection(ref.Collection)
-		m.browser.RestorePaneView(ref.Query, ref.View, ref.Sort, ref.CursorID)
+		m.browser.RestorePaneView(ref.Query, ref.View, ref.Sort, ref.CursorID, resource.FilterMap(ref.Filters))
 	case resource.ShapeItem:
 		// Armed, not fetched: a restored row tab must name the row in the strip
 		// before anything is asked for, or the tab reads as its collection until
@@ -186,7 +186,22 @@ func (m *Model) viewPositionDiffers(ref resource.Reference) bool {
 	if ref.View != "" && ref.View != m.browser.PaneView() {
 		return true
 	}
-	return ref.Sort != "" && ref.Sort != m.browser.PaneSort()
+	if ref.Sort != "" && ref.Sort != m.browser.PaneSort() {
+		return true
+	}
+	// An `open` naming no filters asks for nothing, exactly as one naming no
+	// query does: it focuses the tab as it is rather than clearing what the
+	// user chose.
+	if len(ref.Filters) == 0 {
+		return false
+	}
+	live := m.browser.PaneFilters()
+	for _, f := range ref.Filters {
+		if live[f.ID] != f.Value {
+			return true
+		}
+	}
+	return false
 }
 
 // pluginSnapshot folds the browser's live view position back into the
@@ -207,6 +222,7 @@ func (m *Model) pluginSnapshot() resource.Reference {
 	ref.View = m.browser.PaneView()
 	ref.Sort = m.browser.PaneSort()
 	ref.CursorID = m.browser.PaneCursorID()
+	ref.Filters = resource.FilterValues(m.browser.PaneFilters())
 	return ref
 }
 

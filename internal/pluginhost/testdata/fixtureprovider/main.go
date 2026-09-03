@@ -28,6 +28,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"sort"
 	"strings"
 	"time"
 )
@@ -70,9 +71,10 @@ type request struct {
 			Key string `json:"key"`
 			Dir string `json:"dir"`
 		} `json:"sort"`
-		Cursor string `json:"cursor"`
-		Limit  int    `json:"limit"`
-		ID     string `json:"id"`
+		Filters map[string]string `json:"filters"`
+		Cursor  string            `json:"cursor"`
+		Limit   int               `json:"limit"`
+		ID      string            `json:"id"`
 		// act
 		Action string            `json:"action"`
 		Inputs map[string]string `json:"inputs"`
@@ -161,6 +163,19 @@ type refresh struct {
 	Watch        []string `json:"watch,omitempty"`
 }
 
+type filterChoice struct {
+	ID    string `json:"id"`
+	Title string `json:"title,omitempty"`
+}
+
+type filter struct {
+	ID      string         `json:"id"`
+	Label   string         `json:"label,omitempty"`
+	Kind    string         `json:"kind,omitempty"`
+	Choices []filterChoice `json:"choices,omitempty"`
+	Default string         `json:"default,omitempty"`
+}
+
 type collection struct {
 	ID      string    `json:"id"`
 	Title   string    `json:"title,omitempty"`
@@ -168,6 +183,7 @@ type collection struct {
 	Columns []column  `json:"columns,omitempty"`
 	Views   []view    `json:"views,omitempty"`
 	Sort    []sortKey `json:"sort,omitempty"`
+	Filters []filter  `json:"filters,omitempty"`
 	Detail  *bool     `json:"detail,omitempty"`
 	Refresh *refresh  `json:"refresh,omitempty"`
 	Context []string  `json:"context,omitempty"`
@@ -205,12 +221,26 @@ type notice struct {
 	Text string `json:"text"`
 }
 
+type omitted struct {
+	Suppressed int `json:"suppressed,omitempty"`
+	Dropped    int `json:"dropped,omitempty"`
+}
+
+type coverage struct {
+	Source    string `json:"source"`
+	State     string `json:"state,omitempty"`
+	Reason    string `json:"reason,omitempty"`
+	ElapsedMs int    `json:"elapsedMs,omitempty"`
+}
+
 type page struct {
-	Outcome    string   `json:"outcome,omitempty"`
-	Items      []item   `json:"items,omitempty"`
-	NextCursor string   `json:"nextCursor,omitempty"`
-	Total      int      `json:"total,omitempty"`
-	Notices    []notice `json:"notices,omitempty"`
+	Outcome    string     `json:"outcome,omitempty"`
+	Items      []item     `json:"items,omitempty"`
+	NextCursor string     `json:"nextCursor,omitempty"`
+	Total      int        `json:"total,omitempty"`
+	Notices    []notice   `json:"notices,omitempty"`
+	Omitted    *omitted   `json:"omitted,omitempty"`
+	Coverage   []coverage `json:"coverage,omitempty"`
 }
 
 type openTarget struct {
@@ -604,6 +634,29 @@ func describePluginResponse() response {
 					{ID: "relevance", Label: "Relevance", Default: "desc"},
 					{ID: "recency", Label: "Recency"},
 				},
+				// Three filters, one of each shape the protocol has. The first
+				// is the collection's SCOPE, which the host always shows.
+				Filters: []filter{
+					{
+						ID: "scope", Label: "Scope", Kind: "choice", Default: "everything",
+						Choices: []filterChoice{
+							{ID: "everything", Title: "Everything"},
+							{ID: "project", Title: "This project"},
+							{ID: "notes", Title: "Notes only"},
+						},
+					},
+					{
+						// No stated default: the first declared choice is it.
+						ID: "source", Label: "Source", Kind: "choice",
+						Choices: []filterChoice{
+							{ID: "any", Title: "Any"},
+							{ID: "notes", Title: "notes"},
+							{ID: "shell", Title: "shell"},
+							{ID: "mail", Title: "mail"},
+						},
+					},
+					{ID: "since", Label: "Since", Kind: "text"},
+				},
 				Detail:  &detail,
 				Context: []string{"project"},
 			},
@@ -727,7 +780,7 @@ func listResponse(req request, query string) response {
 	}
 	switch params.Collection {
 	case "results":
-		return resultsPage(query, params.Cursor)
+		return resultsPage(query, params.Cursor, params.Filters)
 	case "sources":
 		return sourcesPage()
 	default:
@@ -737,8 +790,30 @@ func listResponse(req request, query string) response {
 	}
 }
 
-func resultsPage(query, cursor string) response {
+func resultsPage(query, cursor string, filters map[string]string) response {
 	switch query {
+	case "filters":
+		// Echo exactly what reached the plugin, so a host test can prove from
+		// the outside that undeclared keys and default values were dropped
+		// rather than trusting the host's own normalizer.
+		return response{Protocol: wire, Page: &page{
+			Outcome: "answered",
+			Items: []item{{
+				ID:    "filters-echo",
+				Cells: map[string]string{"title": encodeFilters(filters), "source": "fixture"},
+			}},
+			Total: 1,
+		}}
+	case "coverage":
+		return coveragePage()
+	case "failed":
+		// Every asked source failed. The page says so; it does not report an
+		// empty list as "no matches", which would be a claim nothing made.
+		return response{Protocol: wire, Page: &page{
+			Outcome:  "failed",
+			Notices:  []notice{{Tone: "danger", Text: "every source failed (the fixture is pretending its index is gone)"}},
+			Coverage: []coverage{{Source: "notes", State: "failed", Reason: "index missing", ElapsedMs: 4}},
+		}}
 	case "":
 		// The host answers an empty required query itself, so reaching here is
 		// itself a finding: say so in data rather than pretending.
@@ -756,7 +831,7 @@ func resultsPage(query, cursor string) response {
 	case "future":
 		// An outcome from a later protocol version. The host must not read it
 		// as a completeness guarantee.
-		return response{Protocol: wire, Page: &page{Outcome: "failed"}}
+		return response{Protocol: wire, Page: &page{Outcome: "entangled"}}
 	}
 	items := []item{
 		resultItem(1, query+" schema notes", "notes"),
@@ -772,6 +847,66 @@ func resultsPage(query, cursor string) response {
 		Items:      items,
 		Total:      len(items),
 		NextCursor: next,
+	}}
+}
+
+// encodeFilters renders the applied filters as one deterministic string, sorted
+// by key, so a test can assert on it without depending on map order.
+func encodeFilters(filters map[string]string) string {
+	if len(filters) == 0 {
+		return "(none)"
+	}
+	keys := make([]string, 0, len(filters))
+	for k := range filters {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	parts := make([]string, 0, len(keys))
+	for _, k := range keys {
+		parts = append(parts, k+"="+filters[k])
+	}
+	return strings.Join(parts, ";")
+}
+
+// coveragePage is a degraded page carrying the two things a one-line notice
+// cannot: what was held back, as counts, and thirteen sources' states, as a
+// table. Thirteen is the number recall's own profile has, and it is more than
+// four 200-character notices can carry.
+func coveragePage() response {
+	states := []struct {
+		source  string
+		state   string
+		reason  string
+		elapsed int
+	}{
+		{"notes", "answered", "", 12},
+		{"shell", "answered", "", 31},
+		{"td", "answered", "", 44},
+		{"mail", "unhealthy", "checkpoint stale since 2026-08-30", 2},
+		{"calendar", "timeout", "no answer within the 2s budget", 2000},
+		{"web", "skipped", "not in the selected profile", 0},
+		{"slack", "failed", "auth token expired", 8},
+		{"drive", "answered", "", 77},
+		{"photos", "skipped", "not in the selected profile", 0},
+		{"music", "answered", "", 5},
+		{"books", "unhealthy", "index rebuilt 4 minutes ago", 19},
+		{"contacts", "answered", "", 6},
+		{"archive", "timeout", "no answer within the 2s budget", 2000},
+	}
+	rows := make([]coverage, 0, len(states))
+	for _, s := range states {
+		rows = append(rows, coverage{Source: s.source, State: s.state, Reason: s.reason, ElapsedMs: s.elapsed})
+	}
+	return response{Protocol: wire, Page: &page{
+		Outcome: "degraded",
+		Items: []item{
+			resultItem(1, "coverage schema notes", "notes"),
+			resultItem(2, "coverage context --json", "shell"),
+		},
+		Total:    2,
+		Notices:  []notice{{Tone: "warning", Text: "5 of 13 sources did not answer (mail: checkpoint stale)"}},
+		Omitted:  &omitted{Suppressed: 1, Dropped: 6},
+		Coverage: rows,
 	}}
 }
 
@@ -960,7 +1095,19 @@ func overLimitPage() response {
 		})
 	}
 	items[0].Cells["title"] = strings.Repeat("T", 900)
-	return response{Protocol: wire, Page: &page{Outcome: "answered", Items: items, Total: rows}}
+	// Over the coverage bound too, with a reason past its own limit: the table
+	// is truncated and marked, never refused.
+	cover := make([]coverage, 0, 80)
+	for i := 0; i < 80; i++ {
+		cover = append(cover, coverage{
+			Source: fmt.Sprintf("source-%d", i), State: "answered", Reason: strings.Repeat("R", 400),
+		})
+	}
+	return response{Protocol: wire, Page: &page{
+		Outcome: "answered", Items: items, Total: rows,
+		Omitted:  &omitted{Suppressed: -3, Dropped: 9},
+		Coverage: cover,
+	}}
 }
 
 // undeclaredCellsPage keys a cell by a column the describe never declared. The

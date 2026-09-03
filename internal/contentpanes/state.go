@@ -60,13 +60,17 @@ type TabState struct {
 	// the first load so the card does not re-run the search.
 	OwnerName string `json:"ownerName,omitempty"`
 	OwnerRoot string `json:"ownerRoot,omitempty"`
-	// View, Sort and CursorID are a plugin collection tab's view position, the
+	// View, Sort, CursorID and Filters are a plugin collection tab's view position, the
 	// rest of which (its query) is identity-adjacent enough to live on the Ref.
 	// They are here for the reason Scope and Mode are: they are what the user
 	// chose, not what the tab points at.
 	View     string `json:"view,omitempty"`
 	Sort     string `json:"sort,omitempty"`
 	CursorID string `json:"cursorId,omitempty"`
+	// Filters is the applied filter set the user chose, {id: value}. It sits
+	// beside View and Sort for the same reason they do: it is a choice, not
+	// part of what the tab points at.
+	Filters map[string]string `json:"filters,omitempty"`
 }
 
 func persistSource(src SourceContext) *SourceState {

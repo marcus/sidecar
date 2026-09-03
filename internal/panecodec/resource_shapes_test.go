@@ -63,9 +63,46 @@ func TestCollectionTabRoundTripsItsViewPosition(t *testing.T) {
 	if leaf == nil || len(leaf.ResourceTabs) != 1 {
 		t.Fatalf("re-encoded layout has no resource tab: %+v", back)
 	}
-	if leaf.ResourceTabs[0] != saved.Split.B.ResourceTabs[0] {
+	if !leaf.ResourceTabs[0].Equal(saved.Split.B.ResourceTabs[0]) {
 		t.Fatalf("round trip changed the record:\n got %+v\nwant %+v",
 			leaf.ResourceTabs[0], saved.Split.B.ResourceTabs[0])
+	}
+}
+
+// A collection tab's applied filters ride with the rest of its view position,
+// and survive both directions unchanged.
+func TestCollectionTabRoundTripsItsFilters(t *testing.T) {
+	saved := resourceLayout(state.PaneResourceTabJSON{
+		Provider: "recall", Collection: "results", Query: "dex",
+		Filters: map[string]string{"profile": "docs", "since": "2026-08-01"},
+	})
+	st, _ := Decode(saved, Options{})
+	tabs := resourceTabsOf(st)
+	if len(tabs) != 1 {
+		t.Fatalf("decoded %d resource tabs, want 1", len(tabs))
+	}
+	if got := tabs[0].Filters; len(got) != 2 || got["profile"] != "docs" || got["since"] != "2026-08-01" {
+		t.Fatalf("filters lost on the way in: %v", got)
+	}
+
+	back := firstResourceLeaf(Encode(st, Options{Live: []Live{{Kind: KindTerminal}}}))
+	if back == nil || len(back.ResourceTabs) != 1 {
+		t.Fatalf("re-encoded layout has no resource tab: %+v", back)
+	}
+	if !back.ResourceTabs[0].Equal(saved.Split.B.ResourceTabs[0]) {
+		t.Fatalf("round trip changed the record:\n got %+v\nwant %+v",
+			back.ResourceTabs[0], saved.Split.B.ResourceTabs[0])
+	}
+
+	// A row tab is not a collection tab: it carries no filters, because a
+	// document is not narrowed by them.
+	row := resourceLayout(state.PaneResourceTabJSON{
+		Provider: "recall", Collection: "results", Locator: "rc:notes:1",
+		Filters: map[string]string{"profile": "docs"},
+	})
+	rowState, _ := Decode(row, Options{})
+	if got := resourceTabsOf(rowState)[0].Filters; len(got) != 0 {
+		t.Fatalf("a row tab decoded with filters: %v", got)
 	}
 }
 
@@ -101,7 +138,7 @@ func TestMatchedTabIsUnchanged(t *testing.T) {
 		t.Fatalf("a matched document decoded as something else: %+v", tabs)
 	}
 	back := firstResourceLeaf(Encode(st, Options{Live: []Live{{Kind: KindTerminal}}}))
-	if back.ResourceTabs[0] != saved.Split.B.ResourceTabs[0] {
+	if !back.ResourceTabs[0].Equal(saved.Split.B.ResourceTabs[0]) {
 		t.Fatalf("round trip changed the record: %+v", back.ResourceTabs[0])
 	}
 }

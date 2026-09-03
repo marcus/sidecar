@@ -490,7 +490,8 @@ func RootCommand() *Command {
 			"bare word is the open target, not the row. Mutually exclusive with --shell\n" +
 			"and --project.\n" +
 			"--diff with no spec is the working tree. --plugin names a configured plugin instance:\n" +
-			"with --collection it opens that collection's tab (add --query to open it searched, or a\n" +
+			"with --collection it opens that collection's tab (add --query to open it searched,\n" +
+			"--filter id=value for one of the collection's own declared filters, or a\n" +
 			"positional row id to open that row's document instead), and without --collection it\n" +
 			"opens a matched locator through the plugin's matchers. --provider is the older spelling\n" +
 			"of the locator form and still works. Either way the instance is required for a resource:\n" +
@@ -520,6 +521,7 @@ func RootCommand() *Command {
 			{Name: "--provider", Arg: "ID", Summary: "Alias for --plugin's locator form, kept for the frozen resource protocol"},
 			{Name: "--collection", Arg: "C", Summary: "With --plugin, the collection to open as a tab"},
 			{Name: "--query", Arg: "Q", Summary: "With --collection, the query the tab opens searched on"},
+			{Name: "--filter", Arg: "ID=VALUE", Summary: "With --collection, one applied filter (repeatable)"},
 			{Name: "--shell", Arg: "NAME", Summary: "Target a registered shell by display name or tmux name"},
 			{Name: "--project", Arg: "NAME", Summary: "Target a project's Workspaces surface (slug, basename, or path)"},
 			{Name: "--sessions", Arg: "[=ROW]", Summary: "Target the global Sessions surface (optional row as --sessions=ID)"},
@@ -548,6 +550,7 @@ func RootCommand() *Command {
 			{Command: "sidecar open abc1234", Description: "commit, unless a file of that name exists"},
 			{Command: "sidecar open --provider jira-work CASH-1245", Description: "resource pane for that provider's locator"},
 			{Command: "sidecar open --plugin recall --collection results --query dex --split right", Description: "a collection tab beside the terminal, opened searched"},
+			{Command: "sidecar open --plugin recall --collection results --query dex --filter profile=docs", Description: "the same tab, scoped by one of the collection's own filters"},
 			{Command: "sidecar open --plugin ongoing --collection projects recall", Description: "one row's document tab"},
 			{Command: "sidecar open --json --split below README.md", Description: "structured result for the agent"},
 			{Command: "sidecar open README.md --at 2.1", Description: "explicit cell: second column, top row"},
@@ -555,7 +558,7 @@ func RootCommand() *Command {
 			{Command: "sidecar open --sessions README.md", Description: "the selected row on the global Sessions surface"},
 		},
 		Agent: AgentDoc{
-			Invocation: "sidecar open <path>[:line] | td-xxxxxx | sidecar://note/nt-xxxx | --diff [spec] | --plugin ID [--collection C [--query Q]] [<locator-or-row>] [--split right|below] [--at COL[.ROW]]",
+			Invocation: "sidecar open <path>[:line] | td-xxxxxx | sidecar://note/nt-xxxx | --diff [spec] | --plugin ID [--collection C [--query Q] [--filter ID=VALUE]...] [<locator-or-row>] [--split right|below] [--at COL[.ROW]]",
 			Summary:    "Put a file, issue, note, diff, resource, or plugin collection in front of the user on the lease holder's screen",
 		},
 		Mutates: true,

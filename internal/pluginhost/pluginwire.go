@@ -35,6 +35,21 @@ type WireSortKey struct {
 	Default string `json:"default,omitempty"`
 }
 
+// WireFilterChoice is one `choices[]` element of a choice filter.
+type WireFilterChoice struct {
+	ID    string `json:"id"`
+	Title string `json:"title,omitempty"`
+}
+
+// WireFilter is one `filters[]` element of a collection.
+type WireFilter struct {
+	ID      string             `json:"id"`
+	Label   string             `json:"label,omitempty"`
+	Kind    string             `json:"kind,omitempty"`
+	Choices []WireFilterChoice `json:"choices,omitempty"`
+	Default string             `json:"default,omitempty"`
+}
+
 // WireRefresh is a collection's `refresh` object.
 type WireRefresh struct {
 	EverySeconds int      `json:"everySeconds,omitempty"`
@@ -52,6 +67,7 @@ type WireCollection struct {
 	Columns []WireColumn  `json:"columns,omitempty"`
 	Views   []WireView    `json:"views,omitempty"`
 	Sort    []WireSortKey `json:"sort,omitempty"`
+	Filters []WireFilter  `json:"filters,omitempty"`
 	Detail  *bool         `json:"detail,omitempty"`
 	Refresh *WireRefresh  `json:"refresh,omitempty"`
 	Context []string      `json:"context,omitempty"`
@@ -95,13 +111,29 @@ type WireNotice struct {
 	Text string `json:"text"`
 }
 
+// WireOmitted is the `page.omitted` object: what the plugin held back.
+type WireOmitted struct {
+	Suppressed int `json:"suppressed,omitempty"`
+	Dropped    int `json:"dropped,omitempty"`
+}
+
+// WireCoverage is one `page.coverage[]` element.
+type WireCoverage struct {
+	Source    string `json:"source"`
+	State     string `json:"state,omitempty"`
+	Reason    string `json:"reason,omitempty"`
+	ElapsedMs int    `json:"elapsedMs,omitempty"`
+}
+
 // WirePage is the `page` object of a list response.
 type WirePage struct {
-	Outcome    string       `json:"outcome,omitempty"`
-	Items      []WireItem   `json:"items,omitempty"`
-	NextCursor string       `json:"nextCursor,omitempty"`
-	Total      int          `json:"total,omitempty"`
-	Notices    []WireNotice `json:"notices,omitempty"`
+	Outcome    string         `json:"outcome,omitempty"`
+	Items      []WireItem     `json:"items,omitempty"`
+	NextCursor string         `json:"nextCursor,omitempty"`
+	Total      int            `json:"total,omitempty"`
+	Notices    []WireNotice   `json:"notices,omitempty"`
+	Omitted    *WireOmitted   `json:"omitted,omitempty"`
+	Coverage   []WireCoverage `json:"coverage,omitempty"`
 }
 
 // WireOpen is the `outcome.open` object.

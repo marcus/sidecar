@@ -70,6 +70,37 @@ func SanitizePage(w *WirePage, collection Collection) Page {
 		page.Items = items
 	}
 
+	if w.Omitted != nil {
+		// A negative count is not "held back a negative number of rows"; it is
+		// noise, and the summary row would render it as data.
+		page.Omitted = Omitted{Suppressed: max(0, w.Omitted.Suppressed), Dropped: max(0, w.Omitted.Dropped)}
+	}
+
+	if len(w.Coverage) > 0 {
+		page.CoverageTruncated = len(w.Coverage) > MaxCoverageRows
+		rows := make([]Coverage, 0, min(len(w.Coverage), MaxCoverageRows))
+		for _, wc := range w.Coverage {
+			if len(rows) == MaxCoverageRows {
+				break
+			}
+			source := resource.SanitizeLine(wc.Source, MaxCoverageSourceChars)
+			if source == "" {
+				// A row that names no source explains nothing: the first column
+				// is the whole of what makes the row readable.
+				continue
+			}
+			rows = append(rows, Coverage{
+				Source:    source,
+				State:     CoerceCoverageState(wc.State),
+				Reason:    resource.SanitizeLine(wc.Reason, MaxCoverageReasonChars),
+				ElapsedMs: max(0, wc.ElapsedMs),
+			})
+		}
+		if len(rows) > 0 {
+			page.Coverage = rows
+		}
+	}
+
 	if len(w.Notices) > 0 {
 		notices := make([]Notice, 0, min(len(w.Notices), MaxNotices))
 		for _, wn := range w.Notices {

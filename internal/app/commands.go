@@ -155,7 +155,9 @@ type (
 	// plugin tab — the collection's list when Locator is empty, and that row's
 	// document when it is not — and no matcher is consulted, because a plugin
 	// row is addressed by its collection and ID.
-	OpenResourcePaneMsg struct{ Provider, Matcher, Locator, Collection, Query string }
+	// Filters is a collection tab's applied filter set in
+	// resource.EncodeFilters form, which keeps the message a comparable value.
+	OpenResourcePaneMsg struct{ Provider, Matcher, Locator, Collection, Query, Filters string }
 	// AttachSessionMsg attaches a tmux session by name. The host honours the
 	// same full-attach feature gate as every other attach path.
 	AttachSessionMsg struct{ Session string }
@@ -181,9 +183,11 @@ func OpenResourcePane(provider, matcher, locator string) tea.Cmd {
 
 // OpenPluginPane returns a command that opens a plugin collection tab, or one
 // row's document tab when row is non-empty.
-func OpenPluginPane(instance, collection, query, row string) tea.Cmd {
+func OpenPluginPane(instance, collection, query, row, filters string) tea.Cmd {
 	return func() tea.Msg {
-		return OpenResourcePaneMsg{Provider: instance, Collection: collection, Query: query, Locator: row}
+		return OpenResourcePaneMsg{
+			Provider: instance, Collection: collection, Query: query, Locator: row, Filters: filters,
+		}
 	}
 }
 

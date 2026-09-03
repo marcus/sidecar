@@ -324,7 +324,7 @@ func (t *Tabs) rekeyAndMerge(i int, identity string) {
 	before := m.Reference()
 	m.Rekey(identity)
 	after := m.Reference()
-	if after == before {
+	if after.Equal(before) {
 		return
 	}
 	key := TabKey(after)
@@ -367,6 +367,7 @@ func (t *Tabs) References() []PersistedTab {
 			View:       ref.View,
 			Sort:       ref.Sort,
 			CursorID:   ref.CursorID,
+			Filters:    resource.FilterMap(ref.Filters),
 			Scroll:     item.Value.Scroll(),
 		})
 	}
@@ -386,7 +387,28 @@ type PersistedTab struct {
 	View       string
 	Sort       string
 	CursorID   string
+	Filters    map[string]string
 	Scroll     int
+}
+
+// equal compares two persisted tabs. It is spelled out because a tab carries an
+// applied filter map, which makes the struct uncomparable with ==; every field
+// still takes part, so a save that changed only a filter is still a save.
+func (t PersistedTab) Equal(other PersistedTab) bool {
+	if t.Provider != other.Provider || t.Matcher != other.Matcher || t.Locator != other.Locator ||
+		t.Collection != other.Collection || t.Query != other.Query || t.View != other.View ||
+		t.Sort != other.Sort || t.CursorID != other.CursorID || t.Scroll != other.Scroll ||
+		len(t.Filters) != len(other.Filters) {
+		return false
+	}
+	for id, value := range t.Filters {
+		// Comma-ok, not a lookup: an absent key reads as "" and would compare
+		// equal to a filter deliberately cleared to the empty string.
+		if v, ok := other.Filters[id]; !ok || v != value {
+			return false
+		}
+	}
+	return true
 }
 
 // View renders the active tab.

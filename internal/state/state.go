@@ -26,6 +26,12 @@ type State struct {
 	// different shapes: a split dragged wide for a four-column results table is
 	// the wrong one for a two-column source list.
 	PluginBrowserSplit map[string]int `json:"pluginBrowserSplit,omitempty"`
+	// PluginBrowserView is a global protocol tab's remembered view position,
+	// keyed "<instance>\x00<collection>". A pane's tab position is persisted
+	// with the pane; a global tab has no pane to be persisted with, and a
+	// search box that forgets what it was asked between launches is a search
+	// box the user has to re-type into every morning.
+	PluginBrowserView map[string]PluginBrowserViewJSON `json:"pluginBrowserView,omitempty"`
 	// NotificationCentreWidth is the app-level right panel's width in columns.
 	// It belongs to the shell rather than a plugin, but it is the same kind of
 	// preference as the pane widths above and is persisted the same way.
@@ -257,8 +263,8 @@ type PaneDiffTabJSON struct {
 //     protocol's shape, written by every release before the plugin protocol
 //     and read back unchanged.
 //   - COLLECTION: Collection set, Matcher and Locator empty, plus the view
-//     position (Query, View, Sort, CursorID) so relaunch reopens the list the
-//     user was reading rather than the collection's default page.
+//     position (Query, View, Sort, CursorID, Filters) so relaunch reopens the
+//     list the user was reading rather than the collection's default page.
 //   - ITEM: Collection and Locator, Matcher empty. One row of a collection,
 //     which the plugin's get method addresses by collection and ID.
 //
@@ -276,7 +282,90 @@ type PaneResourceTabJSON struct {
 	View       string `json:"view,omitempty"`
 	Sort       string `json:"sort,omitempty"`
 	CursorID   string `json:"cursorId,omitempty"`
-	Scroll     int    `json:"scroll,omitempty"`
+	// Filters is the applied filter set, {id: value}. Decode accepts a key the
+	// plugin no longer declares rather than refusing the record: the tab is
+	// still the tab, and the host drops an undeclared key at call time — which
+	// is also what lets a plugin rename a filter without orphaning saved tabs.
+	Filters map[string]string `json:"filters,omitempty"`
+	Scroll  int               `json:"scroll,omitempty"`
+}
+
+// PluginBrowserViewJSON is one global protocol tab's remembered view position.
+// It is reference-only, exactly as a persisted pane tab is: no row, no title,
+// no body, no error — only what the user asked for.
+type PluginBrowserViewJSON struct {
+	Query   string            `json:"query,omitempty"`
+	View    string            `json:"view,omitempty"`
+	Sort    string            `json:"sort,omitempty"`
+	Filters map[string]string `json:"filters,omitempty"`
+}
+
+// Empty reports that there is nothing worth remembering, so the entry is
+// dropped rather than written as an object full of empty strings.
+func (v PluginBrowserViewJSON) Empty() bool {
+	return v.Query == "" && v.View == "" && v.Sort == "" && len(v.Filters) == 0
+}
+
+// pluginBrowserViewKey is the composite key. It uses NUL because a collection
+// id is sanitized text and can never contain one, so two ids cannot collide
+// however a plugin spells them.
+func pluginBrowserViewKey(instance, collection string) string {
+	return instance + "\x00" + collection
+}
+
+// GetPluginBrowserView returns a global protocol tab's remembered view
+// position. The zero value means nothing was saved, which is the collection's
+// own defaults.
+func GetPluginBrowserView(instance, collection string) PluginBrowserViewJSON {
+	mu.RLock()
+	defer mu.RUnlock()
+	if current == nil || instance == "" || collection == "" {
+		return PluginBrowserViewJSON{}
+	}
+	return current.PluginBrowserView[pluginBrowserViewKey(instance, collection)]
+}
+
+// SetPluginBrowserView saves one global protocol tab's view position. An empty
+// position deletes the entry rather than writing a hollow one.
+func SetPluginBrowserView(instance, collection string, view PluginBrowserViewJSON) error {
+	if instance == "" || collection == "" {
+		return nil
+	}
+	mu.Lock()
+	if current == nil {
+		current = &State{}
+	}
+	key := pluginBrowserViewKey(instance, collection)
+	if view.Empty() {
+		delete(current.PluginBrowserView, key)
+	} else {
+		if current.PluginBrowserView == nil {
+			current.PluginBrowserView = make(map[string]PluginBrowserViewJSON)
+		}
+		current.PluginBrowserView[key] = view
+	}
+	mu.Unlock()
+	return Save()
+}
+
+// Equal reports whether two persisted resource tabs are the same record. It is
+// spelled out because a collection tab carries an applied filter map, which
+// makes the struct uncomparable with ==.
+func (t PaneResourceTabJSON) Equal(other PaneResourceTabJSON) bool {
+	if t.Provider != other.Provider || t.Matcher != other.Matcher || t.Locator != other.Locator ||
+		t.Collection != other.Collection || t.Query != other.Query || t.View != other.View ||
+		t.Sort != other.Sort || t.CursorID != other.CursorID || t.Scroll != other.Scroll ||
+		len(t.Filters) != len(other.Filters) {
+		return false
+	}
+	for id, value := range t.Filters {
+		// Comma-ok, not a lookup: an absent key reads as "" and would compare
+		// equal to a filter deliberately cleared to the empty string.
+		if v, ok := other.Filters[id]; !ok || v != value {
+			return false
+		}
+	}
+	return true
 }
 
 // MigratePaneLayouts copies a legacy single-slot PaneLayout into PaneLayouts

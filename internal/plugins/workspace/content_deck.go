@@ -404,6 +404,7 @@ func resourceTabStateFrom(ref resourceview.PersistedTab) (contentpanes.TabState,
 	case ref.Collection != "" && ref.Matcher == "" && ref.Locator == "":
 		link.Collection, link.Query = ref.Collection, ref.Query
 		out.View, out.Sort, out.CursorID = ref.View, ref.Sort, ref.CursorID
+		out.Filters = ref.Filters
 	case ref.Collection != "" && ref.Matcher == "" && ref.Locator != "":
 		link.Collection, link.Value = ref.Collection, ref.Locator
 	case ref.Collection == "" && ref.Matcher != "" && ref.Locator != "":

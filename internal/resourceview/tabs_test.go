@@ -176,7 +176,7 @@ func TestReferencesAreTheOnlyThingPersisted(t *testing.T) {
 	// The struct has no field that could carry a title, body, or URL. This
 	// asserts what it does carry, which is the reference and nothing else.
 	want := PersistedTab{Provider: "jira-work", Matcher: "issue-key", Locator: "CASH-1"}
-	if got[0] != want {
+	if !got[0].Equal(want) {
 		t.Errorf("persisted = %+v, want %+v", got[0], want)
 	}
 }
@@ -245,5 +245,25 @@ func TestEmptyTabsRenderNothingAndReportEmpty(t *testing.T) {
 	}
 	if tabs.Active() != nil {
 		t.Error("there is no active tab")
+	}
+}
+
+// A filter deliberately cleared to the empty string is a value, not an absence:
+// a text filter with a declared default is cleared exactly that way. Comparing
+// two records by lookup rather than by comma-ok would call these equal and skip
+// the save that carries the change.
+func TestPersistedTabEqualDistinguishesAClearedFilter(t *testing.T) {
+	base := PersistedTab{Provider: "recall", Collection: "results"}
+	cleared := base
+	cleared.Filters = map[string]string{"since": ""}
+	other := base
+	other.Filters = map[string]string{"profile": ""}
+	if cleared.Equal(other) {
+		t.Fatal("two different filter sets compared equal because an absent key reads as an empty value")
+	}
+	same := base
+	same.Filters = map[string]string{"since": ""}
+	if !cleared.Equal(same) {
+		t.Fatal("the same filter set compared unequal")
 	}
 }

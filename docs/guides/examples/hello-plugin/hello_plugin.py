@@ -74,6 +74,22 @@ def describe():
                     {"id": "name", "label": "Name", "default": "asc"},
                     {"id": "updated", "label": "Updated"},
                 ],
+                # The FIRST filter is the collection's scope: the host always
+                # shows its current value in the View pill, so declare the one
+                # that changes what a page IS before the ones that narrow it.
+                "filters": [
+                    {
+                        "id": "language",
+                        "label": "Language",
+                        "kind": "choice",
+                        "choices": [{"id": "any", "title": "Any"}]
+                        + [
+                            {"id": g["language"], "title": g["language"]}
+                            for g in GREETINGS
+                        ],
+                        "default": "any",
+                    }
+                ],
                 "detail": True,
             }
         ],
@@ -86,10 +102,15 @@ def list_page(params):
         return error("invalid_request", "hello has one collection: greetings")
 
     query = params.get("query", "").strip().lower()
+    # Only what is APPLIED arrives: a filter sitting on its default is not sent
+    # and a missing key means the default, so read it with the default as the
+    # fallback rather than indexing it.
+    language = (params.get("filters") or {}).get("language", "any")
     matched = [
         g
         for g in GREETINGS
-        if not query or query in g["name"].lower() or query in g["language"].lower()
+        if (not query or query in g["name"].lower() or query in g["language"].lower())
+        and (language == "any" or g["language"] == language)
     ]
 
     key = (params.get("sort") or {}).get("key") or "name"
