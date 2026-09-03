@@ -30,7 +30,7 @@ Sidecar hosts two kinds, and choosing wrong costs weeks.
 | Good for | Browsing a tool's data: lists, search, documents, a few typed actions | A layout nothing else has — a board, a queue, a canvas |
 | Cost | An afternoon | A plugin, a keymap, a theme pass, and a place in the repository |
 
-**Choose the protocol class unless your screen is the point.** A protocol plugin will never render as richly as an embedded one, and that is deliberate: a vocabulary big enough to express an arbitrary screen would be a worse Bubble Tea. In exchange, every protocol plugin gets pointer parity, focus, tabs, persistence, live refresh, and theme awareness for free, and gets them again whenever Sidecar improves them.
+**Choose the protocol class unless your screen is the point.** A protocol plugin will never render as richly as an embedded one, and that is deliberate: a vocabulary big enough to express an arbitrary screen would be a worse Bubble Tea. In exchange, every protocol plugin gets focus, tabs, persistence, live refresh, and theme awareness for free, and inherits every improvement Sidecar makes to them — the pointer parity work now in flight included — without changing a line of your own.
 
 If you do need the embedded class, stop here and read [`.claude/skills/create-plugin/SKILL.md`](../../../.claude/skills/create-plugin/SKILL.md) instead — it covers `plugin.Plugin`, the registry, keymap contexts, and the app shell.
 
@@ -257,13 +257,13 @@ Read [the M0 mockups](../../plans/active/plugin-ecosystem/mockups/README.md) onc
 
 Every protocol plugin has the same keys, and you declare none of them: `j`/`k` move, `Enter` opens (and a second `Enter` focuses what it opened), `/` edits the query, `v` opens the View modal, `r` refreshes, `a` opens the action menu, `o` opens a `sourceUrl` through the host's confirmed path, `Esc` closes an overlay. `Tab` is the app's focus ring and `n` is the pane switcher; the browser deliberately takes neither.
 
-The same is true of the pointer: clicking a row selects it, clicking again opens it, clicking a pane focuses it, the wheel scrolls whatever is under it, and the divider drags. Nothing a click does is reachable only by click.
+The pointer is the host's too, and is **not there yet**: today a mouse event reaches the browser only while one of its modals is open, so rows, the query line, the View control and the pane divider are keyboard-only. Making them clickable — a click selects a row, a second click opens it, a click focuses a pane, the wheel scrolls the box under the pointer, the divider drags — is milestone M4a of [the plugin ecosystem plan](../../plans/active/plugin-ecosystem/browser-parity-and-scope.md#m4a-pointer-and-focus-parity-in-the-shared-browser--sidecar-only), and it is entirely host-side: when it lands, every plugin has it without declaring anything. The rule it lands under is the app's rule everywhere — nothing a click does is ever reachable only by click.
 
 The one key you can ask for is an action's optional `key`: a single lowercase letter, granted only if the browser's own keys, the host's reserved set, the global keys, and every other action leave it free. It is never guaranteed and never persisted, so an action must always be reachable from the action menu too.
 
 ## Views, sort, and (later) filters
 
-A collection declares `views[]` (named presets) and `sort[]` (sortable keys). The host puts both in one View modal opened with `v` or by clicking the control on the title row, and sends the chosen values back in `list.params` as `view` and `sort: {key, dir}`. Applying them is yours: the host does not reorder or filter your rows, because only you know what your keys mean.
+A collection declares `views[]` (named presets) and `sort[]` (sortable keys). The host puts both in one View modal opened with `v`, and sends the chosen values back in `list.params` as `view` and `sort: {key, dir}`. Applying them is yours: the host does not reorder or filter your rows, because only you know what your keys mean.
 
 Declare nothing you do not read. A plugin that declares a view it ignores has told the user about a control that does nothing.
 

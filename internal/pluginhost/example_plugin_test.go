@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/marcus/sidecar/internal/resource"
 )
 
 // The authoring guide's example plugin, driven through the real host.
@@ -92,6 +94,18 @@ func TestGuideExamplePluginDescribesWhatTheGuideSays(t *testing.T) {
 	if !ok || primary.ID != "name" {
 		t.Fatalf("primary column = %+v, want name", primary)
 	}
+	// The guide prints `columns=name*,language,updated,note^` as the check
+	// output an author should expect, so the secondary column is part of what
+	// this file promises rather than an incidental declaration.
+	secondary := ""
+	for _, col := range greetings.Columns {
+		if col.Secondary {
+			secondary = col.ID
+		}
+	}
+	if secondary != "note" {
+		t.Fatalf("secondary column = %q, want note", secondary)
+	}
 	if len(greetings.Sort) != 2 || greetings.Sort[0].Default != SortAsc {
 		t.Fatalf("sort keys = %+v, want name defaulting ascending", greetings.Sort)
 	}
@@ -171,6 +185,13 @@ func TestGuideExamplePluginTypesItsFailures(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "no greeting") {
 		t.Fatalf("error = %v, want the plugin's own message", err)
+	}
+	// Typed, not transport: the guide's central claim about failure is that a
+	// plugin exits zero with an error object and the user gets a real card. A
+	// crash or a non-zero exit would arrive here as an internal transport
+	// failure with the plugin's message gone.
+	if code := AsResourceError(err).Code; code != resource.CodeNotFound {
+		t.Fatalf("error code = %q, want a typed %q", code, resource.CodeNotFound)
 	}
 
 	// A collection the describe never declared is refused before a process is
