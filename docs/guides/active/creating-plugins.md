@@ -98,16 +98,20 @@ def describe():
             ],
             "sort": [{"id": "name", "label": "Name", "default": "asc"},
                      {"id": "updated", "label": "Updated"}],
+            "filters": [{"id": "language", "label": "Language", "kind": "choice",
+                         "choices": [{"id": "any", "title": "Any"}, ...],
+                         "default": "any"}],
             "detail": True,
         }],
     }
 ```
 
-Four decisions are in there, and each one is a thing the host will draw:
+Five decisions are in there, and each one is a thing the host will draw:
 
 - **`primary`** names the row. Exactly one column has it, and it is the cell that survives when the pane is narrow. **`secondary`** is the line that folds under it there.
 - **`kind`** tells the host how to present a cell: `timestamp` is rendered relatively ("2 weeks ago"), `status` as a pill, `number` right-aligned. It never changes validation.
 - **`sort`** is offered in the View modal on `v`. You get the chosen key back in `list.params.sort`; sorting is still yours to do.
+- **`filters`** is offered in the same modal, and the first one you declare is the collection's *scope* — the host always shows its current value in the View pill. See [Filters, and which one is your scope](#filters-and-which-one-is-your-scope).
 - **`search: "optional"`** puts a query line above the table. `"required"` means the collection is empty until there is a query — and the host answers the empty case itself, without starting your process. `"none"` means no query line at all.
 
 `describe` must be local and fast: no network, no credential prompt. If your tool is installed but not configured, return `invalid_config` with a one-line `setupHint` — the user gets a setup card saying what to run.
@@ -220,6 +224,7 @@ hello  [enabled, ready]  plugins.external
   describe  ok in 23ms — Hello 1.0.0, 0 matcher(s), 1 collection(s), 0 action(s)
             reads context project
             collection greetings "Greetings" search=optional columns=name*,language,updated,note^ sort=name (asc),updated detail
+              filter language "Language" kind=choice scope choices=any,English,French,Japanese default=any
 ```
 
 `name*` is your primary column and `note^` your secondary — the check is showing you the two layout decisions it read out of your declaration.
@@ -227,8 +232,9 @@ hello  [enabled, ready]  plugins.external
 `describe` always runs; calling `list` or `get` is opt-in, because either can reach the network and print private data:
 
 ```console
-$ sidecar plugin check hello --list greetings --query bon --filter lang=fr
+$ sidecar plugin check hello --list greetings --filter language=French
   list      ok in 23ms — greetings, answered, 1 row(s)
+            filters   language=French
             fr  Bonjour
 
 $ sidecar plugin check hello --get greetings ja
@@ -293,6 +299,8 @@ Declare nothing you do not read. A plugin that declares a view it ignores has to
 
 What comes back in `list.params.filters` is **only what is applied**: a filter sitting on its default is not sent, and a missing key means the default. Read it that way — `filters.get("profile", "home")`, not `filters["profile"]`. Keys you never declared are dropped by the host before your process starts, so you only ever read names you published yourself.
 
+`sidecar plugin check <plugin> --list <collection> --filter id=value` prints the set that was actually sent, not the one you asked for, which is how a dropped key or a misspelled id shows itself as an absence rather than as silence. The example plugin declares one, so `--filter language=French` above is a round trip you can run.
+
 The host persists the applied set with the tab and with a global tab's remembered query, so a scope survives a relaunch. Bounds: 8 filters per collection, 64 choices each, 32-character ids and titles, 64-character text values.
 
 ## Context: ask for what you read
@@ -335,7 +343,7 @@ Once configured, your collections are addressable from any shell, which is what 
 ```bash
 sidecar open --plugin hello --collection greetings --split right
 sidecar open --plugin hello --collection greetings --query bon
-sidecar open --plugin hello --collection greetings --filter lang=fr    # one of your filters
+sidecar open --plugin hello --collection greetings --filter language=French   # one of your filters
 sidecar open --plugin hello --collection greetings fr        # one row's document
 ```
 
@@ -343,7 +351,7 @@ The same shapes exist in the layout spec, so a whole screen can be composed in o
 
 ```json
 {"kind": "resource", "provider": "hello", "collection": "greetings", "query": "bon",
- "filters": {"lang": "fr"}}
+ "filters": {"language": "French"}}
 ```
 
 `sidecar layout get --json` reports the active tab's collection and query, so get → edit → apply is a round trip. A collection tab's identity is `{plugin, collection}` and excludes the query, so re-running `open` with a new query re-lists the tab that is open rather than forking a second one.

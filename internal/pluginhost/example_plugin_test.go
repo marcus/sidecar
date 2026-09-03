@@ -109,6 +109,20 @@ func TestGuideExamplePluginDescribesWhatTheGuideSays(t *testing.T) {
 	if len(greetings.Sort) != 2 || greetings.Sort[0].Default != SortAsc {
 		t.Fatalf("sort keys = %+v, want name defaulting ascending", greetings.Sort)
 	}
+	// The guide prints the filter line `plugin check` draws for this
+	// collection, and tells the reader `--filter language=French` is a round
+	// trip they can run. Both claims are only true while the example declares
+	// the filter and it is the collection's scope.
+	scope, ok := greetings.ScopeFilter()
+	if !ok || scope.ID != "language" || scope.Kind != FilterChoice || scope.Default != "any" {
+		t.Fatalf("scope filter = %+v, want the language choice defaulting to any", scope)
+	}
+	if len(greetings.Filters) != 1 {
+		t.Fatalf("filters = %+v, want the one the guide prints", greetings.Filters)
+	}
+	if _, known := scope.OptionTitle("French"); !known {
+		t.Fatalf("the guide's own --filter language=French names a choice the example does not declare: %+v", scope.Choices)
+	}
 	// The guide's example declares no matchers and no actions, which is what
 	// makes it the smallest complete plugin rather than a resource provider.
 	if len(desc.Matchers) != 0 || len(desc.Actions) != 0 {
@@ -137,6 +151,28 @@ func TestGuideExamplePluginListsAndGets(t *testing.T) {
 	}
 	if len(filtered.Items) != 1 || filtered.Items[0].ID != "fr" {
 		t.Fatalf("query 'french' = %+v, want the one row", filtered.Items)
+	}
+
+	// The guide tells an author to read params.filters with the default as the
+	// fallback. The example does, so an applied value narrows the page and the
+	// default is never sent at all.
+	byLanguage, err := m.List(ctx, ListRequest{Instance: "hello", Params: ListParams{
+		Collection: "greetings", Filters: map[string]string{"language": "French"},
+	}})
+	if err != nil {
+		t.Fatalf("List with a filter: %v", err)
+	}
+	if len(byLanguage.Items) != 1 || byLanguage.Items[0].ID != "fr" {
+		t.Fatalf("language=French = %+v, want the one row", byLanguage.Items)
+	}
+	atDefault, err := m.List(ctx, ListRequest{Instance: "hello", Params: ListParams{
+		Collection: "greetings", Filters: map[string]string{"language": "any", "smuggled": "x"},
+	}})
+	if err != nil {
+		t.Fatalf("List at the filter's default: %v", err)
+	}
+	if len(atDefault.Items) != 3 {
+		t.Fatalf("the default and an undeclared key changed the page: %+v", atDefault.Items)
 	}
 
 	// An empty result set is abstained, not answered: the guide's honesty
