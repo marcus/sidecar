@@ -43,7 +43,7 @@ func TestProjectPreviewCacheInvalidatesVisibleInputs(t *testing.T) {
 			f.p.selection.End.Line, f.p.selection.End.Col = 1, 4
 		},
 		"terminal search": func(f *projectActiveSessionFixture) {
-			f.p.terminalSearch.Query = "README"
+			f.p.terminalSearch.SetQuery("README")
 			f.p.terminalSearch.SourceKey = "fixture"
 			f.p.terminalSearch.Generation++
 		},

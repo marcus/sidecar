@@ -96,12 +96,12 @@ func (p *Plugin) getSelectedMessage() *adapter.Message {
 
 // filterSessions filters sessions based on search query.
 func (p *Plugin) filterSessions() {
-	if p.searchQuery == "" {
+	if p.searchQuery() == "" {
 		p.searchResults = nil
 		return
 	}
 
-	query := strings.ToLower(p.searchQuery)
+	query := strings.ToLower(p.searchQuery())
 	var results []adapter.Session
 	for _, s := range p.sessions {
 		if strings.Contains(strings.ToLower(s.Name), query) ||
@@ -116,7 +116,7 @@ func (p *Plugin) filterSessions() {
 
 // visibleSessions returns sessions to display (filtered or all).
 func (p *Plugin) visibleSessions() []adapter.Session {
-	if p.searchMode && p.searchQuery != "" {
+	if p.searchMode && p.searchQuery() != "" {
 		return p.searchResults
 	}
 

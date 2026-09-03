@@ -52,6 +52,11 @@ func (p *Plugin) handleMouseClick(action mouse.MouseAction) (*Plugin, tea.Cmd) {
 	case ui.RegionScrollbarThumb, ui.RegionScrollbarTrack:
 		return p.handleListScrollbarPress(action)
 
+	case regionSearchClear:
+		// The × clears the query and leaves the caret where it is.
+		p.searchField.Clear()
+		return p, p.applySearchQuery()
+
 	case regionSessionItem:
 		// Click on a session item - select it
 		if idx, ok := action.Region.Data.(int); ok {

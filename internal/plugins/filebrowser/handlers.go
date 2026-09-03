@@ -14,7 +14,6 @@ import (
 	appmsg "github.com/marcus/sidecar/internal/msg"
 	"github.com/marcus/sidecar/internal/plugin"
 	"github.com/marcus/sidecar/internal/state"
-	"github.com/marcus/sidecar/internal/ui"
 )
 
 func (p *Plugin) handleKey(msg tea.KeyPressMsg) (plugin.Plugin, tea.Cmd) {
@@ -364,7 +363,8 @@ func (p *Plugin) handleTreeKey(key string) (plugin.Plugin, tea.Cmd) {
 
 	case "/":
 		p.searchMode = true
-		p.searchQuery = ""
+		p.searchField.Reset()
+		p.searchField.Focus()
 		p.searchMatches = nil
 		p.searchCursor = 0
 		p.followSearchCursor()
@@ -569,7 +569,8 @@ func (p *Plugin) handlePreviewKey(key string) (plugin.Plugin, tea.Cmd) {
 			p.selection.Clear() // Clear selection before entering search
 			p.contentSearchMode = true
 			p.contentSearchCommitted = false
-			p.contentSearchQuery = ""
+			p.contentSearchField.Reset()
+			p.contentSearchField.Focus()
 			p.contentSearchMatches = nil
 			p.contentSearchCursor = 0
 		}
@@ -894,42 +895,74 @@ func (p *Plugin) handleInfoKey(msg tea.KeyPressMsg) (plugin.Plugin, tea.Cmd) {
 	return p, cmd
 }
 
+// searchQuery is the tree search bar's text. The bar's state is a
+// queryfield.Field, and the plugin reads it through here so nothing has to know
+// that.
+func (p *Plugin) searchQuery() string { return p.searchField.Query() }
+
+// contentSearchQuery is the preview search bar's text.
+func (p *Plugin) contentSearchQuery() string { return p.contentSearchField.Query() }
+
+// syncSearchFieldFocus points each field's focus at the mode flag that already
+// decides whether its bar owns the keyboard. Two records of one fact drift; a
+// restored tab or a directly-set query would otherwise hand keys to a field
+// that never learned it was focused.
+func (p *Plugin) syncSearchFieldFocus() {
+	if p.searchMode {
+		p.searchField.Focus()
+	} else {
+		p.searchField.Blur()
+	}
+	if p.contentSearchMode && !p.contentSearchCommitted {
+		p.contentSearchField.Focus()
+	} else {
+		p.contentSearchField.Blur()
+	}
+}
+
+// exitContentSearch leaves the preview search entirely and drops its matches.
+func (p *Plugin) exitContentSearch() {
+	p.contentSearchMode = false
+	p.contentSearchCommitted = false
+	p.contentSearchField.Reset()
+	p.contentSearchMatches = nil
+	p.contentSearchCursor = 0
+}
+
 // handleContentSearchKey handles key input during content search mode.
 // Implements vim-style two-phase search: type query, Enter to commit, then n/N navigate.
+//
+// While the query is being typed every key that is not esc or enter belongs to
+// the shared query field, which is what gives the bar cursor movement, word
+// ops, home and end, and paste. Esc is the one key the field is never offered:
+// a content search is a mode over the preview rather than a filter that
+// survives beside a list, so leaving it stays one press.
 func (p *Plugin) handleContentSearchKey(msg tea.KeyPressMsg) (plugin.Plugin, tea.Cmd) {
 	key := msg.String()
-	text := ui.PrintableKeyText(msg)
+	// The plugin's own mode flags are what mean "this bar owns the keyboard",
+	// so the field's focus is derived from them rather than tracked twice.
+	p.syncSearchFieldFocus()
 
 	// Esc always exits search mode completely
 	if key == "esc" {
-		p.contentSearchMode = false
-		p.contentSearchCommitted = false
-		p.contentSearchQuery = ""
-		p.contentSearchMatches = nil
-		p.contentSearchCursor = 0
+		p.exitContentSearch()
 		return p, nil
 	}
 
 	// Phase 1: Typing query (not yet committed)
 	if !p.contentSearchCommitted {
-		switch key {
-		case "enter":
+		if key == "enter" {
 			// Commit the search - now n/N will navigate matches
-			if len(p.contentSearchQuery) > 0 {
+			if p.contentSearchQuery() != "" {
 				p.contentSearchCommitted = true
+				p.contentSearchField.Blur()
 			}
-		case "backspace":
-			if len(p.contentSearchQuery) > 0 {
-				runes := []rune(p.contentSearchQuery)
-				p.contentSearchQuery = string(runes[:len(runes)-1])
-				p.updateContentMatches()
-			}
-		default:
-			// All printable characters go to query (including n, N, etc.)
-			if text != "" {
-				p.contentSearchQuery += text
-				p.updateContentMatches()
-			}
+			return p, nil
+		}
+		before := p.contentSearchQuery()
+		p.contentSearchField.HandleKey(msg)
+		if p.contentSearchQuery() != before {
+			p.updateContentMatches()
 		}
 		return p, nil
 	}
@@ -968,6 +1001,7 @@ func (p *Plugin) handleContentSearchKey(msg tea.KeyPressMsg) (plugin.Plugin, tea
 		// Exit search, keep position at current match
 		p.contentSearchMode = false
 		p.contentSearchCommitted = false
+		p.contentSearchField.Blur()
 	case "ctrl+d":
 		// Half-page scroll down while keeping search active
 		visibleHeight := p.visibleContentHeight()
@@ -992,15 +1026,20 @@ func (p *Plugin) handleContentSearchKey(msg tea.KeyPressMsg) (plugin.Plugin, tea
 }
 
 // handleSearchKey handles key input during search mode.
+//
+// The tree bar's own keys are answered first — esc leaves, enter opens the
+// match under the cursor, and the arrows walk the result list — and everything
+// else is the shared query field's, which is where cursor movement, word ops,
+// home, end and paste come from.
 func (p *Plugin) handleSearchKey(msg tea.KeyPressMsg) (plugin.Plugin, tea.Cmd) {
 	key := msg.String()
-	text := ui.PrintableKeyText(msg)
+	p.syncSearchFieldFocus()
 	var scanCmd tea.Cmd
 
 	switch key {
 	case "esc":
 		p.searchMode = false
-		p.searchQuery = ""
+		p.searchField.Reset()
 
 	case "enter":
 		// Jump to selected match and exit search
@@ -1012,13 +1051,6 @@ func (p *Plugin) handleSearchKey(msg tea.KeyPressMsg) (plugin.Plugin, tea.Cmd) {
 			return p, p.openTab(match.Path, TabOpenReplace)
 		}
 		p.searchMode = false
-
-	case "backspace":
-		if len(p.searchQuery) > 0 {
-			runes := []rune(p.searchQuery)
-			p.searchQuery = string(runes[:len(runes)-1])
-			scanCmd = p.updateSearchMatches()
-		}
 
 	case "up", "ctrl+p":
 		if p.searchCursor > 0 {
@@ -1033,14 +1065,41 @@ func (p *Plugin) handleSearchKey(msg tea.KeyPressMsg) (plugin.Plugin, tea.Cmd) {
 		}
 
 	default:
-		// Append printable characters to query
-		if text != "" {
-			p.searchQuery += text
+		// Everything else is the field's: text, the caret keys, word ops,
+		// home and end.
+		before := p.searchQuery()
+		p.searchField.HandleKey(msg)
+		if p.searchQuery() != before {
 			scanCmd = p.updateSearchMatches()
 		}
 	}
 
 	return p, scanCmd
+}
+
+// handleSearchPaste puts a bracketed paste into whichever search bar is taking
+// text. A query bar is a text input, so a paste lands in it exactly as typed
+// characters do; a committed content search has no input on screen and takes
+// none.
+func (p *Plugin) handleSearchPaste(msg tea.PasteMsg) (bool, tea.Cmd) {
+	p.syncSearchFieldFocus()
+	switch {
+	case p.searchMode:
+		before := p.searchQuery()
+		p.searchField.HandlePaste(msg)
+		if p.searchQuery() == before {
+			return true, nil
+		}
+		return true, p.updateSearchMatches()
+	case p.contentSearchMode && !p.contentSearchCommitted:
+		before := p.contentSearchQuery()
+		p.contentSearchField.HandlePaste(msg)
+		if p.contentSearchQuery() != before {
+			p.updateContentMatches()
+		}
+		return true, nil
+	}
+	return false, nil
 }
 
 // visibleContentHeight returns the number of lines available for *preview*

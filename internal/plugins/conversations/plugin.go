@@ -20,6 +20,7 @@ import (
 	"github.com/marcus/sidecar/internal/modal"
 	"github.com/marcus/sidecar/internal/mouse"
 	"github.com/marcus/sidecar/internal/plugin"
+	"github.com/marcus/sidecar/internal/queryfield"
 	"github.com/marcus/sidecar/internal/startuptrace"
 	"github.com/marcus/sidecar/internal/state"
 	"github.com/marcus/sidecar/internal/ui"
@@ -63,6 +64,7 @@ const (
 	regionMessageItem = "message-item" // Conversation flow: click to select (Data: msg index)
 	regionToolExpand  = "tool-expand"  // Conversation flow: toggle tool output (Data: tool_use_id)
 	regionShowMore    = "show-more"    // Conversation flow: expand long message (Data: msg ID)
+	regionSearchClear = "search-clear" // × on the Sessions `/` bar
 )
 
 // View represents the current view mode.
@@ -180,9 +182,12 @@ type Plugin struct {
 	adapterSpinner   ui.BrailleSpinner // animated loading indicator while adapters load
 
 	// Search state
-	searchMode    bool
-	searchQuery   string
-	searchResults []adapter.Session
+	searchMode  bool
+	searchField queryfield.Field
+	// searchClearRect is where the search row's × landed, in the row's own
+	// coordinates, so the region pass can register it.
+	searchClearRect mouse.Rect
+	searchResults   []adapter.Session
 
 	// Filter state
 	filterMode            bool
@@ -409,7 +414,7 @@ func (p *Plugin) resetState() {
 
 	// Search state
 	p.searchMode = false
-	p.searchQuery = ""
+	p.searchField.Reset()
 	p.searchResults = nil
 
 	// Filter state
@@ -658,6 +663,13 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 
 	case tea.MouseMsg:
 		return p.handleMouse(msg)
+
+	case tea.PasteMsg:
+		// A live Sessions search bar is a text input: a bracketed paste lands
+		// in it exactly as typed characters do.
+		if handled, cmd := p.handleSearchPaste(msg); handled {
+			return p, cmd
+		}
 
 	case tea.KeyPressMsg:
 		// Handle content search modal first if open (td-6ac70a)

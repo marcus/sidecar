@@ -190,6 +190,28 @@ func (m *Model) activeContentDeck() *appContentDeck {
 	return h
 }
 
+// routeAppContentDocSearchPaste offers a bracketed paste to the in-file search
+// bar of the focused document pane, which is a text field like any other and
+// must take a paste exactly as it takes typed characters. It reports handled
+// only while a search is actually taking text; docview declines otherwise and
+// the paste carries on down the app's routing.
+func (m Model) routeAppContentDocSearchPaste(msg tea.PasteMsg) (tea.Cmd, bool) {
+	h := m.currentContentDeck()
+	if h == nil || h.deck == nil || h.appContentSearchActive() {
+		return nil, false
+	}
+	leaf := panelayout.Find(h.deck.Tree(), h.deck.FocusedLeaf())
+	if leaf == nil || leaf.Kind == panelayout.Primary {
+		return nil, false
+	}
+	view, ok := h.deck.Viewer(leaf.ID).(*docview.Model)
+	if !ok {
+		return nil, false
+	}
+	handled, cmd := view.HandleSearchPaste(msg)
+	return cmd, handled
+}
+
 func (m Model) currentContentDeck() *appContentDeck {
 	if m.configOpen() || m.registry == nil {
 		return nil

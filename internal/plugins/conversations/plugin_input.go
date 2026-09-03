@@ -6,7 +6,6 @@ import (
 	appmsg "github.com/marcus/sidecar/internal/msg"
 	"github.com/marcus/sidecar/internal/plugin"
 	"github.com/marcus/sidecar/internal/state"
-	"github.com/marcus/sidecar/internal/ui"
 )
 
 // Update methods for handling key events in various views
@@ -165,9 +164,14 @@ func (p *Plugin) updateSessions(msg tea.KeyPressMsg) (plugin.Plugin, tea.Cmd) {
 
 	case "/":
 		p.searchMode = true
-		p.searchQuery = ""
+		p.searchField.Reset()
+		p.searchField.Focus()
 		p.cursor = 0
 		p.scrollOff = 0
+		// The bar takes a row from the sidebar, so every session row below it
+		// moves down one and the × has a rect to register. Regions here are
+		// cached until something says they changed; this is that something.
+		p.hitRegionsDirty = true
 
 	case "f":
 		// Open filter menu
@@ -248,14 +252,28 @@ func (p *Plugin) toggleCategoryFilter() tea.Cmd {
 }
 
 // updateSearch handles key events in search mode.
+//
+// The bar answers its own keys first — esc leaves, enter opens the session
+// under the cursor, the arrows and ctrl+n/ctrl+p walk the results, and ctrl+d
+// and ctrl+u page — and everything else is the shared query field's, which is
+// where cursor movement, word ops, home, end and paste come from.
+//
+// ctrl+u is the one real collision with the field, which uses it to clear the
+// query everywhere else. The surface's paging wins here, as the surface's
+// chords do, because a reader half-way down a long result list needs it.
 func (p *Plugin) updateSearch(msg tea.KeyPressMsg) (plugin.Plugin, tea.Cmd) {
+	// searchMode is what means "this bar owns the keyboard", so the field's
+	// focus is derived from it rather than tracked twice.
+	p.searchField.Focus()
 	switch msg.String() {
 	case "esc":
 		p.searchMode = false
-		p.searchQuery = ""
+		p.searchField.Reset()
 		p.searchResults = nil
 		p.cursor = 0
 		p.scrollOff = 0
+		// The bar gave its row back and the list is whole again.
+		p.hitRegionsDirty = true
 		if len(p.sessions) > 0 {
 			p.setSelectedSession(p.sessions[0].ID)
 			return p, p.schedulePreviewLoad(p.selectedSession)
@@ -275,14 +293,6 @@ func (p *Plugin) updateSearch(msg tea.KeyPressMsg) (plugin.Plugin, tea.Cmd) {
 			)
 		}
 
-	case "backspace":
-		if len(p.searchQuery) > 0 {
-			p.searchQuery = p.searchQuery[:len(p.searchQuery)-1]
-			p.filterSessions()
-			p.cursor = 0
-			p.scrollOff = 0
-		}
-
 	case "up", "ctrl+p":
 		if p.cursor > 0 {
 			p.cursor--
@@ -294,22 +304,11 @@ func (p *Plugin) updateSearch(msg tea.KeyPressMsg) (plugin.Plugin, tea.Cmd) {
 			}
 		}
 
-	case "down", "ctrl+n", "j":
+	case "down", "ctrl+n":
 		sessions := p.visibleSessions()
 		if p.cursor < len(sessions)-1 {
 			p.cursor++
 			p.ensureCursorVisible()
-			if p.cursor < len(sessions) {
-				p.setSelectedSession(sessions[p.cursor].ID)
-				return p, p.schedulePreviewLoad(p.selectedSession)
-			}
-		}
-
-	case "k":
-		if p.cursor > 0 {
-			p.cursor--
-			p.ensureCursorVisible()
-			sessions := p.visibleSessions()
 			if p.cursor < len(sessions) {
 				p.setSelectedSession(sessions[p.cursor].ID)
 				return p, p.schedulePreviewLoad(p.selectedSession)
@@ -352,25 +351,60 @@ func (p *Plugin) updateSearch(msg tea.KeyPressMsg) (plugin.Plugin, tea.Cmd) {
 
 	// Note: 'g'/'G' goto-top/bottom are intentionally NOT bound here so they
 	// fall through to the default branch and are typed into the search query
-	// (issue #166). This mirrors the arrow-key-only navigation precedent
-	// (td-2467e8) already applied to up/down/h in the search input.
+	// (issue #166), and 'j'/'k' are no longer bound either, for the same
+	// reason: this is the arrow-key-only navigation precedent (td-2467e8)
+	// already applied to up/down/h in the search input, finished. A bar that
+	// ate j and k could not be asked for "json" or "kubectl".
 
 	default:
-		// Add character to search query
-		if text := ui.PrintableKeyText(msg); text != "" {
-			p.searchQuery += text
-			p.filterSessions()
-			p.cursor = 0
-			p.scrollOff = 0
-			sessions := p.visibleSessions()
-			if len(sessions) > 0 {
-				p.setSelectedSession(sessions[0].ID)
-				return p, p.schedulePreviewLoad(p.selectedSession)
-			}
+		// Everything else is the field's: text, the caret keys, word ops, home
+		// and end.
+		before := p.searchQuery()
+		p.searchField.HandleKey(msg)
+		if p.searchQuery() != before {
+			return p, p.applySearchQuery()
 		}
 	}
 
 	return p, nil
+}
+
+// searchQuery is the Sessions search bar's text.
+func (p *Plugin) searchQuery() string { return p.searchField.Query() }
+
+// applySearchQuery re-filters after the query changed and puts the cursor and
+// the preview back on the first result.
+func (p *Plugin) applySearchQuery() tea.Cmd {
+	p.filterSessions()
+	p.cursor = 0
+	p.scrollOff = 0
+	// A changed query is a changed list and a changed × — both are hit
+	// regions, and this surface rebuilds them only when told they moved. The
+	// selection changing is not enough: filtering to a set whose first row is
+	// already the selected session changes nothing else.
+	p.hitRegionsDirty = true
+	sessions := p.visibleSessions()
+	if len(sessions) == 0 {
+		return nil
+	}
+	p.setSelectedSession(sessions[0].ID)
+	return p.schedulePreviewLoad(p.selectedSession)
+}
+
+// handleSearchPaste puts a bracketed paste into the Sessions search bar. A
+// query bar is a text input, so a paste lands in it exactly as typed
+// characters do.
+func (p *Plugin) handleSearchPaste(msg tea.PasteMsg) (bool, tea.Cmd) {
+	if !p.searchMode {
+		return false, nil
+	}
+	p.searchField.Focus()
+	before := p.searchQuery()
+	p.searchField.HandlePaste(msg)
+	if p.searchQuery() == before {
+		return true, nil
+	}
+	return true, p.applySearchQuery()
 }
 
 // updateAnalytics handles key events in analytics view.

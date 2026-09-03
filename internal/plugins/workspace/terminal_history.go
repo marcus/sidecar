@@ -43,7 +43,7 @@ func (p *Plugin) recordTerminalHistory(kind, target string, historySize int) {
 	state := p.terminalHistory[key]
 	state.Record(historySize)
 	p.terminalHistory[key] = state
-	if p.terminalSearch.SourceKey == key && p.terminalSearch.Query != "" {
+	if p.terminalSearch.SourceKey == key && p.terminalSearch.Query() != "" {
 		p.recomputeTerminalSearch()
 	}
 }
@@ -191,7 +191,7 @@ func (p *Plugin) applyTerminalHistory(msg terminalHistoryLoadedMsg) tea.Cmd {
 	state.Settle(newBase, msg.Capture.HistorySize)
 	remainder, more := state.Remainder(scrollLines, added)
 	p.terminalHistory[msg.Source.Key] = state
-	if p.terminalSearch.SourceKey == msg.Source.Key && p.terminalSearch.Query != "" {
+	if p.terminalSearch.SourceKey == msg.Source.Key && p.terminalSearch.Query() != "" {
 		p.recomputeTerminalSearch()
 	}
 

@@ -6,6 +6,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/marcus/sidecar/internal/queryfield"
 	"github.com/marcus/sidecar/internal/termpanes"
 	"github.com/marcus/sidecar/internal/tty"
 	"github.com/marcus/sidecar/internal/ui"
@@ -21,14 +22,24 @@ type previewTerminalSearchMatch struct {
 	EndCol   int
 }
 
+// previewTerminalSearchState is the global browser's terminal `/` bar. Its
+// query is the app's shared query field, exactly as the project workspace's is:
+// the two surfaces are two projections of one model, so a bar that edited
+// differently here would be a bug.
 type previewTerminalSearchState struct {
 	InputActive bool
 	Target      tty.Target
-	Query       string
+	field       queryfield.Field
 	Matches     []previewTerminalSearchMatch
 	Current     int
 	Generation  uint64
 }
+
+// Query is the text typed into the terminal search bar.
+func (s *previewTerminalSearchState) Query() string { return s.field.Query() }
+
+// SetQuery replaces the text and puts the caret at its end.
+func (s *previewTerminalSearchState) SetQuery(query string) { s.field.SetQuery(query) }
 
 type previewTerminalSearchLoadedMsg struct {
 	Target     tty.Target
@@ -46,25 +57,30 @@ func previewInteractiveSearchKey(msg tea.KeyPressMsg) bool {
 func (m *Model) handlePreviewTerminalSearchKey(msg tea.KeyPressMsg) (bool, tea.Cmd) {
 	search := &m.terminalSearch
 	if search.InputActive {
+		// InputActive is what means "this bar owns the keyboard", so the
+		// field's focus is derived from it rather than tracked twice.
+		search.field.Focus()
 		switch msg.Code {
 		case tea.KeyEscape:
+			// Esc leaves the bar in one press — the one key the field is never
+			// offered, because this bar is a mode over a live terminal rather
+			// than a filter beside a list.
 			search.InputActive = false
+			search.field.Blur()
 			return true, nil
 		case tea.KeyEnter:
 			search.InputActive = false
+			search.field.Blur()
 			m.recomputePreviewTerminalSearch()
 			m.revealPreviewTerminalSearchMatch()
 			return true, nil
-		case tea.KeyBackspace:
-			if len(search.Query) > 0 {
-				runes := []rune(search.Query)
-				search.Query = string(runes[:len(runes)-1])
-				m.recomputePreviewTerminalSearch()
-			}
-			return true, nil
 		}
-		if msg.Text != "" && !msg.Mod.Contains(tea.ModCtrl) && !msg.Mod.Contains(tea.ModAlt) {
-			search.Query += msg.Text
+		// Everything else is the field's: text, the caret keys, word ops, home
+		// and end. The bar still consumes what the field refuses, so a stray
+		// key cannot reach the terminal underneath.
+		before := search.Query()
+		search.field.HandleKey(msg)
+		if search.Query() != before {
 			m.recomputePreviewTerminalSearch()
 		}
 		return true, nil
@@ -75,7 +91,7 @@ func (m *Model) handlePreviewTerminalSearchKey(msg tea.KeyPressMsg) (bool, tea.C
 	if trigger {
 		return true, m.beginPreviewTerminalSearch()
 	}
-	if search.Query != "" && len(search.Matches) > 0 {
+	if search.Query() != "" && len(search.Matches) > 0 {
 		switch msg.String() {
 		case "n":
 			search.Current = (search.Current + 1) % len(search.Matches)
@@ -87,7 +103,7 @@ func (m *Model) handlePreviewTerminalSearchKey(msg tea.KeyPressMsg) (bool, tea.C
 			return true, nil
 		}
 	}
-	if search.Query != "" && msg.Code == tea.KeyEscape {
+	if search.Query() != "" && msg.Code == tea.KeyEscape {
 		m.clearPreviewTerminalSearch()
 		return true, nil
 	}
@@ -103,11 +119,12 @@ func (m *Model) beginPreviewTerminalSearch() tea.Cmd {
 	target := m.previewTarget()
 	search := &m.terminalSearch
 	if search.Target != target {
-		search.Query = ""
+		search.field.Reset()
 		search.Matches = nil
 		search.Current = 0
 	}
 	search.InputActive = true
+	search.field.Focus()
 	search.Target = target
 	search.Generation++
 	searchGen := search.Generation
@@ -177,7 +194,7 @@ func (m *Model) recomputePreviewTerminalSearch() {
 	search := &m.terminalSearch
 	search.Matches = search.Matches[:0]
 	search.Current = 0
-	query := previewSearchGraphemes(search.Query)
+	query := previewSearchGraphemes(search.Query())
 	buffer := m.previewBuffer()
 	if len(query) == 0 || buffer == nil || search.Target != m.previewTarget() {
 		return
@@ -250,12 +267,17 @@ func (m *Model) revealPreviewTerminalSearchMatch() {
 
 func (m *Model) appendPreviewTerminalSearchStatus(hints string) string {
 	search := &m.terminalSearch
-	if search.Target != m.previewTarget() || (search.Query == "" && !search.InputActive) {
+	if search.Target != m.previewTarget() || (search.Query() == "" && !search.InputActive) {
 		return hints
 	}
-	status := "/" + search.Query
+	// This bar is a segment of the pane's hint line rather than a full-width
+	// row, so it keeps its own shape instead of queryfield.RenderRow — but the
+	// caret is drawn where the caret actually is.
+	var status string
 	if search.InputActive {
-		status += "▌"
+		runes := []rune(search.Query())
+		caret := min(max(search.field.Cursor(), 0), len(runes))
+		status = "/" + string(runes[:caret]) + "▌" + string(runes[caret:])
 	} else if len(search.Matches) == 0 {
 		status = "no matches"
 	} else {
@@ -268,7 +290,7 @@ func (m *Model) previewTerminalDecorator(leaf *termpanes.Leaf) func(string, int)
 	return func(line string, absoluteLine int) string {
 		line = leaf.LinkState.Decorate(line, absoluteLine)
 		search := &m.terminalSearch
-		if search.Query == "" || search.Target != m.previewTarget() {
+		if search.Query() == "" || search.Target != m.previewTarget() {
 			return line
 		}
 		for _, match := range search.Matches {
@@ -278,4 +300,25 @@ func (m *Model) previewTerminalDecorator(leaf *termpanes.Leaf) func(string, int)
 		}
 		return line
 	}
+}
+
+// WorkspacesTerminalSearchPaste puts a bracketed paste into the global
+// browser's terminal search bar while it is taking text. A query bar is a text
+// input, so a paste lands in it exactly as typed characters do, and it is asked
+// before the paste is offered to the live pane.
+func (m *Model) WorkspacesTerminalSearchPaste(msg tea.PasteMsg) (bool, tea.Cmd) {
+	if m == nil {
+		return false, nil
+	}
+	search := &m.terminalSearch
+	if !search.InputActive {
+		return false, nil
+	}
+	search.field.Focus()
+	before := search.Query()
+	search.field.HandlePaste(msg)
+	if search.Query() != before {
+		m.recomputePreviewTerminalSearch()
+	}
+	return true, nil
 }

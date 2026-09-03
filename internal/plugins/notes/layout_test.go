@@ -439,7 +439,7 @@ func TestListHeaderCountFilterAndSpacing(t *testing.T) {
 		t.Fatalf("row below title is not blank: %q", plain[1])
 	}
 
-	p.searchQuery = "note 1"
+	p.searchField.SetQuery("note 1")
 	p.updateFilteredNotes()
 	header := ansi.Strip(p.listHeader(p.listWidth-paneChromeX, len(p.getDisplayNotes())).view)
 	if !strings.Contains(header, fmt.Sprintf("%d/14", len(p.getDisplayNotes()))) {

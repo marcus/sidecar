@@ -300,7 +300,7 @@ func TestSearchResultsScrollbarDragSetsManualOffset(t *testing.T) {
 	p := newTreePluginWithFiles(t, 3) // tree small enough to stay out of the way
 	const matches = 40
 	p.searchMode = true
-	p.searchQuery = "file"
+	p.searchField.SetQuery("file")
 	for i := range matches {
 		path := fmt.Sprintf("file%02d.go", i)
 		p.searchMatches = append(p.searchMatches, filefind.Match{Path: path, Name: path})

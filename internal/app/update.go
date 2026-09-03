@@ -144,12 +144,28 @@ func (m *Model) handlePaste(msg tea.PasteMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
+	// An in-file search bar in the global browser's document pane is a text
+	// field too, and it owns the keyboard while it is up.
+	if m.globalWorkspacesVisible() {
+		if handled, cmd := m.overview.WorkspacesDocFindPaste(msg); handled {
+			return m, cmd
+		}
+	}
+
 	// A focused global filter is a text input and takes the paste, exactly as
 	// it takes typed characters.
 	if m.globalWorkspacesFilterFocused() && m.overview.WorkspacesPaste(msg.Content) {
 		// A paste can change what the filter matches, and therefore what is
 		// selected; the preview follows the selection.
 		return m, m.overview.WorkspacesPreviewCmd()
+	}
+
+	// A live terminal search bar in the global browser is a text input and
+	// takes the paste before the pane it is searching does.
+	if m.globalWorkspacesVisible() {
+		if handled, cmd := m.overview.WorkspacesTerminalSearchPaste(msg); handled {
+			return m, cmd
+		}
 	}
 
 	// A pane the global browser is typing into is a real terminal and takes the
@@ -160,6 +176,12 @@ func (m *Model) handlePaste(msg tea.PasteMsg) (tea.Model, tea.Cmd) {
 		}
 	}
 	if cmd, handled := m.routeAppContentEditMsg(msg); handled {
+		return m, cmd
+	}
+	// An in-file search bar in a document pane is a text field: it takes a
+	// paste exactly as it takes typed characters, and it is asked before the
+	// tail below drops every paste aimed at a non-primary leaf.
+	if cmd, handled := m.routeAppContentDocSearchPaste(msg); handled {
 		return m, cmd
 	}
 

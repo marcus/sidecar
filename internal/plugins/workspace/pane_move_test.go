@@ -55,11 +55,11 @@ func TestProjectPaneMoveShortcutOpensModalFromPreviewAndList(t *testing.T) {
 	p.focusLeaf(primary.ID)
 	p.terminalSearch.InputActive = true
 	p.handleKeyPress(moveKey('M'))
-	if p.paneLayoutModal != nil || p.terminalSearch.Query != "M" {
-		t.Fatalf("project terminal search lost M: modal=%v query=%q", p.paneLayoutModal != nil, p.terminalSearch.Query)
+	if p.paneLayoutModal != nil || p.terminalSearch.Query() != "M" {
+		t.Fatalf("project terminal search lost M: modal=%v query=%q", p.paneLayoutModal != nil, p.terminalSearch.Query())
 	}
 	p.terminalSearch.InputActive = false
-	p.terminalSearch.Query = ""
+	p.terminalSearch.SetQuery("")
 	p.handleKeyPress(moveKey('M'))
 	if p.paneLayoutModal == nil || p.paneLayoutModal.LeafID() != primary.ID {
 		t.Fatal("focused non-interactive project terminal M did not open its modal")

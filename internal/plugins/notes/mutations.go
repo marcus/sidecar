@@ -90,7 +90,7 @@ func (p *Plugin) captureMutationSnapshot() noteMutationSnapshot {
 		viewFilter:       p.viewFilter,
 		pendingG:         p.pendingG,
 		searchMode:       p.searchMode,
-		searchQuery:      p.searchQuery,
+		searchQuery:      p.searchQuery(),
 		editorTextarea:   p.editorTextarea,
 		editorValue:      p.editorTextarea.Value(),
 		editorRow:        p.editorTextarea.Line(),
@@ -134,7 +134,7 @@ func (p *Plugin) restoreMutationSnapshot(s noteMutationSnapshot) {
 	p.viewFilter = s.viewFilter
 	p.pendingG = s.pendingG
 	p.searchMode = s.searchMode
-	p.searchQuery = s.searchQuery
+	p.searchField.SetQuery(s.searchQuery)
 	p.editorTextarea = s.editorTextarea
 	p.editorTextarea.SetValue(s.editorValue)
 	p.setTextareaCursorAndScroll(s.editorRow, s.editorCol, s.editorScroll)
@@ -251,8 +251,8 @@ func (p *Plugin) beginOptimisticCreate(title, content string) tea.Cmd {
 	p.notes = append(p.notes, Note{})
 	copy(p.notes[1:], p.notes[:len(p.notes)-1])
 	p.notes[0] = mutation.note
-	if p.searchQuery != "" {
-		p.filteredNotes = FilterNotes(p.notes, p.searchQuery)
+	if p.searchQuery() != "" {
+		p.filteredNotes = FilterNotes(p.notes, p.searchQuery())
 	}
 	p.cursor = 0
 	p.scrollOff = 0
@@ -461,8 +461,8 @@ func (p *Plugin) finishOptimisticArchive(result NoteArchiveToggledMsg) tea.Cmd {
 }
 
 func (p *Plugin) selectNeighborAfterRemoval(index int) {
-	if p.searchQuery != "" {
-		p.filteredNotes = FilterNotes(p.notes, p.searchQuery)
+	if p.searchQuery() != "" {
+		p.filteredNotes = FilterNotes(p.notes, p.searchQuery())
 	}
 	display := p.getDisplayNotes()
 	if len(display) == 0 {
@@ -616,8 +616,8 @@ func (p *Plugin) rekeyCreatedNote(tempID string, canonical Note) {
 		}
 	}
 
-	if p.searchQuery != "" {
-		p.filteredNotes = FilterNotes(p.notes, p.searchQuery)
+	if p.searchQuery() != "" {
+		p.filteredNotes = FilterNotes(p.notes, p.searchQuery())
 	}
 	if selectedID == tempID {
 		p.moveCursorToNote(canonical.ID)

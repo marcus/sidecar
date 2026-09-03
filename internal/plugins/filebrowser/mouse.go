@@ -111,6 +111,9 @@ const (
 	regionFileOpConfirm    = "file-op-confirm"    // Confirm/Create/Delete/Yes button
 	regionFileOpCancel     = "file-op-cancel"     // Cancel/No button
 	regionFileOpSuggestion = "file-op-suggestion" // Path suggestion item (Data: index)
+
+	regionTreeSearchClear    = "tree-search-clear"    // × on the tree `/` bar
+	regionContentSearchClear = "content-search-clear" // × on the preview `/` bar
 )
 
 // handleMouse processes mouse events and dispatches to appropriate handlers.
@@ -438,6 +441,17 @@ func (p *Plugin) handleMouseClick(action mouse.MouseAction) (*Plugin, tea.Cmd) {
 		// from there. Never falls through to the row regions underneath: the
 		// bar's rects were registered after them precisely to win.
 		return p.handleScrollbarPress(action)
+
+	case regionTreeSearchClear:
+		// The × clears the query and leaves the caret where it is, which is
+		// what ctrl+u does from the keyboard.
+		p.searchField.Clear()
+		return p, p.updateSearchMatches()
+
+	case regionContentSearchClear:
+		p.contentSearchField.Clear()
+		p.updateContentMatches()
+		return p, nil
 
 	case regionFileOpConfirm:
 		// Click on confirm button in file op modal

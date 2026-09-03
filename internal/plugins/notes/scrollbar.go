@@ -50,7 +50,7 @@ func (p *Plugin) listScrollbarSnapshot() (scrollBarSnapshot, bool) {
 		return scrollBarSnapshot{}, false
 	}
 	headerLines := 2 // title row + blank breathing row
-	if p.searchMode || p.searchQuery != "" {
+	if p.searchMode || p.searchQuery() != "" {
 		headerLines++ // search input line
 	}
 	contentHeight := p.height - 2 - headerLines // -2 for borders

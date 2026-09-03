@@ -7,7 +7,6 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/marcus/sidecar/internal/docview"
-	"github.com/marcus/sidecar/internal/ui"
 )
 
 type noteSearchMatch struct {
@@ -19,7 +18,8 @@ type noteSearchMatch struct {
 func (p *Plugin) startNoteSearch() {
 	p.noteSearchMode = true
 	p.noteSearchCommitted = false
-	p.noteSearchQuery = ""
+	p.noteSearchField.Reset()
+	p.noteSearchField.Focus()
 	p.noteSearchMatches = nil
 	p.noteSearchCursor = 0
 }
@@ -27,14 +27,18 @@ func (p *Plugin) startNoteSearch() {
 func (p *Plugin) clearNoteSearch() {
 	p.noteSearchMode = false
 	p.noteSearchCommitted = false
-	p.noteSearchQuery = ""
+	p.noteSearchField.Reset()
 	p.noteSearchMatches = nil
 	p.noteSearchCursor = 0
 }
 
+// handleNoteSearchKey answers a key while the in-note search bar owns the
+// preview. While the query is being typed everything that is not esc or enter
+// is the shared query field's; esc is the one key the field is never offered,
+// because this bar is a mode over a note rather than a filter beside a list and
+// leaving it stays one press.
 func (p *Plugin) handleNoteSearchKey(msg tea.KeyPressMsg) (pluginResult, tea.Cmd) {
 	key := msg.String()
-	text := ui.PrintableKeyText(msg)
 
 	if key == "esc" {
 		p.clearNoteSearch()
@@ -42,22 +46,18 @@ func (p *Plugin) handleNoteSearchKey(msg tea.KeyPressMsg) (pluginResult, tea.Cmd
 	}
 
 	if !p.noteSearchCommitted {
-		switch key {
-		case "enter":
-			if p.noteSearchQuery != "" {
+		p.noteSearchField.Focus()
+		if key == "enter" {
+			if p.noteSearchQuery() != "" {
 				p.noteSearchCommitted = true
+				p.noteSearchField.Blur()
 			}
-		case "backspace":
-			if p.noteSearchQuery != "" {
-				runes := []rune(p.noteSearchQuery)
-				p.noteSearchQuery = string(runes[:len(runes)-1])
-				p.updateNoteSearchMatches()
-			}
-		default:
-			if text != "" {
-				p.noteSearchQuery += text
-				p.updateNoteSearchMatches()
-			}
+			return p, nil
+		}
+		before := p.noteSearchQuery()
+		p.noteSearchField.HandleKey(msg)
+		if p.noteSearchQuery() != before {
+			p.updateNoteSearchMatches()
 		}
 		return p, nil
 	}
@@ -70,6 +70,7 @@ func (p *Plugin) handleNoteSearchKey(msg tea.KeyPressMsg) (pluginResult, tea.Cmd
 	case "enter":
 		p.noteSearchMode = false
 		p.noteSearchCommitted = false
+		p.noteSearchField.Blur()
 	case "j", "down", "ctrl+n":
 		p.ensureViewSurface()
 		if p.previewCursorLine < len(p.viewSurface.Lines)-1 {
@@ -97,11 +98,11 @@ func (p *Plugin) cycleNoteSearch(delta int) {
 func (p *Plugin) updateNoteSearchMatches() {
 	p.noteSearchMatches = nil
 	p.noteSearchCursor = 0
-	if p.noteSearchQuery == "" {
+	if p.noteSearchQuery() == "" {
 		return
 	}
 	p.ensureViewSurface()
-	query := strings.ToLower(p.noteSearchQuery)
+	query := strings.ToLower(p.noteSearchQuery())
 	for lineNo, line := range p.viewSurface.Lines {
 		plain := strings.ToLower(ansi.Strip(line))
 		start := 0
@@ -114,7 +115,7 @@ func (p *Plugin) updateNoteSearchMatches() {
 			p.noteSearchMatches = append(p.noteSearchMatches, noteSearchMatch{
 				Line:     lineNo,
 				StartCol: abs,
-				EndCol:   abs + len(p.noteSearchQuery),
+				EndCol:   abs + len(p.noteSearchQuery()),
 			})
 			start = abs + 1
 		}
@@ -134,7 +135,7 @@ func (p *Plugin) scrollToNoteSearchMatch() {
 }
 
 func (p *Plugin) highlightNoteSearchLine(lineNo int, line string) string {
-	if !p.noteSearchMode || p.noteSearchQuery == "" {
+	if !p.noteSearchMode || p.noteSearchQuery() == "" {
 		return line
 	}
 	var ranges []docview.MatchRange
@@ -151,16 +152,40 @@ func (p *Plugin) highlightNoteSearchLine(lineNo int, line string) string {
 
 func (p *Plugin) renderNoteSearchPrompt() string {
 	count := ""
-	if p.noteSearchQuery != "" {
+	if p.noteSearchQuery() != "" {
 		if len(p.noteSearchMatches) == 0 {
 			count = " 0/0"
 		} else {
 			count = " " + strconv.Itoa(p.noteSearchCursor+1) + "/" + strconv.Itoa(len(p.noteSearchMatches))
 		}
 	}
-	cursor := ""
+	// This row is a segment of the preview's status line rather than a full
+	// query bar, so it keeps its own shape instead of queryfield.RenderRow —
+	// but the caret is drawn where the caret actually is, which is the point of
+	// the shared field.
+	query := p.noteSearchQuery()
 	if p.noteSearchMode && !p.noteSearchCommitted {
-		cursor = "_"
+		runes := []rune(query)
+		caret := min(max(p.noteSearchField.Cursor(), 0), len(runes))
+		query = string(runes[:caret]) + "▌" + string(runes[caret:])
 	}
-	return "/" + p.noteSearchQuery + cursor + count
+	return "/" + query + count
+}
+
+// noteSearchQuery is the in-note search bar's text.
+func (p *Plugin) noteSearchQuery() string { return p.noteSearchField.Query() }
+
+// handleNoteSearchPaste puts a bracketed paste into the in-note search bar
+// while it is taking text. A committed search has no input on screen.
+func (p *Plugin) handleNoteSearchPaste(content string) bool {
+	if !p.noteSearchMode || p.noteSearchCommitted {
+		return false
+	}
+	p.noteSearchField.Focus()
+	before := p.noteSearchQuery()
+	p.noteSearchField.HandlePaste(tea.PasteMsg{Content: content})
+	if p.noteSearchQuery() != before {
+		p.updateNoteSearchMatches()
+	}
+	return true
 }

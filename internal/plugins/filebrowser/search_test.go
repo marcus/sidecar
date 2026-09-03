@@ -9,7 +9,10 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
+	"github.com/marcus/sidecar/internal/mouse"
 	"github.com/marcus/sidecar/internal/plugin"
+	"github.com/marcus/sidecar/internal/queryfield"
 )
 
 func createTestPlugin(t *testing.T, tmpDir string) *Plugin {
@@ -62,7 +65,7 @@ func TestSearch_EnterSearchMode(t *testing.T) {
 	if !p.searchMode {
 		t.Error("searchMode should be true after '/'")
 	}
-	if p.searchQuery != "" {
+	if p.searchQuery() != "" {
 		t.Error("searchQuery should be empty when entering search mode")
 	}
 }
@@ -73,7 +76,7 @@ func TestSearch_ExitSearchMode(t *testing.T) {
 
 	// Enter search mode
 	p.searchMode = true
-	p.searchQuery = "test"
+	p.searchField.SetQuery("test")
 
 	// Press escape to exit
 	_, _ = p.handleSearchKey(tea.KeyPressMsg{Code: tea.KeyEscape})
@@ -81,7 +84,7 @@ func TestSearch_ExitSearchMode(t *testing.T) {
 	if p.searchMode {
 		t.Error("searchMode should be false after escape")
 	}
-	if p.searchQuery != "" {
+	if p.searchQuery() != "" {
 		t.Error("searchQuery should be cleared after escape")
 	}
 }
@@ -99,8 +102,8 @@ func TestSearch_TypeQuery(t *testing.T) {
 	_, _ = p.handleSearchKey(tea.KeyPressMsg{Code: 'i', Text: "i"})
 	_, _ = p.handleSearchKey(tea.KeyPressMsg{Code: 'n', Text: "n"})
 
-	if p.searchQuery != "main" {
-		t.Errorf("searchQuery = %q, want main", p.searchQuery)
+	if p.searchQuery() != "main" {
+		t.Errorf("searchQuery = %q, want main", p.searchQuery())
 	}
 
 	// Should have found main.go
@@ -126,9 +129,9 @@ func TestSearchInputsAcceptSpaces(t *testing.T) {
 	space := tea.KeyPressMsg{Code: tea.KeySpace, Text: " "}
 
 	p.searchMode = true
-	p.searchQuery = "main"
+	p.searchField.SetQuery("main")
 	_, _ = p.handleSearchKey(space)
-	if got := p.searchQuery; got != "main " {
+	if got := p.searchQuery(); got != "main " {
 		t.Fatalf("tree search query = %q, want %q", got, "main ")
 	}
 
@@ -140,9 +143,9 @@ func TestSearchInputsAcceptSpaces(t *testing.T) {
 	}
 
 	p.contentSearchMode = true
-	p.contentSearchQuery = "package"
+	p.contentSearchField.SetQuery("package")
 	_, _ = p.handleContentSearchKey(space)
-	if got := p.contentSearchQuery; got != "package " {
+	if got := p.contentSearchQuery(); got != "package " {
 		t.Fatalf("content-search query = %q, want %q", got, "package ")
 	}
 }
@@ -170,13 +173,13 @@ func TestSearch_Backspace(t *testing.T) {
 	p := createTestPlugin(t, tmpDir)
 
 	p.searchMode = true
-	p.searchQuery = "mail"
+	p.searchField.SetQuery("mail")
 
 	// Press backspace
 	_, _ = p.handleSearchKey(tea.KeyPressMsg{Code: tea.KeyBackspace})
 
-	if p.searchQuery != "mai" {
-		t.Errorf("searchQuery = %q, want mai", p.searchQuery)
+	if p.searchQuery() != "mai" {
+		t.Errorf("searchQuery = %q, want mai", p.searchQuery())
 	}
 }
 
@@ -188,7 +191,7 @@ func TestSearch_CaseInsensitive(t *testing.T) {
 	p.searchMode = true
 
 	// Type "MAIN" in uppercase
-	p.searchQuery = "MAIN"
+	p.searchField.SetQuery("MAIN")
 	p.updateSearchMatches()
 
 	found := false
@@ -208,7 +211,7 @@ func TestSearch_PartialMatch(t *testing.T) {
 	p := createTestPlugin(t, tmpDir)
 	primeFileCache(t, p)
 
-	p.searchQuery = "app"
+	p.searchField.SetQuery("app")
 	p.updateSearchMatches()
 
 	found := false
@@ -228,7 +231,7 @@ func TestSearch_MultipleMatches(t *testing.T) {
 	p := createTestPlugin(t, tmpDir)
 	primeFileCache(t, p)
 
-	p.searchQuery = "a" // Matches: app.go, main.go, README.md, config (in path)
+	p.searchField.SetQuery("a") // Matches: app.go, main.go, README.md, config (in path)
 	p.updateSearchMatches()
 
 	if len(p.searchMatches) == 0 {
@@ -260,7 +263,7 @@ func TestSearch_MatchLimit(t *testing.T) {
 	}
 	primeFileCache(t, p)
 
-	p.searchQuery = "file"
+	p.searchField.SetQuery("file")
 	p.updateSearchMatches()
 
 	// Should be limited to 20 matches
@@ -275,7 +278,7 @@ func TestSearch_NavigateMatches(t *testing.T) {
 	primeFileCache(t, p)
 
 	p.searchMode = true
-	p.searchQuery = "a" // Multiple matches
+	p.searchField.SetQuery("a") // Multiple matches
 
 	// Update matches
 	p.updateSearchMatches()
@@ -307,7 +310,7 @@ func TestSearch_JumpToMatch(t *testing.T) {
 	primeFileCache(t, p)
 
 	p.searchMode = true
-	p.searchQuery = "app"
+	p.searchField.SetQuery("app")
 	p.updateSearchMatches()
 
 	if len(p.searchMatches) == 0 {
@@ -383,7 +386,7 @@ func TestSearch_EmptyQuery(t *testing.T) {
 	tmpDir := t.TempDir()
 	p := createTestPlugin(t, tmpDir)
 
-	p.searchQuery = ""
+	p.searchField.SetQuery("")
 	p.updateSearchMatches()
 
 	if len(p.searchMatches) != 0 {
@@ -395,7 +398,7 @@ func TestSearch_NoMatches(t *testing.T) {
 	tmpDir := t.TempDir()
 	p := createTestPlugin(t, tmpDir)
 
-	p.searchQuery = "xyznonexistent"
+	p.searchField.SetQuery("xyznonexistent")
 	p.updateSearchMatches()
 
 	if len(p.searchMatches) != 0 {
@@ -413,7 +416,7 @@ func TestSearch_CursorBounds(t *testing.T) {
 	primeFileCache(t, p)
 
 	p.searchMode = true
-	p.searchQuery = "a"
+	p.searchField.SetQuery("a")
 	p.updateSearchMatches()
 
 	if len(p.searchMatches) == 0 {
@@ -449,16 +452,16 @@ func TestSearch_PrintableCharacterFilter(t *testing.T) {
 	p.searchMode = true
 
 	// Try to input non-printable character (should be ignored)
-	initialQuery := p.searchQuery
+	initialQuery := p.searchQuery()
 	_, _ = p.handleSearchKey(tea.KeyPressMsg{Code: 0})
 
-	if p.searchQuery != initialQuery {
+	if p.searchQuery() != initialQuery {
 		t.Error("non-printable character should be ignored")
 	}
 
 	// Printable character should be added
 	_, _ = p.handleSearchKey(tea.KeyPressMsg{Code: 'a', Text: "a"})
-	if p.searchQuery != "a" {
+	if p.searchQuery() != "a" {
 		t.Error("printable character should be added to query")
 	}
 }
@@ -493,7 +496,7 @@ func TestContentSearch_EnterMode(t *testing.T) {
 	if !p.contentSearchMode {
 		t.Error("contentSearchMode should be true after '/' in preview")
 	}
-	if p.contentSearchQuery != "" {
+	if p.contentSearchQuery() != "" {
 		t.Error("contentSearchQuery should be empty when entering search mode")
 	}
 }
@@ -526,7 +529,7 @@ func TestContentSearch_ExitWithEsc(t *testing.T) {
 	tmpDir := t.TempDir()
 	p := createTestPluginWithPreview(t, tmpDir, "test content")
 	p.contentSearchMode = true
-	p.contentSearchQuery = "test"
+	p.contentSearchField.SetQuery("test")
 	p.contentSearchMatches = []ContentMatch{{LineNo: 0, StartCol: 0, EndCol: 4}}
 
 	_, _ = p.handleContentSearchKey(tea.KeyPressMsg{Code: tea.KeyEscape})
@@ -534,7 +537,7 @@ func TestContentSearch_ExitWithEsc(t *testing.T) {
 	if p.contentSearchMode {
 		t.Error("contentSearchMode should be false after escape")
 	}
-	if p.contentSearchQuery != "" {
+	if p.contentSearchQuery() != "" {
 		t.Error("contentSearchQuery should be cleared after escape")
 	}
 	if len(p.contentSearchMatches) != 0 {
@@ -546,7 +549,7 @@ func TestContentSearch_ExitWithEnter(t *testing.T) {
 	tmpDir := t.TempDir()
 	p := createTestPluginWithPreview(t, tmpDir, "test content")
 	p.contentSearchMode = true
-	p.contentSearchQuery = "test"
+	p.contentSearchField.SetQuery("test")
 	p.contentSearchMatches = []ContentMatch{{LineNo: 0, StartCol: 0, EndCol: 4}}
 
 	// First Enter commits the search (vim-style two-phase)
@@ -569,7 +572,7 @@ func TestContentSearch_FindMatches(t *testing.T) {
 	tmpDir := t.TempDir()
 	p := createTestPluginWithPreview(t, tmpDir, "foo bar foo\nbaz foo\nno match here")
 	p.contentSearchMode = true
-	p.contentSearchQuery = "foo"
+	p.contentSearchField.SetQuery("foo")
 	p.updateContentMatches()
 
 	if len(p.contentSearchMatches) != 3 {
@@ -594,7 +597,7 @@ func TestContentSearch_CaseInsensitive(t *testing.T) {
 	tmpDir := t.TempDir()
 	p := createTestPluginWithPreview(t, tmpDir, "FOO foo Foo")
 	p.contentSearchMode = true
-	p.contentSearchQuery = "foo"
+	p.contentSearchField.SetQuery("foo")
 	p.updateContentMatches()
 
 	if len(p.contentSearchMatches) != 3 {
@@ -606,7 +609,7 @@ func TestContentSearch_NavigateNext(t *testing.T) {
 	tmpDir := t.TempDir()
 	p := createTestPluginWithPreview(t, tmpDir, "a\na\na")
 	p.contentSearchMode = true
-	p.contentSearchQuery = "a"
+	p.contentSearchField.SetQuery("a")
 	p.updateContentMatches()
 
 	if len(p.contentSearchMatches) != 3 {
@@ -643,7 +646,7 @@ func TestContentSearch_NavigatePrev(t *testing.T) {
 	tmpDir := t.TempDir()
 	p := createTestPluginWithPreview(t, tmpDir, "a\na\na")
 	p.contentSearchMode = true
-	p.contentSearchQuery = "a"
+	p.contentSearchField.SetQuery("a")
 	p.updateContentMatches()
 
 	// Commit search with Enter first (vim-style two-phase)
@@ -666,12 +669,12 @@ func TestContentSearch_Backspace(t *testing.T) {
 	tmpDir := t.TempDir()
 	p := createTestPluginWithPreview(t, tmpDir, "test")
 	p.contentSearchMode = true
-	p.contentSearchQuery = "tes"
+	p.contentSearchField.SetQuery("tes")
 
 	_, _ = p.handleContentSearchKey(tea.KeyPressMsg{Code: tea.KeyBackspace})
 
-	if p.contentSearchQuery != "te" {
-		t.Errorf("query should be 'te', got %q", p.contentSearchQuery)
+	if p.contentSearchQuery() != "te" {
+		t.Errorf("query should be 'te', got %q", p.contentSearchQuery())
 	}
 }
 
@@ -683,8 +686,8 @@ func TestContentSearch_TypeCharacters(t *testing.T) {
 	_, _ = p.handleContentSearchKey(tea.KeyPressMsg{Code: 'h', Text: "h"})
 	_, _ = p.handleContentSearchKey(tea.KeyPressMsg{Code: 'e', Text: "e"})
 
-	if p.contentSearchQuery != "he" {
-		t.Errorf("query should be 'he', got %q", p.contentSearchQuery)
+	if p.contentSearchQuery() != "he" {
+		t.Errorf("query should be 'he', got %q", p.contentSearchQuery())
 	}
 
 	if len(p.contentSearchMatches) != 1 {
@@ -705,7 +708,7 @@ func TestContentSearch_ScrollToMatch(t *testing.T) {
 	}
 	p := createTestPluginWithPreview(t, tmpDir, strings.Join(lines, "\n"))
 	p.contentSearchMode = true
-	p.contentSearchQuery = "TARGET"
+	p.contentSearchField.SetQuery("TARGET")
 	p.updateContentMatches()
 
 	if len(p.contentSearchMatches) != 1 {
@@ -733,7 +736,7 @@ func TestContentSearch_ScrollStaysWhenMatchVisible(t *testing.T) {
 	p := createTestPluginWithPreview(t, tmpDir, strings.Join(lines, "\n"))
 	p.height = 30 // visibleContentHeight = 30 - 6 = 24
 	p.contentSearchMode = true
-	p.contentSearchQuery = "MATCH"
+	p.contentSearchField.SetQuery("MATCH")
 	p.updateContentMatches()
 
 	if len(p.contentSearchMatches) != 3 {
@@ -766,7 +769,7 @@ func TestContentSearch_EmptyQuery(t *testing.T) {
 	tmpDir := t.TempDir()
 	p := createTestPluginWithPreview(t, tmpDir, "test content")
 	p.contentSearchMode = true
-	p.contentSearchQuery = ""
+	p.contentSearchField.SetQuery("")
 	p.updateContentMatches()
 
 	if len(p.contentSearchMatches) != 0 {
@@ -1024,4 +1027,165 @@ func TestQuickOpen_UpdateMatchesResetsCursor(t *testing.T) {
 	if p.fileFinder().Cursor() >= len(p.fileFinder().Matches()) {
 		t.Error("cursor should be within bounds after matches change")
 	}
+}
+
+// M4d-d: both `/` bars in the file browser are the shared query field, so they
+// edit like every other query bar rather than only appending and backspacing.
+func TestTreeSearchWordDeleteRemovesOneWord(t *testing.T) {
+	tmpDir := t.TempDir()
+	p := createTestPlugin(t, tmpDir)
+	primeFileCache(t, p)
+
+	p.searchMode = true
+	p.searchField.SetQuery("main go")
+	_, _ = p.handleSearchKey(tea.KeyPressMsg{Code: tea.KeyBackspace, Mod: tea.ModAlt})
+	if got := p.searchQuery(); got != "main " {
+		t.Fatalf("tree query after alt+backspace = %q, want %q", got, "main ")
+	}
+}
+
+func TestTreeSearchPasteInsertsAtTheCaret(t *testing.T) {
+	tmpDir := t.TempDir()
+	p := createTestPlugin(t, tmpDir)
+	primeFileCache(t, p)
+
+	p.searchMode = true
+	handled, _ := p.handleSearchPaste(tea.PasteMsg{Content: "main"})
+	if !handled {
+		t.Fatal("a live tree search refused a paste")
+	}
+	if got := p.searchQuery(); got != "main" {
+		t.Fatalf("tree query after paste = %q, want %q", got, "main")
+	}
+	if len(p.searchMatches) == 0 {
+		t.Fatal("the pasted query matched nothing; a paste must re-scan like a keystroke")
+	}
+	// The caret is real: a paste at the start lands at the start.
+	_, _ = p.handleSearchKey(tea.KeyPressMsg{Code: tea.KeyHome})
+	_, _ = p.handleSearchPaste(tea.PasteMsg{Content: "x"})
+	if got := p.searchQuery(); got != "xmain" {
+		t.Fatalf("tree query after a paste at the caret = %q, want %q", got, "xmain")
+	}
+}
+
+func TestContentSearchWordDeleteAndPaste(t *testing.T) {
+	tmpDir := t.TempDir()
+	p := createTestPlugin(t, tmpDir)
+
+	p.contentSearchMode = true
+	p.contentSearchField.SetQuery("package main")
+	_, _ = p.handleContentSearchKey(tea.KeyPressMsg{Code: tea.KeyBackspace, Mod: tea.ModAlt})
+	if got := p.contentSearchQuery(); got != "package " {
+		t.Fatalf("content query after alt+backspace = %q, want %q", got, "package ")
+	}
+
+	handled, _ := p.handleSearchPaste(tea.PasteMsg{Content: "main"})
+	if !handled {
+		t.Fatal("a typing content search refused a paste")
+	}
+	if got := p.contentSearchQuery(); got != "package main" {
+		t.Fatalf("content query after paste = %q, want %q", got, "package main")
+	}
+
+	// A committed content search has no input on screen: n/N are navigation,
+	// and a paste is not the bar's.
+	_, _ = p.handleContentSearchKey(tea.KeyPressMsg{Code: tea.KeyEnter})
+	if !p.contentSearchCommitted {
+		t.Fatal("enter did not commit the content search")
+	}
+	if handled, _ := p.handleSearchPaste(tea.PasteMsg{Content: "x"}); handled {
+		t.Fatal("a committed content search took a paste")
+	}
+	if got := p.contentSearchQuery(); got != "package main" {
+		t.Fatalf("content query after the refused paste = %q", got)
+	}
+}
+
+// The × on each `/` bar clears its query, and it is registered only where it is
+// drawn: while the query is empty those columns belong to the query row.
+func fbRegion(t *testing.T, p *Plugin, id string) *mouse.Region {
+	t.Helper()
+	for _, r := range p.mouseHandler.HitMap.Regions() {
+		if r.ID == id {
+			return &r
+		}
+	}
+	return nil
+}
+
+func TestSearchClearControls(t *testing.T) {
+	tmpDir := t.TempDir()
+	p := createTestPlugin(t, tmpDir)
+	primeFileCache(t, p)
+	p.width, p.height = 120, 30
+	p.treeWidth, p.previewWidth = 30, 88
+	p.treeVisible = true
+	p.mouseHandler = mouse.NewHandler()
+
+	p.searchMode = true
+	p.searchField.SetQuery("main")
+	if cmd := p.updateSearchMatches(); cmd != nil {
+		_ = cmd()
+	}
+	p.contentSearchMode = true
+	p.contentSearchField.SetQuery("package")
+	frame := p.renderNormalPanes()
+
+	tree := fbRegion(t, p, regionTreeSearchClear)
+	if tree == nil {
+		t.Fatal("a non-empty tree query registered no clear control")
+	}
+	content := fbRegion(t, p, regionContentSearchClear)
+	if content == nil {
+		t.Fatal("a non-empty content query registered no clear control")
+	}
+	if content.Rect.Y != 0 {
+		t.Fatalf("the content bar's × is on row %d, want the first row", content.Rect.Y)
+	}
+	// The rect has to land on the glyph, not merely exist. A bar rendered even
+	// two columns too wide loses its right-hand cells to the truncation, and a
+	// region over the columns it used to occupy is a click on nothing.
+	assertClearGlyphAt(t, frame, tree.Rect)
+	assertClearGlyphAt(t, frame, content.Rect)
+
+	_, _ = p.handleMouse(tea.MouseClickMsg(tea.Mouse{X: tree.Rect.X, Y: tree.Rect.Y, Button: tea.MouseLeft}))
+	if p.searchQuery() != "" {
+		t.Fatalf("the tree × left the query as %q", p.searchQuery())
+	}
+	_, _ = p.handleMouse(tea.MouseClickMsg(tea.Mouse{X: content.Rect.X, Y: content.Rect.Y, Button: tea.MouseLeft}))
+	if p.contentSearchQuery() != "" {
+		t.Fatalf("the content × left the query as %q", p.contentSearchQuery())
+	}
+
+	// Nothing to clear, nothing registered.
+	p.mouseHandler = mouse.NewHandler()
+	p.renderNormalPanes()
+	if r := fbRegion(t, p, regionTreeSearchClear); r != nil {
+		t.Fatalf("an empty tree query kept the × registered at %+v", r.Rect)
+	}
+	if r := fbRegion(t, p, regionContentSearchClear); r != nil {
+		t.Fatalf("an empty content query kept the × registered at %+v", r.Rect)
+	}
+}
+
+// assertClearGlyphAt fails unless the drawn frame carries queryfield's × inside
+// the registered cell.
+func assertClearGlyphAt(t *testing.T, frame string, rect mouse.Rect) {
+	t.Helper()
+	lines := strings.Split(frame, "\n")
+	if rect.Y >= len(lines) {
+		t.Fatalf("the × was registered on row %d of a %d-row frame", rect.Y, len(lines))
+	}
+	row := []rune(ansi.Strip(lines[rect.Y]))
+	for x := rect.X; x < rect.X+rect.W; x++ {
+		if x < len(row) && string(row[x]) == queryfield.ClearGlyph {
+			return
+		}
+	}
+	got := ""
+	if rect.X < len(row) {
+		got = string(row[rect.X:min(rect.X+rect.W, len(row))])
+	}
+	t.Fatalf("no %q in the registered cell %+v; the row holds %q there (row: %q)",
+		queryfield.ClearGlyph, rect, got, string(row))
 }

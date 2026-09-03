@@ -223,15 +223,15 @@ func TestTabLeavesALiveTerminalSearchInput(t *testing.T) {
 	p.sidebarVisible = true
 	p.setFocusTarget(leafTarget(1))
 	p.terminalSearch.InputActive = true
-	p.terminalSearch.Query = "err"
+	p.terminalSearch.SetQuery("err")
 
 	p.handleListKeys(tabKey())
 
 	if p.terminalSearch.InputActive {
 		t.Fatal("tab left the terminal search input taking keystrokes")
 	}
-	if p.terminalSearch.Query != "err" {
-		t.Fatalf("tab dropped the search query: %q", p.terminalSearch.Query)
+	if p.terminalSearch.Query() != "err" {
+		t.Fatalf("tab dropped the search query: %q", p.terminalSearch.Query())
 	}
 	assertFocus(t, p, sidebarTarget(), "terminal search to sidebar")
 }

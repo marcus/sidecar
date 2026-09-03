@@ -101,25 +101,23 @@ func TestSearchCommits(t *testing.T) {
 }
 
 func TestUpdatePathFilter(t *testing.T) {
-	p := &Plugin{
-		pathFilterMode:  true,
-		pathFilterInput: "src",
-	}
+	p := &Plugin{pathFilterMode: true}
+	p.pathFilterField.SetQuery("src")
 
 	// Test backspace
 	p.updatePathFilter(tea.KeyPressMsg{Code: tea.KeyBackspace})
-	if p.pathFilterInput != "sr" {
-		t.Errorf("after backspace, input = %q, want %q", p.pathFilterInput, "sr")
+	if p.pathFilterInput() != "sr" {
+		t.Errorf("after backspace, input = %q, want %q", p.pathFilterInput(), "sr")
 	}
 
 	// Test input
 	p.updatePathFilter(tea.KeyPressMsg{Code: 'c', Text: "c"})
-	if p.pathFilterInput != "src" {
-		t.Errorf("after input 'c', input = %q, want %q", p.pathFilterInput, "src")
+	if p.pathFilterInput() != "src" {
+		t.Errorf("after input 'c', input = %q, want %q", p.pathFilterInput(), "src")
 	}
 	p.updatePathFilter(tea.KeyPressMsg{Code: tea.KeySpace, Text: " "})
-	if p.pathFilterInput != "src " {
-		t.Errorf("after space, input = %q, want %q", p.pathFilterInput, "src ")
+	if p.pathFilterInput() != "src " {
+		t.Errorf("after space, input = %q, want %q", p.pathFilterInput(), "src ")
 	}
 
 	// Test escape
@@ -127,36 +125,35 @@ func TestUpdatePathFilter(t *testing.T) {
 	if p.pathFilterMode {
 		t.Error("after esc, pathFilterMode should be false")
 	}
-	if p.pathFilterInput != "" {
+	if p.pathFilterInput() != "" {
 		t.Error("after esc, pathFilterInput should be empty")
 	}
 }
 
 func TestUpdateHistorySearch(t *testing.T) {
 	p := &Plugin{
-		historySearchMode: true,
-		historySearchState: &HistorySearchState{
-			Query: "foo",
-		},
+		historySearchMode:  true,
+		historySearchState: NewHistorySearchState(),
 		recentCommits: []*Commit{
 			{Subject: "foo bar"},
 		},
 	}
+	p.historySearchState.SetQuery("foo")
 
 	// Test backspace
 	p.updateHistorySearch(tea.KeyPressMsg{Code: tea.KeyBackspace})
-	if p.historySearchState.Query != "fo" {
-		t.Errorf("after backspace, query = %q, want %q", p.historySearchState.Query, "fo")
+	if p.historySearchState.Query() != "fo" {
+		t.Errorf("after backspace, query = %q, want %q", p.historySearchState.Query(), "fo")
 	}
 
 	// Test input
 	p.updateHistorySearch(tea.KeyPressMsg{Code: 'o', Text: "o"})
-	if p.historySearchState.Query != "foo" {
-		t.Errorf("after input 'o', query = %q, want %q", p.historySearchState.Query, "foo")
+	if p.historySearchState.Query() != "foo" {
+		t.Errorf("after input 'o', query = %q, want %q", p.historySearchState.Query(), "foo")
 	}
 	p.updateHistorySearch(tea.KeyPressMsg{Code: tea.KeySpace, Text: " "})
-	if p.historySearchState.Query != "foo " {
-		t.Errorf("after space, query = %q, want %q", p.historySearchState.Query, "foo ")
+	if p.historySearchState.Query() != "foo " {
+		t.Errorf("after space, query = %q, want %q", p.historySearchState.Query(), "foo ")
 	}
 
 	// Test matches update (searchCommits called internally)
@@ -184,5 +181,78 @@ func TestFocusContextSearchModals(t *testing.T) {
 	p.historySearchMode = true
 	if got := p.FocusContext(); got != "git-history-search" {
 		t.Fatalf("expected history search context precedence, got %q", got)
+	}
+}
+
+// M4d-d: the history search and the path filter are the shared query field, so
+// they edit like every other query bar rather than only appending and
+// backspacing.
+func TestHistorySearchWordDeleteAndPaste(t *testing.T) {
+	p := &Plugin{
+		historySearchMode:  true,
+		historySearchState: NewHistorySearchState(),
+		recentCommits: []*Commit{
+			{Subject: "foo bar"},
+			{Subject: "foo baz"},
+		},
+	}
+	p.historySearchState.SetQuery("foo bar")
+	p.updateHistorySearch(tea.KeyPressMsg{Code: tea.KeyBackspace, Mod: tea.ModAlt})
+	if got := p.historySearchState.Query(); got != "foo " {
+		t.Fatalf("query after alt+backspace = %q, want %q", got, "foo ")
+	}
+	// A word delete is a query change, so it re-matches.
+	if got := len(p.historySearchState.Matches); got != 2 {
+		t.Fatalf("matches after the word delete = %d, want 2", got)
+	}
+
+	handled, _ := p.handleSearchPaste(tea.PasteMsg{Content: "baz"})
+	if !handled {
+		t.Fatal("an open history search refused a paste")
+	}
+	if got := p.historySearchState.Query(); got != "foo baz" {
+		t.Fatalf("query after paste = %q, want %q", got, "foo baz")
+	}
+	if got := len(p.historySearchState.Matches); got != 1 {
+		t.Fatalf("matches after paste = %d, want 1", got)
+	}
+}
+
+// The option toggles are checked before the field, so the modal's chords keep
+// working while a query is being typed.
+func TestHistorySearchToggleChordsBeatTheField(t *testing.T) {
+	p := &Plugin{
+		historySearchMode:  true,
+		historySearchState: NewHistorySearchState(),
+		recentCommits:      []*Commit{{Subject: "Fix bug", Author: "Alice"}},
+	}
+	p.historySearchState.SetQuery("fix")
+	p.updateHistorySearch(tea.KeyPressMsg{Code: 'r', Mod: tea.ModAlt})
+	if !p.historySearchState.UseRegex || p.historySearchState.Query() != "fix" {
+		t.Fatalf("alt+r regex=%v query=%q", p.historySearchState.UseRegex, p.historySearchState.Query())
+	}
+	p.updateHistorySearch(tea.KeyPressMsg{Code: 'c', Mod: tea.ModAlt})
+	if !p.historySearchState.CaseSensitive || p.historySearchState.Query() != "fix" {
+		t.Fatalf("alt+c case=%v query=%q", p.historySearchState.CaseSensitive, p.historySearchState.Query())
+	}
+	// Case-sensitive regex over "Fix bug" no longer matches the lowercase query.
+	if got := len(p.historySearchState.Matches); got != 0 {
+		t.Fatalf("matches after both toggles = %d, want 0", got)
+	}
+}
+
+func TestPathFilterWordDeleteAndPaste(t *testing.T) {
+	p := &Plugin{pathFilterMode: true}
+	p.pathFilterField.SetQuery("internal/ cmd/")
+	p.updatePathFilter(tea.KeyPressMsg{Code: tea.KeyBackspace, Mod: tea.ModAlt})
+	if got := p.pathFilterInput(); got != "internal/ " {
+		t.Fatalf("path after alt+backspace = %q, want %q", got, "internal/ ")
+	}
+	handled, _ := p.handleSearchPaste(tea.PasteMsg{Content: "docs/"})
+	if !handled {
+		t.Fatal("an open path filter refused a paste")
+	}
+	if got := p.pathFilterInput(); got != "internal/ docs/" {
+		t.Fatalf("path after paste = %q, want %q", got, "internal/ docs/")
 	}
 }

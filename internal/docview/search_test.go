@@ -498,3 +498,61 @@ func TestInjectHighlightsIsUsableWithoutAModel(t *testing.T) {
 		t.Error("no ranges should return the row unchanged")
 	}
 }
+
+// M4d-d: the in-pane search bar is the shared query field, so it edits like
+// every other query bar in the app rather than only appending and backspacing.
+func TestSearchWordDeleteRemovesOneWord(t *testing.T) {
+	m := newSearchModel(t, 40, 6, "alpha beta", "alpha bet")
+	typeSearch(m, "alpha beta")
+	if got := len(m.SearchMatches()); got != 1 {
+		t.Fatalf("matches for the typed query = %d, want 1", got)
+	}
+	m.HandleSearchKey(tea.KeyPressMsg{Code: tea.KeyBackspace, Mod: tea.ModAlt})
+	if m.SearchQuery() != "alpha " {
+		t.Fatalf("query after alt+backspace = %q, want the last word gone", m.SearchQuery())
+	}
+	// The narrower query re-matched: a word delete is a query change, not just
+	// a redraw.
+	if got := len(m.SearchMatches()); got != 2 {
+		t.Fatalf("matches after the word delete = %d, want 2", got)
+	}
+}
+
+// A paste lands in the query whole and re-matches, rather than arriving
+// character by character or not at all.
+func TestSearchPasteInsertsAtTheCaret(t *testing.T) {
+	m := newSearchModel(t, 40, 6, "needle", "haystack")
+	m.StartSearch()
+	if handled, _ := m.HandleSearchPaste(tea.PasteMsg{Content: "needle"}); !handled {
+		t.Fatal("a typing search refused a paste")
+	}
+	if m.SearchQuery() != "needle" {
+		t.Fatalf("query after paste = %q", m.SearchQuery())
+	}
+	if got := len(m.SearchMatches()); got != 1 {
+		t.Fatalf("matches after paste = %d, want the pasted query to have matched", got)
+	}
+	// A committed search has no text input on screen, so the paste is not its.
+	pressSearch(m, "enter")
+	if handled, _ := m.HandleSearchPaste(tea.PasteMsg{Content: "x"}); handled {
+		t.Fatal("a committed search took a paste")
+	}
+	if m.SearchQuery() != "needle" {
+		t.Fatalf("query after the refused paste = %q", m.SearchQuery())
+	}
+}
+
+// The caret moves, which is the whole point of the shared field: home puts it
+// at the start and a rune typed there lands at the start.
+func TestSearchCaretMoves(t *testing.T) {
+	m := newSearchModel(t, 40, 6, "xneedle")
+	typeSearch(m, "needle")
+	m.HandleSearchKey(tea.KeyPressMsg{Code: tea.KeyHome})
+	m.HandleSearchKey(tea.KeyPressMsg{Code: 'x', Text: "x"})
+	if m.SearchQuery() != "xneedle" {
+		t.Fatalf("query = %q, want the rune typed at the caret", m.SearchQuery())
+	}
+	if got := len(m.SearchMatches()); got != 1 {
+		t.Fatalf("matches = %d, want the re-typed query to match", got)
+	}
+}

@@ -18,6 +18,7 @@ import (
 	"github.com/marcus/sidecar/internal/notify"
 	"github.com/marcus/sidecar/internal/plugin"
 	"github.com/marcus/sidecar/internal/plugins/filebrowser"
+	"github.com/marcus/sidecar/internal/queryfield"
 	"github.com/marcus/sidecar/internal/state"
 	"github.com/marcus/sidecar/internal/styles"
 	"github.com/marcus/sidecar/internal/tty"
@@ -260,8 +261,8 @@ type Plugin struct {
 	filteredCommits     []*Commit
 
 	// Path filter input state
-	pathFilterMode  bool   // True when path input modal is open
-	pathFilterInput string // Current path input
+	pathFilterMode  bool             // True when path input modal is open
+	pathFilterField queryfield.Field // Current path input, as the shared query field
 
 	// Commit graph display state
 	showCommitGraph  bool        // True when graph column is displayed
@@ -404,6 +405,13 @@ func (p *Plugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 		return p.updateRemote(msg)
 	}
 	switch msg := msg.(type) {
+	case tea.PasteMsg:
+		// A live search or path-filter bar is a text input: a bracketed paste
+		// lands in it exactly as typed characters do.
+		if handled, cmd := p.handleSearchPaste(msg); handled {
+			return p, cmd
+		}
+
 	case tea.KeyPressMsg:
 		if p.inNoRepoMode() {
 			return p.updateNoRepo(msg)
