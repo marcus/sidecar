@@ -287,13 +287,20 @@ var wire = resourceProtocol
 // long enough to show it.
 var wideFilters bool
 
+// wideSort declares the results collection with three sort keys instead of two.
+// A segmented control over three of them does not fit a fixed-width modal, which
+// is the shape a modal has to grow for (td-c6904c).
+var wideSort bool
+
 func main() {
 	mode := flag.String("mode", "", "hostile behaviour to simulate")
 	pidfile := flag.String("pidfile", "", "where a forked descendant records its pid")
 	sleep := flag.Duration("sleep", 0, "how long the descendant mode sleeps")
 	wide := flag.Bool("wide-filters", false, "declare the source filter with twenty choices")
+	wideKeys := flag.Bool("wide-sort", false, "declare the results collection with three sort keys")
 	flag.Parse()
 	wideFilters = *wide
+	wideSort = *wideKeys
 
 	if *mode == "descendant" {
 		// A descendant that outlives its parent and keeps holding the inherited
@@ -599,6 +606,25 @@ func describeResponse() response {
 	return describePluginResponse()
 }
 
+// sortKeys is the results collection's sort: two keys ordinarily, three under
+// -wide-sort. Three is what the Recall plugin declares, and a segmented control
+// over three of these labels is wider than a fixed-width modal — the shape that
+// truncated into "[ Relevance | Source | Up… ]" in td-c6904c. Nothing in the
+// ordinary fixture is wide enough to ask a modal to grow.
+func sortKeys() []sortKey {
+	if !wideSort {
+		return []sortKey{
+			{ID: "relevance", Label: "Relevance", Default: "desc"},
+			{ID: "recency", Label: "Recency"},
+		}
+	}
+	return []sortKey{
+		{ID: "relevance", Label: "Relevance", Default: "desc"},
+		{ID: "source", Label: "Source"},
+		{ID: "updated", Label: "Updated"},
+	}
+}
+
 // sourceChoices is the Source filter's options: four ordinarily, twenty under
 // -wide-filters, which is what a filter too long for its control looks like.
 func sourceChoices() []filterChoice {
@@ -665,10 +691,7 @@ func describePluginResponse() response {
 					{ID: "source", Label: "Source", Width: 14},
 					{ID: "excerpt", Label: "Excerpt", Secondary: true},
 				},
-				Sort: []sortKey{
-					{ID: "relevance", Label: "Relevance", Default: "desc"},
-					{ID: "recency", Label: "Recency"},
-				},
+				Sort: sortKeys(),
 				// Three filters, one of each shape the protocol has. The first
 				// is the collection's SCOPE, which the host always shows.
 				Filters: []filter{
