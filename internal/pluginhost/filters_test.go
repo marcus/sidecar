@@ -3,6 +3,8 @@ package pluginhost
 import (
 	"strings"
 	"testing"
+
+	"github.com/marcus/sidecar/internal/resource"
 )
 
 // describeWithFilters builds a minimal, otherwise-valid describe response whose
@@ -197,5 +199,40 @@ func TestFilterDisplayValue(t *testing.T) {
 	}
 	if got := since.DisplayValue(map[string]string{"since": "2026-08-01"}); got != "2026-08-01" {
 		t.Fatalf("display = %q", got)
+	}
+}
+
+// internal/resource restates this package's filter bounds, because it cannot
+// import it and resource.Reference.Valid rejects an out-of-bounds applied set
+// on the way into a persisted tab. If the two ever drift, a filter set this
+// host accepts becomes a tab the host refuses to reopen — silently, because
+// Valid only says no. This is the test the comment over resource's copy
+// promises.
+func TestResourceRestatesTheFilterBounds(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		here, there int
+	}{
+		{"MaxFilters", MaxFilters, resource.MaxFilters},
+		{"MaxFilterIDChars", MaxFilterIDChars, resource.MaxFilterIDChars},
+		{"MaxFilterValueChars", MaxFilterValueChars, resource.MaxFilterValueChars},
+	} {
+		if tc.here != tc.there {
+			t.Errorf("pluginhost.%s = %d but resource.%s = %d; a set this host accepts would not survive a tab record",
+				tc.name, tc.here, tc.name, tc.there)
+		}
+	}
+
+	// And the restated bounds are the ones an applied set is actually held to.
+	ref := resource.Reference{Instance: "fixture", Collection: "results"}
+	for i := 0; i < MaxFilters; i++ {
+		ref.Filters = append(ref.Filters, resource.FilterValue{ID: string(rune('a' + i)), Value: "x"})
+	}
+	if !ref.Valid() {
+		t.Fatalf("a reference carrying %d filters — this host's own limit — is refused by resource.Reference.Valid", MaxFilters)
+	}
+	ref.Filters = append(ref.Filters, resource.FilterValue{ID: "over", Value: "x"})
+	if ref.Valid() {
+		t.Fatal("a reference carrying more filters than the host allows was accepted")
 	}
 }

@@ -867,7 +867,10 @@ func tabViewEqual(a, b state.PluginBrowserViewJSON) bool {
 		return false
 	}
 	for id, value := range a.Filters {
-		if b.Filters[id] != value {
+		// Comma-ok, not a lookup: an absent key reads as "" and would compare
+		// equal to a filter deliberately cleared to the empty string, which is
+		// what a text filter with a default looks like once it is cleared.
+		if v, ok := b.Filters[id]; !ok || v != value {
 			return false
 		}
 	}

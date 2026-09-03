@@ -309,6 +309,21 @@ func filterFocusID(control filterControl) string {
 	return filterChoicePfx + control.decl.ID
 }
 
+// splitFilterChoiceAction reads a radio's action back into the filter it
+// belongs to and the choice that was picked. It resolves the filter against the
+// live declaration rather than cutting at the first ":", because a filter id is
+// storable text and may contain one: cutting would hand setFilter a name no
+// collection declares, and the pick would close the modal having done nothing.
+func splitFilterChoiceAction(c pluginhost.Collection, action string) (string, string, bool) {
+	for _, f := range c.Filters {
+		prefix := filterChoicePfx + f.ID + ":"
+		if strings.HasPrefix(action, prefix) {
+			return f.ID, strings.TrimPrefix(action, prefix), true
+		}
+	}
+	return "", "", false
+}
+
 func indexOfFilterChoice(decl pluginhost.Filter, value string) int {
 	for i, choice := range decl.Choices {
 		if choice.ID == value {
@@ -359,8 +374,7 @@ func (m *Model) applyViewAction(action string) tea.Cmd {
 		m.closeOverlay()
 		return m.list(c, s, false)
 	case strings.HasPrefix(action, filterChoicePfx):
-		rest := strings.TrimPrefix(action, filterChoicePfx)
-		id, choice, ok := strings.Cut(rest, ":")
+		id, choice, ok := splitFilterChoiceAction(c, action)
 		if !ok {
 			return nil
 		}

@@ -326,7 +326,9 @@ func (t Target) Equal(other Target) bool {
 		return false
 	}
 	for id, value := range t.Filters {
-		if other.Filters[id] != value {
+		// Comma-ok, not a lookup: an absent key reads as "" and would compare
+		// equal to a filter deliberately cleared to the empty string.
+		if v, ok := other.Filters[id]; !ok || v != value {
 			return false
 		}
 	}
