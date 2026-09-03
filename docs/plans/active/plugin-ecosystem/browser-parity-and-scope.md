@@ -1,6 +1,6 @@
 # Browser parity, scope, and plugin authoring (M4a–M4c)
 
-**Status:** proposed 2026-09-03; M4a and M4c are ready to start, M4b is gated on the four decisions under [Decisions to confirm](#decisions-to-confirm). Controlling document for milestones M4a, M4b and M4c of [README.md](README.md); M4d (freeze, migrate, flag flip, site docs) stays in the README. **Tracking:** td-f9f007 (epic); per-milestone issues are listed with each milestone.
+**Status:** proposed 2026-09-03; M4a is implemented (see its section), M4c is ready to start, M4b is gated on the four decisions under [Decisions to confirm](#decisions-to-confirm). Controlling document for milestones M4a, M4b and M4c of [README.md](README.md); M4d (freeze, migrate, flag flip, site docs) stays in the README. **Tracking:** td-f9f007 (epic); per-milestone issues are listed with each milestone.
 
 **Reading order:** [README.md](README.md) for the settled decisions and the milestone map, this file for the work, [host.md](host.md#the-shared-browser) for how the browser is built today, and [mockups/README.md](mockups/README.md) for the screens M4b implements. The design rules this work adds to Sidecar as a whole live in [docs/reference/design-language.md](../../../reference/design-language.md) under *Pointer parity* and *The footer*, not here.
 
@@ -25,7 +25,9 @@ Recorded here because the fixes depend on it; file references are to `main` at 1
 
 ### M4a. Pointer and focus parity in the shared browser — sidecar only
 
-No protocol change. Files: `internal/pluginbrowser`, `internal/app/content_deck.go`, `internal/state`. **Tracking:** td-62b81c. Folds in td-fcb648 (pane-mode reserved keys, state-aware `ClaimsKey`, query-bound feedback), td-c2dc19 item 1 (the flash that is never cleared) and td-83a3fa item 1 (body cache theme key), because each touches the same rows.
+**Status:** implemented 2026-09-03 on `plugin-ux-m4a`, awaiting review.
+
+No protocol change. Files: `internal/pluginbrowser`, `internal/app/content_deck.go`, `internal/state`, plus a shared query-row renderer extracted into `internal/workspacelist`. **Tracking:** td-62b81c. Folds in td-fcb648 (pane-mode reserved keys, state-aware `ClaimsKey`, query-bound feedback), td-c2dc19 item 1 (the flash that is never cleared) and td-83a3fa item 1 (body cache theme key), because each touches the same rows.
 
 1. **One pointer model.** `Model` owns a `mouse.Handler` and a `mouse.HitMap`, cleared at the top of `View` and rebuilt in paint order: list box, detail box, each visible row, the query row, the View pill, the outcome pill, each notice, both scrollbars' thumb and track, and the divider last (`HitMap.Test` scans in reverse). `TabPlugin.Update` routes every `tea.MouseMsg` through it whether or not an overlay is open; an open overlay still wins.
 2. **Click semantics, identical to the keys.** A click inside a pane focuses it through the same `SetPaneFocus` the app's focus ring calls. A click on a row selects it; a second click on the selected row, or a double click, is `Enter`. A click on the query row is `/`; a click on the View pill is `v`; a click on the outcome pill or a notice opens the coverage modal (M4a shows the notices in full; M4b gives it data). The wheel scrolls the box under the pointer, not the focused one, through `mouse.WheelScrollLines`. Nothing a click does is reachable only by click.
@@ -38,6 +40,17 @@ No protocol change. Files: `internal/pluginbrowser`, `internal/app/content_deck.
 9. **Detail panel.** Audit against `issueview` and `docview`: labels `Muted`, identifiers `Info`, links `Link`, timestamps `Muted`, status through `toneStyle`; key the body cache on `renderer.StyleKey()`; prove with a theme switch mid-session.
 
 **Evidence:** `go test ./...` green. New tests in `internal/pluginbrowser` driving `tea.MouseMsg`: click selects, second click opens, click focuses the other pane, click on the query row begins editing, click on the pill opens the View modal, wheel over the detail scrolls the detail while the list is focused, drag on the rail changes the split and the value round-trips through state, scrollbar press jumps. A test in `internal/app` that Tab on a Primary-only deck cycles the browser's stops. An isolated `tmux-drive.sh` capture at 160x45 showing the rail, both scrollbars, the focused query row, and the same frame after a theme change; compared against `mockups/recall-studio.results-answered.txt` for the rows that mockup fixes.
+
+Captures are under [proof/m4a/](proof/m4a/README.md), which also records how the run was isolated and which fixture modes stood in for data the fixture's normal page does not have.
+
+**Deviations.**
+
+1. **The query row goes through a new shared function, not the `Filter` type.** `workspacelist.Filter` owns the workspace sidebar's own query state, which the browser keeps per collection and persists with a tab; adopting the type would have meant two authorities on one query. The row's *rendering* moved into `workspacelist.RenderQueryRow(width, QueryRow{...})` — prompt, placeholder, style swap, `▌` caret, right-aligned cell — and `Filter.RenderRow` now calls it, so there is still exactly one function that decides what a query bar looks like. The browser passes its own placeholder and its own right-hand cell, because "8 of 22" and "500 of 550   answered" are different claims.
+2. **The scrollbar column is reserved on every table and every document, not only when content overflows.** That is the shared renderer's own convention (`RenderScrollbar` returns a spacer column when everything fits) and it is what stops the table reflowing its columns the moment a page grows past its box.
+3. **M4a builds the coverage card and picks its key, which the plan left to M4b.** Item 2 says a click on the outcome or a notice opens it, and item 2 also says nothing a click does may be reachable only by click — so the card needed a key here. It is `c`, from the free set, and it is claimed only where there is something to explain: a page that answered with no notices has nothing the card could add. What M4a shows is the outcome, Sidecar's own sentence for what that word means, and every notice untruncated. M4b gives it `coverage[]`, `omitted`, the Retry button, and the host.md record.
+4. **Reserved keys are seeded in `pluginbrowser.New` rather than at the pane host's call site.** td-fcb648 asked for the call at the pane browser's construction; doing it in the constructor answers for every placement, including the next one, and `SetReservedKeys` still overrides.
+5. **The query-limit hint is the query row's right-hand cell**, replacing the count while it stands and cleared by the next accepted edit. The footer was the other candidate and is the wrong one: the design language says a condition belonging to a surface lives on that surface's own rows.
+6. **`internal/plugins/workspace`'s keyboard test changed with the contract.** `TestACollectionPaneClaimsTheBrowsersKeys` asserted that a focused collection pane claims `a` unconditionally, which is the behaviour td-fcb648 filed. It now asserts the rule instead: `/` and `v` are claimed because that collection declares them, and `a` is not because it declares no action.
 
 ### M4b. Scope, coverage, and honesty — protocol, host, recall
 
