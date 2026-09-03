@@ -12,6 +12,7 @@ import (
 	"github.com/marcus/sidecar/internal/mouse"
 	"github.com/marcus/sidecar/internal/plugin"
 	"github.com/marcus/sidecar/internal/pluginhost"
+	"github.com/marcus/sidecar/internal/textselect"
 )
 
 // Command IDs. They are what the footer's key chips are keyed by, so they are
@@ -176,6 +177,28 @@ func (p *TabPlugin) Init(ctx *plugin.Context) error {
 // DescribedMsg the host broadcasts once its describe pass has settled, so
 // nothing here waits on a process.
 func (p *TabPlugin) Start() tea.Cmd { return nil }
+
+// SetSelection binds the host's shared selection settings to the detail box.
+// The host resolves them from config once for every surface it draws, and a
+// plugin that owns a selectable box inside its own frame is one of them:
+// reading config here would be a second answer to a settled question.
+func (p *TabPlugin) SetSelection(keys textselect.Keys, copyOnSelect bool) {
+	p.model.SetSelection(keys, copyOnSelect)
+}
+
+var _ textselect.Binder = (*TabPlugin)(nil)
+
+// HasSelection reports whether the detail box currently holds a selection, and
+// ClearSelection drops it. They are this plugin's half of the host's one
+// selection at a time rule. The detail box is drawn on the same screen as the
+// deck's content panes, so a gesture started in either has to be able to drop
+// the other's; without them a highlight in the detail sits beside a highlight
+// in an issue card, and the copy chord — which follows the keyboard, not the
+// highlight — answers for whichever of the two the reader is not looking at.
+func (p *TabPlugin) HasSelection() bool { return p.model.HasSelection() }
+
+// ClearSelection drops the detail box's selection. See HasSelection.
+func (p *TabPlugin) ClearSelection() { p.model.ClearSelection() }
 
 // Stop drops what this browser has in flight. The manager owns every child
 // process, but it cannot know a reader has gone away unless the reader says so,

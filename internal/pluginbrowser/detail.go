@@ -21,6 +21,10 @@ func (m *Model) detailLines(width, height int) []string {
 	if width < 1 || height < 1 {
 		return nil
 	}
+	// Settle the selection before drawing it: a box that has never held one
+	// still has to say so, because an untouched selection state reads as a
+	// one-cell selection at the top-left corner.
+	m.expireSelection()
 	inner := scrolledWidth(width)
 	lines := m.detailBlock(inner)
 	start := m.detail.scroll
@@ -35,6 +39,13 @@ func (m *Model) detailLines(width, height int) []string {
 		end = len(lines)
 	}
 	view := fitLines(append([]string(nil), lines[start:end]...), inner, height)
+	// The highlight is painted at slice time, onto the rows about to be drawn
+	// and never into anything the card caches: a selection belongs to this
+	// frame alone, and the row it covers is named by its place in the
+	// unscrolled block, which is the coordinate space the engine holds it in.
+	for i := range view {
+		view[i] = m.selection.DecorateRow(view[i], start+i)
+	}
 	m.geom.docBar = m.joinScrollbar(view, 0, inner, width, ui.ScrollbarParams{
 		TotalItems:   len(lines),
 		ScrollOffset: start,

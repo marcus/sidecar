@@ -240,3 +240,8 @@ func (s selectionSource) Scroll() int { return s.m.scroll }
 // reproduced from a tab width alone — it does not know the gutter is in front
 // of them.
 func (s selectionSource) TabWidth() int { return 0 }
+
+// docview's viewer is one of the panes every selectable-pane host routes
+// through the shared interface. The assertion is here so a change to either
+// side is a build error rather than a host arm that quietly stops matching.
+var _ textselect.Pane = (*Model)(nil)

@@ -10,6 +10,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/marcus/sidecar/internal/livewatch"
 	sharedscroll "github.com/marcus/sidecar/internal/scroll"
+	"github.com/marcus/sidecar/internal/textselect"
 )
 
 // View is the reusable Diff pane model: one snapshot, one cursor, one commit
@@ -62,6 +63,16 @@ type View struct {
 	width     int
 	height    int
 	listWidth int
+
+	// Text selection over the frame this pane last drew. originX/originY are
+	// where the host drew it, frameRows/frameW/frameH are what it drew, and
+	// selectionKey is what that frame was of, so a frame showing something
+	// else drops the selection. See select.go.
+	selection        textselect.Surface
+	selectionKey     string
+	frameRows        []string
+	frameW, frameH   int
+	originX, originY int
 
 	// live sequences in-place re-runs of the diff driven by repository movement,
 	// and holds the fingerprint that keeps an unchanged re-run off the screen.

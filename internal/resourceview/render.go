@@ -107,6 +107,10 @@ func (m *Model) View() string {
 	if m.browser != nil {
 		return m.browser.View()
 	}
+	// Settle the selection before drawing it: a card that has never held one
+	// still has to say so, because an untouched selection state reads as a
+	// one-cell selection at the top-left corner.
+	m.expireSelection()
 	lines := m.lines()
 	start := m.scroll
 	if start > len(lines) {
@@ -116,7 +120,15 @@ func (m *Model) View() string {
 	if end > len(lines) {
 		end = len(lines)
 	}
-	return ui.FitBlock(strings.Join(lines[start:end], "\n"), m.width, m.height)
+	view := make([]string, 0, end-start)
+	for i := start; i < end; i++ {
+		// The highlight is painted at slice time, onto the row about to be
+		// drawn and never into the body the card caches: a selection belongs to
+		// this frame only, and the row it covers is named by its place in the
+		// unscrolled card.
+		view = append(view, m.selection.DecorateRow(ansi.Truncate(lines[i], m.width, ""), i))
+	}
+	return ui.FitBlock(strings.Join(view, "\n"), m.width, m.height)
 }
 
 // lines is the whole card, unscrolled. It is what both View and maxScroll

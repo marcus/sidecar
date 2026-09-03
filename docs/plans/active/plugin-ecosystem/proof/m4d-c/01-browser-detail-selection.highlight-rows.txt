@@ -1,0 +1,10 @@
+# Rows of the frame that carry the selection background, in the browser detail box.
+# The escape sequences are shown literally: ESC is written as \e, and the
+# selection background is \e[48;2;38;79;120m (styles.SelectionBg in the
+# default theme). A stripped capture cannot show a highlight, so this is
+# the half of the frame that carries it.
+
+row 10  \e[38;2;59;66;72m│\e[39m     \e[38;2;133;142;149m3\e[39m  \e[38;2;207;211;214msweep row 3\e[39m   \e[38;2;133;142;149mnotes\e[39m           \e[38;2;105;113;119m…sweep row 3 appears here…\e[39m                        \e[38;2;91;143;99mexact\e[39m  \e[38;2;45;51;56m│\e[38;2;45;51;57m┃\e[38;2;191;147;47m│\e[39m   \e[38;2;207;211;214m\e[48;2;38;79;120mDeterministic detail for \e[38;2;192;152;47m rc:notes:2 \e[38;2;207;211;214m.\e[39m                 \e[49m  \e[38;2;186;109;55m│
+row 11  \e[38;2;59;65;71m│\e[39m     \e[38;2;133;142;149m4\e[39m  \e[38;2;207;211;214msweep row 4\e[39m   \e[38;2;133;142;149mnotes\e[39m           \e[38;2;105;113;119m…sweep row 4 appears here…\e[39m                        \e[38;2;91;143;99mexact\e[39m  \e[38;2;45;51;56m│\e[38;2;45;51;57m┃\e[38;2;191;146;48m│\e[39m \e[38;2;133;142;149m\e[48;2;38;79;120m── Evidence ─────────────────────────────────────────────\e[39m\e[49m  \e[38;2;186;109;55m│
+row 12  \e[38;2;58;65;71m│\e[39m     \e[38;2;133;142;149m5\e[39m  \e[38;2;207;211;214msweep row 5\e[39m   \e[38;2;133;142;149mnotes\e[39m           \e[38;2;105;113;119m…sweep row 5 appears here…\e[39m                        \e[38;2;91;143;99mexact\e[39m  \e[38;2;44;51;56m│\e[38;2;45;51;57m┃\e[38;2;191;146;48m│\e[39m \e[48;2;38;79;120m                                                         \e[49m  \e[38;2;186;108;55m│
+row 13  \e[38;2;58;65;71m│\e[39m     \e[38;2;133;142;149m6\e[39m  \e[38;2;207;211;214msweep row 6\e[39m   \e[38;2;133;142;149mnotes\e[39m           \e[38;2;105;113;119m…sweep row 6 appears here…\e[39m                        \e[38;2;91;143;99mexact\e[39m  \e[38;2;44;51;56m│\e[38;2;45;51;57m┃\e[38;2;191;145;48m│\e[39m \e[48;2;38;79;120m  \e[38;2;207;211;214mEvidence for rc:notes:2. \e[39m\e[49m                                \e[38;2;186;108;55m│

@@ -265,6 +265,14 @@ func (p *Plugin) handleResourceKey(msg tea.KeyPressMsg) (bool, tea.Cmd) {
 	if res == nil {
 		return false, nil
 	}
+	// Before the pane's own keys: esc clears a selection rather than hiding the
+	// pane out from under it, and the copy chord must not fall through to a
+	// card key that happens to share it.
+	if view := res.view(); view != nil {
+		if cmd, handled := p.handlePaneSelectionKey(view, msg); handled {
+			return true, cmd
+		}
+	}
 	if handled, cmd := p.paneSwitcherKey(msg); handled {
 		return true, cmd
 	}

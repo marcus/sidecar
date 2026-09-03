@@ -238,6 +238,14 @@ func (p *Plugin) handleDiffKey(msg tea.KeyPressMsg) (bool, tea.Cmd) {
 		return false, nil
 	}
 	view := diff.view()
+	// Before the pane's own keys: esc clears a selection rather than hiding the
+	// pane out from under it, and the copy chord must not fall through to a
+	// diff key that happens to share it.
+	if view != nil {
+		if cmd, handled := p.handlePaneSelectionKey(view, msg); handled {
+			return true, cmd
+		}
+	}
 	// Ahead of the view's own keys: this pane used to spend `n` on next-change,
 	// which now answers to `<` / `>` so the switcher key means one thing in
 	// every pane.

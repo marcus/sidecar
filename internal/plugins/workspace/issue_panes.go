@@ -212,6 +212,14 @@ func (p *Plugin) handleIssueKey(msg tea.KeyPressMsg) (bool, tea.Cmd) {
 		view.SetActive(true)
 		view.SetFocused(true)
 	}
+	// Before the pane's own keys: esc clears a selection rather than hiding the
+	// pane out from under it, and the copy chord must not fall through to a
+	// card key that happens to share it.
+	if view != nil {
+		if cmd, handled := p.handlePaneSelectionKey(view, msg); handled {
+			return true, cmd
+		}
+	}
 	if handled, cmd := p.paneSwitcherKey(msg); handled {
 		return true, cmd
 	}

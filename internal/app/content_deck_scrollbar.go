@@ -10,8 +10,10 @@ import (
 	"github.com/marcus/sidecar/internal/noteview"
 	"github.com/marcus/sidecar/internal/paneframe"
 	"github.com/marcus/sidecar/internal/panelayout"
+	"github.com/marcus/sidecar/internal/resourceview"
 	"github.com/marcus/sidecar/internal/textselect"
 	"github.com/marcus/sidecar/internal/ui"
+	"github.com/marcus/sidecar/internal/workspacediff"
 )
 
 // Scrollbar gestures on deck-hosted document panes.
@@ -27,12 +29,12 @@ import (
 // state.
 
 const (
-	// appDeckDocGestureRegion names a drag that began on a deck-hosted
-	// document. HandleSelectionMouse is one seam for the bar and a text
-	// selection alike, so this ID covers both: a press it answered starts the
-	// shared handler's drag, and every motion and the release come back to the
-	// same leaf's entry.
-	appDeckDocGestureRegion = "app-content-doc-gesture"
+	// appDeckSelectGestureRegion names a drag that began on a deck-hosted
+	// pane's content: a document's scrollbar, or any selectable pane's text.
+	// HandleSelectionMouse is one seam for both, so this ID covers both: a
+	// press it answered starts the shared handler's drag, and every motion and
+	// the release come back to the same leaf's entry.
+	appDeckSelectGestureRegion = "app-content-doc-gesture"
 	// appDeckIssueScrollbarRegion names a drag that began on an issue card's
 	// scrollbar. The card arms the gesture in HandleClick (which also does any
 	// track-click jump itself); this ID is what turns the host's StartDrag into
@@ -155,18 +157,21 @@ func (h *appContentDeck) pressAppContentGesture(action mouse.MouseAction) (tea.C
 	}
 	switch v := h.deck.Viewer(leafID).(type) {
 	case *docview.Model:
-		result := v.HandleSelectionMouse(action)
-		if !result.Handled {
-			// The view disagrees with the region (a re-render moved the thumb
-			// between frames): nothing was armed, so claim nothing.
-			return nil, false
-		}
-		h.mouse.StartDrag(action.X, action.Y, appDeckDocGestureRegion, leafID)
-		h.docGestureLeaf = leafID
-		return appDeckSelectionCopyCmd(v, result), true
+		// One seam for the bar and the text alike: the view answers its own
+		// scrollbar before the selection engine can see the press. A view that
+		// disagrees with the region (a re-render moved the thumb between
+		// frames) armed nothing, so nothing is claimed.
+		return h.pressAppContentSelection(leafID, v, action)
 	case *issueview.Model:
 		if action.Region.ID == appDeckLeafRegion {
-			return nil, false
+			// The card's own targets — a parent row, a subtask row, its bar —
+			// keep their clicks; everything else in the body is text, and a
+			// press over it arms a selection.
+			lx, ly := h.appContentCardLocal(leafID, action.X, action.Y)
+			if !v.SelectableAt(lx, ly) {
+				return nil, false
+			}
+			return h.pressAppContentSelection(leafID, v, action)
 		}
 		if action.Type != mouse.ActionClick {
 			// A rapid second press re-arms the bar exactly like the first one
@@ -192,6 +197,22 @@ func (h *appContentDeck) pressAppContentGesture(action mouse.MouseAction) (tea.C
 			h.mouse.StartDrag(action.X, action.Y, appDeckIssueScrollbarRegion, leafID)
 		}
 		return cmd, true
+	case *workspacediff.View:
+		if action.Region.ID != appDeckLeafRegion {
+			return nil, false
+		}
+		// The deck registers no inner Diff regions, so the whole frame is
+		// text here: the press arms a selection and the click that focused
+		// this leaf is the whole of what a release without motion means.
+		return h.pressAppContentSelection(leafID, v, action)
+	case *resourceview.Model:
+		if action.Region.ID != appDeckLeafRegion {
+			return nil, false
+		}
+		// The card is passive: a provider document has no clickable targets,
+		// so the press only arms a selection and the click that focused this
+		// leaf is the whole of what a release without motion means.
+		return h.pressAppContentSelection(leafID, v, action)
 	case *noteview.Model:
 		if action.Region.ID == appDeckLeafRegion {
 			return nil, false
@@ -206,15 +227,15 @@ func (h *appContentDeck) pressAppContentGesture(action mouse.MouseAction) (tea.C
 // drag source.
 func (h *appContentDeck) continueAppContentGesture(action mouse.MouseAction) (tea.Cmd, bool) {
 	switch action.DragStartID {
-	case appDeckDocGestureRegion:
-		view, _ := h.deck.Viewer(h.docGestureLeaf).(*docview.Model)
-		if view == nil {
+	case appDeckSelectGestureRegion:
+		pane, _ := h.deck.Viewer(h.selectGestureLeaf).(textselect.Pane)
+		if pane == nil {
 			return nil, true
 		}
 		if action.Type == mouse.ActionDragEnd {
-			h.docGestureLeaf = 0
+			h.selectGestureLeaf = 0
 		}
-		return appDeckSelectionCopyCmd(view, view.HandleSelectionMouse(action)), true
+		return appDeckSelectionCopyCmd(pane, pane.HandleSelectionMouse(action)), true
 	case appDeckIssueScrollbarRegion:
 		view, _ := h.deck.Viewer(h.issueScrollLeaf).(*issueview.Model)
 		if action.Type == mouse.ActionDragEnd {
@@ -248,11 +269,11 @@ func (h *appContentDeck) continueAppContentGesture(action mouse.MouseAction) (te
 // Reports whether dragSource named one of this deck's gestures.
 func (h *appContentDeck) settleAppContentGesture(dragSource string) bool {
 	switch dragSource {
-	case appDeckDocGestureRegion:
-		if view, ok := h.deck.Viewer(h.docGestureLeaf).(*docview.Model); ok {
-			view.AbandonSelection()
+	case appDeckSelectGestureRegion:
+		if pane, ok := h.deck.Viewer(h.selectGestureLeaf).(textselect.Pane); ok {
+			pane.AbandonSelection()
 		}
-		h.docGestureLeaf = 0
+		h.selectGestureLeaf = 0
 	case appDeckIssueScrollbarRegion:
 		if view, ok := h.deck.Viewer(h.issueScrollLeaf).(*issueview.Model); ok {
 			view.ScrollbarDragEnd()
@@ -327,12 +348,73 @@ func (h *appContentDeck) appContentCardLocal(leafID, x, y int) (int, int) {
 	return x, y
 }
 
-// appDeckSelectionCopyCmd delivers what a document gesture's engine result
-// asked for — a copy, phrased by the shared pipeline and wrapped in this
-// surface's own toast types. A result that asked for nothing produces no
-// command, so every result goes straight here.
-func appDeckSelectionCopyCmd(view *docview.Model, result textselect.Result) tea.Cmd {
-	return view.SelectionCopyCmd(result, func(notice textselect.CopyNotice) tea.Msg {
+// pressAppContentSelection arms a text-selection gesture in a hosted pane.
+//
+// One selection at a time is the rule across the whole deck, so every other
+// pane's is dropped first; the drag is registered with the shared handler
+// because that is what turns the release into a drag end the gesture can be
+// finished by. Focus has already followed the press, and a release without
+// motion is still the click that focused this leaf.
+func (h *appContentDeck) pressAppContentSelection(leafID int, pane textselect.Pane, action mouse.MouseAction) (tea.Cmd, bool) {
+	h.clearAppContentSelectionsExcept(pane)
+	// The plugin under the deck is on the same screen, and the plugin browser
+	// draws a selectable detail box inside its own frame. One at a time means
+	// one on the screen, not one among the panes the deck happens to own.
+	h.clearPrimarySelection()
+	result := pane.HandleSelectionMouse(action)
+	if !result.Handled {
+		// The press landed on chrome or on the padding below the last row: not
+		// a selection, and not this file's business.
+		return nil, false
+	}
+	h.mouse.StartDrag(action.X, action.Y, appDeckSelectGestureRegion, leafID)
+	h.selectGestureLeaf = leafID
+	return appDeckSelectionCopyCmd(pane, result), true
+}
+
+// clearAppContentSelectionsExcept drops every selection this deck holds but
+// keep's, which is what makes one selection at a time the rule: starting one
+// anywhere drops the one before it, including one in another tab of the same
+// leaf.
+func (h *appContentDeck) clearAppContentSelectionsExcept(keep textselect.Pane) {
+	h.deck.ConfigureViewers(func(_ panelayout.Kind, model any) {
+		if pane, ok := model.(textselect.Pane); ok && pane != keep {
+			pane.ClearSelection()
+		}
+	})
+}
+
+// primarySelectionHolder is a primary plugin that draws a selectable box inside
+// its own frame — the shared plugin browser's detail is the one today. The deck
+// cannot route its gesture, because the plugin owns its own coordinate space,
+// but the one-selection-at-a-time rule is the screen's rather than the deck's,
+// so both halves have to be askable and clearable from here.
+type primarySelectionHolder interface {
+	HasSelection() bool
+	ClearSelection()
+}
+
+// primaryHasSelection reports whether the plugin under the deck is holding a
+// selection of its own.
+func (h *appContentDeck) primaryHasSelection() bool {
+	holder, ok := h.plugin.(primarySelectionHolder)
+	return ok && holder.HasSelection()
+}
+
+// clearPrimarySelection drops the plugin's own selection. A plugin that draws
+// no selectable box has none, and says so by not implementing the interface.
+func (h *appContentDeck) clearPrimarySelection() {
+	if holder, ok := h.plugin.(primarySelectionHolder); ok {
+		holder.ClearSelection()
+	}
+}
+
+// appDeckSelectionCopyCmd delivers what a pane gesture's engine result asked
+// for — a copy, phrased by the shared pipeline and wrapped in this surface's
+// own toast types. A result that asked for nothing produces no command, so
+// every result goes straight here.
+func appDeckSelectionCopyCmd(pane textselect.Pane, result textselect.Result) tea.Cmd {
+	return pane.SelectionCopyCmd(result, func(notice textselect.CopyNotice) tea.Msg {
 		if notice.IsError {
 			return msg.ToastMsg{Message: notice.Message, Duration: notice.Duration, IsError: true}
 		}

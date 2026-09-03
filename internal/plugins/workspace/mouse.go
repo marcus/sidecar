@@ -246,6 +246,18 @@ func (p *Plugin) isModalViewMode() bool {
 	}
 }
 
+// isDiffTextRegion reports the Diff regions whose cells are text rather than a
+// row the pane answers a click on. A file row and a commit row are targets; the
+// patch body and the panes' own backgrounds are prose.
+func isDiffTextRegion(regionID string) bool {
+	switch regionID {
+	case regionDiffTabDiffPane, regionCommitFileDiffPane, regionDiffTabFileListPane:
+		return true
+	default:
+		return false
+	}
+}
+
 // isDiffBodyRegion reports the Diff inner hits that cover the leaf body and
 // therefore skip the regionPaneLeaf click arm. Tab chips are not included —
 // they already go through selectDiffTab.
@@ -369,7 +381,7 @@ func (p *Plugin) handleMouse(msg tea.MouseMsg) tea.Cmd {
 	// cancel the paired click-to-activate intent at the same boundary.
 	if action.Type == mouse.ActionHover && wasDragging && !p.mouseHandler.IsDragging() {
 		if dragSourceBefore == regionPaneLeaf {
-			p.abandonDocSelection()
+			p.abandonPaneSelection()
 		}
 		if dragSourceBefore == regionIssueScrollbar {
 			p.finishIssueScrollbarDrag()
@@ -1042,7 +1054,7 @@ func (p *Plugin) handleMouseClick(action mouse.MouseAction) tea.Cmd {
 		}
 		p.focusLeaf(hit.LeafID)
 		if action.Shift || action.Alt {
-			return p.pressDocSelection(hit.LeafID, action)
+			return p.pressPaneSelection(hit.LeafID, action)
 		}
 		return p.activateDocContentLink(hit)
 	case regionDocTab:
@@ -1068,7 +1080,14 @@ func (p *Plugin) handleMouseClick(action mouse.MouseAction) tea.Cmd {
 		if leaf.Kind == PaneDoc {
 			// A press over the document's text arms a selection; a release
 			// without motion is still the click that just focused the pane.
-			return p.pressDocSelection(leafID, action)
+			return p.pressPaneSelection(leafID, action)
+		}
+		if leaf.Kind == PaneResource {
+			// The card is passive: a provider document has no clickable
+			// targets, so the press only arms a selection and the click that
+			// just focused the leaf is the whole of what a release without
+			// motion means.
+			return p.pressPaneSelection(leafID, action)
 		}
 		if leaf.Kind == PaneDiff {
 			return nil
@@ -1082,6 +1101,12 @@ func (p *Plugin) handleMouseClick(action mouse.MouseAction) tea.Cmd {
 			return nil
 		}
 		lx, ly := issueViewLocal(action.X, action.Y, action.Region.Rect)
+		if view.SelectableAt(lx, ly) {
+			// The card's own targets — a parent row, a subtask row, its bar —
+			// keep their clicks; everything else in the body is text, and a
+			// press over it arms a selection.
+			return p.pressPaneSelection(leafID, action)
+		}
 		beforeActive := issue.tabs.Active
 		beforeID, beforeScroll := view.IssueID(), view.ScrollOffset()
 		kind, cmd := view.HandleClick(lx, ly)
@@ -1220,6 +1245,14 @@ func (p *Plugin) handleMouseClick(action mouse.MouseAction) tea.Cmd {
 			return nil
 		}
 		cmd := view.HandleClick(action.Region.ID, action.Region.Data)
+		if isDiffTextRegion(action.Region.ID) {
+			// The patch body and the pane behind it are text. The click that
+			// focused the pane has already happened above; the press also arms
+			// a selection so the motion after it selects.
+			if _, leaf := p.activeDiffPane(); leaf != nil {
+				return tea.Batch(cmd, p.pressPaneSelection(leaf.ID, action))
+			}
+		}
 		if action.Region.ID == regionDiffTabMinimap && p.fullFileDiff != nil {
 			clickRow := action.Y - action.Region.Rect.Y
 			totalLines := p.fullFileDiff.TotalLines()
@@ -1359,7 +1392,7 @@ func (p *Plugin) handleMouseDoubleClick(action mouse.MouseAction) tea.Cmd {
 			// Word by double click, line by triple, exactly as the terminal
 			// beside it answers the same gesture.
 			p.focusLeaf(leafID)
-			return p.pressDocSelection(leafID, action)
+			return p.pressPaneSelection(leafID, action)
 		}
 		if issue, leaf := p.issueLeafAt(action.Region.Data); leaf != nil {
 			p.focusLeaf(leaf.ID)
@@ -1799,7 +1832,7 @@ func (p *Plugin) handleMouseDrag(action mouse.MouseAction) tea.Cmd {
 	case regionPaneLeaf:
 		// A document selection. The leaf the gesture started in answers it,
 		// wherever the pointer has since travelled.
-		return p.dragDocSelection(action)
+		return p.dragPaneSelection(action)
 	case regionPreviewPane, regionTermPanelContent:
 		if p.terminalPointerIntent(mouse.ActionDrag, "", dragRegion, false) != tty.PointerDrag {
 			return nil
@@ -1837,7 +1870,7 @@ func (p *Plugin) handleMouseDragEnd(action mouse.MouseAction) tea.Cmd {
 		// A document gesture is left holding a live drag at the same boundary,
 		// and nothing else ends it: the handler has already closed the drag, so
 		// the lost-release path never fires either.
-		p.abandonDocSelection()
+		p.abandonPaneSelection()
 		p.finishIssueScrollbarDrag()
 		p.finishNoteScrollbarDrag()
 		p.finishTerminalScrollbarDrag()
@@ -1878,7 +1911,7 @@ func (p *Plugin) handleMouseDragEnd(action mouse.MouseAction) tea.Cmd {
 	if dragSource == regionPaneLeaf {
 		// A document selection ends here rather than in the width-persisting
 		// switch below: nothing about a pane leaf is a divider.
-		return p.finishDocSelection(action)
+		return p.finishPaneSelection(action)
 	}
 	if isDividerDragRegion(dragSource) {
 		// Immediate resize on drop. Hold is released first so the flush is not

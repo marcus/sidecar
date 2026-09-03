@@ -1299,6 +1299,12 @@ func (m *Model) WorkspacesMouse(msg tea.Msg) tea.Cmd {
 	if cmd, handled := m.handlePreviewDocGesture(action, wasDragging, dragSourceBefore); handled {
 		return cmd
 	}
+	// The same for every other selectable pane, whose gestures share one
+	// source ID because the leaf they started in is recorded rather than
+	// spelled into the ID.
+	if cmd, handled := m.handlePreviewPaneGesture(action, wasDragging, dragSourceBefore); handled {
+		return cmd
+	}
 	// A drag moves the preview box, and a live pane is sized against that box.
 	if action.Type == mouse.ActionDrag && m.workspacesMouse.DragRegion() == workspacesDividerRegion {
 		m.sidebarWidth = workspacelist.ResizePercent(m.workspacesMouse.DragStartValue(), action.DragDX, m.width)

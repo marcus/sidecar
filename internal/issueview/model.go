@@ -10,6 +10,7 @@ import (
 	"github.com/marcus/sidecar/internal/markdown"
 	sharedscroll "github.com/marcus/sidecar/internal/scroll"
 	"github.com/marcus/sidecar/internal/styles"
+	"github.com/marcus/sidecar/internal/textselect"
 	"github.com/marcus/sidecar/internal/ui"
 )
 
@@ -137,6 +138,14 @@ type Model struct {
 	// buildStyle is the markdown style key the current rows were built under,
 	// so a live theme change rebuilds them without a resize.
 	buildStyle string
+
+	// Text selection. originX/originY are where the host last drew the body;
+	// renderGeneration counts the times the rows were invalidated, which is
+	// what tells a selection its text has been replaced. See select.go.
+	selection        textselect.Surface
+	selectionKey     string
+	originX, originY int
+	renderGeneration uint64
 
 	// Scrollbar pointer state. See scrollbar.go.
 	scrollbarHover      bool
@@ -464,6 +473,10 @@ func (m *Model) View() string {
 	if m.height <= 0 {
 		return ""
 	}
+	// Settle the selection before drawing it: a card that has never held one
+	// still has to say so, because an untouched selection state reads as a
+	// one-cell selection at the top-left corner.
+	m.expireSelection()
 	rows := m.visibleRows()
 	bodyWidth := m.contentWidth()
 	useBar := m.needsScrollbar()
@@ -499,8 +512,11 @@ func (m *Model) View() string {
 				})
 			}
 		}
-		painted := paintRow(line, bodyWidth, selected, hovered, m.active)
-		out[i] = painted
+		// The highlight is painted at slice time, onto the row about to be
+		// drawn and never into the built rows the card caches: a selection
+		// belongs to this frame only, and the row it covers is named by its
+		// place in the unscrolled card.
+		out[i] = m.selection.DecorateRow(paintRow(line, bodyWidth, selected, hovered, m.active), m.scroll+i)
 	}
 	if useBar {
 		bar, _ := ui.RenderScrollbarWithState(m.ScrollbarParams(), m.scrollbarStyle())
@@ -1032,6 +1048,7 @@ func (m *Model) invalidateRender() {
 	m.buildStyle = ""
 	m.rows = nil
 	m.hits = nil
+	m.renderGeneration++
 }
 
 func (m *Model) maxScroll() int {

@@ -159,8 +159,12 @@ func (c *issueContent) SetSize(size Size) tea.Cmd {
 	return nil
 }
 
-func (c *issueContent) View(Render) string {
-	return c.m.renderPreviewIssue(c.issue, termpreview.Box{W: c.size.Width, H: c.size.Height})
+// View draws the leaf at its own origin. Where the box is, not only how big it
+// is: a pointer gesture over the card's text is hit-tested against it.
+func (c *issueContent) View(render Render) string {
+	return c.m.renderPreviewIssue(c.issue, termpreview.Box{
+		X: render.Origin.X, Y: render.Origin.Y, W: c.size.Width, H: c.size.Height,
+	})
 }
 
 // diffContent is the Diff leaf.
@@ -184,8 +188,12 @@ func (c *diffContent) SetSize(size Size) tea.Cmd {
 	return nil
 }
 
-func (c *diffContent) View(Render) string {
-	return c.m.renderPreviewDiff(c.diff, termpreview.Box{W: c.size.Width, H: c.size.Height})
+// View draws the leaf at its own origin. Where the box is, not only how big it
+// is: a pointer gesture over the patch is hit-tested against it.
+func (c *diffContent) View(render Render) string {
+	return c.m.renderPreviewDiff(c.diff, termpreview.Box{
+		X: render.Origin.X, Y: render.Origin.Y, W: c.size.Width, H: c.size.Height,
+	})
 }
 
 // resourceContent is the external-resource leaf: one Resource pane per surface,
@@ -210,8 +218,12 @@ func (c *resourceContent) SetSize(size Size) tea.Cmd {
 	return nil
 }
 
-func (c *resourceContent) View(Render) string {
-	return c.m.renderPreviewResource(c.res, termpreview.Box{W: c.size.Width, H: c.size.Height})
+// View draws the leaf at its own origin. Where the box is, not only how big it
+// is: a pointer gesture over the card's text is hit-tested against it.
+func (c *resourceContent) View(render Render) string {
+	return c.m.renderPreviewResource(c.res, termpreview.Box{
+		X: render.Origin.X, Y: render.Origin.Y, W: c.size.Width, H: c.size.Height,
+	})
 }
 
 type noteContent struct {

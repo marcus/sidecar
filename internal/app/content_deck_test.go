@@ -51,6 +51,12 @@ type deckHostTestPlugin struct {
 	zeroLinkKinds bool
 	consumeText   bool
 	blockGlobal   bool
+	// selection stands for a highlight in a box the plugin draws inside its own
+	// frame, the way the shared plugin browser's detail box does; selectOnPress
+	// makes the next pointer press start one. Both are what the deck's one
+	// selection at a time rule is asked about.
+	selection     bool
+	selectOnPress bool
 }
 
 type queuedAppDeckTestMsg struct{}
@@ -66,9 +72,14 @@ func (p *deckHostTestPlugin) Update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 	if size, ok := msg.(tea.WindowSizeMsg); ok {
 		p.width, p.height = size.Width, size.Height
 	}
+	if _, ok := msg.(tea.MouseClickMsg); ok && p.selectOnPress {
+		p.selection = true
+	}
 	p.seen = append(p.seen, msg)
 	return p, nil
 }
+func (p *deckHostTestPlugin) HasSelection() bool { return p.selection }
+func (p *deckHostTestPlugin) ClearSelection()    { p.selection = false }
 func (p *deckHostTestPlugin) PaneFocusStops() []plugin.PaneFocusStop {
 	if p.noFocusStops {
 		return nil
@@ -1029,15 +1040,15 @@ func TestAppContentDeckRenderedMarkdownBodySelectsAndCopiesWhatWasDrawn(t *testi
 	}
 
 	m.appContentMouse(tea.MouseClickMsg(tea.Mouse{X: rect.X, Y: rect.Y, Button: tea.MouseLeft}))
-	if got := h.mouse.DragRegion(); got != appDeckDocGestureRegion {
-		t.Fatalf("body press started drag %q, want %s", got, appDeckDocGestureRegion)
+	if got := h.mouse.DragRegion(); got != appDeckSelectGestureRegion {
+		t.Fatalf("body press started drag %q, want %s", got, appDeckSelectGestureRegion)
 	}
 	m.appContentMouse(tea.MouseMotionMsg(tea.Mouse{X: rect.X + 20, Y: rect.Y + 1, Button: tea.MouseLeft}))
 	m.appContentMouse(tea.MouseReleaseMsg(tea.Mouse{X: rect.X + 20, Y: rect.Y + 1, Button: tea.MouseLeft}))
 	if !view.HasSelection() {
 		t.Fatal("drag through the Files document pane created no selection")
 	}
-	if h.docGestureLeaf != 0 || h.mouse.IsDragging() {
+	if h.selectGestureLeaf != 0 || h.mouse.IsDragging() {
 		t.Fatal("document selection release left a live host gesture")
 	}
 	if frame := m.renderContent(180, 40); !strings.Contains(frame, ui.GetSelectionBgANSI()) {
@@ -1935,7 +1946,7 @@ func TestAppContentDeckActivatesFromDocumentLeafIntoSameDeck(t *testing.T) {
 	if h.deck.Leaf(panelayout.Issue) == 0 {
 		t.Fatal("clicking a document-leaf link opened no Issue leaf in this deck")
 	}
-	if h.docGestureLeaf != 0 || h.mouse.IsDragging() {
+	if h.selectGestureLeaf != 0 || h.mouse.IsDragging() {
 		t.Fatal("activating a document link left the body selection gesture armed")
 	}
 	if m.currentContentDeck() != h {

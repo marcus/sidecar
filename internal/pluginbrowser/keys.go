@@ -123,6 +123,16 @@ func (m *Model) HandleKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	if m.editingQuery() {
 		return m.queryKey(msg)
 	}
+	// The chords that act on the detail box's text are answered before the
+	// surface's own keys, so copy and select-all mean the same thing here as
+	// they do in every other selectable pane. They apply to the box that has
+	// the keyboard; a copy still reaches a selection the keyboard has left,
+	// because the highlight is still on screen.
+	if m.detailContentRect().W > 0 && (m.focus == FocusDetail || m.HasSelection()) {
+		if result := m.HandleSelectionKey(msg); result.Handled {
+			return m.selectionCmd(result), true
+		}
+	}
 
 	key := msg.String()
 	if action, ok := m.grantedKeys[key]; ok {
@@ -557,6 +567,11 @@ func (m *Model) SetPaneFocus(id string) {
 			m.focus = FocusDetail
 		}
 	case FocusList:
+		if m.focus == FocusDetail {
+			// The selection belongs to the box the keyboard just left. Leaving
+			// it drawn would leave a highlight nothing on screen still acts on.
+			m.ClearSelection()
+		}
 		m.focus = FocusList
 	}
 }

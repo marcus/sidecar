@@ -1,6 +1,6 @@
 # Plan: Unified text selection across all surfaces
 
-**Status:** Proposed **Created:** 2026-08-18 **Research snapshot:** 2026-08-18, at 86dc806d — all `path:line` claims verified at that commit **Scope:** Mouse text selection (char/word/line), highlight rendering, and copy-to-clipboard for: filebrowser preview (rendered + raw), workspace/overview file panes (docview), td issue panes (issueview), diffs (git plugin + workspacediff), Jira panes (resourceview), and notes. One selection engine, one highlight renderer, one copy pipeline. **Related:** [terminal-resource-providers.md](terminal-resource-providers.md), [notes-plugin-overhaul.md](notes-plugin-overhaul.md) **Tracking:** td issues to be filed per phase (see §8)
+**Status:** Phases 1–4 implemented (Phase 1 2026-08-18; Phase 2, docview, 2026-08-19; Phases 3 and 4, workspacediff, issueview and resourceview, 2026-09-03 under td-2b8f79, which also made the plugin browser's detail box selectable — a pane that did not exist when this plan was written). **Phases 5 and 6 are outstanding**: the file browser and notes still run their own hand-wired glue, and gitstatus' own diff renderers are untouched. **Created:** 2026-08-18 **Research snapshot:** 2026-08-18, at 86dc806d — all `path:line` claims verified at that commit **Scope:** Mouse text selection (char/word/line), highlight rendering, and copy-to-clipboard for: filebrowser preview (rendered + raw), workspace/overview file panes (docview), td issue panes (issueview), diffs (git plugin + workspacediff), Jira panes (resourceview), and notes. One selection engine, one highlight renderer, one copy pipeline. **Related:** [terminal-resource-providers.md](terminal-resource-providers.md), [notes-plugin-overhaul.md](notes-plugin-overhaul.md) **Tracking:** td issues to be filed per phase (see §8)
 
 ---
 
@@ -226,14 +226,22 @@ Highlight color stays `GetSelectionBgANSI()` → theme `BgTertiary` (`selection_
 
 Each phase: implementation + unit tests + a `scripts/tmux-drive.sh` proof (drag across styled content, snapshot showing highlight, assert clipboard content in the isolated run), reviewed per the usual td flow, one td issue per phase.
 
-| Phase | Deliverable | Size |
-| --- | --- | --- |
-| 1 | `internal/textselect` extracted from `internal/tty` (moves + adapter interface); dual-write clipboard (`tea.SetClipboard` + native) behind the shared notice; `selection.copyOnSelect` config key | M |
-| 2 | docview binding — file panes selectable in workspace **and** overview | M |
-| 3 | workspacediff binding — diff panes selectable in both surfaces | M |
-| 4 | issueview + resourceview bindings (same shape) — td and Jira panes | M |
-| 5 | Converge filebrowser, notes, and terminal hosts onto the kit; delete hand-wired glue; AGENTS.md parity rule + docs-site help (incl. shift/option native fallback) | M |
-| 6 | gitstatus diffs (incl. side-by-side two-rect model); optional mouse-tracking toggle if still wanted | L |
+| Phase | Deliverable | Size | Status |
+| --- | --- | --- | --- |
+| 1 | `internal/textselect` extracted from `internal/tty` (moves + adapter interface); dual-write clipboard (`tea.SetClipboard` + native) behind the shared notice; `selection.copyOnSelect` config key | M | done |
+| 2 | docview binding — file panes selectable in workspace **and** overview | M | done |
+| 3 | workspacediff binding — diff panes selectable in both surfaces | M | done, td-2b8f79 |
+| 4 | issueview + resourceview bindings (same shape) — td and Jira panes | M | done, td-2b8f79 |
+| 5 | Converge filebrowser, notes, and terminal hosts onto the kit; delete hand-wired glue; AGENTS.md parity rule + docs-site help (incl. shift/option native fallback) | M | outstanding |
+| 6 | gitstatus diffs (incl. side-by-side two-rect model); optional mouse-tracking toggle if still wanted | L | outstanding |
+
+**What phases 3 and 4 did differently from what is written above** (2026-09-03, td-2b8f79):
+
+1. **The diff pane's coordinate space is the frame, not the diff body.** §4.2 assumed `renderRaw`'s lines and a rect that excluded the file list. Neither survived contact: the patch body is normally painted by the *host* through `RenderOpts.PaintFile` — gitstatus' line-diff and side-by-side renderers, with line-number gutters the raw patch does not carry — one window at a time, so the view cannot answer for a row that is not on screen. It therefore records the frame it just drew, numbers rows from the top of it, and drops the selection when the frame changes. Two consequences follow: a drag past an edge does not scroll (the rows it would reveal cannot be selected without dropping the selection that asked for them), and a selection covers whatever was drawn at those cells, the file list included — which is what a terminal's own selection does, and what makes a file's name as copyable as its hunks.
+2. **`y` was left alone.** §4.2 and §4.3 said `y` should copy the selection when one is active and the identity otherwise. The selection chords are `alt+c`, the platform copy chord and `ctrl+a`, and they are answered before every pane's own key switch; giving `y` a second meaning would make one key mean two things depending on invisible state, on three surfaces, for no capability that is not already reachable. This is a deviation, not an omission.
+3. **The issue card protects its own rows rather than relying on `ClickThrough` alone.** §4.3's rule holds for the body, but a parent row, a subtask row and the scrollbar each answer a press *on the press* in at least one host, so `issueview.SelectableAt` refuses those cells and everything else in the body is text. The focus click is unaffected on every surface, because focus follows the press before any gesture is armed.
+4. **A fourth pane joined: the plugin browser's detail box.** It did not exist when this plan was written. It is the same adapter shape over `detailBlock`'s rows.
+5. **`textselect.Pane` is new.** The plan described per-surface bindings; three hosts route four viewers, so the host half is written once against an interface rather than four times against concrete types.
 
 Phases 2–4 are independent after Phase 1 and can interleave with other work; Phase 5 is the debt-payoff gate — the plan is not "done" until the old glue is deleted, because two live implementations is the failure mode this plan exists to prevent.
 

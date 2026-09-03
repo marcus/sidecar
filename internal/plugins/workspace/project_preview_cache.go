@@ -237,7 +237,7 @@ func (p *Plugin) replayProjectPreviewRegions(layout PaneLayout) {
 		}
 		inner := paneframe.GeometryForChrome(placement.Box, paneHost{p}.Chrome(node)).Inner
 		doc.boxX, doc.boxY, doc.boxW, doc.boxH = inner.X, inner.Y, inner.W, inner.H
-		p.bindDocSelection(doc.view(), inner)
+		p.bindPaneSelection(doc.view(), inner)
 		frame := doc.view().PreparedFrame()
 		frame.EachHitAt(inner.X, inner.Y+terminalHeaderRows, func(hit docview.ContentLinkHit) {
 			p.docLinkHits = append(p.docLinkHits, docContentLinkHit{LeafID: doc.leafID, Ref: hit.Ref, Rect: hit.Rect})

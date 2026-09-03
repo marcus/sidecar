@@ -1,0 +1,45 @@
+ ◱ Sidecar │   Sessions     Activity     Fixture                             td     Git     Files     Workspaces     Notes    sidecar [plugin-ux-m4d-c] ▾  ·  ⚙
+╭─────────────────────────────────────╮ ╭──────────────────────────────────────╮ ╭───────────────────────────────────────────────────────────● Copied 3 line(s)╮
+│ Files  [name]                       │┃│ ...ystem/browser-parity-and-scope.md │┃│   td-62b81c ×                                                         ⊞  ×  │
+│                                     │┃│                                      │┃│  CLOSED ─────────────────────────────────────────────────────── td-62b81c┃  │
+│ + .claude                         ┃ │┃│    1 # Browser parity, scope, and p┃ │┃│  M4a: pointer and focus parity in the shared plugin browser              ┃  │
+│ + .codex                          ┃ │┃│    2                               ┃ │┃│  ■ task  P1  created 2026-09-03 09:16                                    ┃  │
+│ + .github                         ┃ │┃│    3 **Status:** M4a implemented 20┃ │┃│  Labels: plugin-ecosystem                                                ┃  │
+│ + .kiro                           ┃ │┃│    4                               ┃ │┃│                                                                          ┃  │
+│ + .proof                          ┃ │┃│    5 **Reading order:** [README.md]┃ │┃│  PARENT ──────────────────────────────────────────────────────────────── ┃  │
+│ + cmd                             ┃ │┃│    6                               ┃ │┃│  ↑ ◆ td-f9f007  Plugin ecosystem: protocol plugins, embedded plugins, an…┃  │
+│ + compat                          ┃ │┃│    7 ## Why                        ┃ │┃│                                                                          ┃  │
+│ + configs                         ┃ │┃│    8                               │ │┃│  DESCRIPTION ───────────────────────────────────────────────────────── 13┃  │
+│ > docs                            ┃ │┃│    9 The shared browser (`internal/│ │┃│  Plan: docs/plans/active/plugin-ecosystem/browser-parity-and-scope.md    ┃  │
+│   + adr                           ┃ │┃│   10                               │ │┃│  (milestone M4a). Sidecar only, no protocol change. mouse.Handler/HitMap ┃  │
+│   + evidence                      ┃ │┃│   11 Both are fixed at the seams th│ │┃│  on pluginbrowser.Model (panes, rows, query row, View pill, outcome pill,┃  │
+│   + guides                        ┃ │┃│   12                               │ │┃│  notices, scrollbars, divider last); click semantics identical to the    ┃  │
+│   + mockups                       ┃ │┃│   13 ## What the audit found       │ │┃│  keys; ui.RenderScrollbarWithState on table and detail; ui.RenderHandle  ┃  │
+│   > plans                         ┃ │┃│   14                               │ │┃│  drag rail with a per-plugin persisted split; Tab reaches the browser by ┃  │
+│     > active                      ┃ │┃│   15 Recorded here because the fixe│ │┃│  cycling a Primary-only deck's PaneFocusStops in app.handleAppContentKey;┃  │
+│       > plugin-ecosystem          ┃ │┃│   16                               │ │┃│  query line rendered as the app's filter row (workspacelist.Filter style ┃  │
+│         + mockups                 ┃ │┃│   17 - **Pointer.** `pluginbrowser.│ │┃│  swap, block caret, count); View pill placed through                     ┃  │
+│         + proof                   ┃ │┃│   18 - **Focus.** `app.handleAppCon│ │┃│  ui.ReserveHeaderControls with the three-rung ladder; delete 'This plugin┃  │
+│           browser-parity-and-scop…┃ │┃│   19 - **Query line.** `render.go:2│ │┃│  offers no action here' and make ClaimsKey state-aware; detail panel     ┃  │
+│           host.md                 ┃ │┃│   20 - **Notices and outcome.** `"s│ │┃│  audit against issueview; body cache keyed on the renderer style key.    ┃  │
+│           protocol.md             ┃ │┃│   21 - **Detail styling.** `detail.│ │┃│  Folds in td-fcb648, td-c2dc19 item 1, td-83a3fa item 1.                 ┃  │
+│           README.md               ┃ │┃│   22 - **Recall scope.** `sidecarPr│ │┃│                                                                          ┃  │
+│         agent-project-cli.md      │ │┃│   23                               │ │┃│  ACCEPTANCE ─────────────────────────────────────────────────────────── 8┃  │
+│         cross-project-issue-links…│ │┃│   24 ## Milestones                 │ │┃│  go test ./... green. pluginbrowser mouse tests: click selects, second   ┃  │
+│         herdr-agent-control-and-s…│ │┃│   25                               │ │┃│  click opens, click focuses the other pane, click on the query row begins┃  │
+│         herdr-detection-parity.md │ │┃│   26 ### M4a. Pointer and focus par│ │┃│  editing, click on the pill opens the View modal, wheel over the         ┃  │
+│         herdr-parity-close-the-ga…│ │┃│   27                               │ │┃│  unfocused box scrolls it, rail drag changes the split and round-trips   ┃  │
+│         modal-redesign.md         │ │┃│   28 **Status:** implemented and re│ │┃│  through state, scrollbar press jumps. internal/app test: Tab on a       ┃  │
+│         note-permanent-deletion.md│ │┃│   29                               │ │┃│  Primary-only deck cycles the browser's stops. Isolated tmux-drive       ┃  │
+│         notification-agent-lifecy…│ │┃│   30 No protocol change. Files: `in│ │┃│  capture at 160x45 showing rail, both scrollbars, focused query row, and ┃  │
+│         notification-sounds-and-n…│ │┃│   31                               │ │┃│  the same frame after a theme change.                                    ┃  │
+│         pane-switcher-everywhere.…│ │┃│   32 1. **One pointer model.** `Mod│ │┃│                                                                          ┃  │
+│         remote-files-plugin.md    │ │┃│   33 2. **Click semantics, identica│ │┃│  RECENT LOGS ────────────────────────────────────────────────────────── 6┃  │
+│         remote-git-plugin.md      │ │┃│   34 3. **Scrollbars.** The table a│ │┃│  09:20  ses_bbcfbc  Started work                                         ┃  │
+│         remote-project-switcher.md│ │┃│   35 4. **Drag rail, and its keys.*│ │┃│  09:50  ses_bbcfbc  M4a implementation landed on plugin-ux-m4a at f3f943…┃  │
+│         remote-shells-improvement…│ │┃│   36 5. **Tab reaches the browser.*│ │┃│  10:05  ses_bbcfbc  Visual proof done and committed at 0a175b08; detail …┃  │
+│         remove-conversations-plug…│ │┃│   37 6. **The query line is the app│ │┃│  10:25  ses_bbcfbc  Submitted for review                                 │  │
+│         shell-pane-tabs.md        │ │┃│   38 7. **The View pill is a header│ │┃│  10:25  ses_bbcfbc  Approved (reviewed by M4 gate-and-review agent (work…│  │
+│         sidecar-remote-hosts.md   │ │┃│   39 8. **No "nothing to do" text.*│ │┃│  10:59  ses_bbcfbc  Review findings closed on plugin-ux-m4a (merged main…│  │
+╰─────────────────────────────────────╯ ╰──────────────────────────────────────╯ ╰─────────────────────────────────────────────────────────────────────────────╯
+ q, esc  Close   x  Tab×   {  Tab←   }  Tab→   tab  Focus   shift+tab  Back   enter  Open   O  TD   y  Yank   Y  YankID   M  Move   n  Pane   1-5  plugins

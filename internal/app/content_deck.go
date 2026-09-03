@@ -108,14 +108,15 @@ type appContentDeck struct {
 	// alone; today only the issue card coalesces here.
 	wheel    tty.WheelBursts
 	wheelNow func() time.Time
-	// Pointer state for hosted panes' interactive scrollbars. docGestureLeaf
-	// is the document whose HandleSelectionMouse gesture — bar or selection —
-	// is live; issueScroll* carry an issue card's bar gesture and the absolute
+	// Pointer state for hosted panes' interactive scrollbars. selectGestureLeaf
+	// is the leaf whose HandleSelectionMouse gesture — a document's bar or any
+	// selectable pane's text selection — is live; issueScroll* carry an issue
+	// card's bar gesture and the absolute
 	// Y of its row 0 at press time; noteBar is the host-side bookkeeping a
 	// state-free noteview seam leaves to this surface. selKeys and
-	// selCopyOnSelect bind the shared selection chords to documents at render
-	// time, the only place both are known.
-	docGestureLeaf    int
+	// selCopyOnSelect bind the shared selection chords to every selectable
+	// pane at render time, the only place both are known.
+	selectGestureLeaf int
 	issueScrollLeaf   int
 	issueScrollTrackY int
 	noteBar           appDeckNoteBar
@@ -429,6 +430,12 @@ func (c *appDeckContent) SetSize(size paneframe.Size) tea.Cmd {
 func (c *appDeckContent) View(render paneframe.Render) string {
 	if c.node.Kind == panelayout.Primary {
 		c.h.primaryInner = paneframe.Box(render.Origin)
+		// A plugin that owns a selectable box inside its own frame is bound the
+		// same way a hosted viewer is: the host resolves the chords from config
+		// once, and everything it draws answers them identically.
+		if binder, ok := c.h.plugin.(textselect.Binder); ok {
+			binder.SetSelection(c.h.selKeys, c.h.selCopyOnSelect)
+		}
 		frame := c.h.plugin.View(c.size.Width, c.size.Height)
 		frame = c.h.scanPrimary(frame, render.Origin)
 		return ui.FitBlock(frame, c.size.Width, c.size.Height)
@@ -461,15 +468,23 @@ func (c *appDeckContent) View(render paneframe.Render) string {
 	// body were scanned. Reviewing a change to this switch is the control.
 	case *issueview.Model:
 		v.SetSize(c.size.Width, bodyH)
+		// The body sits below the leaf's own tab-header row; recording where it
+		// was drawn is what lets a press map onto the card's own rows.
+		v.SetOrigin(render.Origin.X, render.Origin.Y+paneframe.HeaderRows)
+		v.SetSelection(c.h.selKeys, c.h.selCopyOnSelect)
 		body = v.View()
 	case *noteview.Model:
 		v.SetSize(c.size.Width, bodyH)
 		body = v.View()
 	case *workspacediff.View:
 		v.SetSize(c.size.Width, bodyH)
+		v.SetOrigin(render.Origin.X, render.Origin.Y+paneframe.HeaderRows)
+		v.SetSelection(c.h.selKeys, c.h.selCopyOnSelect)
 		body = v.Render(c.size.Width, bodyH, workspacediff.RenderOpts{})
 	case *resourceview.Model:
 		v.SetSize(c.size.Width, bodyH)
+		v.SetOrigin(render.Origin.X, render.Origin.Y+paneframe.HeaderRows)
+		v.SetSelection(c.h.selKeys, c.h.selCopyOnSelect)
 		body = v.View()
 	}
 	return ui.FitBlock(c.h.tabHeader(c.node.ID, c.size.Width, render.Origin, render.Focused)+"\n"+body, c.size.Width, c.size.Height)
@@ -1113,7 +1128,7 @@ func (m *Model) appContentMouse(msg tea.MouseMsg) (tea.Cmd, bool) {
 					// press before the host recognizes their link. They must see
 					// the matching release before activation for the same reason.
 					settle = m.updateAppContentPrimaryMouse(h, msg)
-				} else if action.DragStartID == appDeckDocGestureRegion {
+				} else if action.DragStartID == appDeckSelectGestureRegion {
 					settle, _ = h.continueAppContentGesture(action)
 				}
 				return tea.Batch(settle, m.openAppContent(h.workdir, h.pluginID, hit.Ref)), true
@@ -1140,9 +1155,18 @@ func (m *Model) appContentMouse(msg tea.MouseMsg) (tea.Cmd, bool) {
 
 func (m *Model) updateAppContentPrimaryMouse(h *appContentDeck, msg tea.MouseMsg) tea.Cmd {
 	adjusted := offsetMouse(msg, -h.primaryInner.X, -h.primaryInner.Y)
+	held := h.primaryHasSelection()
 	newPlugin, cmd := h.plugin.Update(adjusted)
 	h.plugin = newPlugin
 	m.adoptAppContentPlugin(h)
+	// The other half of one selection at a time: a plugin that owns a
+	// selectable box inside its own frame answers its own gesture, so the deck
+	// learns a selection started there only by noticing that the plugin now
+	// holds one. Asked here rather than on every frame because this is the
+	// event that could have started it.
+	if !held && h.primaryHasSelection() {
+		h.clearAppContentSelectionsExcept(nil)
+	}
 	return cmd
 }
 
@@ -1343,13 +1367,15 @@ func (m *Model) handleAppContentKey(key tea.KeyPressMsg) (tea.Cmd, bool) {
 		_, cmd := view.HandleSearchKey(key)
 		return cmd, true
 	}
-	// Selection chords belong to the document before pane-level escape and
-	// ordinary viewer keys. In particular, escape clears a selection instead
-	// of hiding the pane, matching Files and both Workspace document hosts.
-	if view, ok := h.deck.Viewer(leaf.ID).(*docview.Model); ok {
-		result := view.HandleSelectionKey(key)
+	// Selection chords belong to the pane before pane-level escape and ordinary
+	// viewer keys. In particular, escape clears a selection instead of hiding
+	// the pane, matching Files and both Workspace hosts. Every selectable pane
+	// answers here, so a copy is a copy whichever kind of leaf has the
+	// keyboard.
+	if pane, ok := h.deck.Viewer(leaf.ID).(textselect.Pane); ok {
+		result := pane.HandleSelectionKey(key)
 		if result.Handled {
-			return appDeckSelectionCopyCmd(view, result), true
+			return appDeckSelectionCopyCmd(pane, result), true
 		}
 	}
 	// M is the deck's own entry onto the reposition modal, beside the header ⊞.

@@ -14,6 +14,7 @@ import (
 	"github.com/marcus/sidecar/internal/queryfield"
 	"github.com/marcus/sidecar/internal/resource"
 	"github.com/marcus/sidecar/internal/state"
+	"github.com/marcus/sidecar/internal/textselect"
 )
 
 // QueryDebounce is how long the browser waits after a keystroke before it
@@ -259,6 +260,12 @@ type Model struct {
 	// arrival guards the query row against the key repeats still in flight when
 	// a held navigation key hands it the keyboard. See queryArrival.
 	arrival queryArrival
+
+	// selection is the detail box's text selection, and selectionKey the rows
+	// it was made over: a card re-laid-out for any reason drops it. See
+	// select.go.
+	selection    textselect.Surface
+	selectionKey string
 }
 
 // KeyRepeatWindow is how long after a key press another press of the same key

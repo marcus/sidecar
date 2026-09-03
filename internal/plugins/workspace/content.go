@@ -230,7 +230,7 @@ func (c *docContent) View(render Render) string {
 	}
 	body := ""
 	if view := c.doc.view(); view != nil {
-		c.p.bindDocSelection(view, render.Origin)
+		c.p.bindPaneSelection(view, render.Origin)
 		body = c.p.preparedDocBody(c.doc, render.Origin.X, render.Origin.Y+terminalHeaderRows)
 	}
 	header := c.p.docPaneHeaderRow(c.doc, c.size.Width, render.Focused)
@@ -279,6 +279,7 @@ func (c *issueContent) SetSize(size Size) tea.Cmd {
 func (c *issueContent) View(render Render) string {
 	body := ""
 	if view := c.issue.view(); view != nil {
+		c.p.bindPaneSelection(view, render.Origin)
 		body = view.View()
 	}
 	return composePaneLeaf(
@@ -314,6 +315,7 @@ func (c *diffContent) SetSize(size Size) tea.Cmd {
 func (c *diffContent) View(render Render) string {
 	body := ""
 	if view := c.diff.view(); view != nil {
+		c.p.bindPaneSelection(view, render.Origin)
 		c.p.attachDiffPaintTo(view)
 		bodyH := maxInt(c.size.Height-terminalHeaderRows, 0)
 		view.SetSize(c.size.Width, bodyH)
@@ -368,6 +370,7 @@ func (c *resourceContent) SetSize(size Size) tea.Cmd {
 func (c *resourceContent) View(render Render) string {
 	body := ""
 	if c.res.tabs != nil {
+		c.p.bindPaneSelection(resourceSelectionPane(c.res.view()), render.Origin)
 		body = c.res.tabs.View()
 	}
 	return composePaneLeaf(
