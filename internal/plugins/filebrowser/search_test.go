@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/marcus/sidecar/internal/mouse"
 	"github.com/marcus/sidecar/internal/plugin"
 )
 
@@ -1095,5 +1096,67 @@ func TestContentSearchWordDeleteAndPaste(t *testing.T) {
 	}
 	if got := p.contentSearchQuery(); got != "package main" {
 		t.Fatalf("content query after the refused paste = %q", got)
+	}
+}
+
+// The × on each `/` bar clears its query, and it is registered only where it is
+// drawn: while the query is empty those columns belong to the query row.
+func fbRegion(t *testing.T, p *Plugin, id string) *mouse.Region {
+	t.Helper()
+	for _, r := range p.mouseHandler.HitMap.Regions() {
+		if r.ID == id {
+			return &r
+		}
+	}
+	return nil
+}
+
+func TestSearchClearControls(t *testing.T) {
+	tmpDir := t.TempDir()
+	p := createTestPlugin(t, tmpDir)
+	primeFileCache(t, p)
+	p.width, p.height = 120, 30
+	p.treeWidth, p.previewWidth = 30, 88
+	p.treeVisible = true
+	p.mouseHandler = mouse.NewHandler()
+
+	p.searchMode = true
+	p.searchField.SetQuery("main")
+	if cmd := p.updateSearchMatches(); cmd != nil {
+		_ = cmd()
+	}
+	p.contentSearchMode = true
+	p.contentSearchField.SetQuery("package")
+	p.renderNormalPanes()
+
+	tree := fbRegion(t, p, regionTreeSearchClear)
+	if tree == nil {
+		t.Fatal("a non-empty tree query registered no clear control")
+	}
+	content := fbRegion(t, p, regionContentSearchClear)
+	if content == nil {
+		t.Fatal("a non-empty content query registered no clear control")
+	}
+	if content.Rect.Y != 0 {
+		t.Fatalf("the content bar's × is on row %d, want the first row", content.Rect.Y)
+	}
+
+	_, _ = p.handleMouse(tea.MouseClickMsg(tea.Mouse{X: tree.Rect.X, Y: tree.Rect.Y, Button: tea.MouseLeft}))
+	if p.searchQuery() != "" {
+		t.Fatalf("the tree × left the query as %q", p.searchQuery())
+	}
+	_, _ = p.handleMouse(tea.MouseClickMsg(tea.Mouse{X: content.Rect.X, Y: content.Rect.Y, Button: tea.MouseLeft}))
+	if p.contentSearchQuery() != "" {
+		t.Fatalf("the content × left the query as %q", p.contentSearchQuery())
+	}
+
+	// Nothing to clear, nothing registered.
+	p.mouseHandler = mouse.NewHandler()
+	p.renderNormalPanes()
+	if r := fbRegion(t, p, regionTreeSearchClear); r != nil {
+		t.Fatalf("an empty tree query kept the × registered at %+v", r.Rect)
+	}
+	if r := fbRegion(t, p, regionContentSearchClear); r != nil {
+		t.Fatalf("an empty content query kept the × registered at %+v", r.Rect)
 	}
 }

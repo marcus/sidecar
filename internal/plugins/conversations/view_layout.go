@@ -144,7 +144,7 @@ func (p *Plugin) registerSessionHitRegions(sidebarWidth, contentHeight int) {
 	}
 
 	sessions := p.visibleSessions()
-	if len(sessions) == 0 {
+	if len(sessions) == 0 && !p.searchMode {
 		return
 	}
 
@@ -162,6 +162,15 @@ func (p *Plugin) registerSessionHitRegions(sidebarWidth, contentHeight int) {
 	hitWidth := sidebarWidth - 4
 	if hitWidth < 10 {
 		hitWidth = 10
+	}
+
+	// The × on the search row, if it drew one. RenderRow hands back the zero
+	// rect when it did not, and a host that registers the zero rect registers
+	// nothing — the columns belong to the query row when there is nothing to
+	// clear. Registered before the session rows, which are below it anyway.
+	if p.searchMode && p.searchClearRect.W > 0 {
+		r := p.searchClearRect
+		p.mouseHandler.HitMap.AddRect(regionSearchClear, hitX+r.X, 2, r.W, r.H, nil)
 	}
 
 	// Track visual line position and visible session count
@@ -310,14 +319,16 @@ func (p *Plugin) renderSidebarPane(height int) string {
 	if p.searchMode {
 		// The app's query bar, drawn through queryfield.RenderRow. The count of
 		// matches is already in the Sessions header above, so this row carries
-		// no right cell; the × is not drawn because this row registers no hit
-		// region, and a control nothing listens to is worse than no control.
-		row, _ := queryfield.RenderRow(contentWidth, queryfield.Row{
+		// no right cell; the × clears the query wherever there is one, and the
+		// rect it lands on is registered with the session rows below.
+		row, rects := queryfield.RenderRow(contentWidth, queryfield.Row{
 			Query:       p.searchQuery(),
 			Cursor:      p.searchField.Cursor(),
 			Focused:     true,
 			Placeholder: "search sessions…",
+			Clearable:   true,
 		})
+		p.searchClearRect = rects.Clear
 		sb.WriteString(row)
 		sb.WriteString("\n")
 		linesUsed++

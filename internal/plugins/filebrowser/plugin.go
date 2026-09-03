@@ -227,10 +227,14 @@ type Plugin struct {
 	// query field, so the bar edits like every other `/` bar: the caret moves,
 	// alt+backspace deletes a word, home and end work, and a paste arrives
 	// whole. searchQuery() reads it.
-	searchMode    bool
-	searchField   queryfield.Field
-	searchMatches []filefind.Match
-	searchCursor  int
+	searchMode  bool
+	searchField queryfield.Field
+	// searchClearRect / contentSearchClearRect are where each bar's × landed,
+	// in the row's own coordinates, so the regions pass can register them.
+	treeSearchClearRect    mouse.Rect
+	contentSearchClearRect mouse.Rect
+	searchMatches          []filefind.Match
+	searchCursor           int
 
 	// Auto-open state
 	pendingOpenFile     string // Relative path to open after next tree rebuild

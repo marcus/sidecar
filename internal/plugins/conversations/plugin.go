@@ -64,6 +64,7 @@ const (
 	regionMessageItem = "message-item" // Conversation flow: click to select (Data: msg index)
 	regionToolExpand  = "tool-expand"  // Conversation flow: toggle tool output (Data: tool_use_id)
 	regionShowMore    = "show-more"    // Conversation flow: expand long message (Data: msg ID)
+	regionSearchClear = "search-clear" // × on the Sessions `/` bar
 )
 
 // View represents the current view mode.
@@ -181,9 +182,12 @@ type Plugin struct {
 	adapterSpinner   ui.BrailleSpinner // animated loading indicator while adapters load
 
 	// Search state
-	searchMode    bool
-	searchField   queryfield.Field
-	searchResults []adapter.Session
+	searchMode  bool
+	searchField queryfield.Field
+	// searchClearRect is where the search row's × landed, in the row's own
+	// coordinates, so the region pass can register it.
+	searchClearRect mouse.Rect
+	searchResults   []adapter.Session
 
 	// Filter state
 	filterMode            bool

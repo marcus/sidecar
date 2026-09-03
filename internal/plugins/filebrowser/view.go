@@ -308,6 +308,7 @@ func (p *Plugin) renderNormalPanes() string {
 		// Update hit regions for collapsed state
 		p.mouseHandler.Clear()
 		p.mouseHandler.HitMap.AddRect(regionPreviewPane, 0, inputBarHeight, previewWidth, paneHeight, nil)
+		p.registerSearchClearRegions(inputBarHeight)
 		if len(p.tabHits) > 0 {
 			tabY := inputBarHeight + 1
 			tabX := 2 // left border + padding
@@ -411,6 +412,10 @@ func (p *Plugin) renderNormalPanes() string {
 	// for content-link scanning, so selection uses the same answer.
 	p.registerPreviewSelectionRegions()
 
+	// The × on a `/` bar is registered after the panes so a click on it is the
+	// control rather than the row underneath.
+	p.registerSearchClearRegions(paneY)
+
 	// Register preview tabs (first content row)
 	if len(p.tabHits) > 0 {
 		tabY := paneY + 1
@@ -440,9 +445,7 @@ func (p *Plugin) registerPreviewSelectionRegions() {
 //
 // It draws through queryfield.RenderRow, so the preview's search bar is the
 // app's query bar; the match count and the navigation hint are this surface's
-// own right cell. The × is not drawn: this row sits above the panes and the
-// plugin registers no region for it, and a control nothing listens to is worse
-// than no control.
+// own right cell, and the × clears the query wherever there is one to clear.
 func (p *Plugin) renderContentSearchBar() string {
 	matchInfo := ""
 	if len(p.contentSearchMatches) > 0 {
@@ -456,13 +459,17 @@ func (p *Plugin) renderContentSearchBar() string {
 	if matchInfo != "" {
 		matchInfo = styles.Muted.Render(matchInfo)
 	}
-	row, _ := queryfield.RenderRow(p.width, queryfield.Row{
+	row, rects := queryfield.RenderRow(p.width, queryfield.Row{
 		Query:       p.contentSearchQuery(),
 		Cursor:      p.contentSearchField.Cursor(),
 		Focused:     !p.contentSearchCommitted,
 		Placeholder: "search…",
 		Right:       matchInfo,
+		Clearable:   true,
 	})
+	// The bar is the first row of the layout, so the row's own coordinates are
+	// the screen's. The rect is registered in the regions pass below.
+	p.contentSearchClearRect = rects.Clear
 	return row
 }
 
@@ -477,14 +484,36 @@ func (p *Plugin) renderTreeSearchBar() string {
 	if matchInfo != "" {
 		matchInfo = styles.Muted.Render(matchInfo)
 	}
-	row, _ := queryfield.RenderRow(p.treeSearchBarWidth(), queryfield.Row{
+	row, rects := queryfield.RenderRow(p.treeSearchBarWidth(), queryfield.Row{
 		Query:       p.searchQuery(),
 		Cursor:      p.searchField.Cursor(),
 		Focused:     p.searchMode,
 		Placeholder: "filter…",
 		Right:       matchInfo,
+		Clearable:   true,
 	})
+	// In the row's own coordinates; the regions pass adds the pane's origin.
+	p.treeSearchClearRect = rects.Clear
 	return row
+}
+
+// registerSearchClearRegions registers the × control of whichever `/` bar is on
+// screen. RenderRow hands back the zero rect when it drew no control, and a
+// host that registers the zero rect registers nothing — which is the rule: the
+// columns belong to the query row when there is nothing to clear.
+func (p *Plugin) registerSearchClearRegions(paneY int) {
+	if p.contentSearchMode && p.contentSearchClearRect.W > 0 {
+		// The content search bar is the first row of the layout.
+		r := p.contentSearchClearRect
+		p.mouseHandler.HitMap.AddRect(regionContentSearchClear, r.X, 0, r.W, r.H, nil)
+	}
+	if p.searchMode && p.treeSearchClearRect.W > 0 {
+		// The tree bar is the second of the tree pane's two header rows, drawn
+		// one column in from the pane's left border. treeItemY = paneY + 3 is
+		// the same arithmetic read the other way.
+		r := p.treeSearchClearRect
+		p.mouseHandler.HitMap.AddRect(regionTreeSearchClear, 1+r.X, paneY+2, r.W, r.H, nil)
+	}
 }
 
 // treeSearchBarWidth is the row the tree pane has room for: the pane's width

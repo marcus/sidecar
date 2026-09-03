@@ -4178,3 +4178,32 @@ func TestSessionsSearchTypesJAndK(t *testing.T) {
 		t.Fatalf("cursor = %d, want the letters not to have moved it", p.cursor)
 	}
 }
+
+// The × clears the query, and it is registered only where it is drawn: while
+// the query is empty those columns belong to the query row.
+func TestSessionsSearchClearControl(t *testing.T) {
+	p := sessionListTestPlugin(t, 6)
+	p.searchMode = true
+	p.searchField.SetQuery("session")
+	p.filterSessions()
+	p.hitRegionsDirty = true
+	_ = p.View(p.width, p.height)
+
+	rect := findConvRegion(t, p, regionSearchClear)
+	if rect.W == 0 {
+		t.Fatal("a non-empty query registered no clear control")
+	}
+	_, _ = p.handleMouse(convClickMsg(rect.X, rect.Y))
+	if p.searchQuery() != "" {
+		t.Fatalf("the × left the query as %q", p.searchQuery())
+	}
+
+	// Nothing to clear, nothing registered.
+	p.hitRegionsDirty = true
+	_ = p.View(p.width, p.height)
+	for _, r := range p.mouseHandler.HitMap.Regions() {
+		if r.ID == regionSearchClear {
+			t.Fatalf("an empty query kept the × registered at %+v", r.Rect)
+		}
+	}
+}
