@@ -143,16 +143,52 @@ func (s *selectSection) shapeFor(contentWidth int) SelectShape {
 	return ShapeSegmented
 }
 
-// segmentedWidth is how wide the toggle draws before any truncation.
+// segmentedWidth is how wide the toggle draws before any truncation: the frame,
+// every label, the separators between them, and the chrome each segment's own
+// style puts around its label.
+//
+// That last term is the one that was missing. styles.Button pads a segment by
+// two columns either side, so a three-segment control drew twelve columns wider
+// than this function claimed — wide enough for the width floor below to say the
+// toggle fitted while the renderer truncated it into "Up…". A width the control
+// reports has to be the width it draws.
 func (s *selectSection) segmentedWidth() int {
 	w := ansi.StringWidth(selectFrameOpen) + ansi.StringWidth(selectFrameClose)
 	for i, item := range s.items {
-		w += ansi.StringWidth(" " + item.Label + " ")
+		w += segmentWidth(item.Label)
 		if i < len(s.items)-1 {
 			w += ansi.StringWidth(selectSeparator)
 		}
 	}
 	return w
+}
+
+// segmentWidth is one drawn segment: its label, the space either side, and the
+// row style's own padding. Every row style pads identically, so a segment does
+// not change width when the selection or the pointer moves over it.
+func segmentWidth(label string) int {
+	return ansi.StringWidth(" "+label+" ") + selectRowStyle(false, false, false).GetHorizontalFrameSize()
+}
+
+// NaturalWidth is the content width this control would rather be given, for a
+// host sizing a modal around it (see WidthForSections). The segmented shape
+// asks for its whole label row, because the alternative to fitting it is
+// truncating it; the list shape fills whatever column it is handed and so asks
+// for nothing.
+func (s *selectSection) NaturalWidth() int {
+	if len(s.items) == 0 {
+		return 0
+	}
+	switch s.shape {
+	case ShapeList:
+		return 0
+	case ShapeSegmented:
+		return s.segmentedWidth()
+	}
+	if len(s.items) >= selectListMinItems {
+		return 0
+	}
+	return s.segmentedWidth()
 }
 
 func (s *selectSection) Render(contentWidth int, focusID, hoverID string) RenderedSection {
@@ -169,7 +205,7 @@ func (s *selectSection) Render(contentWidth int, focusID, hoverID string) Render
 	if s.shapeFor(contentWidth) == ShapeSegmented {
 		return s.renderSegmented(contentWidth, focused, hovered, rowHovered)
 	}
-	return s.renderList(contentWidth, rowHovered)
+	return s.renderList(contentWidth, focused, hovered, rowHovered)
 }
 
 // renderSegmented draws [ A | B | C ] with one hit region per segment. The
@@ -191,7 +227,7 @@ func (s *selectSection) renderSegmented(contentWidth int, focused, hovered bool,
 		}
 		parts = append(parts, style.Render(" "+item.Label+" "))
 
-		start, end := x, x+ansi.StringWidth(" "+item.Label+" ")
+		start, end := x, x+segmentWidth(item.Label)
 		if i < len(s.items)-1 {
 			// The separator belongs to the choice on its left, so no click
 			// between two choices misses both.
@@ -221,8 +257,20 @@ func (s *selectSection) renderSegmented(contentWidth int, focused, hovered bool,
 
 // renderList draws one row per choice: the ❯ cursor, the label column aligned
 // across every choice, then the description column. A disabled row keeps its
-// place with its reason where the description was.
-func (s *selectSection) renderList(contentWidth int, rowHovered func(int) bool) RenderedSection {
+// place with its reason where the description was. The rows and their
+// more-above / more-below markers sit inside a border whose colour is the
+// control's focus state, so a modal holding three of these says which one has
+// the keyboard rather than leaving three gold rows to be told apart.
+func (s *selectSection) renderList(contentWidth int, focused, hovered bool, rowHovered func(int) bool) RenderedSection {
+	border := selectListBorderStyle(focused, hovered)
+	frameX := border.GetHorizontalFrameSize()
+	frameLeft := border.GetBorderLeftSize()
+	frameTop := border.GetBorderTopSize()
+	inner := contentWidth
+	if contentWidth > 0 {
+		inner = max(1, contentWidth-frameX)
+	}
+
 	// The label column is measured over every choice, not just the visible
 	// window, so scrolling does not shift the descriptions sideways.
 	labelW := 0
@@ -251,18 +299,47 @@ func (s *selectSection) renderList(contentWidth int, rowHovered func(int) bool) 
 		}
 		text := cursor + item.Label + strings.Repeat(" ", labelW-ansi.StringWidth(item.Label)) + "   " + desc
 		style := selectRowStyle(reason != "", selected, rowHovered(idx) && !selected)
-		lines = append(lines, renderSelectRow(style, text, contentWidth))
+		lines = append(lines, renderSelectRow(style, text, inner))
 	}
 	content := strings.Join(lines, "\n")
-	if contentWidth > 0 {
-		content = truncateSelectLines(content, contentWidth)
+	if inner > 0 {
+		content = truncateSelectLines(content, inner)
 	}
-	focusables := append(
-		[]FocusableInfo{s.core.sectionFocusable(contentWidth, visible)},
-		s.core.rowFocusables(contentWidth, start, visible, true)...,
-	)
-	content, focusables = s.core.withMarkers(content, focusables, start, visible)
-	return RenderedSection{Content: content, Focusables: focusables}
+	// The rows are laid out in the box's own coordinates first, markers
+	// included, and then moved inside the border in one step — so the border is
+	// one offset applied to every region rather than a term each caller of
+	// rowFocusables has to remember.
+	rows := s.core.rowFocusables(inner, start, visible, true)
+	content, rows = s.core.withMarkers(content, rows, start, visible)
+	if contentWidth > 0 {
+		// lipgloss counts the border inside Width, so the box is asked for the
+		// whole content column and the rows were sized to what is left of it.
+		content = border.Width(contentWidth).Render(content)
+	} else {
+		content = border.Render(content)
+	}
+	for i := range rows {
+		rows[i].OffsetX += frameLeft
+		rows[i].OffsetY += frameTop
+	}
+	// The control's Tab stop covers the whole box, border included: hovering
+	// the frame lights the control, and a click on a border cell focuses it
+	// without landing on a row — a border is not a choice.
+	section := s.core.sectionFocusable(contentWidth, measureHeight(content))
+	return RenderedSection{Content: content, Focusables: append([]FocusableInfo{section}, rows...)}
+}
+
+// selectListBorderStyle is the box around the list shape. It follows the same
+// ladder a modal input's border does — BorderNormal idle, Primary focused,
+// TextMuted hovered — because a selector is a control the keyboard lands on and
+// nothing else in a modal says so. The selected row keeps its Primary fill
+// whether or not the control has focus, so the control still says which choice
+// is active when the keyboard is elsewhere; the border is what says where the
+// keyboard is.
+func selectListBorderStyle(focused, hovered bool) lipgloss.Style {
+	return lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(selectFrameStyle(focused, hovered).GetForeground())
 }
 
 // renderSelectRow draws one list row across the whole content column. A row's

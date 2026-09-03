@@ -635,10 +635,21 @@ func TestCreateModalKindClickChangesKindAndPlaceholder(t *testing.T) {
 	if !ok {
 		t.Fatal("kind control was not hit-tested")
 	}
+	// The list shape is a bordered control (td-c6904c), so the region's top
+	// line is the border and the rows begin one below it. A click on the border
+	// is a click on chrome: it focuses the control and moves nothing.
+	if cmd := m.handleCreateShellMouse(tea.MouseClickMsg{
+		X: region.Rect.X + 2, Y: region.Rect.Y, Button: tea.MouseLeft,
+	}); cmd != nil {
+		t.Fatalf("border click submitted: %v", cmd)
+	}
+	if m.createForm.Kind() != workspacecreate.KindShell {
+		t.Fatalf("a click on the control's border changed the kind to %v", m.createForm.Kind())
+	}
 	// The catalog outgrew the horizontal toggle in M2: the kind list is
 	// vertical now, so a click picks by row. Row 1 is Worktree.
 	if cmd := m.handleCreateShellMouse(tea.MouseClickMsg{
-		X: region.Rect.X + 2, Y: region.Rect.Y + 1, Button: tea.MouseLeft,
+		X: region.Rect.X + 2, Y: region.Rect.Y + 2, Button: tea.MouseLeft,
 	}); cmd != nil {
 		t.Fatalf("kind click submitted: %v", cmd)
 	}
@@ -656,7 +667,7 @@ func TestCreateModalKindClickChangesKindAndPlaceholder(t *testing.T) {
 		t.Fatal("kind control missing after rebuild")
 	}
 	m.handleCreateShellMouse(tea.MouseClickMsg{
-		X: region.Rect.X + 2, Y: region.Rect.Y, Button: tea.MouseLeft,
+		X: region.Rect.X + 2, Y: region.Rect.Y + 1, Button: tea.MouseLeft,
 	})
 	if m.createForm.Kind() != workspacecreate.KindShell {
 		t.Fatalf("kind after top-row click = %v, want shell", m.createForm.Kind())
@@ -694,8 +705,9 @@ func TestCreateModalKindSwitchKeepsChosenAgent(t *testing.T) {
 	if !ok {
 		t.Fatal("kind control missing after rebuild")
 	}
+	// The first row sits one line inside the control's border (td-c6904c).
 	if cmd := m.handleCreateShellMouse(tea.MouseClickMsg{
-		X: region.Rect.X + region.Rect.W/4, Y: region.Rect.Y, Button: tea.MouseLeft,
+		X: region.Rect.X + region.Rect.W/4, Y: region.Rect.Y + 1, Button: tea.MouseLeft,
 	}); cmd != nil {
 		t.Fatalf("kind click submitted: %v", cmd)
 	}

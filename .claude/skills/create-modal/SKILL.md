@@ -187,6 +187,8 @@ modal.Select("kind", items, &selectedIdx,
 ```
 - The default control for a single choice: sort, filter, kind. `modal.List` is the low-level column of rows for lists that are not a single choice.
 - Two shapes, chosen by count: a segmented `[ A | B | C ]` under five choices, a `❯`-cursor full-width list with an aligned description column at five or more (and the list whenever the segments would not fit the width). `WithShape(modal.ShapeList)` / `WithShape(modal.ShapeSegmented)` forces one.
+- The list shape is a **bordered control**: its rows and scroll markers sit inside a rounded border that follows focus exactly as `modal.Input`'s does (BorderNormal idle, Primary focused, TextMuted hovered). A click on a border cell focuses the control and selects nothing. The selected row keeps its Primary fill either way — the fill says which choice is active, the border says where the keyboard is.
+- **Size the modal to it.** A segmented control cannot shrink: build the sections into a slice first and pass `modal.WidthForSections(sections...)`, capped to your frame, to `modal.WithWidth` — otherwise a control too wide for the box truncates into a stub. See `viewModalWidth` in `internal/pluginbrowser/overlays.go`.
 - Arrows and h/j/k/l move by one and stop at the ends; home/end jump; Enter activates.
 - `WithDisabled(func(i int) string)` keeps a choice visible and muted with its reason in place of its description, and makes it unreachable by key or click.
 - `WithMaxVisible(n)` scrolls the rest, with `↑ more above` / `↓ more below`.

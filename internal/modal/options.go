@@ -200,6 +200,13 @@ const (
 	MaxModalWidth = 120
 	ModalPadding  = 6 // border(2) + horizontal padding(4)
 
+	// ScrollbarColumns is the content column the body's scrollbar takes when
+	// the content is taller than the viewport — buildLayout re-renders every
+	// section at contentWidth-1 once it needs one. A host sizing a modal to its
+	// widest control budgets for it, or the control fits until the modal grows
+	// a scrollbar and then quietly changes shape.
+	ScrollbarColumns = 1
+
 	// DefaultMarginX/Y are the cells left clear around the modal box.
 	DefaultMarginX = 2
 	DefaultMarginY = 1

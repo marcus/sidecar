@@ -170,6 +170,27 @@ func (m *Model) modalWidth() int {
 	return w
 }
 
+// viewModalWidth is the View modal's width: the browser's usual modal width,
+// grown to whatever the widest control it holds needs, and held to the frame
+// the way the coverage modal is.
+//
+// The fixed width was the bug. A collection declaring three sort keys draws a
+// segmented control wider than 46 columns, and a modal that cannot grow leaves
+// the control to truncate itself into a stub — which is what the maintainer
+// saw. Sizing to the control keeps the segmented shape the design language
+// promises for a handful of choices; where even the capped width cannot hold
+// it, the control's own floor drops it to the list, which always fits.
+func (m *Model) viewModalWidth(sections []modal.Section) int {
+	w := max(overlayModalCols, modal.WidthForSections(sections...))
+	if m.width > 0 && w > m.width-4 {
+		w = m.width - 4
+	}
+	if w < 20 {
+		w = 20
+	}
+	return w
+}
+
 // primeOverlay renders once so focus IDs exist before the next key, then puts
 // focus where the modal's first control is. Without it the first key after the
 // modal opens is dropped, because View has not run yet.
@@ -204,7 +225,7 @@ func (m *Model) openViewModal() tea.Cmd {
 		return nil
 	}
 	s := m.state(c)
-	m.overlay = overlay{kind: overlayView, width: m.modalWidth()}
+	m.overlay = overlay{kind: overlayView}
 	m.overlay.sortIdx = indexOfSort(c, s.sortKey)
 	m.overlay.viewIdx = indexOfView(c, s.view)
 
@@ -218,23 +239,28 @@ func (m *Model) openViewModal() tea.Cmd {
 		viewItems = append(viewItems, modal.SelectItem{ID: "view:" + v.ID, Label: v.Title})
 	}
 
-	box := modal.New("View · "+c.Title, modal.WithWidth(m.overlay.width), modal.WithHints(false)).
-		AddSection(modal.Custom(func(int, string, string) modal.RenderedSection {
+	// The sections are collected before the box is made, because the box's
+	// width is decided from them: a modal that cannot hold its widest control
+	// truncates it, and the control has no way to ask for more room after the
+	// fact. See viewModalWidth.
+	sections := []modal.Section{
+		modal.Custom(func(int, string, string) modal.RenderedSection {
 			return modal.RenderedSection{Content: "Current sort: " + sortLabel(c, s.sortKey)}
-		}, nil))
+		}, nil),
+	}
 	if len(sortItems) > 0 {
-		box = box.
-			AddSection(modal.Spacer()).
-			AddSection(modal.Select(viewSortListID, sortItems, &m.overlay.sortIdx,
+		sections = append(sections,
+			modal.Spacer(),
+			modal.Select(viewSortListID, sortItems, &m.overlay.sortIdx,
 				modal.WithMaxVisible(min(len(sortItems), maxFilterChoicesVisible))))
 	}
 	if len(c.Views) > 0 {
-		box = box.
-			AddSection(modal.Spacer()).
-			AddSection(modal.Custom(func(int, string, string) modal.RenderedSection {
+		sections = append(sections,
+			modal.Spacer(),
+			modal.Custom(func(int, string, string) modal.RenderedSection {
 				return modal.RenderedSection{Content: "View"}
-			}, nil)).
-			AddSection(modal.Select(viewViewsListID, viewItems, &m.overlay.viewIdx,
+			}, nil),
+			modal.Select(viewViewsListID, viewItems, &m.overlay.viewIdx,
 				modal.WithMaxVisible(min(len(viewItems), maxFilterChoicesVisible))))
 	}
 	// The filters block, after the sort list and before Done, one control per
@@ -264,13 +290,13 @@ func (m *Model) openViewModal() tea.Cmd {
 			// position.
 			label += "  (scope)"
 		}
-		box = box.
-			AddSection(modal.Spacer()).
-			AddSection(modal.Custom(func(int, string, string) modal.RenderedSection {
+		sections = append(sections,
+			modal.Spacer(),
+			modal.Custom(func(int, string, string) modal.RenderedSection {
 				return modal.RenderedSection{Content: styles.Muted.Render(label)}
 			}, nil))
 		if control.decl.Kind == pluginhost.FilterText {
-			box = box.AddSection(modal.Input(filterTextPfx+control.decl.ID, &control.text))
+			sections = append(sections, modal.Input(filterTextPfx+control.decl.ID, &control.text))
 			continue
 		}
 		items := make([]modal.SelectItem, 0, len(control.decl.Choices))
@@ -280,12 +306,18 @@ func (m *Model) openViewModal() tea.Cmd {
 				Label: choice.Title,
 			})
 		}
-		box = box.AddSection(modal.Select(
+		sections = append(sections, modal.Select(
 			filterChoicePfx+control.decl.ID, items, &control.choice,
 			modal.WithMaxVisible(min(len(items), maxFilterChoicesVisible)),
 		))
 	}
-	box = box.AddSection(modal.Spacer()).AddSection(modal.Buttons(modal.Btn(" Done ", viewDoneID)))
+	sections = append(sections, modal.Spacer(), modal.Buttons(modal.Btn(" Done ", viewDoneID)))
+
+	m.overlay.width = m.viewModalWidth(sections)
+	box := modal.New("View · "+c.Title, modal.WithWidth(m.overlay.width), modal.WithHints(false))
+	for _, section := range sections {
+		box = box.AddSection(section)
+	}
 
 	m.overlay.box = box
 	focus := viewSortListID
