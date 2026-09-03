@@ -75,11 +75,11 @@ func TestGlobalPaneMoveShortcutOpensModalFromPreviewAndList(t *testing.T) {
 	run(t, m, focusCmd)
 	m.terminalSearch.InputActive = true
 	m.WorkspacesKey(globalMoveKey('M'))
-	if m.paneLayoutModal != nil || m.terminalSearch.Query != "M" {
-		t.Fatalf("Sessions terminal search lost M: modal=%v query=%q", m.paneLayoutModal != nil, m.terminalSearch.Query)
+	if m.paneLayoutModal != nil || m.terminalSearch.Query() != "M" {
+		t.Fatalf("Sessions terminal search lost M: modal=%v query=%q", m.paneLayoutModal != nil, m.terminalSearch.Query())
 	}
 	m.terminalSearch.InputActive = false
-	m.terminalSearch.Query = ""
+	m.terminalSearch.SetQuery("")
 	if handled, _ := m.WorkspacesKey(globalMoveKey('M')); !handled || m.paneLayoutModal == nil || m.paneLayoutModal.LeafID() != primary.ID {
 		t.Fatal("focused non-interactive Sessions terminal M did not open its modal")
 	}

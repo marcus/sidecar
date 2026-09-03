@@ -102,7 +102,7 @@ func (p *Plugin) projectPreviewKeyFor(layout PaneLayout, width, height int) (pro
 		defaultBg:     p.terminalDefaultBackground,
 		search: terminalSearchPreviewKey{
 			input: p.terminalSearch.InputActive, panel: p.terminalSearch.Panel,
-			query: p.terminalSearch.Query, current: p.terminalSearch.Current,
+			query: p.terminalSearch.Query(), current: p.terminalSearch.Current,
 			generation: p.terminalSearch.Generation, matches: len(p.terminalSearch.Matches),
 		},
 		selection: terminalSelectionPreviewKey{

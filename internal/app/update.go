@@ -160,6 +160,14 @@ func (m *Model) handlePaste(msg tea.PasteMsg) (tea.Model, tea.Cmd) {
 		return m, m.overview.WorkspacesPreviewCmd()
 	}
 
+	// A live terminal search bar in the global browser is a text input and
+	// takes the paste before the pane it is searching does.
+	if m.globalWorkspacesVisible() {
+		if handled, cmd := m.overview.WorkspacesTerminalSearchPaste(msg); handled {
+			return m, cmd
+		}
+	}
+
 	// A pane the global browser is typing into is a real terminal and takes the
 	// paste, exactly as it takes typed characters.
 	if m.globalWorkspacesVisible() {

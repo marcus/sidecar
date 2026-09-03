@@ -31,7 +31,7 @@ func terminalSearchPlugin(content string, base int) *Plugin {
 func TestTerminalSearchFindsCaseInsensitiveAbsoluteMatches(t *testing.T) {
 	p := terminalSearchPlugin("zero\nError one and error two\nlast", 50)
 	p.beginTerminalSearch()
-	p.terminalSearch.Query = "error"
+	p.terminalSearch.SetQuery("error")
 	p.recomputeTerminalSearch()
 
 	if len(p.terminalSearch.Matches) != 2 {
@@ -77,8 +77,8 @@ func TestTerminalSearchKeepsBackslashLiteral(t *testing.T) {
 	p := terminalSearchPlugin("path\\to\\file", 0)
 	p.beginTerminalSearch()
 	handled, _ := p.handleTerminalSearchKey(tea.KeyPressMsg{Code: '\\', Text: "\\"}, false)
-	if !handled || p.terminalSearch.Query != "\\" {
-		t.Fatalf("backslash handled=%v query=%q, want literal input", handled, p.terminalSearch.Query)
+	if !handled || p.terminalSearch.Query() != "\\" {
+		t.Fatalf("backslash handled=%v query=%q, want literal input", handled, p.terminalSearch.Query())
 	}
 }
 
@@ -127,7 +127,7 @@ func TestTerminalSearchLoadsAndSearchesUnvisitedHistory(t *testing.T) {
 	if cmd := p.beginTerminalSearch(); cmd == nil {
 		t.Fatal("search did not request unvisited history")
 	}
-	p.terminalSearch.Query = "line-0010"
+	p.terminalSearch.SetQuery("line-0010")
 	state := p.terminalHistory[key]
 	searchGen := p.terminalSearch.Generation
 	p.applyTerminalSearchHistory(terminalSearchHistoryLoadedMsg{
@@ -163,7 +163,7 @@ func TestClearedTerminalSearchRejectsLateHistoryWithoutChangingFollow(t *testing
 	}
 	state := p.terminalHistory[key]
 	searchGen := p.terminalSearch.Generation
-	p.terminalSearch.Query = "line"
+	p.terminalSearch.SetQuery("line")
 	p.clearTerminalSearch()
 
 	p.applyTerminalSearchHistory(terminalSearchHistoryLoadedMsg{
@@ -182,7 +182,7 @@ func TestClearedTerminalSearchRejectsLateHistoryWithoutChangingFollow(t *testing
 		SearchGen:  searchGen,
 	})
 	start, _, _ := p.shells[0].Agent.OutputBuf.AbsoluteRange()
-	if start != 600 || p.primaryTermPane().Scroll != 0 || p.terminalSearch.Query != "" {
+	if start != 600 || p.primaryTermPane().Scroll != 0 || p.terminalSearch.Query() != "" {
 		t.Fatalf("late cleared search changed state: base=%d scroll=%d search=%#v",
 			start, p.primaryTermPane().Scroll, p.terminalSearch)
 	}
@@ -265,7 +265,7 @@ func TestBeginTerminalSearchCancelsPreviousSourceLoad(t *testing.T) {
 func TestTerminalSearchUnicodeCaseFoldMapsVisualColumns(t *testing.T) {
 	p := terminalSearchPlugin("x Kelvin", 0)
 	p.beginTerminalSearch()
-	p.terminalSearch.Query = "kelvin"
+	p.terminalSearch.SetQuery("kelvin")
 	p.recomputeTerminalSearch()
 	if len(p.terminalSearch.Matches) != 1 {
 		t.Fatalf("Unicode fold matches = %#v, want one", p.terminalSearch.Matches)
@@ -339,5 +339,57 @@ func TestTerminalSearchOverAPluginWithNoReachStateDoesNotPanic(t *testing.T) {
 	// And the search itself opened, over the buffer the surface already has.
 	if !p.terminalSearch.InputActive {
 		t.Fatal("the search never opened")
+	}
+}
+
+// M4d-d: the terminal search bar is the shared query field, so it edits like
+// every other query bar rather than only appending and backspacing.
+func TestTerminalSearchWordDeleteRemovesOneWord(t *testing.T) {
+	p := terminalSearchPlugin("error one\nerror two", 0)
+	p.beginTerminalSearch()
+	p.terminalSearch.SetQuery("error one")
+	p.recomputeTerminalSearch()
+	if len(p.terminalSearch.Matches) != 1 {
+		t.Fatalf("matches for the typed query = %d, want 1", len(p.terminalSearch.Matches))
+	}
+
+	handled, _ := p.handleTerminalSearchKey(tea.KeyPressMsg{Code: tea.KeyBackspace, Mod: tea.ModAlt}, false)
+	if !handled {
+		t.Fatal("alt+backspace was not consumed by the search bar")
+	}
+	if got := p.terminalSearch.Query(); got != "error " {
+		t.Fatalf("query after alt+backspace = %q, want %q", got, "error ")
+	}
+	// A word delete is a query change, so it re-matches.
+	if len(p.terminalSearch.Matches) != 2 {
+		t.Fatalf("matches after the word delete = %d, want 2", len(p.terminalSearch.Matches))
+	}
+}
+
+func TestTerminalSearchPasteInsertsAtTheCaret(t *testing.T) {
+	p := terminalSearchPlugin("needle here\nnothing", 0)
+	p.beginTerminalSearch()
+
+	handled, _ := p.handleTerminalSearchPaste(tea.PasteMsg{Content: "needle"})
+	if !handled {
+		t.Fatal("a live terminal search refused a paste")
+	}
+	if got := p.terminalSearch.Query(); got != "needle" {
+		t.Fatalf("query after paste = %q", got)
+	}
+	if len(p.terminalSearch.Matches) != 1 {
+		t.Fatalf("matches after paste = %d, want 1", len(p.terminalSearch.Matches))
+	}
+	// The caret is real: home then a paste lands at the start.
+	p.handleTerminalSearchKey(tea.KeyPressMsg{Code: tea.KeyHome}, false)
+	p.handleTerminalSearchPaste(tea.PasteMsg{Content: "x"})
+	if got := p.terminalSearch.Query(); got != "xneedle" {
+		t.Fatalf("query after a paste at the caret = %q, want %q", got, "xneedle")
+	}
+
+	// A closed bar is not a text input.
+	p.handleTerminalSearchKey(tea.KeyPressMsg{Code: tea.KeyEscape}, false)
+	if handled, _ := p.handleTerminalSearchPaste(tea.PasteMsg{Content: "y"}); handled {
+		t.Fatal("a closed terminal search took a paste")
 	}
 }

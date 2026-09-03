@@ -348,8 +348,14 @@ func (p *Plugin) renderCapturedTerminalWithClose(chips, actions []string, hint s
 	}), 0, dimText)
 	if p.terminalSearch.Panel == termPanel && p.terminalSearch.SourceKey != "" {
 		if p.terminalSearch.InputActive {
-			hint += " " + dimText("/"+p.terminalSearch.Query+"▌")
-		} else if p.terminalSearch.Query != "" {
+			// This bar is a segment of the pane's hint line rather than a
+			// full-width row, so it keeps its own shape instead of
+			// queryfield.RenderRow — but the caret is drawn where the caret
+			// actually is, which is the point of the shared field.
+			runes := []rune(p.terminalSearch.Query())
+			caret := min(max(p.terminalSearch.field.Cursor(), 0), len(runes))
+			hint += " " + dimText("/"+string(runes[:caret])+"▌"+string(runes[caret:]))
+		} else if p.terminalSearch.Query() != "" {
 			if len(p.terminalSearch.Matches) == 0 {
 				hint += " " + dimText("no matches")
 			} else {

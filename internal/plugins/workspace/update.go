@@ -2193,6 +2193,14 @@ func (p *Plugin) update(msg tea.Msg) (plugin.Plugin, tea.Cmd) {
 			}
 			break
 		}
+		// A live terminal search bar is a text input too, and it owns the
+		// keyboard while it is up — before the live pane gets the paste.
+		if handled, cmd := p.handleTerminalSearchPaste(msg); handled {
+			if cmd != nil {
+				cmds = append(cmds, cmd)
+			}
+			break
+		}
 		// v2: bracketed paste arrives as a dedicated message. A focused list
 		// filter is a text input and takes the paste first; otherwise it goes
 		// to tmux when in interactive mode.

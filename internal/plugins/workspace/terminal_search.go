@@ -5,6 +5,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/marcus/sidecar/internal/queryfield"
 	"github.com/marcus/sidecar/internal/tty"
 	"github.com/marcus/sidecar/internal/ui"
 )
@@ -19,15 +20,25 @@ type terminalSearchMatches struct {
 	Items []terminalSearchMatch
 }
 
+// terminalSearchState is the terminal pane's `/` bar. Its query is the app's
+// shared query field, so the bar edits like every other query bar: the caret
+// moves, alt+backspace deletes a word, home and end work, and a paste arrives
+// whole.
 type terminalSearchState struct {
 	InputActive bool
 	SourceKey   string
 	Panel       bool
-	Query       string
+	field       queryfield.Field
 	Matches     []terminalSearchMatch
 	Current     int
 	Generation  uint64
 }
+
+// Query is the text typed into the terminal search bar.
+func (s *terminalSearchState) Query() string { return s.field.Query() }
+
+// SetQuery replaces the text and puts the caret at its end.
+func (s *terminalSearchState) SetQuery(query string) { s.field.SetQuery(query) }
 
 type terminalSearchHistoryLoadedMsg struct {
 	Source     terminalHistorySource
@@ -45,25 +56,31 @@ func isInteractiveSearchKey(msg tea.KeyPressMsg) bool {
 func (p *Plugin) handleTerminalSearchKey(msg tea.KeyPressMsg, interactive bool) (bool, tea.Cmd) {
 	search := &p.terminalSearch
 	if search.InputActive {
+		// InputActive is what means "this bar owns the keyboard", so the
+		// field's focus is derived from it rather than tracked twice.
+		search.field.Focus()
 		switch msg.Code {
 		case tea.KeyEscape:
+			// Esc leaves the bar in one press. It is the one key the field is
+			// never offered: this bar is a mode over a live terminal, not a
+			// filter beside a list, and the field's clear-then-blur would make
+			// leaving it two.
 			search.InputActive = false
+			search.field.Blur()
 			return true, nil
 		case tea.KeyEnter:
 			search.InputActive = false
+			search.field.Blur()
 			p.recomputeTerminalSearch()
 			p.revealTerminalSearchMatch()
 			return true, nil
-		case tea.KeyBackspace:
-			if len(search.Query) > 0 {
-				runes := []rune(search.Query)
-				search.Query = string(runes[:len(runes)-1])
-				p.recomputeTerminalSearch()
-			}
-			return true, nil
 		}
-		if msg.Text != "" && !msg.Mod.Contains(tea.ModCtrl) && !msg.Mod.Contains(tea.ModAlt) {
-			search.Query += msg.Text
+		// Everything else is the field's: text, the caret keys, word ops, home
+		// and end. The bar still consumes what the field refuses, so a stray
+		// key cannot reach the terminal underneath.
+		before := search.Query()
+		search.field.HandleKey(msg)
+		if search.Query() != before {
 			p.recomputeTerminalSearch()
 		}
 		return true, nil
@@ -73,7 +90,7 @@ func (p *Plugin) handleTerminalSearchKey(msg tea.KeyPressMsg, interactive bool) 
 	if trigger {
 		return true, p.beginTerminalSearch()
 	}
-	if search.Query != "" && len(search.Matches) > 0 {
+	if search.Query() != "" && len(search.Matches) > 0 {
 		switch msg.String() {
 		case "n":
 			search.Current = (search.Current + 1) % len(search.Matches)
@@ -85,7 +102,7 @@ func (p *Plugin) handleTerminalSearchKey(msg tea.KeyPressMsg, interactive bool) 
 			return true, nil
 		}
 	}
-	if search.Query != "" && msg.Code == tea.KeyEscape {
+	if search.Query() != "" && msg.Code == tea.KeyEscape {
 		p.clearTerminalSearch()
 		return true, nil
 	}
@@ -107,11 +124,12 @@ func (p *Plugin) beginTerminalSearch() tea.Cmd {
 	}
 	if p.terminalSearch.SourceKey != source.Key {
 		p.cancelTerminalHistoryIntentByKey(p.terminalSearch.SourceKey)
-		p.terminalSearch.Query = ""
+		p.terminalSearch.field.Reset()
 		p.terminalSearch.Matches = nil
 		p.terminalSearch.Current = 0
 	}
 	p.terminalSearch.InputActive = true
+	p.terminalSearch.field.Focus()
 	p.terminalSearch.SourceKey = source.Key
 	p.terminalSearch.Panel = termPanel
 	p.terminalSearch.Generation++
@@ -199,8 +217,8 @@ func (p *Plugin) clearTerminalSearch() {
 	sourceKey := p.terminalSearch.SourceKey
 	p.terminalSearch.Generation++
 	p.terminalSearch.InputActive = false
+	p.terminalSearch.field.Reset()
 	p.terminalSearch.SourceKey = ""
-	p.terminalSearch.Query = ""
 	p.terminalSearch.Matches = nil
 	p.terminalSearch.Current = 0
 	p.cancelTerminalHistoryIntentByKey(sourceKey)
@@ -215,7 +233,7 @@ func (p *Plugin) recomputeTerminalSearch() {
 	}
 	search.Matches = search.Matches[:0]
 	search.Current = 0
-	queryTokens := terminalSearchGraphemes(search.Query)
+	queryTokens := terminalSearchGraphemes(search.Query())
 	if len(queryTokens) == 0 {
 		return
 	}
@@ -326,7 +344,7 @@ func (p *Plugin) revealTerminalSearchMatch() {
 
 func (p *Plugin) terminalSearchMatches(termPanel bool) *terminalSearchMatches {
 	search := &p.terminalSearch
-	if search.Query == "" || search.Panel != termPanel {
+	if search.Query() == "" || search.Panel != termPanel {
 		return nil
 	}
 	source, ok := p.terminalHistoryFor(termPanel)
@@ -334,4 +352,22 @@ func (p *Plugin) terminalSearchMatches(termPanel bool) *terminalSearchMatches {
 		return nil
 	}
 	return &terminalSearchMatches{Items: search.Matches}
+}
+
+// handleTerminalSearchPaste puts a bracketed paste into the terminal search bar
+// while it is taking text. A query bar is a text input, so a paste lands in it
+// exactly as typed characters do, and it is asked before the paste is offered
+// to the live pane.
+func (p *Plugin) handleTerminalSearchPaste(msg tea.PasteMsg) (bool, tea.Cmd) {
+	search := &p.terminalSearch
+	if !search.InputActive {
+		return false, nil
+	}
+	search.field.Focus()
+	before := search.Query()
+	search.field.HandlePaste(msg)
+	if search.Query() != before {
+		p.recomputeTerminalSearch()
+	}
+	return true, nil
 }
