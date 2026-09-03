@@ -1,0 +1,45 @@
+ ◱ Sidecar │   Sessions     Activity     Proof     Recall                    td     Git     Files     Workspaces     Notes    sidecar [plugin-ux-m4d-d] ▾  ·  ⚙
+╭─────────────────────────────────────────────╮ ╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│ Notes             5/8  Active   + New Note  │┃│ [md]                                                           Created: Sep 3, 2026 | Updated: Sep 3, 2026 • │
+│ / release ▌                                 │┃│                                                                                                              │
+│                                             │┃│                                                                                                              │
+│ > Features to add late August 2026          │┃│    Plugin improvements:                                                                                 ┃    │
+│   herdr orchestration leftovers             │┃│                                                                                                         ┃    │
+│   Notifications testing:                    │┃│    We've been working on the plugin ecosystem here: docs/plans/active/plugin-ecosystem/README.md we     ┃    │
+│   Sidecar (main, pushed)                    │┃│    started with the recall plugin and have a good start. I have some questions and tickets for          ┃    │
+│   Plugin improvements:                      │┃│    improvement. td-f9f007 is the epic. we'll use that for ongoing improvements and create a worktree    ┃    │
+│                                             │┃│    using sidecar worktrees and begin orchestrating the following improvements to the plugin system.     ┃    │
+│                                             │┃│    Create a plan to address this, we can also answer some of the open questions especially w/r/t the    ┃    │
+│                                             │┃│    specific recall integration as below before starting (or while the more general fixes are happening).┃    │
+│                                             │┃│    We can make updates to the docs/reference/design-language.md file as well for things like the mouse  ┃    │
+│                                             │┃│    and footer suggestions below so we this is something that will apply generally across sidecar.       ┃    │
+│                                             │┃│                                                                                                         ┃    │
+│                                             │┃│    General:                                                                                             ┃    │
+│                                             │┃│                                                                                                         ┃    │
+│                                             │┃│    • in plugins we should be able to drag panes to resize as elsewhere in sidecar                       ┃    │
+│                                             │┃│    • tabbing to focus panes should work as elsewhere in sidecar                                         ┃    │
+│                                             │┃│    • sidecar should support all actions by mouse. we should reuse as much of the existing UI component  ┃    │
+│                                             │┃│    structure as possible so plugins maintain parity with the rest of sidecar without having separate    ┃    │
+│                                             │┃│    work every time there's a UI improvement                                                             ┃    │
+│                                             │┃│      • focusing the search field (search field should also indicate more clearly when it's focused as we┃    │
+│                                             │┃│      do elsewhere in sidecar                                                                            ┃    │
+│                                             │┃│      • opening the filters                                                                              ┃    │
+│                                             │┃│      • mouse scrolling and scrollbars should be supported in plugins                                    ┃    │
+│                                             │┃│      • clicking items in lists                                                                          ┃    │
+│                                             │┃│      • text fields should support                                                                       ┃    │
+│                                             │┃│      • clicking panes should move focus to the pane that was clicked                                    ┃    │
+│                                             │┃│                                                                                                         ┃    │
+│                                             │┃│                                                                                                         ┃    │
+│                                             │┃│    Recall integration questions / improvements:                                                         ┃    │
+│                                             │┃│                                                                                                         ┃    │
+│                                             │┃│    • How do we switch sources/scope? We need in-app config and recall should not necessarily be project │    │
+│                                             │┃│    scoped in the UI, it can be, but it can also expand scope                                            │    │
+│                                             │┃│    • It shows 1 of 13 sources did not answer but seems to actually only load results from td queries    │    │
+│                                             │┃│    (using clara-home as the example), maybe we are scoping too strictly. searching for specialized in   │    │
+│                                             │┃│    the CLI returns a lot of results that don't show up in-app - see                                     │    │
+│                                             │┃│    /Users/marcus/Desktop/Screenshots/specialized-query.png                                              │    │
+│                                             │┃│    • In the footer we show "scoped to project..." we should show the scope in the top next to the filter│    │
+│                                             │┃│    button as more of a pill / filter indicator rather than a sentence at the bottom                     │    │
+│                                             │┃│                                                                                                              │
+╰─────────────────────────────────────────────╯ ╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+ ctrl+c  quit

@@ -509,18 +509,25 @@ func (p *Plugin) registerSearchClearRegions(paneY int) {
 	}
 	if p.searchMode && p.treeSearchClearRect.W > 0 {
 		// The tree bar is the second of the tree pane's two header rows, drawn
-		// one column in from the pane's left border. treeItemY = paneY + 3 is
-		// the same arithmetic read the other way.
+		// past the pane's border and padding. treeItemY = paneY + 3 is the same
+		// row arithmetic read the other way.
 		r := p.treeSearchClearRect
-		p.mouseHandler.HitMap.AddRect(regionTreeSearchClear, 1+r.X, paneY+2, r.W, r.H, nil)
+		p.mouseHandler.HitMap.AddRect(regionTreeSearchClear, treePaneChromeX/2+r.X, paneY+2, r.W, r.H, nil)
 	}
 }
 
 // treeSearchBarWidth is the row the tree pane has room for: the pane's width
-// less its two border columns.
+// less its chrome. styles.RenderPanel draws a border and a column of padding on
+// each side, so four columns of the pane are not the content's — and a bar
+// rendered two columns too wide loses its right-hand cells to the truncation,
+// which is how the × silently vanished the first time.
 func (p *Plugin) treeSearchBarWidth() int {
-	return max(p.treeWidth-2, 1)
+	return max(p.treeWidth-treePaneChromeX, 1)
 }
+
+// treePaneChromeX is the tree pane's border and padding: one column of each on
+// each side.
+const treePaneChromeX = 4
 
 // renderFileOpBar renders the file operation input bar (move/rename/create/delete).
 func (p *Plugin) renderFileOpBar() string {

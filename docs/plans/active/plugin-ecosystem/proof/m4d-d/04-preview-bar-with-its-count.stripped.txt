@@ -1,0 +1,45 @@
+ ◱ Sidecar │   Sessions     Activity     Proof     Recall                    td     Git     Files     Workspaces     Notes    sidecar [plugin-ux-m4d-d] ▾  ·  ⚙
+/ sidecar shell▌                                                                                                                                         (1/3) ×
+╭─────────────────────────────────────────────╮ ╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│ Files  [name]                               │┃│ AGENTS.md  16.9KB  Sep 3 15:16  -rw-r--r--                                                                   │
+│                                             │┃│                                                                                                              │
+│ + .claude                                   │┃│    2 <!-- td-agent-instructions:version=3 -->                                                              ┃ │
+│ > .codex                                    │┃│    3                                                                                                       ┃ │
+│     skills                                  │┃│    4 ## Working with td                                                                                    ┃ │
+│ + .github                                   │┃│    5                                                                                                       ┃ │
+│ + .kiro                                     │┃│    6 td keeps task context durable across sessions. In a new context, run `td usage --new-session -q` to se│ │
+│ + .proof                                    │┃│    7                                                                                                       │ │
+│ + cmd                                       │┃│    8 Use your judgment about how much tracking a task needs. For substantive work: `td start <id>`, record │ │
+│ + compat                                    │┃│    9                                                                                                       │ │
+│ + configs                                   │┃│   10 Closing needs a review. Say who did it (default trusted mode; delegated/strict allow only the first): │ │
+│ + docs                                      │┃│   11                                                                                                       │ │
+│ + internal                                  │┃│   12 - independent session: `td approve <id> --reason "..."`                                               │ │
+│ + packaging                                 │┃│   13 - a sub-agent: `td approve <id> --reviewed-by "<who>"`                                                │ │
+│ + scripts                                   │┃│   14 - you: `td approve <id> --self-review --reason "..."`                                                 │ │
+│ + website                                   │┃│   15                                                                                                       │ │
+│   .git                                      │┃│   16 Prefer a reviewer with its own `TD_CONTEXT_ID`; never name one who did not review.                    │ │
+│   .gitignore                                │┃│   17                                                                                                       │ │
+│   .golangci.yml                             │┃│   18 Run `td usage` or `td <command> --help`.                                                              │ │
+│   .goreleaser.yml                           │┃│   19                                                                                                       │ │
+│   .worktree-setup.sh                        │┃│   20 <!-- td-agent-instructions:end -->                                                                    │ │
+│   AGENTS.md                                 │┃│   21                                                                                                       │ │
+│   CHANGELOG.md                              │┃│   22 ## Markdown plans                                                                                     │ │
+│   CLAUDE.md                                 │┃│   23                                                                                                       │ │
+│   GEMINI.md                                 │┃│   24 When writing plans or other Markdown documents, do not insert hard line breaks                        │ │
+│   go.mod                                    │┃│   25 to keep a column width — let paragraphs flow as single long lines. Hard-wrapped                       │ │
+│   go.sum                                    │┃│   26 text renders poorly when the document is viewed at any width other than the one                       │ │
+│   go.work                                   │┃│   27 it was written for.                                                                                   │ │
+│   LICENSE                                   │┃│   28                                                                                                       │ │
+│   Makefile                                  │┃│   29 ## Commit completed work by default                                                                   │ │
+│   PRIVACY.md                                │┃│   30                                                                                                       │ │
+│   README.md                                 │┃│   31 Unless the user explicitly asks not to commit, create a focused commit once the                       │ │
+│   THIRD_PARTY_NOTICES.md                    │┃│   32 requested work is complete, verified, and reviewed. Stage only files that belong                      │ │
+│                                             │┃│   33 to the task, preserve unrelated dirty or staged changes, and do not push unless                       │ │
+│                                             │┃│   34 the user asks.                                                                                        │ │
+│                                             │┃│   35                                                                                                       │ │
+│                                             │┃│   36 ## Working inside a Sidecar shell                                                                     │ │
+│                                             │┃│   37                                                                                                       │ │
+│                                             │┃│   38 Run `sidecar agents` for what you can do from here, and use it. `sidecar --agents` and `sidecar -a` ar│ │
+│                                             │┃│   39                                                                                                       │ │
+╰─────────────────────────────────────────────╯ ╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+ enter  Go   esc  Cancel   ctrl+c  quit
