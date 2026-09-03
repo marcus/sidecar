@@ -155,6 +155,7 @@ Writing recall's screens against its real `--help` surfaced facts the draft cann
 | `status.label` length is unbounded but the host must fit it in a reserved column | Add a 24-char bound under Limits |
 | The narrow reflow rule names only the secondary column | State it fully: rank and primary on line one; status label, the remaining short columns, and the secondary text folded into line two |
 | An empty detail box in a `Tab` placement | Host rule, for [host.md](host.md): show the plugin's next collection (recall's `sources`) rather than a blank card, so `abstained` is verifiable in place |
+| `get` carries no filters, so a row found under a filter-chosen scope (recall: a raised-sensitivity profile) expands under the plugin's default scope and can be denied | Add `params.filters{}` to `get`, sent exactly as `list` sends them, so expansion runs under the scope the row was found in |
 
 ## Open questions
 
