@@ -429,6 +429,12 @@ func (c *appDeckContent) SetSize(size paneframe.Size) tea.Cmd {
 func (c *appDeckContent) View(render paneframe.Render) string {
 	if c.node.Kind == panelayout.Primary {
 		c.h.primaryInner = paneframe.Box(render.Origin)
+		// A plugin that owns a selectable box inside its own frame is bound the
+		// same way a hosted viewer is: the host resolves the chords from config
+		// once, and everything it draws answers them identically.
+		if binder, ok := c.h.plugin.(textselect.Binder); ok {
+			binder.SetSelection(c.h.selKeys, c.h.selCopyOnSelect)
+		}
 		frame := c.h.plugin.View(c.size.Width, c.size.Height)
 		frame = c.h.scanPrimary(frame, render.Origin)
 		return ui.FitBlock(frame, c.size.Width, c.size.Height)

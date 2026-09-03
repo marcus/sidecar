@@ -12,6 +12,7 @@ import (
 	"github.com/marcus/sidecar/internal/mouse"
 	"github.com/marcus/sidecar/internal/plugin"
 	"github.com/marcus/sidecar/internal/pluginhost"
+	"github.com/marcus/sidecar/internal/textselect"
 )
 
 // Command IDs. They are what the footer's key chips are keyed by, so they are
@@ -176,6 +177,16 @@ func (p *TabPlugin) Init(ctx *plugin.Context) error {
 // DescribedMsg the host broadcasts once its describe pass has settled, so
 // nothing here waits on a process.
 func (p *TabPlugin) Start() tea.Cmd { return nil }
+
+// SetSelection binds the host's shared selection settings to the detail box.
+// The host resolves them from config once for every surface it draws, and a
+// plugin that owns a selectable box inside its own frame is one of them:
+// reading config here would be a second answer to a settled question.
+func (p *TabPlugin) SetSelection(keys textselect.Keys, copyOnSelect bool) {
+	p.model.SetSelection(keys, copyOnSelect)
+}
+
+var _ textselect.Binder = (*TabPlugin)(nil)
 
 // Stop drops what this browser has in flight. The manager owns every child
 // process, but it cannot know a reader has gone away unless the reader says so,

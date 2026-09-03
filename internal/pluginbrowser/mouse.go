@@ -4,7 +4,9 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/marcus/sidecar/internal/mouse"
+	"github.com/marcus/sidecar/internal/msg"
 	"github.com/marcus/sidecar/internal/state"
+	"github.com/marcus/sidecar/internal/textselect"
 	"github.com/marcus/sidecar/internal/ui"
 	"github.com/marcus/sidecar/internal/workspacelist"
 )
@@ -30,6 +32,12 @@ const (
 	regionClear   = "plugin-query-clear"
 	regionNotice  = "plugin-notice"
 	regionRail    = "plugin-rail"
+	// regionDetailSelect names a text-selection drag that began in the detail
+	// box. It is a gesture source rather than a hit target: the press is
+	// answered by regionDetail, and this is what routes every motion and the
+	// release back to the selection the press armed, wherever the pointer has
+	// since travelled.
+	regionDetailSelect = "plugin-detail-select"
 )
 
 // barTarget names which box a scrollbar region belongs to. Both bars register
@@ -116,9 +124,17 @@ func (m *Model) HandleMouse(msg tea.MouseMsg) tea.Cmd {
 		}
 		return m.applyOverlayAction(m.overlay.box.HandleMouse(msg, m.overlay.mouse))
 	}
+	wasDragging := m.pointer().IsDragging()
+	dragSourceBefore := m.pointer().DragRegion()
 	action := m.pointer().HandleMouse(msg)
 	switch action.Type {
 	case mouse.ActionHover:
+		if wasDragging && !m.pointer().IsDragging() && dragSourceBefore == regionDetailSelect {
+			// A release lost off-window or behind a focus change: the shared
+			// handler drops its half on the first button-less motion, and the
+			// selection gesture ends at the same boundary.
+			m.AbandonSelection()
+		}
 		m.applyHover(action)
 		return nil
 	case mouse.ActionClick:
@@ -212,8 +228,11 @@ func (m *Model) pointerClick(action mouse.MouseAction, double bool) tea.Cmd {
 		m.SetPaneFocus(string(FocusList))
 		return nil
 	case regionDetail:
+		// The click that focuses the box happens here, as it always did; the
+		// press also arms a selection, so the motion after it selects text and
+		// a release without motion is still the click that just focused.
 		m.SetPaneFocus(string(FocusDetail))
-		return nil
+		return m.pressDetailSelection(action)
 	}
 	return nil
 }
@@ -265,6 +284,8 @@ func (m *Model) pointerWheel(action mouse.MouseAction) tea.Cmd {
 
 func (m *Model) pointerDrag(action mouse.MouseAction) tea.Cmd {
 	switch m.pointer().DragRegion() {
+	case regionDetailSelect:
+		return m.selectionCmd(m.HandleSelectionMouse(action))
 	case regionRail:
 		m.railDragged = true
 		m.setListShare(m.pointer().DragStartValue() + action.DragDX*100/max(m.width, 1))
@@ -289,6 +310,8 @@ func (m *Model) pointerDrag(action mouse.MouseAction) tea.Cmd {
 // offset is view state, and a split is a preference.
 func (m *Model) pointerDragEnd(action mouse.MouseAction) tea.Cmd {
 	switch action.DragStartID {
+	case regionDetailSelect:
+		return m.selectionCmd(m.HandleSelectionMouse(action))
 	case regionRail:
 		m.settleSplit()
 	case ui.RegionScrollbarThumb, ui.RegionScrollbarTrack:
@@ -558,4 +581,31 @@ func (m *Model) ScrollAtBoundaryAt(x, y, delta int) bool {
 		return s.cursor <= 0
 	}
 	return s.cursor >= len(s.items)-1 && s.nextCursor == ""
+}
+
+// pressDetailSelection arms a selection gesture over the detail box's text. The
+// drag is registered with the shared handler because that is what turns the
+// release into a drag end the gesture can be finished by.
+func (m *Model) pressDetailSelection(action mouse.MouseAction) tea.Cmd {
+	result := m.HandleSelectionMouse(action)
+	if !result.Handled {
+		// The press landed on the box's chrome or the padding below the last
+		// row: not a selection, and the focus it moved is the whole of what the
+		// click meant.
+		return nil
+	}
+	m.pointer().StartDrag(action.X, action.Y, regionDetailSelect, 0)
+	return m.selectionCmd(result)
+}
+
+// selectionCmd is what the browser owes an engine result: a copy, phrased by
+// the shared pipeline and carried by the app's own alert types. A result that
+// asked for nothing produces no command.
+func (m *Model) selectionCmd(result textselect.Result) tea.Cmd {
+	return m.SelectionCopyCmd(result, func(notice textselect.CopyNotice) tea.Msg {
+		if notice.IsError {
+			return msg.ToastMsg{Message: notice.Message, Duration: notice.Duration, IsError: true}
+		}
+		return msg.FlashMsg{Text: notice.Message}
+	})
 }

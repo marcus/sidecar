@@ -101,6 +101,16 @@ func (m *Model) closeOverlay() {
 	m.overlay = overlay{}
 }
 
+// setOverlay opens one. Every overlay goes through it so a selection in the
+// detail box is dropped as the modal takes the keyboard: the highlight would
+// otherwise sit under a card nothing on screen still acts on, and the gesture
+// behind it would answer the next unrelated drag as an extension of a
+// selection the user finished before the modal opened.
+func (m *Model) setOverlay(o overlay) {
+	m.ClearSelection()
+	m.overlay = o
+}
+
 // overlayView composites whatever is open over the browser's own content.
 func (m *Model) overlayView(background string) string {
 	if !m.overlay.open() || m.overlay.box == nil {
@@ -204,7 +214,7 @@ func (m *Model) openViewModal() tea.Cmd {
 		return nil
 	}
 	s := m.state(c)
-	m.overlay = overlay{kind: overlayView, width: m.modalWidth()}
+	m.setOverlay(overlay{kind: overlayView, width: m.modalWidth()})
 	m.overlay.sortIdx = indexOfSort(c, s.sortKey)
 	m.overlay.viewIdx = indexOfView(c, s.view)
 
@@ -518,7 +528,7 @@ func (m *Model) openActionMenu() tea.Cmd {
 	if len(actions) == 0 {
 		return nil
 	}
-	m.overlay = overlay{kind: overlayActions, width: m.modalWidth(), actions: actions}
+	m.setOverlay(overlay{kind: overlayActions, width: m.modalWidth(), actions: actions})
 	items := make([]modal.ListItem, 0, len(actions))
 	for _, action := range actions {
 		label := action.Title
@@ -604,7 +614,7 @@ func (m *Model) actionReachable(action pluginhost.Action) bool {
 // openForm builds one control per declared input. The form is the confirm step
 // for an action that has one: a user who filled it in has already said yes.
 func (m *Model) openForm(action pluginhost.Action) tea.Cmd {
-	m.overlay = overlay{kind: overlayForm, width: m.modalWidth(), action: action}
+	m.setOverlay(overlay{kind: overlayForm, width: m.modalWidth(), action: action})
 	m.overlay.inputs = make([]formInput, 0, len(action.Inputs))
 	for _, decl := range action.Inputs {
 		in := formInput{decl: decl}
@@ -679,7 +689,7 @@ func (m *Model) openForm(action pluginhost.Action) tea.Cmd {
 // openConfirm is the step a mutating action with no inputs gets, unless the
 // plugin said confirm:false explicitly.
 func (m *Model) openConfirm(action pluginhost.Action) tea.Cmd {
-	m.overlay = overlay{kind: overlayConfirm, width: m.modalWidth(), action: action}
+	m.setOverlay(overlay{kind: overlayConfirm, width: m.modalWidth(), action: action})
 	subject := ""
 	if item, ok := m.currentItem(); ok && action.On == pluginhost.ActionOnItem {
 		subject = m.itemLabel(item)
@@ -848,7 +858,7 @@ func (m *Model) openCoverage() tea.Cmd {
 		return nil
 	}
 	s := m.state(c)
-	m.overlay = overlay{kind: overlayCoverage, width: m.coverageModalWidth()}
+	m.setOverlay(overlay{kind: overlayCoverage, width: m.coverageModalWidth()})
 	width := m.overlay.width
 	box := modal.New("Coverage · "+c.Title, modal.WithWidth(width), modal.WithHints(false)).
 		AddSection(modal.Text(outcomeStyle(s.outcome).Render(string(s.outcome)))).

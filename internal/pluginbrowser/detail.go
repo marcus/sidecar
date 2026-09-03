@@ -35,6 +35,13 @@ func (m *Model) detailLines(width, height int) []string {
 		end = len(lines)
 	}
 	view := fitLines(append([]string(nil), lines[start:end]...), inner, height)
+	// The highlight is painted at slice time, onto the rows about to be drawn
+	// and never into anything the card caches: a selection belongs to this
+	// frame alone, and the row it covers is named by its place in the
+	// unscrolled block, which is the coordinate space the engine holds it in.
+	for i := range view {
+		view[i] = m.selection.DecorateRow(view[i], start+i)
+	}
 	m.geom.docBar = m.joinScrollbar(view, 0, inner, width, ui.ScrollbarParams{
 		TotalItems:   len(lines),
 		ScrollOffset: start,
