@@ -131,6 +131,8 @@ Four decisions are in there, and each one is a thing the host will draw:
 - `cells` is keyed by *column ID*. A missing cell renders blank; a cell keyed by a column you never declared is dropped, because the host has nowhere to paint it.
 - `nextCursor` is opaque and yours. The host pages on demand, never eagerly.
 - `notices[]` is up to four single lines, for things like "1 of 4 sources did not answer".
+- `omitted` is `{suppressed, dropped}` — rows you held back below your own relevance floor, and rows past your budget. Send counts rather than writing them into a notice: the host renders them as data on the summary row ("8 shown · 1 below floor · 6 over budget").
+- `coverage[]` is one row per source you asked, `{source, state, reason?, elapsedMs?}` with `state` in `answered`, `timeout`, `unhealthy`, `skipped`, `failed`. It is read only by the host's coverage modal, so send the whole ledger — thirteen sources' states do not fit in four notices — and keep the notice as the one-line summary.
 
 ### `outcome`: say which claim you are making
 
@@ -143,10 +145,13 @@ An empty list means three completely different things, and the host says all thr
 | `answered` | I asked everything and this is the answer | "no matches" — a fact about the data |
 | `abstained` | Nothing matched, and every source was healthy | "no matches" — the same words, honestly earned |
 | `degraded` | Some source that should have answered could not | "no matches, and coverage was incomplete" |
+| `failed` | Every source you asked failed, so the page says nothing at all | an error card — never the words "no matches" |
 
 If your CLI would have exited non-zero for one of these, it still exits `0` here and says so in `outcome`. An absent `outcome` reads as `answered`, which is what a plugin that never thinks about coverage means. A value this host does not recognise reads as `degraded`, because of the two ways to be wrong about a claim it cannot understand, that is the one that does not invent a guarantee on your behalf.
 
-Do not use `outcome` for the health of the *things* the rows describe. A collection of six failing builds, all six listed, is `answered`: the page is complete. The builds' state belongs in a `status` cell.
+**`outcome` describes the row set of this page and nothing else.** Do not use it for the health of the *things* the rows describe. A collection of six failing builds, all six listed, is `answered`: the page is complete. The builds' state belongs in a `status` cell. Getting this wrong is the one mistake that makes an honest plugin look broken — every page reads `degraded` and the reader can no longer tell "I could not look" from "what I found is in a bad way".
+
+When a page is `degraded` or `failed`, send `coverage[]` with it. The host's coverage modal — `c`, or a click on the outcome word or a notice — is where a reader finds out *which* source could not answer and why, and without the ledger it can only repeat the one-line notice back to them.
 
 ### `get`: the document
 
@@ -222,7 +227,7 @@ hello  [enabled, ready]  plugins.external
 `describe` always runs; calling `list` or `get` is opt-in, because either can reach the network and print private data:
 
 ```console
-$ sidecar plugin check hello --list greetings --query bon
+$ sidecar plugin check hello --list greetings --query bon --filter lang=fr
   list      ok in 23ms — greetings, answered, 1 row(s)
             fr  Bonjour
 
@@ -255,19 +260,40 @@ Read [the M0 mockups](../../plans/active/plugin-ecosystem/mockups/README.md) onc
 
 ## The keys are the host's
 
-Every protocol plugin has the same keys, and you declare none of them: `j`/`k` move, `Enter` opens (and a second `Enter` focuses what it opened), `/` edits the query, `v` opens the View modal, `r` refreshes, `a` opens the action menu, `c` explains the page's outcome, `o` opens a `sourceUrl` through the host's confirmed path, `+`/`-` move the split between the table and the document, `Esc` closes an overlay. `Tab` is the app's focus ring and `n` is the pane switcher; the browser deliberately takes neither.
+Every protocol plugin has the same keys, and you declare none of them: `j`/`k` move, `Enter` opens (and a second `Enter` focuses what it opened), `/` edits the query, `v` opens the View modal, `r` refreshes, `a` opens the action menu, `c` opens the coverage modal for the page's outcome, `o` opens a `sourceUrl` through the host's confirmed path, `+`/`-` move the split between the table and the document, `Esc` closes an overlay. `Tab` is the app's focus ring and `n` is the pane switcher; the browser deliberately takes neither.
 
-The pointer is the host's too, on the app's rule everywhere: nothing a click does is reachable only by click. Clicking a row selects it and a second click opens it, exactly as `Enter` twice does. Clicking anywhere in a box focuses it. The wheel scrolls the box under the pointer rather than the focused one, and the browser tells the host when a notch would move nothing, so trackpad inertia at the end of a list is dropped instead of repainting a stationary surface. Each box draws a scrollbar when its content overflows, and the bar is a target: a press on the track jumps, a drag on the thumb follows. The divider between the two boxes is a drag rail, and the split it leaves is remembered per plugin across relaunches — the same move `+`/`-` make. The query line is a click target, and so is the View control on the title row. The outcome word on the query row, and any notice under the table, opens the coverage card that says what the page's claim means — the same card `c` opens, and both are offered only where the page has something to explain. None of this is anything you declare. In a `panes` placement there is one box rather than two, so the rail and its keys are simply not there.
+The pointer is the host's too, on the app's rule everywhere: nothing a click does is reachable only by click. Clicking a row selects it and a second click opens it, exactly as `Enter` twice does. Clicking anywhere in a box focuses it. The wheel scrolls the box under the pointer rather than the focused one, and the browser tells the host when a notch would move nothing, so trackpad inertia at the end of a list is dropped instead of repainting a stationary surface. Each box draws a scrollbar when its content overflows, and the bar is a target: a press on the track jumps, a drag on the thumb follows. The divider between the two boxes is a drag rail, and the split it leaves is remembered per plugin across relaunches — the same move `+`/`-` make. The query line is a click target, and so is the View control on the title row. The outcome word on the query row, and any notice under the table, opens the coverage modal that says what the page's claim means, and lists your `coverage[]` as a table — the same modal `c` opens, and both are offered only where the page has something to explain. None of this is anything you declare. In a `panes` placement there is one box rather than two, so the rail and its keys are simply not there.
 
 The one key you can ask for is an action's optional `key`: a single lowercase letter, granted only if the browser's own keys, the host's reserved set, the global keys, and every other action leave it free. It is never guaranteed and never persisted, so an action must always be reachable from the action menu too.
 
-## Views, sort, and (later) filters
+## Views, sort, and filters
 
 A collection declares `views[]` (named presets) and `sort[]` (sortable keys). The host puts both in one View modal opened with `v`, and sends the chosen values back in `list.params` as `view` and `sort: {key, dir}`. Applying them is yours: the host does not reorder or filter your rows, because only you know what your keys mean.
 
 Declare nothing you do not read. A plugin that declares a view it ignores has told the user about a control that does nothing.
 
-Scope filters — `filters[]` on a collection, `params.filters{}` on `list` — are **not implemented**. They are a confirmed revision that milestone M4b applies; until then, a plugin that needs a scope choice either uses a `view` for it or narrows on project context. See [the pending revisions table](../../plans/active/plugin-ecosystem/README.md#protocol-revisions-pending-from-the-m0-recall-mockup).
+### Filters, and which one is your scope
+
+`filters[]` is a collection's own choosers, drawn in the same View modal under the sort list:
+
+```json
+"filters": [
+  {"id": "profile", "label": "Profile", "kind": "choice",
+   "choices": [{"id": "home", "title": "home"}, {"id": "docs", "title": "docs"}],
+   "default": "home"},
+  {"id": "source", "label": "Source", "kind": "choice",
+   "choices": [{"id": "any", "title": "Any"}, {"id": "notes", "title": "notes"}]},
+  {"id": "since", "label": "Since", "kind": "text"}
+]
+```
+
+- `kind: "choice"` is a radio group and needs `choices`; `kind: "text"` is an input and must not have any. Any other kind refuses the whole `describe`.
+- `default` on a choice names one of its own choice ids — anything else refuses the describe — and an absent one means the first choice you listed. On a text filter it is the initial text.
+- **The first filter you declare is the collection's scope.** Its current value is always folded into the host's View pill (`⇅ rank · docs`), and any other applied filter is counted beside it (`· 2 filters`). Declare the one that changes what a page *is* first, and the ones that merely narrow it after.
+
+What comes back in `list.params.filters` is **only what is applied**: a filter sitting on its default is not sent, and a missing key means the default. Read it that way — `filters.get("profile", "home")`, not `filters["profile"]`. Keys you never declared are dropped by the host before your process starts, so you only ever read names you published yourself.
+
+The host persists the applied set with the tab and with a global tab's remembered query, so a scope survives a relaunch. Bounds: 8 filters per collection, 64 choices each, 32-character ids and titles, 64-character text values.
 
 ## Context: ask for what you read
 
@@ -309,13 +335,15 @@ Once configured, your collections are addressable from any shell, which is what 
 ```bash
 sidecar open --plugin hello --collection greetings --split right
 sidecar open --plugin hello --collection greetings --query bon
+sidecar open --plugin hello --collection greetings --filter lang=fr    # one of your filters
 sidecar open --plugin hello --collection greetings fr        # one row's document
 ```
 
 The same shapes exist in the layout spec, so a whole screen can be composed in one call:
 
 ```json
-{"kind": "resource", "provider": "hello", "collection": "greetings", "query": "bon"}
+{"kind": "resource", "provider": "hello", "collection": "greetings", "query": "bon",
+ "filters": {"lang": "fr"}}
 ```
 
 `sidecar layout get --json` reports the active tab's collection and query, so get → edit → apply is a round trip. A collection tab's identity is `{plugin, collection}` and excludes the query, so re-running `open` with a new query re-lists the tab that is open rather than forking a second one.
@@ -333,7 +361,9 @@ Your own suite needs three things and not much more: that each method emits exac
 - [ ] `describe` is local, fast, and answers `invalid_config` with a `setupHint` when unconfigured.
 - [ ] Every collection has exactly one `primary` column, and a `secondary` one if a row's second line is worth reading.
 - [ ] Every row has a stable `id`, and every cell key is a declared column.
-- [ ] `outcome` is set deliberately, and an empty page says which of the three claims it is making.
+- [ ] `outcome` is set deliberately, describes the ROW SET and nothing else, and an empty page says which of the four claims it is making.
+- [ ] A `degraded` or `failed` page carries `coverage[]`, so the coverage modal can say which source could not answer.
+- [ ] Every declared filter is read from `params.filters` with its default as the fallback, and the first one you declare is the scope you want shown.
 - [ ] Every failure path prints a typed error and exits `0`.
 - [ ] stdout carries one JSON object and nothing else — no logs, no banner, no progress.
 - [ ] You declare only the context kinds you read, and only the views and sort keys you apply.

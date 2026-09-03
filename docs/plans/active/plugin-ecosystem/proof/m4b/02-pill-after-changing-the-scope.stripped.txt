@@ -1,0 +1,45 @@
+ ◱ Sidecar │   Sessions     Activity     Fixture                                                                             ↖ sidecar   Select Project ▾  ·  ⚙
+╭───────────────────────────────────────────────────────────────────────────────────────────────╮ ╭────────────────────────────────────────────────────────────╮
+│ Fixture · Results                                     ⇅ Relevance · This project · 1 filter   │┃│ Fixture · Results                                          │
+│                                                                                               │┃│                                                            │
+│ / dex                                                                    3 results   answered │┃│ Press Enter on a row to open it here.			│
+│                                                                                               │┃│                                                            │
+│     #  TITLE               SOURCE          EXCERPT                                            │┃│ A second Enter moves the keyboard into this box.           │
+│   ───  ──────────────────  ──────────────  ──────────────────────────────────────────  ─────  │┃│                                                            │
+│ ❯   1  dex schema notes    notes           …dex schema notes appears here…             exact  │┃│ a  offers 4 plugin action(s), each confirmed by the host.  │
+│     2  dex context --json  shell           …dex context --json appears here…           exact  │┃│                                                            │
+│     3  dex retrieval eval  mail            …dex retrieval eval appears here…           exact  │┃│                                                            │
+│                                                                                               │┃│                                                            │
+│                                                                                               │┃│                                                            │
+│                                                                                               │┃│                                                            │
+│                                                                                               │┃│                                                            │
+│                                                                                               │┃│                                                            │
+│                                                                                               │┃│                                                            │
+│                                                                                               │┃│                                                            │
+│                                                                                               │┃│                                                            │
+│                                                                                               │┃│                                                            │
+│                                                                                               │┃│                                                            │
+│                                                                                               │┃│                                                            │
+│                                                                                               │┃│                                                            │
+│                                                                                               │┃│                                                            │
+│                                                                                               │┃│                                                            │
+│                                                                                               │┃│                                                            │
+│                                                                                               │┃│                                                            │
+│                                                                                               │┃│                                                            │
+│                                                                                               │┃│                                                            │
+│                                                                                               │┃│                                                            │
+│                                                                                               │┃│                                                            │
+│                                                                                               │┃│                                                            │
+│                                                                                               │┃│                                                            │
+│                                                                                               │┃│                                                            │
+│                                                                                               │┃│                                                            │
+│                                                                                               │┃│                                                            │
+│                                                                                               │┃│                                                            │
+│                                                                                               │┃│                                                            │
+│                                                                                               │┃│                                                            │
+│                                                                                               │┃│                                                            │
+│                                                                                               │┃│                                                            │
+│ ───────────────────────────────────────────────────────────────────────────────────────────── │┃│                                                            │
+│ 3 shown · the rest load on scroll                                                             │┃│                                                            │
+╰───────────────────────────────────────────────────────────────────────────────────────────────╯ ╰────────────────────────────────────────────────────────────╯
+ j, k  Move   enter  Open   /  Query   v  View   r  Refresh   a  Actions   o  Source   +  Grow   -  Shrink   1-5  plugins          fixture · results · answered

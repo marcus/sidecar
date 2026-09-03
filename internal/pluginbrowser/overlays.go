@@ -27,14 +27,17 @@ const (
 	actionRunID     = "run"
 	actionCancelID  = "cancel"
 	coverageDoneID  = "coverage-done"
-	// coverageModalCols is the coverage modal's own width. It is wider than the
-	// rest because it carries a four-column table.
-	coverageModalCols = 72
-	coverageRetryID   = "coverage-retry"
-	filterChoicePfx   = "filter:"
-	filterTextPfx     = "filtertext:"
-	formInputPrefix   = "input:"
-	overlayModalCols  = 46
+	// coverageModalCols is the coverage modal's narrowest useful width and
+	// coverageModalMaxCols its widest. It is wider than the browser's other
+	// modals because it carries a four-column table, and it grows with the
+	// frame up to the cap so a plugin's own reason is read rather than clipped.
+	coverageModalCols    = 72
+	coverageModalMaxCols = 100
+	coverageRetryID      = "coverage-retry"
+	filterChoicePfx      = "filter:"
+	filterTextPfx        = "filtertext:"
+	formInputPrefix      = "input:"
+	overlayModalCols     = 46
 )
 
 type overlayKind int
@@ -848,12 +851,18 @@ func (m *Model) openCoverage() tea.Cmd {
 			AddSection(modal.Text(fmt.Sprintf("%d over the budget", s.omitted.Dropped)))
 	}
 	if len(s.coverage) > 0 {
-		lines := coverageTable(s.coverage, width)
-		if s.coverageTruncated {
-			lines = append(lines, styles.Subtle.Render("the plugin sent more sources than Sidecar keeps"))
-		}
+		rows := s.coverage
+		truncated := s.coverageTruncated
+		// The table is laid out against the CONTENT width the section is
+		// handed, not the modal's outer width: the difference is the border
+		// and padding, and measuring against the wrong one puts an ellipsis on
+		// every row that has nothing to elide.
 		box = box.AddSection(modal.Spacer()).
-			AddSection(modal.Custom(func(int, string, string) modal.RenderedSection {
+			AddSection(modal.Custom(func(contentWidth int, _, _ string) modal.RenderedSection {
+				lines := coverageTable(rows, contentWidth)
+				if truncated {
+					lines = append(lines, styles.Subtle.Render("the plugin sent more sources than Sidecar keeps"))
+				}
 				return modal.RenderedSection{Content: strings.Join(lines, "\n")}
 			}, nil))
 	}
@@ -876,6 +885,9 @@ func (m *Model) openCoverage() tea.Cmd {
 // floats over, and the body scrolls when it is taller.
 func (m *Model) coverageModalWidth() int {
 	w := coverageModalCols
+	if m.width-8 > w {
+		w = min(m.width-8, coverageModalMaxCols)
+	}
 	if m.width > 0 && w > m.width-4 {
 		w = m.width - 4
 	}

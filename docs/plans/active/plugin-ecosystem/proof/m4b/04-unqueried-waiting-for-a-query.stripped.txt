@@ -1,0 +1,45 @@
+ ◱ Sidecar │   Sessions     Activity     Fixture                                                                             ↖ sidecar   Select Project ▾  ·  ⚙
+╭───────────────────────────────────────────────────────────────────────────────────────────────╮ ╭────────────────────────────────────────────────────────────╮
+│ Fixture · Results                                                  ⇅ Relevance · Everything   │┃│ Fixture · Results                                          │
+│                                                                                               │┃│                                                            │
+│ / search Results                                                                     no query │┃│ Press Enter on a row to open it here.			│
+│                                                                                               │┃│                                                            │
+│                                                                                               │┃│ A second Enter moves the keyboard into this box.           │
+│                                                                                               │┃│                                                            │
+│                                                                                               │┃│ a  offers 4 plugin action(s), each confirmed by the host.  │
+│                                                                                               │┃│                                                            │
+│                                                                                               │┃│                                                            │
+│                                                                                               │┃│                                                            │
+│                                                                                               │┃│                                                            │
+│                                                                                               │┃│                                                            │
+│                                                                                               │┃│                                                            │
+│                                                                                               │┃│                                                            │
+│                                                                                               │┃│                                                            │
+│                                                                                               │┃│                                                            │
+│                                                                                               │┃│                                                            │
+│                                                                                               │┃│                                                            │
+│                                                                                               │┃│                                                            │
+│                                                                                               │┃│                                                            │
+│                                This collection needs a query.                                 │┃│                                                            │
+│                                                                                               │┃│                                                            │
+│                                      Press  /  to ask.                                        │┃│                                                            │
+│                                                                                               │┃│                                                            │
+│                                                                                               │┃│                                                            │
+│                                                                                               │┃│                                                            │
+│                                                                                               │┃│                                                            │
+│                                                                                               │┃│                                                            │
+│                                                                                               │┃│                                                            │
+│                                                                                               │┃│                                                            │
+│                                                                                               │┃│                                                            │
+│                                                                                               │┃│                                                            │
+│                                                                                               │┃│                                                            │
+│                                                                                               │┃│                                                            │
+│                                                                                               │┃│                                                            │
+│                                                                                               │┃│                                                            │
+│                                                                                               │┃│                                                            │
+│                                                                                               │┃│                                                            │
+│                                                                                               │┃│                                                            │
+│ ───────────────────────────────────────────────────────────────────────────────────────────── │┃│                                                            │
+│                                                                                               │┃│                                                            │
+╰───────────────────────────────────────────────────────────────────────────────────────────────╯ ╰────────────────────────────────────────────────────────────╯
+ j, k  Move   enter  Open   /  Query   v  View   r  Refresh   a  Actions   +  Grow   -  Shrink   1-5  plugins           fixture · results · waiting for a query

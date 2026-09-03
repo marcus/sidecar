@@ -2,7 +2,7 @@
 
 **Status:** design rationale for `sidecar.plugin/v1-draft`, opened 2026-09-02. **The contract itself is [docs/reference/plugin-protocol.md](../../../reference/plugin-protocol.md)** — one authority, as the frozen [terminal resource provider protocol](../../../reference/terminal-resource-provider-protocol.md) already is for resource v1. This file keeps only the arguments behind that contract, so a rule and its reason cannot drift apart in two places. **Controlling document:** [README.md](README.md). **Host architecture:** [host.md](host.md). **Authoring guide:** [docs/guides/active/creating-plugins.md](../../../guides/active/creating-plugins.md).
 
-The revisions the M0 mockups and recall's implementation surfaced, none of them applied, are the [pending table in README.md](README.md#protocol-revisions-pending-from-the-m0-recall-mockup). M4b applies four of them; the rest wait for M4d's freeze.
+The revisions the M0 mockups and recall's implementation surfaced are the [pending table in README.md](README.md#protocol-revisions-pending-from-the-m0-recall-mockup). M4b applied four of them — `filters[]`, `page.omitted`, the `failed` outcome and `page.coverage[]` — and they now live in [the reference](../../../reference/plugin-protocol.md); what is still in the table is unapplied and waits for M4d's freeze.
 
 ## Why not a generic UI catalog
 

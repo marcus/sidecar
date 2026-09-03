@@ -1,0 +1,45 @@
+ ◱ Sidecar │   Sessions     Activity     Fixture                                                                             ↖ sidecar   Select Project ▾  ·  ⚙
+╭───────────────────────────────────────────────────────────────────────────────────────────────╮ ╭────────────────────────────────────────────────────────────╮
+│ Fixture · Results                                     ⇅ Relevance · This project · 1 filter   │┃│ Fixture · Results                                          │
+│                                                                                               │┃│                                                            │
+│ / failed                                                                   0 results   failed │┃│ Press Enter on a row to open it here.			│
+│                                                                                               │┃│                                                            │
+│                                                                                               │┃│ A second Enter moves the keyboard into this box.           │
+│                                                                                               │┃│                                                            │
+│                                                                                               │┃│ a  offers 4 plugin action(s), each confirmed by the host.  │
+│                                                                                               │┃│                                                            │
+│                                                                                               │┃│                                                            │
+│                                                                                               │┃│                                                            │
+│                                                                                               │┃│                                                            │
+│                                                                                               │┃│                                                            │
+│                                                                                               │┃│                                                            │
+│                                                                                               │┃│                                                            │
+│                                                                                               │┃│                                                            │
+│                                                                                               │┃│                                                            │
+│                                                                                               │┃│                                                            │
+│                                                                                               │┃│                                                            │
+│                                   Nothing could be asked.                                     │┃│                                                            │
+│                                                                                               │┃│                                                            │
+│          Every source this page needed failed, so it says nothing about the query.            │┃│                                                            │
+│                                                                                               │┃│                                                            │
+│                               c  what failed      r  try again                                │┃│                                                            │
+│                                                                                               │┃│                                                            │
+│                                                                                               │┃│                                                            │
+│                                                                                               │┃│                                                            │
+│                                                                                               │┃│                                                            │
+│                                                                                               │┃│                                                            │
+│                                                                                               │┃│                                                            │
+│                                                                                               │┃│                                                            │
+│                                                                                               │┃│                                                            │
+│                                                                                               │┃│                                                            │
+│                                                                                               │┃│                                                            │
+│                                                                                               │┃│                                                            │
+│                                                                                               │┃│                                                            │
+│                                                                                               │┃│                                                            │
+│                                                                                               │┃│                                                            │
+│                                                                                               │┃│                                                            │
+│ ───────────────────────────────────────────────────────────────────────────────────────────── │┃│                                                            │
+│ ✖  every source failed (the fixture is pretending its index is gone)                          │┃│                                                            │
+│                                                                                               │┃│                                                            │
+╰───────────────────────────────────────────────────────────────────────────────────────────────╯ ╰────────────────────────────────────────────────────────────╯
+ j, k  Move   enter  Open   /  Query   v  View   r  Refresh   a  Actions   c  Coverage   +  Grow   -  Shrink   1-5  plugins          fixture · results · failed
