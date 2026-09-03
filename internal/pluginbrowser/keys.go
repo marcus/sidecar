@@ -143,7 +143,7 @@ func (m *Model) HandleKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		// the keyboard goes back to the field with its text intact, which is
 		// what makes the two rows one keyboard path rather than two islands.
 		if m.atFirstRowUnderAQuery() {
-			return m.beginQuery(), true
+			return m.beginQueryFromKey(key), true
 		}
 		return m.moveCursor(-1), true
 	case "pgdown":
@@ -151,12 +151,9 @@ func (m *Model) HandleKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	case "pgup":
 		return m.moveCursor(-m.pageStep()), true
 	case "home":
-		return m.moveTo(0), true
+		return m.moveToEdge(true), true
 	case "end":
-		if s := m.activeState(); s != nil {
-			return m.moveTo(len(s.items) - 1), true
-		}
-		return nil, true
+		return m.moveToEdge(false), true
 	case "enter":
 		return m.openCursorRow(), true
 	case "/":
@@ -215,6 +212,34 @@ func (m *Model) moveCursor(delta int) tea.Cmd {
 	return m.moveTo(target)
 }
 
+// moveToEdge is home and end.
+//
+// They go where j and k go. With the detail focused that is the document being
+// read — its top and its bottom — and the list cursor stays where the reader
+// left it; only with the list focused do they move the cursor, and take the
+// detail with them the way every other cursor move does. Sending them to the
+// list unconditionally replaced the document under a reader who pressed home to
+// get back to the top of it.
+func (m *Model) moveToEdge(top bool) tea.Cmd {
+	if m.focus == FocusDetail {
+		if top {
+			m.detail.scroll = 0
+		} else {
+			m.detail.scroll = m.maxDetailScroll()
+		}
+		m.clampDetailScroll()
+		return nil
+	}
+	if top {
+		return m.moveTo(0)
+	}
+	s := m.activeState()
+	if s == nil {
+		return nil
+	}
+	return m.moveTo(len(s.items) - 1)
+}
+
 // moveTo puts the cursor on a row and schedules the detail that goes with it.
 //
 // The detail following the cursor is what makes the list readable without
@@ -267,14 +292,28 @@ func (m *Model) openCursorRow() tea.Cmd {
 	return m.openDocument(c.ID, item.ID, openReplace)
 }
 
-func (m *Model) beginQuery() tea.Cmd {
+// beginQuery hands the keyboard to the query row. A field reached this way —
+// by `/` or by a click — has nothing to guard against, so any guard still armed
+// from an earlier hand-off is dropped.
+func (m *Model) beginQuery() tea.Cmd { return m.beginQueryFromKey("") }
+
+// beginQueryFromKey is beginQuery with the key that carried focus onto the row,
+// which arms the arrival guard: the repeats of a held `k` must not be typed
+// into the field the key just focused. See queryArrival.
+func (m *Model) beginQueryFromKey(arriving string) tea.Cmd {
 	c, ok := m.ActiveCollection()
 	if !ok || c.Search == pluginhost.SearchNone {
+		m.arrival.disarm()
 		return nil
 	}
 	s := m.state(c)
 	s.field.Focus()
 	m.focus = FocusList
+	if arriving == "" {
+		m.arrival.disarm()
+	} else {
+		m.arrival.arm(arriving, m.now())
+	}
 	return nil
 }
 
@@ -323,6 +362,12 @@ func (m *Model) queryKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		return nil, false
 	}
 	s := m.state(c)
+	// A repeat of the key that carried focus onto this row is the tail of a
+	// held key, not text. It is inert, and it holds the guard open for as long
+	// as the burst lasts.
+	if m.arrival.swallow(msg.String(), m.now()) {
+		return nil, true
+	}
 	// The same bound the CLI and resource.Reference.Valid enforce, applied
 	// before the field sees the key. A query typed past it would persist,
 	// decode, and then be refused as invalid when the tabs were rebuilt — the
@@ -404,6 +449,9 @@ func (m *Model) HandlePaste(msg tea.PasteMsg) (tea.Cmd, bool) {
 		return nil, false
 	}
 	s := m.state(c)
+	// A paste is not a key repeat, so it ends the arrival guard rather than
+	// being swallowed by it.
+	m.arrival.disarm()
 	text := strings.TrimSpace(msg.Content)
 	if text == "" {
 		return nil, true

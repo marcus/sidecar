@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 
@@ -381,21 +382,28 @@ func (m *Model) clampDetailScroll() {
 	}
 }
 
-// ScrollBy moves whichever window has focus and reports whether anything moved.
-func (m *Model) ScrollBy(delta int) bool {
+// ScrollBy moves whichever window has focus, and reports the follow-load
+// schedule alongside whether anything moved.
+//
+// Over the list this is a cursor move like any other, so it schedules the
+// detail that goes with the row it lands on. The cmd has to reach the host's
+// Update or the follow never runs — and worse, a follow already scheduled from
+// the keyboard is invalidated by the newer generation this move stamps, so a
+// dropped cmd leaves the detail showing a row the cursor has left.
+func (m *Model) ScrollBy(delta int) (tea.Cmd, bool) {
 	if m.focus == FocusDetail {
 		before := m.detail.scroll
 		m.detail.scroll += delta
 		m.clampDetailScroll()
-		return m.detail.scroll != before
+		return nil, m.detail.scroll != before
 	}
 	s := m.activeState()
 	if s == nil {
-		return false
+		return nil, false
 	}
 	before := s.cursor
-	m.moveTo(s.cursor + delta)
-	return s.cursor != before
+	cmd := m.moveTo(s.cursor + delta)
+	return cmd, s.cursor != before
 }
 
 // ScrollAtBoundary reports whether a scroll of delta would move nothing, so a

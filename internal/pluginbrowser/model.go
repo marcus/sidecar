@@ -255,6 +255,59 @@ type Model struct {
 	// remembered query, view, sort and filters. It happens once: a second pass
 	// would overwrite what the user has typed since.
 	tabViewRestored bool
+
+	// arrival guards the query row against the key repeats still in flight when
+	// a held navigation key hands it the keyboard. See queryArrival.
+	arrival queryArrival
+}
+
+// KeyRepeatWindow is how long after a key press another press of the same key
+// still counts as the same held-down burst. It is the figure the query row
+// already debounces on, so a burst that ends inside one relist cannot straddle
+// two.
+const KeyRepeatWindow = QueryDebounce
+
+// queryArrival is the arrival guard on the query row.
+//
+// `k` on the first row moves the keyboard to the query field. A user holding
+// `k` to scroll a list up therefore ends with the field focused and the rest of
+// the repeat burst typed into it as "kkkk", plus a relist 250 ms later against a
+// query nobody meant to write. The guard remembers the key that carried focus
+// onto the row and the moment it did: while that same key keeps arriving inside
+// KeyRepeatWindow of the previous one it is inert and the clock is pushed
+// forward, so a burst of any length costs nothing. Any other key, or a gap
+// longer than the window, ends the guard and the field takes the key as text.
+//
+// It lives on the browser rather than in queryfield because it is about how
+// focus arrived, which is the surface's business; a field handed focus by a
+// click or by `/` has nothing to guard against.
+type queryArrival struct {
+	key  string
+	last time.Time
+}
+
+// arm records the key that carried focus onto the query row.
+func (a *queryArrival) arm(key string, now time.Time) {
+	a.key = key
+	a.last = now
+}
+
+// disarm ends the guard.
+func (a *queryArrival) disarm() { *a = queryArrival{} }
+
+// swallow reports whether this press is a repeat of the arriving key and so
+// must not reach the field. A press that is not ends the guard.
+func (a *queryArrival) swallow(key string, now time.Time) bool {
+	if a.key == "" {
+		return false
+	}
+	if key != a.key || now.Sub(a.last) > KeyRepeatWindow {
+		a.disarm()
+		return false
+	}
+	// Still the same burst: hold the guard open for as long as it lasts.
+	a.last = now
+	return true
 }
 
 // New builds a browser for one configured instance.

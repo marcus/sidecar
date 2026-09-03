@@ -33,6 +33,11 @@ type fakeHost struct {
 	acts    []ActCall
 	opened  []string
 	project *pluginhost.ProjectContext
+
+	// clock, when set, is the time the browser reads, so a test can decide how
+	// long apart two key presses were. Nil leaves the fixed timestamp the
+	// timeline renders against.
+	clock *time.Time
 }
 
 func (f *fakeHost) calls() Calls {
@@ -91,7 +96,12 @@ func (f *fakeHost) calls() Calls {
 			}
 			return &pluginhost.Context{Project: f.project}
 		},
-		Now: func() time.Time { return time.Date(2026, 9, 2, 12, 0, 0, 0, time.UTC) },
+		Now: func() time.Time {
+			if f.clock != nil {
+				return *f.clock
+			}
+			return time.Date(2026, 9, 2, 12, 0, 0, 0, time.UTC)
+		},
 	}
 }
 
@@ -239,6 +249,10 @@ func keyCode(key string) rune {
 		return tea.KeyDown
 	case "tab":
 		return tea.KeyTab
+	case "home":
+		return tea.KeyHome
+	case "end":
+		return tea.KeyEnd
 	default:
 		return 0
 	}

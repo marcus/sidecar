@@ -3,6 +3,7 @@ package pluginbrowser
 import (
 	"strings"
 	"testing"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 
@@ -287,5 +288,175 @@ func TestAStaleFollowNeverLoads(t *testing.T) {
 	run(t, m, cmd)
 	if len(host.gets) != 0 {
 		t.Fatalf("a schedule from before a re-describe loaded %d documents", len(host.gets))
+	}
+}
+
+// M4d-a review fixes: a held navigation key must not type itself into the row
+// it just focused, home and end belong to whichever window has the keyboard,
+// and a host that scrolls the list through ScrollBy gets the follow with it.
+
+// Ten rapid `k` presses scroll a list up and stop at the query row. The
+// repeats still in flight when focus arrives there are the tail of a held key,
+// not text: without the arrival guard the row ends up holding "kkkkkkk" and
+// re-lists 250 ms later against a query nobody typed.
+func TestAHeldKDoesNotTypeItselfIntoTheQueryRow(t *testing.T) {
+	clock := time.Date(2026, 9, 2, 12, 0, 0, 0, time.UTC)
+	host := &fakeHost{page: testPage(12), doc: longDocument(), clock: &clock}
+	m := loadedModel(t, host)
+	m.moveTo(3)
+	if m.activeState().cursor != 3 {
+		t.Fatalf("the sweep did not start on row three: cursor=%d", m.activeState().cursor)
+	}
+
+	// One burst of key repeats, 30 ms apart, as a held key arrives.
+	for i := 0; i < 10; i++ {
+		clock = clock.Add(30 * time.Millisecond)
+		press(t, m, "k")
+	}
+	s := m.activeState()
+	if !m.ConsumesTextInput() {
+		t.Fatal("the burst never reached the query row")
+	}
+	if got := s.queryText(); got != "rows" {
+		t.Fatalf("the held key typed itself into the row: query = %q", got)
+	}
+	if s.cursor != 0 {
+		t.Fatalf("the burst left the cursor at %d, want the first row", s.cursor)
+	}
+
+	// The burst is over once the user's finger comes off the key: a `k` typed
+	// after the repeat window is a letter like any other.
+	clock = clock.Add(400 * time.Millisecond)
+	press(t, m, "k")
+	if got := s.queryText(); got != "rowsk" {
+		t.Fatalf("a deliberate k after the burst was swallowed: query = %q", got)
+	}
+}
+
+// The guard is about one held key, not about the field being new. Any other
+// key ends it immediately, so a user who lands on the row and types goes
+// straight into the text.
+func TestADifferentLetterRightAfterTheHandOffIsTyped(t *testing.T) {
+	clock := time.Date(2026, 9, 2, 12, 0, 0, 0, time.UTC)
+	host := &fakeHost{page: testPage(12), doc: longDocument(), clock: &clock}
+	m := loadedModel(t, host)
+	press(t, m, "k") // row one to the query row
+	if !m.ConsumesTextInput() {
+		t.Fatal("k on the first row did not reach the query row")
+	}
+	clock = clock.Add(10 * time.Millisecond)
+	press(t, m, "x")
+	if got := m.activeState().queryText(); got != "rowsx" {
+		t.Fatalf("a different letter was swallowed: query = %q", got)
+	}
+	// And the guard is spent: the next k is text too.
+	clock = clock.Add(10 * time.Millisecond)
+	press(t, m, "k")
+	if got := m.activeState().queryText(); got != "rowsxk" {
+		t.Fatalf("the guard outlived the key that armed it: query = %q", got)
+	}
+}
+
+// `/` and a click hand the row the keyboard with no key repeat behind them, so
+// they arm nothing.
+func TestSlashArmsNoArrivalGuard(t *testing.T) {
+	clock := time.Date(2026, 9, 2, 12, 0, 0, 0, time.UTC)
+	host := &fakeHost{page: testPage(12), doc: longDocument(), clock: &clock}
+	m := loadedModel(t, host)
+	press(t, m, "/")
+	press(t, m, "k")
+	if got := m.activeState().queryText(); got != "rowsk" {
+		t.Fatalf("`/` armed a guard: query = %q", got)
+	}
+}
+
+// A host scrolling the list — a wheel over a surface that routes through
+// ScrollBy — is a cursor move, so the detail follows it. The cmd is the whole
+// follow: dropping it both loses this load and invalidates the one the keyboard
+// had already scheduled.
+func TestScrollByFollowsTheCursor(t *testing.T) {
+	host := &fakeHost{page: testPage(12), doc: longDocument()}
+	m := loadedModel(t, host)
+	cmd, moved := m.ScrollBy(1)
+	if !moved {
+		t.Fatal("ScrollBy(1) moved nothing")
+	}
+	if m.activeState().cursor != 1 {
+		t.Fatalf("ScrollBy(1) left the cursor at %d", m.activeState().cursor)
+	}
+	if cmd == nil {
+		t.Fatal("ScrollBy scheduled no follow for the row it landed on")
+	}
+	run(t, m, cmd)
+	if len(host.gets) != 1 {
+		t.Fatalf("the quiet tick loaded %d documents, want the row under the cursor", len(host.gets))
+	}
+	if got := host.gets[0].Params.ID; got != "rc:notes:2" {
+		t.Fatalf("ScrollBy loaded %q, want the row the cursor landed on", got)
+	}
+}
+
+// Over the detail, ScrollBy is a viewport move and schedules nothing: there is
+// no new row to follow.
+func TestScrollByOverTheDetailSchedulesNothing(t *testing.T) {
+	host := &fakeHost{page: testPage(12), doc: longDocument()}
+	m := loadedModel(t, host)
+	press(t, m, "enter")
+	press(t, m, "enter")
+	if m.focus != FocusDetail {
+		t.Fatalf("focus is %q, want the document", m.focus)
+	}
+	cmd, moved := m.ScrollBy(3)
+	if !moved || cmd != nil {
+		t.Fatalf("ScrollBy over the detail: moved=%v cmd=%v", moved, cmd != nil)
+	}
+}
+
+// home and end go where j and k go. With the detail focused they are the top
+// and the bottom of the document being read; sending them to the list would
+// move the cursor and replace the document under the reader.
+func TestHomeAndEndBelongToTheFocusedWindow(t *testing.T) {
+	host := &fakeHost{page: testPage(12), doc: longDocument()}
+	m := loadedModel(t, host)
+	press(t, m, "j")
+	press(t, m, "j")
+	run(t, m, first(m.HandleKey(keyPress("enter"))))
+	press(t, m, "enter")
+	if m.focus != FocusDetail {
+		t.Fatalf("focus is %q, want the document", m.focus)
+	}
+	cursor := m.activeState().cursor
+	shown := m.detail.shownID
+
+	press(t, m, "end")
+	if m.detail.scroll != m.maxDetailScroll() || m.maxDetailScroll() == 0 {
+		t.Fatalf("end left the document at %d of %d", m.detail.scroll, m.maxDetailScroll())
+	}
+	if m.activeState().cursor != cursor || m.detail.shownID != shown {
+		t.Fatalf("end moved the list: cursor %d→%d, document %q→%q",
+			cursor, m.activeState().cursor, shown, m.detail.shownID)
+	}
+	press(t, m, "home")
+	if m.detail.scroll != 0 {
+		t.Fatalf("home left the document at %d", m.detail.scroll)
+	}
+	if m.activeState().cursor != cursor || m.detail.shownID != shown {
+		t.Fatalf("home moved the list: cursor %d→%d, document %q→%q",
+			cursor, m.activeState().cursor, shown, m.detail.shownID)
+	}
+
+	// With the list focused they are still the list's, and they take the
+	// detail with them like every other cursor move.
+	m.focus = FocusList
+	run(t, m, first(m.HandleKey(keyPress("end"))))
+	if got := m.activeState().cursor; got != 11 {
+		t.Fatalf("end on the list landed on row %d, want the last", got)
+	}
+	run(t, m, first(m.HandleKey(keyPress("home"))))
+	if got := m.activeState().cursor; got != 0 {
+		t.Fatalf("home on the list landed on row %d, want the first", got)
+	}
+	if len(host.gets) < 2 {
+		t.Fatalf("home and end on the list scheduled no follow: gets=%d", len(host.gets))
 	}
 }
