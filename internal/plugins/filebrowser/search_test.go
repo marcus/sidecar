@@ -9,8 +9,10 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/marcus/sidecar/internal/mouse"
 	"github.com/marcus/sidecar/internal/plugin"
+	"github.com/marcus/sidecar/internal/queryfield"
 )
 
 func createTestPlugin(t *testing.T, tmpDir string) *Plugin {
@@ -1127,7 +1129,7 @@ func TestSearchClearControls(t *testing.T) {
 	}
 	p.contentSearchMode = true
 	p.contentSearchField.SetQuery("package")
-	p.renderNormalPanes()
+	frame := p.renderNormalPanes()
 
 	tree := fbRegion(t, p, regionTreeSearchClear)
 	if tree == nil {
@@ -1140,6 +1142,11 @@ func TestSearchClearControls(t *testing.T) {
 	if content.Rect.Y != 0 {
 		t.Fatalf("the content bar's × is on row %d, want the first row", content.Rect.Y)
 	}
+	// The rect has to land on the glyph, not merely exist. A bar rendered even
+	// two columns too wide loses its right-hand cells to the truncation, and a
+	// region over the columns it used to occupy is a click on nothing.
+	assertClearGlyphAt(t, frame, tree.Rect)
+	assertClearGlyphAt(t, frame, content.Rect)
 
 	_, _ = p.handleMouse(tea.MouseClickMsg(tea.Mouse{X: tree.Rect.X, Y: tree.Rect.Y, Button: tea.MouseLeft}))
 	if p.searchQuery() != "" {
@@ -1159,4 +1166,26 @@ func TestSearchClearControls(t *testing.T) {
 	if r := fbRegion(t, p, regionContentSearchClear); r != nil {
 		t.Fatalf("an empty content query kept the × registered at %+v", r.Rect)
 	}
+}
+
+// assertClearGlyphAt fails unless the drawn frame carries queryfield's × inside
+// the registered cell.
+func assertClearGlyphAt(t *testing.T, frame string, rect mouse.Rect) {
+	t.Helper()
+	lines := strings.Split(frame, "\n")
+	if rect.Y >= len(lines) {
+		t.Fatalf("the × was registered on row %d of a %d-row frame", rect.Y, len(lines))
+	}
+	row := []rune(ansi.Strip(lines[rect.Y]))
+	for x := rect.X; x < rect.X+rect.W; x++ {
+		if x < len(row) && string(row[x]) == queryfield.ClearGlyph {
+			return
+		}
+	}
+	got := ""
+	if rect.X < len(row) {
+		got = string(row[rect.X:min(rect.X+rect.W, len(row))])
+	}
+	t.Fatalf("no %q in the registered cell %+v; the row holds %q there (row: %q)",
+		queryfield.ClearGlyph, rect, got, string(row))
 }

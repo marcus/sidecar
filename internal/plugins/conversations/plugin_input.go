@@ -168,6 +168,10 @@ func (p *Plugin) updateSessions(msg tea.KeyPressMsg) (plugin.Plugin, tea.Cmd) {
 		p.searchField.Focus()
 		p.cursor = 0
 		p.scrollOff = 0
+		// The bar takes a row from the sidebar, so every session row below it
+		// moves down one and the × has a rect to register. Regions here are
+		// cached until something says they changed; this is that something.
+		p.hitRegionsDirty = true
 
 	case "f":
 		// Open filter menu
@@ -268,6 +272,8 @@ func (p *Plugin) updateSearch(msg tea.KeyPressMsg) (plugin.Plugin, tea.Cmd) {
 		p.searchResults = nil
 		p.cursor = 0
 		p.scrollOff = 0
+		// The bar gave its row back and the list is whole again.
+		p.hitRegionsDirty = true
 		if len(p.sessions) > 0 {
 			p.setSelectedSession(p.sessions[0].ID)
 			return p, p.schedulePreviewLoad(p.selectedSession)
@@ -372,6 +378,11 @@ func (p *Plugin) applySearchQuery() tea.Cmd {
 	p.filterSessions()
 	p.cursor = 0
 	p.scrollOff = 0
+	// A changed query is a changed list and a changed × — both are hit
+	// regions, and this surface rebuilds them only when told they moved. The
+	// selection changing is not enough: filtering to a set whose first row is
+	// already the selected session changes nothing else.
+	p.hitRegionsDirty = true
 	sessions := p.visibleSessions()
 	if len(sessions) == 0 {
 		return nil

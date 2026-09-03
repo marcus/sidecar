@@ -4207,3 +4207,34 @@ func TestSessionsSearchClearControl(t *testing.T) {
 		}
 	}
 }
+
+// The × is only real if the region pass runs after the query changed. This
+// surface caches its hit regions and rebuilds them only when something marks
+// them dirty, so entering search and typing must do so: otherwise the control
+// is drawn on a row nothing listens to while the session rows underneath keep
+// the positions the unfiltered list had.
+func TestSessionsSearchRegionsRebuildOnEveryQueryChange(t *testing.T) {
+	p := sessionListTestPlugin(t, 6)
+	// A session is already selected, as it is after any navigation: the search
+	// must not depend on the selection changing to refresh its regions.
+	p.setSelectedSession(p.sessions[0].ID)
+	_ = p.View(p.width, p.height)
+
+	p.updateSessions(tea.KeyPressMsg{Code: '/', Text: "/"})
+	p.updateSearch(tea.KeyPressMsg{Code: 's', Text: "s"})
+	_ = p.View(p.width, p.height)
+
+	rect := findConvRegion(t, p, regionSearchClear)
+	if got := p.mouseHandler.HitMap.Test(rect.X, rect.Y); got == nil || got.ID != regionSearchClear {
+		t.Fatalf("press on the × hit %+v, want %q", got, regionSearchClear)
+	}
+
+	// And clearing through the × takes the control back off the map.
+	_, _ = p.handleMouse(convClickMsg(rect.X, rect.Y))
+	_ = p.View(p.width, p.height)
+	for _, r := range p.mouseHandler.HitMap.Regions() {
+		if r.ID == regionSearchClear {
+			t.Fatalf("an empty query kept the × registered at %+v", r.Rect)
+		}
+	}
+}
