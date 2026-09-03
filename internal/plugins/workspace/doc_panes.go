@@ -1030,7 +1030,7 @@ func (p *Plugin) handleDocKey(msg tea.KeyPressMsg) (bool, tea.Cmd) {
 	// Before the pane's own keys: esc clears a selection rather than hiding the
 	// pane out from under it, and the copy chord must not fall through to a
 	// document key that happens to share it.
-	if cmd, handled := p.handleDocSelectionKey(doc.view(), msg); handled {
+	if cmd, handled := p.handlePaneSelectionKey(docSelectionPane(doc.view()), msg); handled {
 		return true, cmd
 	}
 	// Asked here rather than above: the editor, the finder overlay and a

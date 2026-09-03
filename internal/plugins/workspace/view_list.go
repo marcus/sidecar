@@ -65,6 +65,15 @@ func (p *Plugin) View(width, height int) string {
 	// that could not place one — must not leave last frame's leaf boxes
 	// answering pointer hits.
 	p.paneFrame, p.paneFrameDrawn = PaneLayout{}, false
+	// A modal has taken the keyboard and the pointer. The selection behind it
+	// goes with them: the release will never arrive, so the gesture would
+	// otherwise answer the next unrelated drag as an extension of a selection
+	// the user finished before the modal opened, and the highlight would sit
+	// under a card nothing on screen still acts on.
+	if p.isModalViewMode() {
+		p.abandonPaneSelection()
+		p.clearPaneSelectionsExcept(nil)
+	}
 
 	var view string
 	switch p.viewMode {

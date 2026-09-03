@@ -230,7 +230,7 @@ func (c *docContent) View(render Render) string {
 	}
 	body := ""
 	if view := c.doc.view(); view != nil {
-		c.p.bindDocSelection(view, render.Origin)
+		c.p.bindPaneSelection(view, render.Origin)
 		body = c.p.preparedDocBody(c.doc, render.Origin.X, render.Origin.Y+terminalHeaderRows)
 	}
 	header := c.p.docPaneHeaderRow(c.doc, c.size.Width, render.Focused)
@@ -279,6 +279,7 @@ func (c *issueContent) SetSize(size Size) tea.Cmd {
 func (c *issueContent) View(render Render) string {
 	body := ""
 	if view := c.issue.view(); view != nil {
+		c.p.bindPaneSelection(view, render.Origin)
 		body = view.View()
 	}
 	return composePaneLeaf(

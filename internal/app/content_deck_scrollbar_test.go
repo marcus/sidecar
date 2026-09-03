@@ -179,8 +179,8 @@ func TestAppContentDeckDocumentThumbDragChangesOffsetEndToEnd(t *testing.T) {
 	if !doc.ScrollbarDragging() {
 		t.Fatal("thumb press did not arm the document's gesture")
 	}
-	if got := h.mouse.DragRegion(); got != appDeckDocGestureRegion {
-		t.Fatalf("thumb press started drag %q, want %s", got, appDeckDocGestureRegion)
+	if got := h.mouse.DragRegion(); got != appDeckSelectGestureRegion {
+		t.Fatalf("thumb press started drag %q, want %s", got, appDeckSelectGestureRegion)
 	}
 	if doc.ScrollOffset() != before {
 		t.Fatalf("grab at rest moved the offset to %d", doc.ScrollOffset())
@@ -205,7 +205,7 @@ func TestAppContentDeckDocumentThumbDragChangesOffsetEndToEnd(t *testing.T) {
 	if doc.ScrollOffset() != want {
 		t.Fatalf("settle moved the offset to %d, want %d", doc.ScrollOffset(), want)
 	}
-	if h.docGestureLeaf != 0 {
+	if h.selectGestureLeaf != 0 {
 		t.Fatal("settle left the deck holding the document leaf")
 	}
 }
@@ -260,7 +260,7 @@ func TestAppContentDeckLostReleaseRecoversOnButtonlessMotion(t *testing.T) {
 	if doc.ScrollbarDragging() {
 		t.Fatal("lost release left the document gesture live")
 	}
-	if h.docGestureLeaf != 0 {
+	if h.selectGestureLeaf != 0 {
 		t.Fatal("lost release left the deck holding the document leaf")
 	}
 }

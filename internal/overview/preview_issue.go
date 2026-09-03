@@ -242,6 +242,7 @@ func (m *Model) renderPreviewIssue(issue *previewIssue, box termpreview.Box) str
 	}
 	body := ""
 	if view != nil {
+		m.bindPreviewPaneSelection(view, box)
 		body = view.View()
 	}
 	return header + "\n" + body
@@ -304,6 +305,12 @@ func (m *Model) handlePreviewIssueMouse(action mouse.MouseAction) tea.Cmd {
 		}
 		lx := action.X - action.Region.Rect.X
 		ly := action.Y - action.Region.Rect.Y - termpreview.HeaderRows
+		if view.SelectableAt(lx, ly) {
+			// The card's own targets — a parent row, a subtask row, its bar —
+			// keep their clicks; everything else in the body is text, and a
+			// press over it arms a selection.
+			return m.pressPreviewPaneSelection(panelayout.Issue, action)
+		}
 		kind, cmd := view.HandleClick(lx, ly)
 		if kind == issueview.HitScrollbar {
 			// The card armed a scrollbar gesture (and did any track-click
@@ -323,6 +330,11 @@ func (m *Model) handlePreviewIssueMouse(action mouse.MouseAction) tea.Cmd {
 		if view != nil {
 			lx := action.X - action.Region.Rect.X
 			ly := action.Y - action.Region.Rect.Y - termpreview.HeaderRows
+			if view.SelectableAt(lx, ly) {
+				// Word by double click, line by triple, exactly as the
+				// terminal beside it answers the same gesture.
+				return m.pressPreviewPaneSelection(panelayout.Issue, action)
+			}
 			if view.PressScrollbar(lx, ly) {
 				issue.scrollTrackY = action.Y - ly
 				m.workspacesMouse.StartDrag(action.X, action.Y, previewIssueScrollbarKind, 0)
@@ -404,6 +416,12 @@ func (m *Model) previewIssueKey(msg tea.KeyPressMsg) (bool, tea.Cmd) {
 	issue := m.preview.issue
 	if issue == nil || !issue.focused || m.PreviewInteractive() {
 		return false, nil
+	}
+	// Before the pane's own keys: esc clears a selection rather than closing
+	// the pane out from under it, and the copy chord must not fall through to
+	// a card key that happens to share it.
+	if cmd, handled := m.handlePreviewPaneSelectionKey(panelayout.Issue, msg); handled {
+		return true, cmd
 	}
 	switch msg.String() {
 	case "q", "esc":

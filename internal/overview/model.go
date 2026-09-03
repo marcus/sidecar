@@ -250,12 +250,16 @@ type Model struct {
 	// wsBar is the Sessions list's interactive scrollbar: the bar's last
 	// render snapshot, where its track sits on screen, whether the pointer
 	// hovers it, and any drag gesture in flight.
-	wsBar                     workspaceScrollbarState
-	hoverTermBar              bool
-	sidebarWidth              int
-	sidebarVisible            bool
-	catalog                   map[string]workspaceinventory.Workspace
-	preview                   previewState
+	wsBar          workspaceScrollbarState
+	hoverTermBar   bool
+	sidebarWidth   int
+	sidebarVisible bool
+	catalog        map[string]workspaceinventory.Workspace
+	preview        previewState
+	// previewSelectKind is the leaf a live text-selection drag started in. A
+	// drag is answered by where it began, never by where the pointer has since
+	// travelled. See preview_pane_select.go.
+	previewSelectKind         panelayout.Kind
 	previewOwnership          *previewOwnershipLease
 	diff                      workspacediff.View
 	terminalConfig            tty.Config

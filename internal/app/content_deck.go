@@ -108,14 +108,15 @@ type appContentDeck struct {
 	// alone; today only the issue card coalesces here.
 	wheel    tty.WheelBursts
 	wheelNow func() time.Time
-	// Pointer state for hosted panes' interactive scrollbars. docGestureLeaf
-	// is the document whose HandleSelectionMouse gesture — bar or selection —
-	// is live; issueScroll* carry an issue card's bar gesture and the absolute
+	// Pointer state for hosted panes' interactive scrollbars. selectGestureLeaf
+	// is the leaf whose HandleSelectionMouse gesture — a document's bar or any
+	// selectable pane's text selection — is live; issueScroll* carry an issue
+	// card's bar gesture and the absolute
 	// Y of its row 0 at press time; noteBar is the host-side bookkeeping a
 	// state-free noteview seam leaves to this surface. selKeys and
-	// selCopyOnSelect bind the shared selection chords to documents at render
-	// time, the only place both are known.
-	docGestureLeaf    int
+	// selCopyOnSelect bind the shared selection chords to every selectable
+	// pane at render time, the only place both are known.
+	selectGestureLeaf int
 	issueScrollLeaf   int
 	issueScrollTrackY int
 	noteBar           appDeckNoteBar
@@ -467,6 +468,10 @@ func (c *appDeckContent) View(render paneframe.Render) string {
 	// body were scanned. Reviewing a change to this switch is the control.
 	case *issueview.Model:
 		v.SetSize(c.size.Width, bodyH)
+		// The body sits below the leaf's own tab-header row; recording where it
+		// was drawn is what lets a press map onto the card's own rows.
+		v.SetOrigin(render.Origin.X, render.Origin.Y+paneframe.HeaderRows)
+		v.SetSelection(c.h.selKeys, c.h.selCopyOnSelect)
 		body = v.View()
 	case *noteview.Model:
 		v.SetSize(c.size.Width, bodyH)
@@ -1119,7 +1124,7 @@ func (m *Model) appContentMouse(msg tea.MouseMsg) (tea.Cmd, bool) {
 					// press before the host recognizes their link. They must see
 					// the matching release before activation for the same reason.
 					settle = m.updateAppContentPrimaryMouse(h, msg)
-				} else if action.DragStartID == appDeckDocGestureRegion {
+				} else if action.DragStartID == appDeckSelectGestureRegion {
 					settle, _ = h.continueAppContentGesture(action)
 				}
 				return tea.Batch(settle, m.openAppContent(h.workdir, h.pluginID, hit.Ref)), true
@@ -1349,13 +1354,15 @@ func (m *Model) handleAppContentKey(key tea.KeyPressMsg) (tea.Cmd, bool) {
 		_, cmd := view.HandleSearchKey(key)
 		return cmd, true
 	}
-	// Selection chords belong to the document before pane-level escape and
-	// ordinary viewer keys. In particular, escape clears a selection instead
-	// of hiding the pane, matching Files and both Workspace document hosts.
-	if view, ok := h.deck.Viewer(leaf.ID).(*docview.Model); ok {
-		result := view.HandleSelectionKey(key)
+	// Selection chords belong to the pane before pane-level escape and ordinary
+	// viewer keys. In particular, escape clears a selection instead of hiding
+	// the pane, matching Files and both Workspace hosts. Every selectable pane
+	// answers here, so a copy is a copy whichever kind of leaf has the
+	// keyboard.
+	if pane, ok := h.deck.Viewer(leaf.ID).(textselect.Pane); ok {
+		result := pane.HandleSelectionKey(key)
 		if result.Handled {
-			return appDeckSelectionCopyCmd(view, result), true
+			return appDeckSelectionCopyCmd(pane, result), true
 		}
 	}
 	// M is the deck's own entry onto the reposition modal, beside the header ⊞.

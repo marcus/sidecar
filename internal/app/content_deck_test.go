@@ -1029,15 +1029,15 @@ func TestAppContentDeckRenderedMarkdownBodySelectsAndCopiesWhatWasDrawn(t *testi
 	}
 
 	m.appContentMouse(tea.MouseClickMsg(tea.Mouse{X: rect.X, Y: rect.Y, Button: tea.MouseLeft}))
-	if got := h.mouse.DragRegion(); got != appDeckDocGestureRegion {
-		t.Fatalf("body press started drag %q, want %s", got, appDeckDocGestureRegion)
+	if got := h.mouse.DragRegion(); got != appDeckSelectGestureRegion {
+		t.Fatalf("body press started drag %q, want %s", got, appDeckSelectGestureRegion)
 	}
 	m.appContentMouse(tea.MouseMotionMsg(tea.Mouse{X: rect.X + 20, Y: rect.Y + 1, Button: tea.MouseLeft}))
 	m.appContentMouse(tea.MouseReleaseMsg(tea.Mouse{X: rect.X + 20, Y: rect.Y + 1, Button: tea.MouseLeft}))
 	if !view.HasSelection() {
 		t.Fatal("drag through the Files document pane created no selection")
 	}
-	if h.docGestureLeaf != 0 || h.mouse.IsDragging() {
+	if h.selectGestureLeaf != 0 || h.mouse.IsDragging() {
 		t.Fatal("document selection release left a live host gesture")
 	}
 	if frame := m.renderContent(180, 40); !strings.Contains(frame, ui.GetSelectionBgANSI()) {
@@ -1935,7 +1935,7 @@ func TestAppContentDeckActivatesFromDocumentLeafIntoSameDeck(t *testing.T) {
 	if h.deck.Leaf(panelayout.Issue) == 0 {
 		t.Fatal("clicking a document-leaf link opened no Issue leaf in this deck")
 	}
-	if h.docGestureLeaf != 0 || h.mouse.IsDragging() {
+	if h.selectGestureLeaf != 0 || h.mouse.IsDragging() {
 		t.Fatal("activating a document link left the body selection gesture armed")
 	}
 	if m.currentContentDeck() != h {
