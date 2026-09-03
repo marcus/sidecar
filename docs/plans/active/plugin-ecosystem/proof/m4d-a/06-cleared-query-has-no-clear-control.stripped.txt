@@ -1,0 +1,45 @@
+ ◱ Sidecar │   Sessions     Activity     Fixture                                                                             ↖ sidecar   Select Project ▾  ·  ⚙
+╭───────────────────────────────────────────────────────────────────────────────────────────────╮ ╭────────────────────────────────────────────────────────────╮
+│ Fixture · Results                                                  ⇅ Relevance · Everything   │┃│ Fixture row rc:notes:1				exact  │
+│                                                                                               │┃│                                                            │
+│ / ▌                                                                                  no query │┃│ rc:notes:1  results · 2026-08-14     			│
+│                                                                                               │┃│                                                            │
+│                                                                                               │┃│ Collection  results                                        │
+│                                                                                               │┃│ Locator     rc:notes:1                                     │
+│                                                                                               │┃│                                                            │
+│                                                                                               │┃│                                                            │
+│                                                                                               │┃│   Deterministic detail for  rc:notes:1 .                   │
+│                                                                                               │┃│ ── Evidence ─────────────────────────────────────────────  │
+│                                                                                               │┃│                                                            │
+│                                                                                               │┃│   Evidence for rc:notes:1.                                 │
+│                                                                                               │┃│ ── Attributes ───────────────────────────────────────────  │
+│                                                                                               │┃│ Source  notes                                              │
+│                                                                                               │┃│ ── Timeline ─────────────────────────────────────────────  │
+│                                                                                               │┃│ 2w ago   Note added · first                                │
+│                                                                                               │┃│ 2w ago   Linked from td-3fa2c1                             │
+│                                                                                               │┃│ ── Ambiguous ────────────────────────────────────────────  │
+│                                                                                               │┃│ body wins                                                  │
+│                                                                                               │┃│                                                            │
+│                                This collection needs a query.                                 │┃│ no sourceUrl — o is unavailable on this record             │
+│                                                                                               │┃│                                                            │
+│                                      Press  /  to ask.                                        │┃│                                                            │
+│                                                                                               │┃│                                                            │
+│                                                                                               │┃│                                                            │
+│                                                                                               │┃│                                                            │
+│                                                                                               │┃│                                                            │
+│                                                                                               │┃│                                                            │
+│                                                                                               │┃│                                                            │
+│                                                                                               │┃│                                                            │
+│                                                                                               │┃│                                                            │
+│                                                                                               │┃│                                                            │
+│                                                                                               │┃│                                                            │
+│                                                                                               │┃│                                                            │
+│                                                                                               │┃│                                                            │
+│                                                                                               │┃│                                                            │
+│                                                                                               │┃│                                                            │
+│                                                                                               │┃│                                                            │
+│                                                                                               │┃│                                                            │
+│ ───────────────────────────────────────────────────────────────────────────────────────────── │┃│                                                            │
+│                                                                                               │┃│                                                            │
+╰───────────────────────────────────────────────────────────────────────────────────────────────╯ ╰────────────────────────────────────────────────────────────╯
+ enter  Search   ctrl+c  quit                                                                                           fixture · results · waiting for a query

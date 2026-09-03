@@ -43,7 +43,19 @@ These two are the one part of this section that is specified rather than transcr
 
 ### A query bar shows its focus
 
-A query bar has two visibly different states, and the difference is more than a caret. Idle, the prompt (`/`) and the placeholder are `TextMuted`. Taking text, the prompt swaps to `styles.Title`, the text is `Body`, a `▌` block caret follows it, and the count of what the query matched against what exists is right-aligned on the same row. `workspacelist.Filter.RenderRow` is the function that draws this for the workspace sidebar and is the one any new query bar should call rather than imitate. Clicking the row focuses it; `Esc` blurs it and keeps the text.
+A query bar has two visibly different states, and the difference is more than a caret. Idle, the prompt (`/`) and the placeholder are `TextMuted`. Taking text, the prompt swaps to `styles.Title`, the text is `Body`, a `▌` block caret sits at the cursor, and the count of what the query matched against what exists is right-aligned on the same row.
+
+**One type draws and drives every query bar: `internal/queryfield`.** `queryfield.Field` is the state, the keys and the render together, wrapping a bubbles `textinput.Model` behind `queryfield.RenderRow`; `workspacelist.Filter` is that field wearing the workspace sidebar's placeholder and count. A new query bar composes the field rather than imitating the row, because a bar that is only drawn like the others still edits unlike them.
+
+Its keys are a text field's keys, and they are the same on every surface:
+
+- **Editing comes from the text input.** Cursor left and right, word forward and back (`alt+←`/`alt+→`, `alt+b`/`alt+f`), word delete (`alt+backspace`, `ctrl+w`), `ctrl+k`, home and end, and paste — none of it written per surface.
+- **`ctrl+a` is unbound in a query bar.** It is select-all wherever text is selectable (`internal/textselect`), and a bar that took it for line-start would make one chord mean two things depending on which row had focus. `home` is line-start.
+- **`Esc` clears on the first press and blurs on the second; `Enter` accepts and blurs, keeping the text; `ctrl+u` clears.** A query survives losing focus: filtering, pressing enter and working inside the narrowed list is one gesture.
+- **`up`, `down`, `pgup`, `pgdown`, `ctrl+n`, `ctrl+p` and `tab` are left unclaimed**, so the list beneath keeps navigating and the focus ring keeps working while the bar has the keyboard. Suggestions stay off precisely because textinput binds those keys to them.
+- **The arrow hand-off.** Where the bar sits above a list of its own results, `down` hands the keyboard to the list on the row under the cursor — the first row, after any list — and `up` or `k` on the first row hands it back with the text intact. Two rows, one keyboard path.
+
+A `×` is the row's right-hand control whenever the query is non-empty, right of the count. It clears the query and leaves the caret where it is, which is what the `filter-clear` command does from the keyboard and the palette, and `RenderRow` hands back the rect so the host can register it (`workspacelist.RegionFilterClear` on both Workspaces surfaces, `plugin-query-clear` in the browser). While the query is empty the control is not drawn and nothing is registered: those columns belong to the query row, where a click is "focus the query". Clicking the row focuses it.
 
 ### Gradient borders
 
@@ -115,8 +127,8 @@ Every action a key performs is reachable by the pointer, and both routes call th
 - **Clicking a pane focuses it.** A click anywhere inside a pane's box moves focus there before anything else happens, through the same call the focus ring uses (`paneframe.FocusLeafAt` for a pane tree, a surface's own `SetPaneFocus` for the boxes inside one plugin). Focus is a reading of where the pointer went, so the border chrome above follows it.
 - **The wheel scrolls the box under the pointer**, not the focused one, by `mouse.WheelScrollLines` per notch. A wheel at a box's boundary is offered to the host through `WheelBoundaryConsumer` rather than lost.
 - **A scrollbar appears whenever content overflows** and is a drag target. `ui.RenderScrollbarWithState` draws it, `ui.RegionScrollbarThumb` and `ui.RegionScrollbarTrack` are its regions, and a press on the track jumps while a drag on the thumb follows, as the file browser and the Sessions surface already do.
-- **A list row selects on click and opens on a second click** on the already-selected row or on a double click, which is exactly `Enter` twice. Hover does not select.
-- **A text field focuses on click** and shows it as the query-bar rule above describes.
+- **A list row selects on click and opens on a second click** on the already-selected row or on a double click, which is exactly `Enter` twice. Hover does not select. Where a detail box sits beside the list, selecting also loads it — the detail follows the cursor however the cursor moved, after a quiet period, and what is on screen stays there until the new document lands — so the second click and `Enter` move the keyboard into a document that is already there rather than spending a process (`pluginbrowser.DetailQuiet`, `filebrowser`'s `schedulePreviewForCursor`).
+- **A text field focuses on click** and shows it as the query-bar rule above describes. A query bar's `×` is its own target, registered after the row it sits on so it wins the hit test, and registered only where it is drawn.
 - **A pill or control on a header row is a hit target.** It is placed through `ui.ReserveHeaderControls`, which is what lets it be dropped whole rather than clipped, and its region is registered from the placement so a dropped control cannot keep a live target.
 - **Two boxes inside one surface are separated by a drag rail**, drawn with `ui.RenderHandle`, widened as `paneframe.DividerHitBox` widens the pane-tree rail, and persisted through `internal/state` so the split survives a relaunch. A blank column between two boxes is a rail that has not been drawn yet.
 - **Regions are registered in paint order through `mouse.HitMap`, with the rail last**, because `HitMap.Test` scans in reverse and the smallest, most specific target must win.
