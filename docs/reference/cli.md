@@ -2157,6 +2157,11 @@ The draft protocol is behind the plugin_protocol feature flag. Turn it on
 with `sidecar --enable-feature=plugin_protocol`, or set
 features.flags.plugin_protocol.
 
+Writing one: docs/guides/active/creating-plugins.md is the walkthrough, from
+choosing a class to a plugin that passes `plugin check`, with a complete
+example under docs/guides/examples/hello-plugin/. The contract itself is
+docs/reference/plugin-protocol.md.
+
 ```
 Usage: sidecar plugin <command> [options]
 ```

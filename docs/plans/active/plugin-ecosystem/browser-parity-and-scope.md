@@ -1,6 +1,6 @@
 # Browser parity, scope, and plugin authoring (M4a–M4c)
 
-**Status:** proposed 2026-09-03; M4a is implemented (see its section), M4c is ready to start, M4b is gated on the four decisions under [Decisions to confirm](#decisions-to-confirm). Controlling document for milestones M4a, M4b and M4c of [README.md](README.md); M4d (freeze, migrate, flag flip, site docs) stays in the README. **Tracking:** td-f9f007 (epic); per-milestone issues are listed with each milestone.
+**Status:** M4a implemented 2026-09-03 (td-62b81c); M4c implemented 2026-09-03 (td-40eb97); M4b is gated on the four decisions under [Decisions to confirm](#decisions-to-confirm). Controlling document for milestones M4a, M4b and M4c of [README.md](README.md); M4d (freeze, migrate, flag flip, site docs) stays in the README. **Tracking:** td-f9f007 (epic); per-milestone issues are listed with each milestone.
 
 **Reading order:** [README.md](README.md) for the settled decisions and the milestone map, this file for the work, [host.md](host.md#the-shared-browser) for how the browser is built today, and [mockups/README.md](mockups/README.md) for the screens M4b implements. The design rules this work adds to Sidecar as a whole live in [docs/reference/design-language.md](../../../reference/design-language.md) under *Pointer parity* and *The footer*, not here.
 
@@ -57,7 +57,7 @@ Captures are under [proof/m4a/](proof/m4a/README.md), which also records how the
 
 Applies four protocol revisions now rather than at freeze, because recall cannot be honest without them and the freeze is what M4d does once recall is. **Tracking:** td-9ca6a7 (sidecar: protocol and host), td-786e42 (recall repo: the plugin and the scope mapping; filed there, mirrored on td-35bcd1 which records the root cause).
 
-**Protocol revisions**, each moving from the README's pending table into [protocol.md](protocol.md) as applied:
+**Protocol revisions**, each moving from the README's pending table into [the protocol reference](../../../reference/plugin-protocol.md) as applied:
 
 | Revision | Shape |
 | --- | --- |
@@ -85,15 +85,24 @@ And one rule stated rather than added: `outcome` describes the row set of *this*
 
 **Evidence:** conformance JSON for each revision; browser tests that a filter change relists with the new params and that the pill label follows the ladder; a persistence round trip carrying `filters`; the coverage modal rendered from a fixture page with 13 coverage rows, held to its box. Live: the Recall tab in `clara-home` with the query `specialized` shows 8 rows under *This project*, more under *Everything*, and the coverage modal names `clara-home-semantic (unhealthy)` with its reason; a stripped capture compared with `mockups/recall-studio.scope-picker.txt` and `recall-studio.results-degraded.txt`. td-35bcd1's proof case (`project.name = "nosuchproject"`) answers `degraded` with a `filter_unsupported` row, not `abstained`.
 
-### M4c. Plugin authoring guide and protocol reference — docs only
+### M4c. Plugin authoring guide and protocol reference — implemented, td-40eb97
 
-**Tracking:** td-40eb97. Runs beside M4a; touches no Go.
+Runs beside M4a. The two documents, the example plugin and the test that keeps it honest are in the tree; the Go it touches is one doc comment, one CLI Long string, and one test file.
 
 - `docs/reference/plugin-protocol.md` becomes the single authority for `sidecar.plugin/v1` (marked draft until M4d freezes it). The contract text moves out of [protocol.md](protocol.md), which shrinks to the design rationale (*Why not a generic UI catalog*, *Deferred to evidence*, *Fixtures*), the pending-revisions table, and a link. One authority, as the frozen `terminal-resource-provider-protocol.md` already is for resource v1. The reference notes the `testdata/protocol/` path move recorded in td-4ccfb7.
 - `docs/guides/active/creating-plugins.md`, for someone who has a CLI and wants it in Sidecar: choosing a class; the five methods with a complete minimal plugin in a scripting language checked in under `docs/guides/examples/hello-plugin/` and proven by `sidecar plugin check`; configuring with `sidecar plugin add` and what the trust act means; what the host renders for each declaration, pointing at the mockups; the keys and pointer routes the host owns so the author declares none; the outcome vocabulary and why an empty page must say which claim it makes; filters, views and sort; context kinds; freshness (`watch`, `everySeconds`, `sidecar plugin changed`); `sidecar open --plugin` and the layout spec; conformance against the fixture; and a short section on embedded plugins that hands off to `.agents/skills/create-plugin/SKILL.md`.
 - `.agents/skills/create-plugin/SKILL.md` gains a first paragraph routing protocol-plugin authors to the guide; `docs/reference/cli.md` and the README's reading order link both documents.
 
 **Evidence:** the example plugin passes `sidecar plugin check` from an isolated config in CI (a test under `internal/pluginhost` that runs it); every relative link in the two documents resolves; the guide's walkthrough executed once from a clean state by the reviewer.
+
+**Deviations.**
+
+1. **The pending-revisions table stays in [README.md](README.md) alone.** The plan gave it to `protocol.md`; two copies of a table that loses a row every time a revision is applied is how the plan and the reference start disagreeing. `protocol.md` links it, and the reference links it too, saying plainly that none of it is implemented.
+2. **A refused `describe` does not print its reason, and the reference says so.** The draft claimed `plugin check` and `plugin list --describe` print the typed reason verbatim. The host builds one — which collection, which column, which watch path — and both verbs print only `invalid-describe` with a generic message. The reference and the guide describe what actually happens; surfacing the detail is td-808ec9.
+3. **The example is Python 3, not POSIX sh.** The contract is one JSON object in and one out, and sh cannot read or write JSON without a dependency the guide would then have to explain. Python 3 is present on macOS and on every Linux the rest of this repository's scripts assume.
+4. **`docs/reference/cli.md` is generated from the command registry**, so its pointers to the guide and the reference live in `internal/cli/plugin.go`'s `Long` text and reach the document through `REGEN_CLI_DOC=1 go test ./internal/cli/ -run TestRegenerateCLIDoc`. They are paths rather than Markdown links, because that string is also `--help` output.
+5. **The skill exists only at `.claude/skills/create-plugin/SKILL.md`** in this tree, so the routing paragraph went there; there is no `.agents/` mirror to keep in step.
+6. **The frozen resource reference gained the path-move note too** (td-4ccfb7 item 3). It is the document that published `internal/resourceprovider/testdata/protocol/` as stable, so it is the one a provider author reading only it would be misled by.
 
 ## Sequencing
 

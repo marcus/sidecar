@@ -1,6 +1,6 @@
 # M0 mockups
 
-Screen mockups for the shared browser that renders every protocol plugin. Each `.tui.yaml` is a deterministic mockup for the TUI mockup tool; the `.txt` beside it is the rendered grid with colour stripped, so the layout can be read in a diff. Controlling document: [../README.md](../README.md); contract: [../protocol.md](../protocol.md).
+Screen mockups for the shared browser that renders every protocol plugin. Each `.tui.yaml` is a deterministic mockup for the TUI mockup tool; the `.txt` beside it is the rendered grid with colour stripped, so the layout can be read in a diff. Controlling document: [../README.md](../README.md); contract: [docs/reference/plugin-protocol.md](../../../../reference/plugin-protocol.md).
 
 **These mockups follow [docs/reference/design-language.md](../../../../reference/design-language.md).** Read it before editing one or adding another. The chrome here is not an approximation of Sidecar's: the header, the footer, the gradient pane borders, the inside pane titles, the leaf tab strip, the drag rail and the modal are drawn by studio components transcribed from the Go that paints the real app, so a mockup lands on the same columns and the same hex values as a capture of the running binary. Only the plugin's own data layout is invented here.
 

@@ -30,9 +30,8 @@ above, one configured under `plugins.external` with the newer one, and the
 dialect comes from the config section rather than from anything the executable
 says. A provider that answers only this protocol keeps working exactly as
 described here and needs no change. Its contract is
-[docs/plans/active/plugin-ecosystem/protocol.md](../plans/active/plugin-ecosystem/protocol.md),
-and `sidecar plugin` is its CLI; `sidecar terminal-links` remains the surface for
-this section.
+[docs/reference/plugin-protocol.md](plugin-protocol.md), and `sidecar plugin` is
+its CLI; `sidecar terminal-links` remains the surface for this section.
 
 ## Invocation model
 
@@ -522,6 +521,12 @@ dispatch before any TUI, tmux, state, or log setup.
 Canonical request/response JSON lives at the stable path
 `internal/pluginhost/testdata/protocol/` and may be vendored by external
 provider authors implementing this contract.
+
+**That path moved after this document was frozen.** It was published here as
+`internal/resourceprovider/testdata/protocol/`; renaming that package to
+`internal/pluginhost` moved it, which broke the stability promise for anyone who
+had followed it. The path above is the current one and no further move is
+planned.
 
 The reference fixture executable is
 `internal/pluginhost/testdata/fixtureprovider`, which describes

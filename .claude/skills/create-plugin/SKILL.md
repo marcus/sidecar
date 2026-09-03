@@ -11,6 +11,8 @@ description: >
 
 # Create Plugin
 
+**This skill is the embedded class: a Go package compiled into Sidecar with its own Bubble Tea UI.** If what you want is a tool's data in Sidecar — a searchable tab, rows that open into documents, panes beside a terminal — you almost certainly want a *protocol* plugin instead: an executable in any language answering five JSON methods, which Sidecar renders itself and which ships as a config entry rather than a Sidecar release. Read [docs/guides/active/creating-plugins.md](../../../docs/guides/active/creating-plugins.md) and stop here. Come back only when the screen itself is the point — a board, a queue, a layout the collection-and-document vocabulary cannot express — because everything below costs a release, a keymap pass, and a permanent place in the repository.
+
 ## Architecture Overview
 
 - **Bubble Tea model**: `internal/app/model.go` owns the active plugin index, dispatches key events, renders plugin views.

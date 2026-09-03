@@ -525,7 +525,11 @@ func pluginCommand() *Command {
 			"`sidecar terminal-links` verbs remain the surface for that older section.\n\n" +
 			"The draft protocol is behind the plugin_protocol feature flag. Turn it on\n" +
 			"with `sidecar --enable-feature=plugin_protocol`, or set\n" +
-			"features.flags.plugin_protocol.",
+			"features.flags.plugin_protocol.\n\n" +
+			"Writing one: docs/guides/active/creating-plugins.md is the walkthrough, from\n" +
+			"choosing a class to a plugin that passes `plugin check`, with a complete\n" +
+			"example under docs/guides/examples/hello-plugin/. The contract itself is\n" +
+			"docs/reference/plugin-protocol.md.",
 		Sub: []*Command{listCmd, checkCmd, callCmd, addCmd, removeCmd, enableCmd, disableCmd, changedCmd},
 		Run: runPluginRoot,
 	}
