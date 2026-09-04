@@ -36,7 +36,14 @@ const sidebars = {
         'layout-and-panes',
         'session-durability',
         'notifications',
-        'terminal-resources',
+      ],
+    },
+    {
+      type: 'category',
+      label: 'Extending Sidecar',
+      collapsed: false,
+      items: [
+        'plugins',
       ],
     },
     {
