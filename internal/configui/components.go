@@ -521,16 +521,24 @@ func clampStart(s string, width int) string {
 	return ansi.Truncate(s, width, "…")
 }
 
-// clampEnd keeps the end of a string and ellipsizes the start — what a path
-// wants, so the filename stays visible.
+// clampEnd keeps the end of a string and ellipsizes the start, which is what a
+// path wants, so the filename stays visible.
+//
+// ansi.TruncateLeft's count is how many cells to *remove* from the left, not
+// how many to keep, and the prefix it adds occupies one of the cells that
+// survive. Passing the target width straight through therefore cut a 43-column
+// path down to ten columns rather than to thirty-four, which is how the Projects
+// page's path column and the Integrations table's files column both ended up
+// showing an ellipsis and a suffix.
 func clampEnd(s string, width int) string {
 	if width < 1 {
 		return ""
 	}
-	if ansi.StringWidth(s) <= width {
+	total := ansi.StringWidth(s)
+	if total <= width {
 		return s
 	}
-	return ansi.TruncateLeft(s, width, "…")
+	return ansi.TruncateLeft(s, total-width+1, "…")
 }
 
 func padDisplay(s string, width int) string {

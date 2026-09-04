@@ -4,7 +4,13 @@ All notable changes to sidecar are documented here.
 
 ## [Unreleased]
 
+### Features
+
+- **Configuration -> Agents -> Integrations is a table.** One line per agent Sidecar can install for, with its name, its status, and Install, Update, Repair and Remove always in the same column, painted dimmed on the rows where the service would refuse them. Moving the cursor changes only which row is highlighted, and every action that is on offer can be clicked on any row without selecting that row first. Wide terminals also get the authority tier and the file the integration lives in; narrow ones keep the actions and drop the rest. Underneath the table, a fixed-height detail box follows the cursor with that agent's files, tier and demotion reason, CLI path and version, last lifecycle report, and diagnostic. Agents Sidecar has surveyed and ships nothing for collapse into one line instead of taking a row each. The count of an agent's known gaps is gone: they are gaps in that agent's own hook contract rather than faults in Sidecar, and the page names `sidecar agent integration status <agent>`, which lists them. (td-20e857)
+
 ### Bug Fixes
+
+- **A truncated path in Configuration keeps its filename.** `clampEnd` passed the target width to `ansi.TruncateLeft`, whose count is how many columns to remove rather than how many to keep, so a 43-column path in the Projects page's path column came back as ten columns rather than the thirty-four it had room for. (td-20e857)
 
 - **A worktree created non-interactively can now be deleted non-interactively through the same lifecycle as the TUI.** `sidecar worktree delete TARGET --plan --json` reports the exact checkout, dirtiness, remote availability, branch-cleanup choices, and pinned branch and HEAD without changing anything; using the returned absolute path and re-running with `--expect-branch BRANCH --expect-head-oid OID --yes` closes its Sidecar worktree session and rooted managed shells before removing the directory. Local and remote branch cleanup remain explicit flags, as the confirmation's unchecked boxes are, and a failed create's exact pending-creation journal is cleared only after deletion succeeds. A rooted shell that refuses teardown is reported as a warning after the checkout is removed, while requested branch and journal cleanup still finish. The shared refusal rules still protect main, bare, detached, locked, missing, and prunable worktrees. (td-85b0c4)
 

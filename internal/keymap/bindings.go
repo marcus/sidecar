@@ -119,6 +119,16 @@ func DefaultBindings() []Binding {
 		// The theme picker, on Appearance and inline in Add Project.
 		{Key: "g", Command: "use-global-theme", Context: "config"},
 		{Key: "t", Command: "test-notifications", Context: "config"},
+		// Agents -> Integrations: the four verbs the action column paints on
+		// every row. They act on the provider the cursor is on, and they are
+		// registered here for the same reason the page actions above are: the
+		// footer, the help modal and the palette have to name the keys the
+		// pills print. They are not first letters because i, d and e already
+		// mean something else in this context.
+		{Key: "s", Command: "install-integration", Context: "config"},
+		{Key: "u", Command: "update-integration", Context: "config"},
+		{Key: "p", Command: "repair-integration", Context: "config"},
+		{Key: "x", Command: "uninstall-integration", Context: "config"},
 
 		// notification-centre: the app-level right panel. Its keys are answered
 		// by the app before keymap dispatch (it is the focused surface, not a

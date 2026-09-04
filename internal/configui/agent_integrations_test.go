@@ -3,8 +3,10 @@ package configui
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -14,6 +16,7 @@ import (
 	"github.com/marcus/sidecar/internal/agentintegration"
 	"github.com/marcus/sidecar/internal/agentlifecycle"
 	"github.com/marcus/sidecar/internal/config"
+	"github.com/marcus/sidecar/internal/mouse"
 )
 
 // The Integrations route is tested against a Service over a temporary HOME, so
@@ -209,7 +212,7 @@ func TestTheRouteShowsEveryProviderAndItsHonestState(t *testing.T) {
 	// adapter, so the route has to show it and say so. It took that job from pi
 	// while pi's capability entry was retracted, and keeps it now that pi ships
 	// an adapter of its own.
-	for _, want := range []string{"opencode", "codex", "claude", "pi", "grok", "unsupported"} {
+	for _, want := range []string{"opencode", "codex", "claude", "pi", "grok"} {
 		if !strings.Contains(view, want) {
 			t.Fatalf("the route does not mention %q:\n%s", want, view)
 		}
@@ -217,9 +220,67 @@ func TestTheRouteShowsEveryProviderAndItsHonestState(t *testing.T) {
 	if !strings.Contains(view, "0 of 4 installed") {
 		t.Fatalf("the summary is wrong:\n%s", view)
 	}
+	// The table names its columns in the CLI's own words.
+	for _, want := range []string{"PROVIDER", "STATUS", "ACTIONS"} {
+		if !strings.Contains(view, want) {
+			t.Fatalf("the table has no %s column:\n%s", want, view)
+		}
+	}
 }
 
-func TestTheFocusedRowNamesTheExactFilesAndOffersOnlyAcceptedActions(t *testing.T) {
+// TestUnsupportedProvidersCollapseToOneLine pins the difference between the two
+// kinds of entry the service returns. An agent Sidecar can install for is a
+// row; an agent it has surveyed and ships nothing for has no action, no files
+// and no tier, so it is named in one sentence instead of given four empty
+// columns.
+func TestUnsupportedProvidersCollapseToOneLine(t *testing.T) {
+	m, _, _ := integrationsFixture(t)
+	view := openIntegrations(t, m)
+
+	state := m.agentIntegrations()
+	rows, unsupported := splitIntegrations(state.list)
+	if len(rows) == 0 || len(unsupported) == 0 {
+		t.Fatalf("the fixture needs both kinds of entry: %d rows, %d unsupported", len(rows), len(unsupported))
+	}
+
+	summary := ""
+	for _, line := range strings.Split(view, "\n") {
+		if strings.Contains(line, "Unsupported:") {
+			summary = line
+		}
+	}
+	if summary == "" {
+		t.Fatalf("no summary line for the unsupported agents:\n%s", view)
+	}
+	for _, index := range unsupported {
+		name := state.list[index].Provider
+		if !strings.Contains(view, name) {
+			t.Fatalf("the summary does not name %q:\n%s", name, view)
+		}
+		// No row, and therefore no control and no hit region either.
+		id := regionIntegrationRow + itoa(index)
+		for _, c := range m.controls {
+			if c.id == id {
+				t.Fatalf("%q was given a table row", name)
+			}
+		}
+	}
+	// Every supported provider does have one.
+	for _, index := range rows {
+		id := regionIntegrationRow + itoa(index)
+		found := false
+		for _, c := range m.controls {
+			if c.id == id {
+				found = true
+			}
+		}
+		if !found {
+			t.Fatalf("%q has no table row", state.list[index].Provider)
+		}
+	}
+}
+
+func TestTheDetailBoxNamesTheExactFilesOfTheRowUnderTheCursor(t *testing.T) {
 	m, svc, asset := integrationsFixture(t)
 	openIntegrations(t, m)
 
@@ -227,30 +288,201 @@ func TestTheFocusedRowNamesTheExactFilesAndOffersOnlyAcceptedActions(t *testing.
 	view := ansi.Strip(m.View(160, 45))
 	shown := "~" + strings.TrimPrefix(asset, svc.Env.Home)
 	if !strings.Contains(view, shown) {
-		t.Fatalf("the focused row does not name the file an install would write (%s):\n%s", shown, view)
+		t.Fatalf("the detail box does not name the file an install would write (%s):\n%s", shown, view)
 	}
-	if !strings.Contains(view, "Install") {
-		t.Fatalf("the focused row does not offer Install:\n%s", view)
-	}
-	// Nothing is installed, so the verbs that need an installation must not be
-	// on offer: a pill that refuses when pressed is worse than one that is not
-	// there.
-	for _, absent := range []string{"Update", "Repair"} {
-		if strings.Contains(view, absent) {
-			t.Fatalf("the route offers %s with nothing installed:\n%s", absent, view)
+	for _, want := range []string{"Files", "Tier", "Agent", "Report", "Gaps"} {
+		if !strings.Contains(view, want) {
+			t.Fatalf("the detail box has no %s line:\n%s", want, view)
 		}
 	}
+
+	// It follows the cursor rather than waiting for Enter, and shows the row
+	// the cursor is actually on.
+	focusIntegration(t, m, "claude")
+	view = ansi.Strip(m.View(160, 45))
+	if !strings.Contains(view, "sidecar agent integration status claude") {
+		t.Fatalf("the detail box did not follow the cursor to claude:\n%s", view)
+	}
+	if strings.Contains(view, "sidecar agent integration status opencode") {
+		t.Fatalf("the detail box still describes opencode:\n%s", view)
+	}
+}
+
+// TestOnlyOfferedActionsAreLive is the table's honesty rule. Every action in
+// the vocabulary is painted on every row so the column keeps its shape, but a
+// pill the service would refuse carries no control, no shortcut and no hit
+// region: it is a label saying where that verb lives, not a button that argues
+// back when pressed.
+func TestOnlyOfferedActionsAreLive(t *testing.T) {
+	m, svc, _ := integrationsFixture(t)
+	openIntegrations(t, m)
+	index := focusIntegration(t, m, "opencode")
 
 	st, err := svc.Status("opencode")
 	if err != nil {
 		t.Fatal(err)
 	}
-	// The route offers exactly what the service says it would accept, rather
-	// than a list this page decided on.
+	offered := map[agentintegration.Action]bool{}
 	for _, act := range st.Offered {
+		offered[act] = true
+	}
+	if !offered[agentintegration.ActionInstall] || offered[agentintegration.ActionUpdate] {
+		t.Fatalf("the fixture no longer exercises the distinction: %v", st.Offered)
+	}
+
+	view := ansi.Strip(m.View(160, 45))
+	// Every verb is on screen, whether or not it is on offer.
+	for _, act := range agentintegration.Actions() {
 		if !strings.Contains(view, integrationActionLabel(act)) {
-			t.Fatalf("the service offers %s but the route does not:\n%s", act, view)
+			t.Fatalf("the action column does not paint %s:\n%s", act, view)
 		}
+	}
+
+	controls := map[string]control{}
+	for _, c := range m.controls {
+		controls[c.id] = c
+	}
+	regions := map[string]bool{}
+	for _, r := range m.mouse.HitMap.Regions() {
+		regions[r.ID] = true
+	}
+	for _, act := range agentintegration.Actions() {
+		id := integrationActionID(index, act)
+		_, declared := controls[id]
+		if declared != offered[act] {
+			t.Fatalf("%s: declared=%v, offered=%v", act, declared, offered[act])
+		}
+		if regions[id] != offered[act] {
+			t.Fatalf("%s: hit region=%v, offered=%v", act, regions[id], offered[act])
+		}
+		// The focused row is the one that owns the letters, and only for the
+		// verbs it can actually run.
+		if declared && controls[id].key != integrationActionKey(act) {
+			t.Fatalf("%s on the focused row carries key %q", act, controls[id].key)
+		}
+	}
+}
+
+// TestMovingTheCursorChangesOnlyTheHighlight is the exit gate for the table.
+//
+// Every row is one line whatever the cursor is doing, so the table block is
+// byte-identical from every cursor position once colour is stripped, and every
+// row's hit region stays in the cell it was in. The detail box below is the one
+// thing that follows the cursor, which is what it is for.
+func TestMovingTheCursorChangesOnlyTheHighlight(t *testing.T) {
+	m, _, _ := integrationsFixture(t)
+	openIntegrations(t, m)
+	rows, _ := splitIntegrations(m.agentIntegrations().list)
+	if len(rows) < 2 {
+		t.Fatalf("the fixture has %d rows", len(rows))
+	}
+
+	type shape struct {
+		lines  []string
+		rects  map[string]mouse.Rect
+		height int
+	}
+	shapes := make([]shape, 0, len(rows))
+	for _, index := range rows {
+		focusIntegration(t, m, m.agentIntegrations().list[index].Provider)
+		view := ansi.Strip(m.View(160, 45))
+		lines := strings.Split(view, "\n")
+		s := shape{height: len(lines), rects: map[string]mouse.Rect{}}
+		// The table block: the column header and every row under it.
+		for _, line := range lines {
+			if strings.Contains(line, "PROVIDER") && strings.Contains(line, "ACTIONS") {
+				s.lines = append(s.lines, line)
+			}
+		}
+		for _, r := range m.mouse.HitMap.Regions() {
+			if strings.HasPrefix(r.ID, regionIntegrationRow) {
+				s.rects[r.ID] = r.Rect
+			}
+		}
+		if len(s.rects) != len(rows) {
+			t.Fatalf("cursor on row %d declared %d row regions, want %d", index, len(s.rects), len(rows))
+		}
+		shapes = append(shapes, s)
+	}
+
+	first := shapes[0]
+	for i, s := range shapes[1:] {
+		if s.height != first.height {
+			t.Fatalf("cursor position %d painted %d lines, position 0 painted %d", i+1, s.height, first.height)
+		}
+		for id, rect := range first.rects {
+			if s.rects[id] != rect {
+				t.Fatalf("cursor position %d moved row %s from %+v to %+v", i+1, id, rect, s.rects[id])
+			}
+		}
+	}
+}
+
+// TestEveryOfferedActionIsClickableOnEveryRow is the other half of the exit
+// gate. The old route painted a row's pills only while it had focus, so
+// reaching one with the pointer meant first clicking the row, which repainted
+// the page and moved the pill out from under the cursor.
+func TestEveryOfferedActionIsClickableOnEveryRow(t *testing.T) {
+	m, _, _ := integrationsFixture(t)
+	openIntegrations(t, m)
+	// The cursor stays on the first row for the whole test: nothing below may
+	// depend on moving it.
+	focusIntegration(t, m, m.agentIntegrations().list[0].Provider)
+	m.View(160, 45)
+
+	state := m.agentIntegrations()
+	rows, _ := splitIntegrations(state.list)
+	rects := map[string]mouse.Rect{}
+	for _, r := range m.mouse.HitMap.Regions() {
+		rects[r.ID] = r.Rect
+	}
+	for _, index := range rows {
+		st := state.list[index]
+		if len(st.Offered) == 0 {
+			t.Fatalf("%s offers nothing, so the row proves nothing", st.Provider)
+		}
+		rowRect, ok := rects[regionIntegrationRow+itoa(index)]
+		if !ok {
+			t.Fatalf("%s has no row region", st.Provider)
+		}
+		for _, act := range st.Offered {
+			rect, ok := rects[integrationActionID(index, act)]
+			if !ok {
+				t.Fatalf("%s has no clickable %s pill", st.Provider, act)
+			}
+			if rect.Y != rowRect.Y || rect.H != 1 {
+				t.Fatalf("%s's %s pill is at %+v, off its own row %+v", st.Provider, act, rect, rowRect)
+			}
+			if rect.X < rowRect.X || rect.X+rect.W > rowRect.X+rowRect.W {
+				t.Fatalf("%s's %s pill at %+v runs outside the row %+v", st.Provider, act, rect, rowRect)
+			}
+			// A click resolves to the pill rather than to the row under it,
+			// which is what registering the pills last buys.
+			if hit := m.mouse.HitMap.Test(rect.X, rect.Y); hit == nil || hit.ID != integrationActionID(index, act) {
+				t.Fatalf("a click on %s's %s pill lands on %v", st.Provider, act, hit)
+			}
+		}
+	}
+
+	// And pressing one acts on its own provider, from a cursor that never
+	// moved. opencode is the row that offers a real install in this fixture,
+	// and it is not the row the cursor is on.
+	target, index := agentintegration.Status{}, -1
+	for _, i := range rows {
+		if i != rows[0] && slices.Contains(state.list[i].Offered, agentintegration.ActionInstall) {
+			target, index = state.list[i], i
+			break
+		}
+	}
+	if index < 0 {
+		t.Fatal("no row below the cursor offers an install")
+	}
+	runIntegrationControl(t, m, integrationActionID(index, agentintegration.ActionInstall))
+	if m.confirm == nil {
+		t.Fatalf("clicking %s's install pill raised nothing", target.Provider)
+	}
+	if !strings.Contains(ansi.Strip(m.View(160, 45)), target.Provider) {
+		t.Fatalf("the confirmation is not about %s", target.Provider)
 	}
 }
 
@@ -263,18 +495,15 @@ func focusIntegration(t *testing.T, m *Model, provider string) int {
 			continue
 		}
 		m.detailFocus = true
-		// Focus, render, and re-anchor once. The row cursor is a *position*
-		// among the cursor-visitable controls of the previous frame, and the
-		// previously focused row's action pills are cursor controls too: when
-		// focus leaves that row its pills vanish, every later row shifts up by
-		// the pill count, and a single focus lands on the wrong provider. Rows
-		// before the target are unfocused after the first render, so the
-		// second anchoring is computed against a pill-free prefix and
-		// converges.
-		for range [2]int{} {
-			m.focusControlByID(regionIntegrationRow + itoa(i))
-			m.View(160, 45)
-		}
+		// One anchoring is enough now. The row cursor is a position among the
+		// cursor-visitable controls of the previous frame, and the table
+		// declares exactly one of those per row whatever the cursor is doing,
+		// so the positions do not move under it. While the focused row grew its
+		// own pills, and those pills were cursor stops, focusing a row shifted
+		// every row below it and a single anchoring landed on the wrong
+		// provider.
+		m.focusControlByID(regionIntegrationRow + itoa(i))
+		m.View(160, 45)
 		if m.focusedID != regionIntegrationRow+itoa(i) {
 			t.Fatalf("focus landed on %q, want row %d (%s)", m.focusedID, i, provider)
 		}
@@ -495,11 +724,26 @@ func TestTheRouteFitsEveryTerminalSizeAndKeepsItsRowsReachable(t *testing.T) {
 				t.Fatalf("%dx%d line %d is %d wide", size[0], size[1], i, w)
 			}
 		}
-		// Every provider row is still declared, so the cursor cannot walk onto
-		// a row that was clipped away.
-		stripped := ansi.Strip(view)
-		if !strings.Contains(stripped, "opencode") {
-			t.Fatalf("%dx%d lost the provider list:\n%s", size[0], size[1], stripped)
+		// Every provider row is still declared and still clickable, so the
+		// cursor cannot walk onto a row that was clipped away. The name itself
+		// is checked by identity rather than by text: a 60-column pane spends
+		// its last columns on the action pills and abbreviates the name, which
+		// is the trade the column plan makes deliberately.
+		state := m.agentIntegrations()
+		rows, _ := splitIntegrations(state.list)
+		regions := map[string]mouse.Rect{}
+		for _, r := range m.mouse.HitMap.Regions() {
+			regions[r.ID] = r.Rect
+		}
+		for _, index := range rows {
+			id := regionIntegrationRow + itoa(index)
+			rect, ok := regions[id]
+			if !ok {
+				t.Fatalf("%dx%d lost the row for %s", size[0], size[1], state.list[index].Provider)
+			}
+			if rect.X+rect.W > size[0] {
+				t.Fatalf("%dx%d: %s's row runs to column %d", size[0], size[1], state.list[index].Provider, rect.X+rect.W)
+			}
 		}
 	}
 }
@@ -551,6 +795,289 @@ func TestIntegrationsAreFindableInSearch(t *testing.T) {
 		}
 		if !found {
 			t.Fatalf("searching %q does not reach the Agents page: %v", query, pages)
+		}
+	}
+}
+
+// detailColumn is the detail pane's own text, cut out of a rendered frame. The
+// sidebar sits to its left on every line, so a test that read whole lines would
+// be reading two panes at once.
+func detailColumn(t *testing.T, m *Model, width, height int) []string {
+	t.Helper()
+	view := ansi.Strip(m.View(width, height))
+	var out []string
+	for _, line := range strings.Split(view, "\n") {
+		runes := []rune(line)
+		start := m.sidebarWidth + 2
+		end := len(runes) - 2
+		if start >= end {
+			continue
+		}
+		out = append(out, strings.TrimRight(string(runes[start:end]), " "))
+	}
+	return out
+}
+
+// fakeIntegrations builds a discovered list of n installable providers, plus
+// one Sidecar ships nothing for, and hands it to the route through the same
+// message discovery delivers.
+//
+// It goes through the message rather than through a stand-in Service because
+// Service.List reads the global capability registry, so a fake service would
+// still return the machine's real provider set. The message is the seam the
+// route actually consumes, and the shapes below are the shapes it has to paint.
+func fakeIntegrations(t *testing.T, m *Model, n int) {
+	t.Helper()
+	statuses := []agentlifecycle.IntegrationStatus{
+		agentlifecycle.StatusCurrent,
+		agentlifecycle.StatusOutdated,
+		agentlifecycle.StatusNeedsRepair,
+		agentlifecycle.StatusNotInstalled,
+		agentlifecycle.StatusProviderMissing,
+	}
+	offers := [][]agentintegration.Action{
+		{agentintegration.ActionUninstall},
+		{agentintegration.ActionUpdate, agentintegration.ActionUninstall},
+		{agentintegration.ActionRepair, agentintegration.ActionUninstall},
+		{agentintegration.ActionInstall, agentintegration.ActionUninstall},
+		{agentintegration.ActionUninstall},
+	}
+	list := make([]agentintegration.Status, 0, n+1)
+	for i := 0; i < n; i++ {
+		list = append(list, agentintegration.Status{
+			IntegrationReport: agentlifecycle.IntegrationReport{
+				Provider:      fmt.Sprintf("agent%02d", i),
+				Source:        fmt.Sprintf("agent%02d", i),
+				Status:        statuses[i%len(statuses)],
+				EffectiveTier: agentlifecycle.Tier("advisory"),
+				TargetPaths:   []string{fmt.Sprintf("/home/someone/.config/agent%02d/plugin/sidecar-lifecycle.js", i)},
+				// A long gap list on every row, so a route that counted them
+				// anywhere would be caught.
+				KnownGaps: []string{"one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten"},
+			},
+			Offered: offers[i%len(offers)],
+		})
+	}
+	list = append(list, agentintegration.Status{
+		IntegrationReport: agentlifecycle.IntegrationReport{
+			Provider: "surveyed", Status: agentlifecycle.StatusUnsupported,
+			EffectiveTier: agentlifecycle.Tier("screen-fallback"), KnownGaps: []string{"a", "b", "c"},
+		},
+	})
+	feed(t, m, agentIntegrationsMsg{List: list})
+	if got := len(m.agentIntegrations().list); got != n+1 {
+		t.Fatalf("the route took %d providers, want %d", got, n+1)
+	}
+}
+
+// TestTheTableHasOneShapeForThreeSevenAndSeventeenProviders is the plan's
+// third exit-gate clause. A row is one line and rows are consecutive, whatever
+// there are three of or seventeen of.
+func TestTheTableHasOneShapeForThreeSevenAndSeventeenProviders(t *testing.T) {
+	for _, count := range []int{3, 7, 17} {
+		m, _, _ := integrationsFixture(t)
+		openIntegrations(t, m)
+		fakeIntegrations(t, m, count)
+		m.View(160, 45)
+
+		rects := map[int]mouse.Rect{}
+		for _, r := range m.mouse.HitMap.Regions() {
+			if !strings.HasPrefix(r.ID, regionIntegrationRow) {
+				continue
+			}
+			index, err := strconv.Atoi(strings.TrimPrefix(r.ID, regionIntegrationRow))
+			if err != nil {
+				t.Fatalf("%d providers: unreadable row id %q", count, r.ID)
+			}
+			rects[index] = r.Rect
+		}
+		if len(rects) != count {
+			t.Fatalf("%d providers painted %d rows", count, len(rects))
+		}
+		for i := 0; i < count; i++ {
+			rect, ok := rects[i]
+			if !ok {
+				t.Fatalf("%d providers: row %d is missing", count, i)
+			}
+			if rect.H != 1 {
+				t.Fatalf("%d providers: row %d is %d lines tall", count, i, rect.H)
+			}
+			if rect.W != rects[0].W || rect.X != rects[0].X {
+				t.Fatalf("%d providers: row %d is %+v, row 0 is %+v", count, i, rect, rects[0])
+			}
+			if i > 0 && rect.Y != rects[i-1].Y+1 {
+				t.Fatalf("%d providers: row %d sits at y=%d, row %d at y=%d", count, i, rect.Y, i-1, rects[i-1].Y)
+			}
+		}
+		// The rest of the page is the same page: the same column header, the
+		// same detail fields, the same closing note.
+		text := strings.Join(detailColumn(t, m, 160, 45), "\n")
+		for _, want := range []string{"PROVIDER", "ACTIONS", "Files", "Gaps", "Unsupported: surveyed", "--dry-run"} {
+			if !strings.Contains(text, want) {
+				t.Fatalf("%d providers: the page lost %q:\n%s", count, want, text)
+			}
+		}
+	}
+}
+
+// TestTheRouteNeverCountsKnownGaps pins a decision from the plan. The gaps
+// recorded for a provider are gaps in that provider's own hook contract, and a
+// number beside its name reads as that many faults in Sidecar. The command that
+// lists them is the only useful thing to say, and the route says it once per
+// focused provider.
+func TestTheRouteNeverCountsKnownGaps(t *testing.T) {
+	m, _, _ := integrationsFixture(t)
+	openIntegrations(t, m)
+	fakeIntegrations(t, m, 5)
+	for _, size := range [][2]int{{80, 40}, {120, 45}, {200, 50}} {
+		text := strings.Join(detailColumn(t, m, size[0], size[1]), "\n")
+		for _, forbidden := range []string{"known gap", "known gaps", "10 gaps"} {
+			if strings.Contains(text, forbidden) {
+				t.Fatalf("%dx%d: the route says %q:\n%s", size[0], size[1], forbidden, text)
+			}
+		}
+		if !strings.Contains(text, "sidecar agent integration status agent00") {
+			t.Fatalf("%dx%d: the route does not name the command that lists them:\n%s", size[0], size[1], text)
+		}
+	}
+
+	// The same on the real machine's own claude entry, which is where the count
+	// used to be printed.
+	m2, _, _ := integrationsFixture(t)
+	openIntegrations(t, m2)
+	focusIntegration(t, m2, "claude")
+	text := strings.Join(detailColumn(t, m2, 160, 45), "\n")
+	if strings.Contains(text, "known gap") {
+		t.Fatalf("the claude row still counts its gaps:\n%s", text)
+	}
+}
+
+// TestTheTableFitsEighty120And200 checks the three widths the column plan is
+// written against: the narrow one where the pills fall back to their letters,
+// the ordinary one where they carry their names, and the wide one where the
+// tier and files columns are affordable.
+func TestTheTableFitsEighty120And200(t *testing.T) {
+	m, _, _ := integrationsFixture(t)
+	openIntegrations(t, m)
+	fakeIntegrations(t, m, 7)
+
+	for _, width := range []int{80, 120, 200} {
+		view := m.View(width, 45)
+		for i, line := range strings.Split(view, "\n") {
+			if w := ansi.StringWidth(line); w > width {
+				t.Fatalf("width %d: line %d is %d columns wide", width, i, w)
+			}
+		}
+		lines := detailColumn(t, m, width, 45)
+		text := strings.Join(lines, "\n")
+		// The action column survives every width; it is the one thing the
+		// layout never gives up.
+		if !strings.Contains(text, "ACTIONS") {
+			t.Fatalf("width %d lost the action column:\n%s", width, text)
+		}
+		for _, want := range []string{"PROVIDER", "STATUS", "Files", "Gaps"} {
+			if !strings.Contains(text, want) {
+				t.Fatalf("width %d lost %q:\n%s", width, want, text)
+			}
+		}
+		// Nothing is clipped mid-word at the right edge.
+		for _, line := range lines {
+			if strings.HasSuffix(line, "…") && !strings.Contains(line, "  ") {
+				t.Fatalf("width %d clipped a line at its right edge: %q", width, line)
+			}
+		}
+		// Every row still carries every offered action.
+		state := m.agentIntegrations()
+		regions := map[string]bool{}
+		for _, r := range m.mouse.HitMap.Regions() {
+			regions[r.ID] = true
+		}
+		rows, _ := splitIntegrations(state.list)
+		for _, index := range rows {
+			for _, act := range state.list[index].Offered {
+				if !regions[integrationActionID(index, act)] {
+					t.Fatalf("width %d: %s's %s pill is not clickable", width, state.list[index].Provider, act)
+				}
+			}
+		}
+	}
+
+	// The narrow width buys the action column with the pill labels, and says so
+	// in a legend rather than leaving four letters unexplained.
+	narrow := strings.Join(detailColumn(t, m, 80, 45), "\n")
+	if !strings.Contains(narrow, integrationActionLabel(agentintegration.ActionInstall)) {
+		t.Fatalf("80 columns has no legend for the compact pills:\n%s", narrow)
+	}
+	// The wide one can afford the tier and files columns.
+	wide := strings.Join(detailColumn(t, m, 200, 45), "\n")
+	for _, want := range []string{"TIER", "FILES"} {
+		if !strings.Contains(wide, want) {
+			t.Fatalf("200 columns does not show the %s column:\n%s", want, wide)
+		}
+	}
+}
+
+// TestTheIntroWrapsRatherThanTruncating covers the paragraph at the top of the
+// route, which used to lose its last words to the pane's right edge.
+func TestTheIntroWrapsRatherThanTruncating(t *testing.T) {
+	const intro = "A small addition to an agent's own configuration, so Sidecar learns what that agent is doing from its own lifecycle events instead of its screen."
+	m, _, _ := integrationsFixture(t)
+	openIntegrations(t, m)
+	for _, width := range []int{60, 80, 120, 200} {
+		lines := detailColumn(t, m, width, 45)
+		title := 0
+		for i, line := range lines {
+			if strings.Contains(line, "Back to Agents") {
+				title = i
+				break
+			}
+		}
+		var paragraph []string
+		for _, line := range lines[title+1:] {
+			trimmed := strings.TrimSpace(line)
+			if trimmed == "" {
+				if len(paragraph) > 0 {
+					break
+				}
+				continue
+			}
+			paragraph = append(paragraph, trimmed)
+		}
+		if got := strings.Join(paragraph, " "); got != intro {
+			t.Fatalf("width %d wrapped the intro to %q", width, got)
+		}
+	}
+}
+
+// TestTheFooterNamesTheActionsTheCursorCanRun closes the loop between the pills
+// and the footer. The action column paints four verbs on every row, but only
+// the ones the service offers on the focused row carry a shortcut, so only
+// those may be advertised: a hint for a key that refuses is worse than no hint.
+func TestTheFooterNamesTheActionsTheCursorCanRun(t *testing.T) {
+	m, svc, _ := integrationsFixture(t)
+	openIntegrations(t, m)
+	focusIntegration(t, m, "opencode")
+	m.View(160, 45)
+
+	st, err := svc.Status("opencode")
+	if err != nil {
+		t.Fatal(err)
+	}
+	named := map[string]bool{}
+	for _, c := range m.Commands() {
+		named[c.Name] = true
+	}
+	want := map[agentintegration.Action]bool{}
+	for _, act := range st.Offered {
+		want[act] = true
+	}
+	for _, act := range agentintegration.Actions() {
+		cmd, ok := controlCommand(integrationActionKey(act))
+		if !ok {
+			t.Fatalf("%s has no footer command", act)
+		}
+		if named[cmd.Name] != want[act] {
+			t.Fatalf("the footer names %q=%v while the service offers it=%v", cmd.Name, named[cmd.Name], want[act])
 		}
 	}
 }
