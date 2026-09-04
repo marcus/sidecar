@@ -1250,6 +1250,9 @@ func (m *Model) buildDetail(originX, inner, paneHeight int) ([]string, bool) {
 	if route.Page == PageFlags && !route.IsChild() && m.confirm == nil {
 		lines = m.scrollFlagsPage(lines, builder.height)
 	}
+	if route.Child == ChildAgentIntegrations && m.confirm == nil {
+		lines = m.windowIntegrationRows(lines, builder.height)
+	}
 	return lines, m.rowCursor == painted
 }
 

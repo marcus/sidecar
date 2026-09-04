@@ -5,8 +5,11 @@ import (
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/marcus/sidecar/internal/agentintegration"
 	"github.com/marcus/sidecar/internal/agentlifecycle"
+	"github.com/marcus/sidecar/internal/styles"
 )
 
 // Configuration → Agents → Integrations.
@@ -47,11 +50,12 @@ const ChildAgentIntegrations ChildID = "agent-integrations"
 
 // Action shortcut letters.
 //
-// The action pills are deliberately not cursor stops — they exist only while
-// their row is focused, so a cursor that moved onto one would unfocus the row
-// and unpaint the pill underneath itself, which is why Remote Hosts' row
-// actions work the same way. That makes a shortcut the keyboard route to them,
-// and the letters therefore have to be free.
+// The action pills are deliberately not cursor stops. Four of them sit on every
+// row, so a cursor that visited them would need five presses per provider to
+// cross the table, and moving onto one would take the highlight off the row the
+// pill acts on. Remote Hosts' row actions work the same way. That makes a
+// shortcut the keyboard route to them, and the letters therefore have to be
+// free.
 //
 // They are not all first letters, because i, d, and e are already spoken for by
 // other pages and controlCommand maps a letter to a footer name globally: a
@@ -98,6 +102,14 @@ type agentIntegrationsState struct {
 
 	list   []agentintegration.Status
 	cursor int
+
+	// rowTop, rowCount and rowScroll are the row block: where it started in the
+	// frame just painted, how many rows it holds, and how far into it the
+	// window is. The first two are written by the paint, the third is decided
+	// after it, when the frame's real height is known.
+	rowTop    int
+	rowCount  int
+	rowScroll int
 
 	// notice is the outcome of the last mutation, shown until the next one.
 	notice string
@@ -335,9 +347,236 @@ func (m *Model) planIntegration(provider string, act agentintegration.Action) te
 	}
 }
 
+// The route is a table, not an accordion.
+//
+// Every provider Sidecar can install for is one row of fixed height, and the
+// action pills sit in a fixed column on every one of those rows: painted and
+// live where the service offers the action, painted and inert where it does
+// not. Moving the cursor therefore changes the highlight and nothing else.
+//
+// That is not a preference about looks. The row used to grow a detail
+// paragraph and a pill row when it took focus, so every row below it moved by
+// three or four lines as the cursor passed, and a pill could not be clicked
+// without first focusing the row it belonged to, which is to say the pointer
+// could not reach the actions at all, because arriving at them moved them.
+//
+// The facts that used to live on the focused row live in one detail box below
+// the table, which follows the cursor the way every list-and-detail pair in
+// Sidecar does. It is fixed height for the same reason the rows are.
+
+const (
+	// integrationColumnGap is the gutter between two table columns.
+	integrationColumnGap = 2
+	// integrationTierColumn caps the tier column. The longest tier today is
+	// "screen-fallback"; a longer one is truncated rather than allowed to push
+	// the action pills off the row.
+	integrationTierColumn = 15
+	// integrationFilesColumn caps the files column on a wide terminal. A path
+	// column that grows without limit turns the table into two clusters with a
+	// gulf between them.
+	integrationFilesColumn = 34
+	// integrationFilesMinimum is the narrowest a files column is worth drawing.
+	integrationFilesMinimum = 14
+	// integrationNameColumn caps the provider column.
+	integrationNameColumn = 16
+	// integrationDetailLabel is the width of the detail box's label column.
+	integrationDetailLabel = 8
+)
+
+// integrationTable is the column plan for one frame: how wide each column is,
+// which optional columns the pane can afford, and whether the action pills
+// carry their names or only their keys.
+//
+// It is computed once per frame from the pane's width and the rows themselves,
+// so every row lands on the same columns. A row that measured itself would
+// produce a ragged table the moment one provider had a longer name than
+// another.
+type integrationTable struct {
+	name   int
+	status int
+	// tier and files are 0 when the pane cannot afford the column.
+	tier  int
+	files int
+	// compact means the pills carry their shortcut letter alone, with the
+	// legend line under the table naming what each letter does. It is what a
+	// narrow pane buys the action column with, because the action column is the
+	// one thing on the row that is never dropped.
+	compact bool
+	// gap is the gutter between two columns. It closes to one column before the
+	// name and status columns are made to give up any of their text.
+	gap int
+	// width is the painted width of a row, including the left indent, which is
+	// also the width of the selection band and of the row's hit region.
+	width int
+}
+
+// The floors under the two columns a very narrow pane has to squeeze. Six
+// columns still tells providers apart; seven holds "current" and the first
+// syllable of everything else.
+const (
+	integrationNameFloor   = 6
+	integrationStatusFloor = 7
+)
+
+// layoutIntegrationTable decides the columns.
+//
+// The order it gives things up in is the order of how much each one is worth:
+// the files column first, then the tier column, then the pill labels. The
+// actions themselves are never given up, because a table whose actions vanish
+// at 80 columns is the accordion again with extra steps.
+func layoutIntegrationTable(rows []agentintegration.Status, inner int) integrationTable {
+	t := integrationTable{name: ansi.StringWidth(integrationHeaderName), status: ansi.StringWidth(integrationHeaderStatus)}
+	tier := ansi.StringWidth(integrationHeaderTier)
+	for _, st := range rows {
+		t.name = max(t.name, ansi.StringWidth(st.Provider))
+		t.status = max(t.status, ansi.StringWidth(integrationStatusWord(st)))
+		tier = max(tier, ansi.StringWidth(string(st.EffectiveTier)))
+	}
+	t.name = min(t.name, integrationNameColumn)
+	tier = min(tier, integrationTierColumn)
+
+	available := max(0, inner-RowIndent)
+	t.gap = integrationColumnGap
+	t.compact = t.name+t.gap+t.status+t.gap+integrationActionsWidth(false) > available
+	actions := integrationActionsWidth(t.compact)
+	used := t.name + t.gap + t.status + t.gap + actions
+
+	// Give the pane back what it cannot afford, cheapest first: the gutters
+	// close, then the name column shrinks, then the status column. The action
+	// column is never touched, because a table whose actions vanish at 60
+	// columns is the accordion again with extra steps.
+	if used > available && t.gap > 1 {
+		t.gap = 1
+		used -= 2
+	}
+	if over := used - available; over > 0 {
+		give := min(over, t.name-integrationNameFloor)
+		if give > 0 {
+			t.name -= give
+			used -= give
+		}
+	}
+	if over := used - available; over > 0 {
+		give := min(over, t.status-integrationStatusFloor)
+		if give > 0 {
+			t.status -= give
+			used -= give
+		}
+	}
+
+	if used+t.gap+tier <= available {
+		t.tier = tier
+		used += t.gap + tier
+	}
+	if t.tier > 0 {
+		if room := available - used - t.gap; room >= integrationFilesMinimum {
+			t.files = min(room, integrationFilesColumn)
+			used += t.gap + t.files
+		}
+	}
+	t.width = RowIndent + used
+	return t
+}
+
+// Column names are the CLI's own, so `sidecar agent integration list` and this
+// page name the same facts the same way.
+const (
+	integrationHeaderName    = "PROVIDER"
+	integrationHeaderStatus  = "STATUS"
+	integrationHeaderTier    = "TIER"
+	integrationHeaderFiles   = "FILES"
+	integrationHeaderActions = "ACTIONS"
+)
+
+// integrationActionsWidth is the width of the action column: every action in
+// the frozen vocabulary, whether or not any row offers it, because the column
+// has to be the same width on every row.
+func integrationActionsWidth(compact bool) int {
+	width := 0
+	for i, act := range agentintegration.Actions() {
+		if i > 0 {
+			width++
+		}
+		// Two columns for the pill's own padding, which styles.Button adds.
+		width += ansi.StringWidth(integrationPillText(act, compact)) + 2
+	}
+	return width
+}
+
+// integrationPillText is what a pill says. The compact form is the shortcut
+// letter alone; the legend under the table is what keeps it legible.
+func integrationPillText(act agentintegration.Action, compact bool) string {
+	if compact {
+		return strings.ToUpper(integrationActionKey(act))
+	}
+	return integrationActionLabel(act)
+}
+
+// integrationStatusWord is the status column's vocabulary.
+//
+// It says what is true of the integration, not of the agent, with one
+// exception that has to be named: an agent whose CLI is not on PATH cannot
+// have an integration installed, and "not on PATH" is the reason. Calling that
+// "not installed" would leave two rows reading the same while meaning
+// different things.
+func integrationStatusWord(st agentintegration.Status) string {
+	switch st.Status {
+	case agentlifecycle.StatusCurrent:
+		return "current"
+	case agentlifecycle.StatusOutdated:
+		return "outdated"
+	case agentlifecycle.StatusNeedsRepair:
+		return "needs repair"
+	case agentlifecycle.StatusNotInstalled:
+		return "available"
+	case agentlifecycle.StatusProviderMissing:
+		return "not on PATH"
+	case agentlifecycle.StatusUnsupported:
+		return "unsupported"
+	}
+	return string(st.Status)
+}
+
+// integrationStatusStyle colours the status word by what it means, which is the
+// only thing colour is spent on. A column of filled badges would say the same
+// thing seventeen times as loudly.
+func integrationStatusStyle(st agentintegration.Status) lipgloss.Style {
+	style := lipgloss.NewStyle()
+	switch st.Status {
+	case agentlifecycle.StatusCurrent:
+		return style.Foreground(styles.Success)
+	case agentlifecycle.StatusOutdated:
+		return style.Foreground(styles.Warning)
+	case agentlifecycle.StatusNeedsRepair:
+		return style.Foreground(styles.Error)
+	case agentlifecycle.StatusNotInstalled:
+		return style.Foreground(styles.Info)
+	}
+	return style.Foreground(styles.TextMuted)
+}
+
+// splitIntegrations separates the providers that can have an integration from
+// the ones Sidecar has surveyed and ships nothing for. Both slices hold indices
+// into the discovered list, so a row's identity never depends on which of the
+// two it landed in.
+func splitIntegrations(list []agentintegration.Status) (rows, unsupported []int) {
+	for i := range list {
+		if list[i].Status == agentlifecycle.StatusUnsupported {
+			unsupported = append(unsupported, i)
+			continue
+		}
+		rows = append(rows, i)
+	}
+	return rows, unsupported
+}
+
 // buildAgentIntegrations paints the route.
 func (m *Model) buildAgentIntegrations(b *paneBuilder) {
 	state := m.agentIntegrations()
+	// The row block is re-measured by every paint. A frame that paints no rows
+	// -- checking, never checked, nothing shipped -- has to say so, or the
+	// window below would cut lines the previous frame's block occupied.
+	state.rowTop, state.rowCount = 0, 0
 
 	b.lead("A small addition to an agent's own configuration, so Sidecar learns what that agent is doing from its own lifecycle events instead of its screen.")
 	b.blank()
@@ -364,7 +603,14 @@ func (m *Model) buildAgentIntegrations(b *paneBuilder) {
 		return
 	}
 
-	b.rightControl(Body("Agents")+"  "+Muted(summariseIntegrations(state.list)),
+	// The home directory is read once for the whole frame. Every path on the
+	// page is abbreviated against it, and resolving it per row rebuilt the whole
+	// application service -- adapters included -- once for each of seventeen
+	// rows, on a render path.
+	home := m.integrations().Env.Home
+
+	rows, unsupported := splitIntegrations(state.list)
+	b.rightControl(integrationHeaderLeft(b.inner, state.list),
 		regionIntegrationRecheck, "r", "R  Recheck", func(m *Model) tea.Cmd {
 			m.queueIntegrationProbe()
 			return m.drain(nil)
@@ -377,19 +623,451 @@ func (m *Model) buildAgentIntegrations(b *paneBuilder) {
 	}
 
 	m.syncIntegrationCursor()
-	for i := range state.list {
-		m.buildIntegrationRow(b, i, state.list[i])
+	m.clampIntegrationCursor(rows)
+
+	if len(rows) > 0 {
+		table := layoutIntegrationTable(integrationRows(state.list, rows), b.inner)
+		b.text(integrationColumnHeader(table))
+		state.rowTop = len(b.lines)
+		for _, index := range rows {
+			m.buildIntegrationRow(b, table, home, index, state.list[index])
+		}
+		state.rowCount = len(b.lines) - state.rowTop
+		if table.compact {
+			b.text(integrationKeyLegend())
+		}
+	}
+
+	if len(unsupported) > 0 {
+		b.blank()
+		names := make([]string, 0, len(unsupported))
+		for _, index := range unsupported {
+			names = append(names, state.list[index].Provider)
+		}
+		// One line for all of them rather than a row each. An agent Sidecar
+		// ships nothing for has no action, no files and no tier, so a table row
+		// would be four empty columns saying what one sentence says once.
+		b.note("Unsupported: " + strings.Join(names, ", ") + ". Sidecar has surveyed these agents and ships no integration for them yet.")
 	}
 
 	b.blank()
-	if state.busy != "" {
+	switch {
+	case state.busy != "":
 		b.note("Working…")
 		b.blank()
-	} else if state.notice != "" {
+	case state.notice != "":
 		b.note(state.notice)
 		b.blank()
 	}
+
+	if len(rows) > 0 && state.cursor >= 0 && state.cursor < len(state.list) {
+		m.buildIntegrationDetail(b, home, state.list[state.cursor])
+		b.blank()
+	}
+
 	b.note("Every fact and action here is also `sidecar agent integration`, with --dry-run and --json.")
+}
+
+// integrationRows resolves indices back to the statuses they name.
+func integrationRows(list []agentintegration.Status, indices []int) []agentintegration.Status {
+	out := make([]agentintegration.Status, 0, len(indices))
+	for _, index := range indices {
+		out = append(out, list[index])
+	}
+	return out
+}
+
+// integrationHeaderLeft is the left half of the header line: the page's subject
+// and, when the pane can hold it beside the Recheck control, the count.
+//
+// The count is dropped rather than truncated. rightControl pins its pill to the
+// pane's right edge and the pane clips whatever ran past it, so a header that
+// asked for more columns than it had lost the pill's last letters -- which is
+// how "R  Recheck" became "R  Rech…" at 80 columns.
+func integrationHeaderLeft(inner int, list []agentintegration.Status) string {
+	const recheck = "  R  Recheck  "
+	left := Body("Agents")
+	summary := "  " + summariseIntegrations(list)
+	if ansi.StringWidth("Agents")+ansi.StringWidth(summary)+ansi.StringWidth(recheck) <= inner {
+		left += Muted(summary)
+	}
+	return left
+}
+
+// integrationColumnHeader names the columns, in the CLI's own words.
+func integrationColumnHeader(t integrationTable) string {
+	cells := []string{
+		padDisplay(clampStart(integrationHeaderName, t.name), t.name),
+		padDisplay(clampStart(integrationHeaderStatus, t.status), t.status),
+	}
+	if t.tier > 0 {
+		cells = append(cells, padDisplay(integrationHeaderTier, t.tier))
+	}
+	if t.files > 0 {
+		cells = append(cells, padDisplay(integrationHeaderFiles, t.files))
+	}
+	cells = append(cells, integrationHeaderActions)
+	return strings.Repeat(" ", RowIndent) + Muted(clampStart(strings.Join(cells, strings.Repeat(" ", t.gap)), t.width-RowIndent))
+}
+
+// integrationKeyLegend names the shortcut letters the compact pills carry
+// alone. It is drawn only in the compact form, because in the wide form each
+// pill already says it.
+func integrationKeyLegend() string {
+	parts := make([]string, 0, 4)
+	for _, act := range agentintegration.Actions() {
+		parts = append(parts, integrationActionLabel(act))
+	}
+	return strings.Repeat(" ", RowIndent) + Muted(strings.Join(parts, "   "))
+}
+
+// buildIntegrationRow paints one provider on one line, always the same line.
+//
+// The row is the cursor stop. The pills on it are not: a pill that took the
+// cursor would move focus off the row it acts on, and with four pills per row
+// and seventeen rows the cursor would need eighty-five presses to cross the
+// page. They answer to the pointer on every row, and to their shortcut letters
+// on the row the cursor is on.
+func (m *Model) buildIntegrationRow(b *paneBuilder, t integrationTable, home string, index int, st agentintegration.Status) {
+	id := fmt.Sprintf("%s%d", regionIntegrationRow, index)
+	offered := map[agentintegration.Action]bool{}
+	for _, act := range st.Offered {
+		offered[act] = true
+	}
+
+	rowState := b.declare(id, "", true, func(m *Model) tea.Cmd {
+		m.agentIntegrations().cursor = index
+		return nil
+	})
+	// A pointer anywhere on the row, including over a pill, lights the row it
+	// is on, so the highlight and the thing about to be clicked agree.
+	if !rowState.Focused {
+		for _, act := range agentintegration.Actions() {
+			if b.hovering(integrationActionRegion(index, act)) {
+				rowState.Hovered = true
+			}
+		}
+	}
+
+	cells := []string{
+		integrationNameCell(st.Provider, t.name, rowState),
+		integrationStatusStyle(st).Render(padDisplay(clampStart(integrationStatusWord(st), t.status), t.status)),
+	}
+	if t.tier > 0 {
+		cells = append(cells, Muted(padDisplay(clampStart(string(st.EffectiveTier), t.tier), t.tier)))
+	}
+	if t.files > 0 {
+		cells = append(cells, Muted(padDisplay(integrationFilesCell(st, home, t.files), t.files)))
+	}
+
+	// Pills are rendered before the row is assembled so their exact widths are
+	// what the hit regions are computed from. A region measured from anything
+	// but the pill that was painted is a region that drifts the first time a
+	// label changes.
+	pills := make([]string, 0, 4)
+	for _, act := range agentintegration.Actions() {
+		act := act
+		if !offered[act] {
+			// Painted, so the column keeps its shape and the reader learns
+			// where Remove lives before they ever need it; inert, because the
+			// service would refuse it. No control, no region, no shortcut.
+			pills = append(pills, Button(integrationPillText(act, t.compact), false, State{Disabled: true}))
+			continue
+		}
+		key := ""
+		if rowState.Focused {
+			// Only the focused row's pills claim the letters. runShortcut takes
+			// the first control carrying a key, so letting every row register
+			// them would make S mean "install whatever is at the top".
+			key = integrationActionKey(act)
+		}
+		pillID := integrationActionRegion(index, act)
+		pillState := b.declare(pillID, key, false, func(m *Model) tea.Cmd {
+			// Clicking a pill on a row the keyboard is not on moves the
+			// keyboard there too, so the notice, the detail box and the
+			// highlight all describe the provider that was just acted on.
+			m.agentIntegrations().cursor = index
+			m.focusControlByID(fmt.Sprintf("%s%d", regionIntegrationRow, index))
+			return m.planIntegration(st.Provider, act)
+		})
+		pills = append(pills, Button(integrationPillText(act, t.compact), act == agentintegration.ActionInstall, pillState))
+	}
+	cells = append(cells, strings.Join(pills, " "))
+
+	line := strings.Repeat(" ", RowIndent) + strings.Join(cells, strings.Repeat(" ", t.gap))
+	y := len(b.lines)
+	b.lines = append(b.lines, HighlightRow(line, t.width, rowState))
+
+	// The row's region first, then the pills over it: HitMap.Test scans in
+	// reverse, so the smaller, more specific target has to be registered last.
+	b.m.mouse.HitMap.AddRect(id, b.originX, 1+y, t.width, 1, nil)
+	x := b.originX + t.width - integrationActionsWidth(t.compact)
+	for i, act := range agentintegration.Actions() {
+		width := ansi.StringWidth(pills[i])
+		if offered[act] {
+			b.m.mouse.HitMap.AddRect(integrationActionRegion(index, act), x, 1+y, width, 1, nil)
+		}
+		x += width + 1
+	}
+}
+
+// integrationRowsFloor is the fewest rows the window will ever leave on
+// screen. Below it the page is not a table any more, so the rest of it gives
+// way instead: the detail box and the closing note are truncated by the pane's
+// own height contract, exactly as they were before the window existed.
+const integrationRowsFloor = 3
+
+// windowIntegrationRows scrolls the row block, and only the row block.
+//
+// The route is a list with a detail box under it, and the box describes the row
+// the cursor is on. A page that truncated at the pane's bottom edge therefore
+// lost the box first and the closing note with it: at 80x30 the note was
+// already gone with four providers, and the plan's later slices bring fifteen
+// to seventeen. Scrolling the whole page would have moved the box off screen
+// just as reliably, one keypress later.
+//
+// So the rows are the only thing that gives way. The column header above them,
+// the detail box and the notes below them are pinned, the window holds the
+// cursor's own row, and the rows outside it lose their hit regions rather than
+// leaving live targets over lines that are no longer painted.
+func (m *Model) windowIntegrationRows(lines []string, height int) []string {
+	state := m.agentIntegrations()
+	count := state.rowCount
+	over := len(lines) - height
+	if height <= 0 || count == 0 || over <= 0 {
+		state.rowScroll = 0
+		return lines
+	}
+	// The window is bought and paid for in rows, so it is only taken where it
+	// buys something: enough rows hidden and the whole page fits, fewer than the
+	// floor and it would hide rows and still truncate, which is strictly worse
+	// than truncating alone. On a pane too short for either, the height
+	// contract truncates exactly as it did before.
+	visible := count - over
+	if visible >= count || visible < integrationRowsFloor {
+		state.rowScroll = 0
+		return lines
+	}
+
+	// The window follows the cursor rather than the pointer or the top of the
+	// list: the cursor is what the detail box is about, so a box describing a
+	// row nobody can see is the one thing the window must not produce.
+	rows, _ := splitIntegrations(state.list)
+	cursor := 0
+	for position, index := range rows {
+		if index == state.cursor {
+			cursor = position
+			break
+		}
+	}
+	scroll := min(max(0, state.rowScroll), count-visible)
+	if cursor < scroll {
+		scroll = cursor
+	} else if cursor >= scroll+visible {
+		scroll = cursor - visible + 1
+	}
+	state.rowScroll = min(max(0, scroll), count-visible)
+
+	out := make([]string, 0, len(lines)-(count-visible))
+	out = append(out, lines[:state.rowTop]...)
+	out = append(out, lines[state.rowTop+state.rowScroll:state.rowTop+state.rowScroll+visible]...)
+	out = append(out, lines[state.rowTop+count:]...)
+	m.translateIntegrationRegions(state.rowTop, state.rowScroll, visible)
+	return out
+}
+
+// translateIntegrationRegions moves the row block's hit regions onto the lines
+// the window actually painted, and drops the ones it did not. A region left
+// where a hidden row used to be is a click that acts on a provider the user
+// cannot see.
+//
+// Only the row block's own regions are touched. Every other region on the frame
+// -- the sidebar's rows, the navbar, the Back and Recheck controls -- is in the
+// same coordinate space but not in this pane's row block, and shifting one by
+// its y alone would move a sidebar row that merely happens to sit at the same
+// line. Nothing in this route registers a region below the block, so nothing
+// below it needs moving.
+func (m *Model) translateIntegrationRegions(top, scroll, visible int) {
+	regions := m.mouse.HitMap.Regions()
+	m.mouse.HitMap.Clear()
+	for _, region := range regions {
+		if !strings.HasPrefix(region.ID, regionIntegrationRow) && !strings.HasPrefix(region.ID, regionIntegrationAction) {
+			m.mouse.HitMap.Add(region.ID, region.Rect, region.Data)
+			continue
+		}
+		y := region.Rect.Y - 1
+		if y < top+scroll || y >= top+scroll+visible {
+			continue
+		}
+		rect := region.Rect
+		rect.Y -= scroll
+		m.mouse.HitMap.Add(region.ID, rect, region.Data)
+	}
+}
+
+func integrationActionRegion(index int, act agentintegration.Action) string {
+	return fmt.Sprintf("%s%d-%s", regionIntegrationAction, index, act)
+}
+
+// integrationNameCell is the provider's name, styled the way every other
+// Configuration row styles its title.
+func integrationNameCell(provider string, width int, state State) string {
+	style := lipgloss.NewStyle().Foreground(styles.TextPrimary).Bold(true)
+	switch {
+	case state.Focused:
+		style = lipgloss.NewStyle().Foreground(styles.Primary).Bold(true)
+	case state.Hovered:
+		style = lipgloss.NewStyle().Foreground(styles.TextPrimary).Bold(true)
+	}
+	return style.Render(padDisplay(clampStart(provider, width), width))
+}
+
+// integrationFilesCell is the shortest true thing about where this
+// integration lives: the first path, with the count of the rest beside it. The
+// detail box below names them properly.
+func integrationFilesCell(st agentintegration.Status, home string, width int) string {
+	if len(st.TargetPaths) == 0 {
+		return "none"
+	}
+	extra := ""
+	if len(st.TargetPaths) > 1 {
+		extra = fmt.Sprintf("  +%d", len(st.TargetPaths)-1)
+	}
+	// The end of a path is the part that identifies the file, so the start is
+	// what gives way.
+	return clampEnd(abbreviateHome(st.TargetPaths[0], home), max(1, width-ansi.StringWidth(extra))) + extra
+}
+
+// clampIntegrationCursor keeps the selection on a row that exists.
+//
+// The cursor is an index into the discovered list rather than into the table,
+// so an unsupported provider -- which has no row -- can be named by it after a
+// re-read. It is moved to the nearest row that is drawn rather than to the top,
+// because a cursor that jumped home on every refresh would be unusable while an
+// install was running.
+func (m *Model) clampIntegrationCursor(rows []int) {
+	state := m.agentIntegrations()
+	if len(rows) == 0 {
+		state.cursor = 0
+		return
+	}
+	for _, index := range rows {
+		if index == state.cursor {
+			return
+		}
+	}
+	nearest := rows[0]
+	for _, index := range rows {
+		if abs(index-state.cursor) < abs(nearest-state.cursor) {
+			nearest = index
+		}
+	}
+	state.cursor = nearest
+}
+
+func abs(n int) int {
+	if n < 0 {
+		return -n
+	}
+	return n
+}
+
+// buildIntegrationDetail paints the box under the table: what the row the
+// cursor is on would not fit.
+//
+// It is fixed height, and every field is present on every provider, because a
+// box that grew and shrank as the cursor moved would reflow the page in exactly
+// the way the table stopped doing. A field with nothing to report says so in
+// one word rather than disappearing.
+//
+// The known gaps are named by the command that lists them and nothing else. A
+// count of them on the row was a number nobody could act on: "10 known gaps"
+// beside claude reads as ten faults in Sidecar, when they are gaps in the
+// provider's own hook contract, and the only useful next step was always to go
+// and read them.
+func (m *Model) buildIntegrationDetail(b *paneBuilder, home string, st agentintegration.Status) {
+	width := min(b.inner, MaxRowWidth+integrationTierColumn)
+	b.text(integrationDetailRule(st, width))
+	for _, field := range integrationDetailFields(st, home) {
+		b.text(integrationDetailLine(field[0], field[1], width))
+	}
+}
+
+// integrationDetailRule is the box's header: the provider in bold, a rule, and
+// its status right-aligned in the status column's own colour, which is how
+// every section header in Sidecar is drawn.
+func integrationDetailRule(st agentintegration.Status, width int) string {
+	label := lipgloss.NewStyle().Foreground(styles.TextPrimary).Bold(true).Render(st.Provider)
+	status := integrationStatusStyle(st).Render(integrationStatusWord(st))
+	fill := width - RowIndent - ansi.StringWidth(st.Provider) - ansi.StringWidth(integrationStatusWord(st)) - 2
+	if fill < 1 {
+		fill = 1
+	}
+	rule := lipgloss.NewStyle().Foreground(styles.BorderNormal).Render(strings.Repeat("─", fill))
+	return strings.Repeat(" ", RowIndent) + label + " " + rule + " " + status
+}
+
+func integrationDetailLine(label, value string, width int) string {
+	room := max(8, width-RowIndent-integrationDetailLabel)
+	return strings.Repeat(" ", RowIndent) +
+		Muted(padDisplay(label, integrationDetailLabel)) +
+		Body(clampStart(value, room))
+}
+
+// integrationDetailFields is what the box says, in the order it says it.
+func integrationDetailFields(st agentintegration.Status, home string) [][2]string {
+	files := "none"
+	if len(st.TargetPaths) > 0 {
+		shown := make([]string, 0, len(st.TargetPaths))
+		for _, path := range st.TargetPaths {
+			shown = append(shown, abbreviateHome(path, home))
+		}
+		files = strings.Join(shown, ", ")
+	}
+
+	tier := string(st.EffectiveTier)
+	if st.TierReason != "" {
+		tier += " (" + string(st.TierReason) + ")"
+	}
+
+	agent := "not found on PATH"
+	if st.ProviderPath != "" {
+		agent = abbreviateHome(st.ProviderPath, home)
+		if st.ProviderVersion != "" {
+			proved := "outside the proved range"
+			if st.ProviderInTestedRange {
+				proved = "inside the proved range"
+			}
+			agent += ", " + st.ProviderVersion + ", " + proved
+		}
+	}
+
+	report := "nothing reported on this machine yet"
+	if r := st.LastReport; r != nil {
+		what := string(r.State)
+		if r.Kind != agentlifecycle.KindState {
+			what = string(r.Kind)
+			if r.Outcome != "" {
+				what += " " + string(r.Outcome)
+			}
+		}
+		report = fmt.Sprintf("%s on pane %s, %s ago", what, r.PaneID, r.Age)
+	}
+
+	note := st.Message
+	if note == "" {
+		note = "nothing to report"
+	}
+
+	return [][2]string{
+		{"Files", files},
+		{"Tier", tier},
+		{"Agent", agent},
+		{"Report", report},
+		{"Note", strings.TrimSuffix(note, ".")},
+		// Never the count. The command is the only actionable thing about them.
+		{"Gaps", "sidecar agent integration status " + st.Provider},
+	}
 }
 
 // summariseIntegrations counts installations against the agents that can
@@ -397,11 +1075,10 @@ func (m *Model) buildAgentIntegrations(b *paneBuilder) {
 //
 // The denominator is deliberately not the row count. The list also carries
 // evaluation records -- agents Sidecar has surveyed and deliberately not built
-// an integration for, shown so that "evaluated, not built" is distinguishable
-// from "never looked at". Counting those in the denominator would report
-// "0 of 9 installed" on a machine where four of the nine can never be anything
-// else, which reads as nine things being broken rather than four being
-// available.
+// an integration for, collapsed into one line under the table -- and counting
+// those here would report "0 of 9 installed" on a machine where five of the
+// nine can never be anything else, which reads as nine things being broken
+// rather than four being available.
 func summariseIntegrations(list []agentintegration.Status) string {
 	installed, available := 0, 0
 	for _, st := range list {
@@ -413,9 +1090,6 @@ func summariseIntegrations(list []agentintegration.Status) string {
 		case agentlifecycle.StatusCurrent, agentlifecycle.StatusOutdated, agentlifecycle.StatusNeedsRepair:
 			installed++
 		}
-	}
-	if unsupported := len(list) - available; unsupported > 0 {
-		return fmt.Sprintf("%d of %d installed · %d unsupported", installed, available, unsupported)
 	}
 	return fmt.Sprintf("%d of %d installed", installed, available)
 }
@@ -432,161 +1106,6 @@ func (m *Model) syncIntegrationCursor() {
 	if _, err := fmt.Sscanf(strings.TrimPrefix(m.focusedID, prefix), "%d", &index); err == nil && index >= 0 && index < len(state.list) {
 		state.cursor = index
 	}
-}
-
-// buildIntegrationRow paints one provider: its name, its status as a badge, and
-// — under the row the user is on — where its files are and what can be done
-// about them.
-//
-// One line per row while unfocused is deliberate. The detail pane truncates
-// rather than scrolling, and the row cursor still walks onto rows that were
-// cut, so a list that spent three lines per provider would silently lose its
-// selection off the bottom at 60x24.
-func (m *Model) buildIntegrationRow(b *paneBuilder, index int, st agentintegration.Status) {
-	id := fmt.Sprintf("%s%d", regionIntegrationRow, index)
-
-	detailFor := func(rowState State) string {
-		if !rowState.Focused && !rowState.Hovered {
-			return integrationOneLiner(st)
-		}
-		return integrationDetail(st, m.integrations().Env.Home)
-	}
-
-	rowState := b.declare(id, "", true, func(m *Model) tea.Cmd {
-		m.agentIntegrations().cursor = index
-		return nil
-	})
-	block := PanelRow(st.Provider, integrationBadge(st), detailFor(rowState), "", b.inner, rowState)
-	lines := strings.Split(block, "\n")
-	y := len(b.lines)
-	b.lines = append(b.lines, lines...)
-	b.m.mouse.HitMap.AddRect(id, b.originX, 1+y, RowWidth(b.inner), len(lines), nil)
-
-	if !rowState.Focused && !rowState.Hovered {
-		return
-	}
-	m.buildIntegrationActions(b, index, st)
-}
-
-// buildIntegrationActions paints the verbs the service says it would accept.
-//
-// Offered comes from the service asking its own planner, so a pill that is on
-// screen is a pill that will not refuse when it is pressed.
-func (m *Model) buildIntegrationActions(b *paneBuilder, index int, st agentintegration.Status) {
-	if len(st.Offered) == 0 {
-		return
-	}
-	specs := make([]buttonSpec, 0, len(st.Offered))
-	for _, act := range st.Offered {
-		act := act
-		specs = append(specs, buttonSpec{
-			id:      fmt.Sprintf("%s%d-%s", regionIntegrationAction, index, act),
-			key:     integrationActionKey(act),
-			label:   integrationActionLabel(act),
-			primary: act == agentintegration.ActionInstall || act == agentintegration.ActionRepair,
-			run: func(m *Model) tea.Cmd {
-				return m.planIntegration(st.Provider, act)
-			},
-		})
-	}
-	b.buttons(specs...)
-}
-
-func integrationBadge(st agentintegration.Status) string {
-	switch st.Status {
-	case agentlifecycle.StatusCurrent:
-		return Badge("current", false)
-	case agentlifecycle.StatusOutdated:
-		return Badge("outdated", true)
-	case agentlifecycle.StatusNeedsRepair:
-		return Badge("needs repair", true)
-	case agentlifecycle.StatusProviderMissing:
-		return Badge("not installed", false)
-	case agentlifecycle.StatusUnsupported:
-		return Badge("unsupported", false)
-	}
-	return Badge("available", false)
-}
-
-// integrationOneLiner is the unfocused row's second line: the shortest true
-// thing about this provider.
-func integrationOneLiner(st agentintegration.Status) string {
-	switch st.Status {
-	case agentlifecycle.StatusUnsupported:
-		return "No integration ships for this agent yet."
-	case agentlifecycle.StatusProviderMissing:
-		return "The " + st.Provider + " command was not found on PATH."
-	case agentlifecycle.StatusNotInstalled:
-		return "Available to install."
-	case agentlifecycle.StatusCurrent:
-		return "Version " + st.InstalledVersion + ", driving state at the " + string(st.EffectiveTier) + " tier."
-	}
-	return st.Message
-}
-
-// integrationDetail is what the focused row says: the authority this
-// integration can exercise, where its files are, and how many known gaps its
-// evidence records.
-//
-// It is deliberately short. The detail pane truncates rather than scrolling, so
-// a focused row that spent fifteen lines on a provider's recorded gaps would
-// push every row below it off a 60x24 terminal — which is how the first version
-// of this route lost its own list. The full prose lives in
-// `sidecar agent integration status PROVIDER` and in the capability matrix,
-// and the row says where to find it.
-func integrationDetail(st agentintegration.Status, home string) string {
-	var parts []string
-	if st.Message != "" {
-		parts = append(parts, strings.TrimSuffix(st.Message, ".")+".")
-	}
-
-	switch st.Status {
-	case agentlifecycle.StatusCurrent, agentlifecycle.StatusOutdated:
-		tier := "Authority: " + string(st.EffectiveTier)
-		if st.TierReason != "" {
-			tier += " (" + string(st.TierReason) + ")"
-		}
-		if st.ProviderVersion != "" {
-			proved := ", provider version unproved"
-			if st.ProviderInTestedRange {
-				proved = ", provider version proved"
-			}
-			tier += ", " + st.Provider + " " + st.ProviderVersion + proved
-		}
-		parts = append(parts, tier+".")
-	case agentlifecycle.StatusNeedsRepair:
-		parts = append(parts, "Reports are not being accepted; this pane falls back to screen detection.")
-	}
-
-	// The detail is one wrapped paragraph, not a list. PanelRow reflows it to
-	// the row's width, so newlines here would not survive: two facts on
-	// separate lines would come back joined mid-sentence, which is how the
-	// paths and the gap count first ran into each other.
-	if len(st.TargetPaths) > 0 {
-		shown := make([]string, 0, len(st.TargetPaths))
-		for _, path := range st.TargetPaths {
-			shown = append(shown, abbreviateHome(path, home))
-		}
-		parts = append(parts, "Files: "+strings.Join(shown, ", ")+".")
-	}
-	if r := st.LastReport; r != nil {
-		what := string(r.State)
-		if r.Kind != agentlifecycle.KindState {
-			what = string(r.Kind)
-			if r.Outcome != "" {
-				what += " " + string(r.Outcome)
-			}
-		}
-		parts = append(parts, fmt.Sprintf("Last report: %s on pane %s, %s ago.", what, r.PaneID, r.Age))
-	}
-	if n := len(st.KnownGaps); n > 0 {
-		gaps := "1 known gap"
-		if n > 1 {
-			gaps = fmt.Sprintf("%d known gaps", n)
-		}
-		parts = append(parts, gaps+", listed by `sidecar agent integration status "+st.Provider+"`.")
-	}
-	return strings.Join(parts, " ")
 }
 
 // buildAgentIntegrationsRow is the row on the Agents page that leads here.
