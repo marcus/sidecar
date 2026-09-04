@@ -1,0 +1,255 @@
+# launchable, in picker order
+  claude
+    name        Claude Code
+    short       Claude
+    command     claude
+    skipPerms   --dangerously-skip-permissions
+    aliases     claude-code
+    adapter     claude-code
+    resumeKinds id
+    launch      claude
+    launch+skip claude --dangerously-skip-permissions --model 'space value'
+    resume/id   claude --resume SESSION
+    resume/path error: provider "claude" cannot resume from a "path" reference; it resumes from: id
+  codex
+    name        Codex CLI
+    short       Codex
+    command     codex
+    skipPerms   --dangerously-bypass-approvals-and-sandbox
+    aliases     
+    adapter     codex
+    resumeKinds id
+    launch      codex
+    launch+skip codex --dangerously-bypass-approvals-and-sandbox --model 'space value'
+    resume/id   codex resume SESSION
+    resume/path error: provider "codex" cannot resume from a "path" reference; it resumes from: id
+  copilot
+    name        GitHub Copilot CLI
+    short       Copilot
+    command     copilot
+    skipPerms   
+    aliases     
+    adapter     copilot
+    resumeKinds 
+    launch      copilot
+    launch+skip copilot --model 'space value'
+    resume/id   error: provider "copilot" has no native resume command
+    resume/path error: provider "copilot" has no native resume command
+  antigravity
+    name        Antigravity
+    short       Antigravity
+    command     agy
+    skipPerms   --dangerously-skip-permissions
+    aliases     agy
+    adapter     antigravity
+    resumeKinds id
+    launch      agy
+    launch+skip agy --dangerously-skip-permissions --model 'space value'
+    resume/id   agy --conversation SESSION
+    resume/path error: provider "antigravity" cannot resume from a "path" reference; it resumes from: id
+  cursor
+    name        Cursor Agent
+    short       Cursor
+    command     cursor-agent
+    skipPerms   -f
+    aliases     cursor-cli
+    adapter     cursor-cli
+    resumeKinds id
+    launch      cursor-agent
+    launch+skip cursor-agent -f --model 'space value'
+    resume/id   cursor-agent --resume SESSION
+    resume/path error: provider "cursor" cannot resume from a "path" reference; it resumes from: id
+  opencode
+    name        OpenCode
+    short       OpenCode
+    command     opencode
+    skipPerms   --auto
+    aliases     
+    adapter     opencode
+    resumeKinds id
+    launch      opencode
+    launch+skip opencode --auto --model 'space value'
+    resume/id   opencode --continue -s SESSION
+    resume/path error: provider "opencode" cannot resume from a "path" reference; it resumes from: id
+  pi
+    name        Pi Agent
+    short       Pi
+    command     pi
+    skipPerms   
+    aliases     pi-agent
+    adapter     pi-agent
+    resumeKinds id
+    launch      pi
+    launch+skip pi --model 'space value'
+    resume/id   pi --session SESSION
+    resume/path error: provider "pi" cannot resume from a "path" reference; it resumes from: id
+  amp
+    name        Amp
+    short       Amp
+    command     amp
+    skipPerms   --dangerously-allow-all
+    aliases     
+    adapter     amp
+    resumeKinds id
+    launch      amp
+    launch+skip amp --dangerously-allow-all --model 'space value'
+    resume/id   amp threads continue SESSION
+    resume/path error: provider "amp" cannot resume from a "path" reference; it resumes from: id
+  grok
+    name        Grok
+    short       Grok
+    command     grok
+    skipPerms   --always-approve
+    aliases     
+    adapter     grok
+    resumeKinds id
+    launch      grok
+    launch+skip grok --always-approve --model 'space value'
+    resume/id   grok --resume SESSION
+    resume/path error: provider "grok" cannot resume from a "path" reference; it resumes from: id
+  muse
+    name        Muse Spark
+    short       Muse
+    command     muse
+    skipPerms   --yolo
+    aliases     
+    adapter     muse
+    resumeKinds id
+    launch      muse
+    launch+skip muse --yolo --model 'space value'
+    resume/id   muse resume SESSION
+    resume/path error: provider "muse" cannot resume from a "path" reference; it resumes from: id
+# detection-only, in id order
+  cline
+    name        Cline
+    short       Cline
+    command     
+    skipPerms   
+    aliases     
+    adapter     cline
+    resumeKinds 
+    launch      error: provider has no launch capability
+    launch+skip error: provider has no launch capability
+    resume/id   error: provider has no launch capability
+    resume/path error: provider has no launch capability
+  devin
+    name        Devin CLI
+    short       Devin
+    command     
+    skipPerms   
+    aliases     devin cli devin-cli
+    adapter     devin
+    resumeKinds 
+    launch      error: provider has no launch capability
+    launch+skip error: provider has no launch capability
+    resume/id   error: provider has no launch capability
+    resume/path error: provider has no launch capability
+  droid
+    name        Droid
+    short       Droid
+    command     
+    skipPerms   
+    aliases     
+    adapter     droid
+    resumeKinds 
+    launch      error: provider has no launch capability
+    launch+skip error: provider has no launch capability
+    resume/id   error: provider has no launch capability
+    resume/path error: provider has no launch capability
+  hermes
+    name        Hermes Agent
+    short       Hermes
+    command     
+    skipPerms   
+    aliases     hermes-agent
+    adapter     hermes
+    resumeKinds 
+    launch      error: provider has no launch capability
+    launch+skip error: provider has no launch capability
+    resume/id   error: provider has no launch capability
+    resume/path error: provider has no launch capability
+  kilo
+    name        Kilo Code CLI
+    short       Kilo
+    command     
+    skipPerms   
+    aliases     kilo code kilo-code
+    adapter     kilo
+    resumeKinds 
+    launch      error: provider has no launch capability
+    launch+skip error: provider has no launch capability
+    resume/id   error: provider has no launch capability
+    resume/path error: provider has no launch capability
+  kimi
+    name        Kimi Code CLI
+    short       Kimi
+    command     
+    skipPerms   
+    aliases     kimi code kimi-code
+    adapter     kimi
+    resumeKinds 
+    launch      error: provider has no launch capability
+    launch+skip error: provider has no launch capability
+    resume/id   error: provider has no launch capability
+    resume/path error: provider has no launch capability
+  kiro
+    name        Kiro CLI
+    short       Kiro
+    command     
+    skipPerms   
+    aliases     kiro-cli
+    adapter     kiro
+    resumeKinds 
+    launch      error: provider has no launch capability
+    launch+skip error: provider has no launch capability
+    resume/id   error: provider has no launch capability
+    resume/path error: provider has no launch capability
+  maki
+    name        Maki
+    short       Maki
+    command     
+    skipPerms   
+    aliases     
+    adapter     maki
+    resumeKinds 
+    launch      error: provider has no launch capability
+    launch+skip error: provider has no launch capability
+    resume/id   error: provider has no launch capability
+    resume/path error: provider has no launch capability
+  qodercli
+    name        Qoder CLI
+    short       Qoder
+    command     
+    skipPerms   
+    aliases     qoder qoderclicn qodercn
+    adapter     qodercli
+    resumeKinds 
+    launch      error: provider has no launch capability
+    launch+skip error: provider has no launch capability
+    resume/id   error: provider has no launch capability
+    resume/path error: provider has no launch capability
+  qwen
+    name        Qwen Code
+    short       Qwen
+    command     
+    skipPerms   
+    aliases     qwen code qwen-code
+    adapter     qwen
+    resumeKinds 
+    launch      error: provider has no launch capability
+    launch+skip error: provider has no launch capability
+    resume/id   error: provider has no launch capability
+    resume/path error: provider has no launch capability
+# legacy launch, in id order
+  aider
+    name        Aider
+    short       Aider
+    command     aider
+    skipPerms   --yes
+    aliases     
+    adapter     aider
+    resumeKinds 
+    launch      aider
+    launch+skip aider --yes --model 'space value'
+    resume/id   error: provider "aider" has no native resume command
+    resume/path error: provider "aider" has no native resume command

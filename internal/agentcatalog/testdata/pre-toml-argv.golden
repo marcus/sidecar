@@ -1,0 +1,55 @@
+claude
+  launch      claude
+  launch+args claude --model 'space value'
+  launch+skip claude --dangerously-skip-permissions --model 'space value'
+  resume      claude --resume SESSION
+codex
+  launch      codex
+  launch+args codex --model 'space value'
+  launch+skip codex --dangerously-bypass-approvals-and-sandbox --model 'space value'
+  resume      codex resume SESSION
+copilot
+  launch      copilot
+  launch+args copilot --model 'space value'
+  launch+skip copilot --model 'space value'
+  resume      error: provider "copilot" has no native resume command
+antigravity
+  launch      agy
+  launch+args agy --model 'space value'
+  launch+skip agy --dangerously-skip-permissions --model 'space value'
+  resume      agy --conversation SESSION
+cursor
+  launch      cursor-agent
+  launch+args cursor-agent --model 'space value'
+  launch+skip cursor-agent -f --model 'space value'
+  resume      cursor-agent --resume SESSION
+opencode
+  launch      opencode
+  launch+args opencode --model 'space value'
+  launch+skip opencode --auto --model 'space value'
+  resume      opencode --continue -s SESSION
+pi
+  launch      pi
+  launch+args pi --model 'space value'
+  launch+skip pi --model 'space value'
+  resume      pi --session SESSION
+amp
+  launch      amp
+  launch+args amp --model 'space value'
+  launch+skip amp --dangerously-allow-all --model 'space value'
+  resume      amp threads continue SESSION
+grok
+  launch      grok
+  launch+args grok --model 'space value'
+  launch+skip grok --always-approve --model 'space value'
+  resume      grok --resume SESSION
+muse
+  launch      muse
+  launch+args muse --model 'space value'
+  launch+skip muse --yolo --model 'space value'
+  resume      muse resume SESSION
+aider
+  launch      aider
+  launch+args aider --model 'space value'
+  launch+skip aider --yes --model 'space value'
+  resume      error: provider "aider" has no native resume command

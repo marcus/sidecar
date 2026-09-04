@@ -11,6 +11,7 @@ package agentcatalog
 import (
 	"fmt"
 	"regexp"
+	"sort"
 	"strings"
 )
 
@@ -488,4 +489,23 @@ func ShortLabel(id string) string {
 		return family.Short
 	}
 	return id
+}
+
+// LegacyFamilies returns the compatibility launch families, in id order.
+//
+// It is the third bucket, and it is separate from the other two for the same
+// reason they are separate from each other: nothing that offers a user a choice
+// may reach it, and nothing that lists what Sidecar can recognise wants it. Only
+// an execution boundary honouring an older persisted setting does.
+func LegacyFamilies() []Family {
+	ids := make([]string, 0, len(legacyLaunchFamilies))
+	for id := range legacyLaunchFamilies {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	out := make([]Family, 0, len(ids))
+	for _, id := range ids {
+		out = append(out, legacyLaunchFamilies[id])
+	}
+	return out
 }
