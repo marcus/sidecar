@@ -2232,9 +2232,10 @@ plugin's own CLI.
 describe always runs. --list and --get are separate, explicit flags because
 they can perform network access and print private data; neither is ever
 implied. --query applies only to --list, and a collection whose search is
-required needs one. --filter applies only to --list too, is repeatable, and
-takes id=value naming a filter the collection declared; what is printed back
-is what the host actually sent, so a key that was dropped shows as dropped.
+required needs one. --filter applies to --list and to --get, because a row is
+expanded under the scope it was found in; it is repeatable and takes id=value
+naming a filter the collection declared. What is printed back is what the
+host actually sent, so a key that was dropped shows as dropped.
 
 Only what the host kept is printed, never the plugin's raw stdout: every
 string shown has been through the host's own sanitization and bounds, so what
@@ -2268,6 +2269,7 @@ sidecar plugin check recall
 sidecar plugin check recall --list results --query dex --json
 sidecar plugin check recall --list results --query dex --filter profile=docs
 sidecar plugin check recall --get results rc:notes:1 --json
+sidecar plugin check recall --get results rc:notes:1 --filter profile=docs
 ```
 
 ### `sidecar plugin call`

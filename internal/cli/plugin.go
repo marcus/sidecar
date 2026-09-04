@@ -338,9 +338,10 @@ func pluginCommand() *Command {
 			"describe always runs. --list and --get are separate, explicit flags because\n" +
 			"they can perform network access and print private data; neither is ever\n" +
 			"implied. --query applies only to --list, and a collection whose search is\n" +
-			"required needs one. --filter applies only to --list too, is repeatable, and\n" +
-			"takes id=value naming a filter the collection declared; what is printed back\n" +
-			"is what the host actually sent, so a key that was dropped shows as dropped.\n\n" +
+			"required needs one. --filter applies to --list and to --get, because a row is\n" +
+			"expanded under the scope it was found in; it is repeatable and takes id=value\n" +
+			"naming a filter the collection declared. What is printed back is what the\n" +
+			"host actually sent, so a key that was dropped shows as dropped.\n\n" +
 			"Only what the host kept is printed, never the plugin's raw stdout: every\n" +
 			"string shown has been through the host's own sanitization and bounds, so what\n" +
 			"you see is what a pane would draw.",
@@ -364,6 +365,7 @@ func pluginCommand() *Command {
 			{Command: "sidecar plugin check recall --list results --query dex --json"},
 			{Command: "sidecar plugin check recall --list results --query dex --filter profile=docs"},
 			{Command: "sidecar plugin check recall --get results rc:notes:1 --json"},
+			{Command: "sidecar plugin check recall --get results rc:notes:1 --filter profile=docs"},
 		},
 		Agent: AgentDoc{
 			Invocation: "sidecar plugin check <id> --json",
@@ -1323,12 +1325,8 @@ func writePluginCheckText(env Env, report pluginCheckReport) {
 			_, _ = fmt.Fprintf(env.Stdout, "  list      ok in %dms — %s, %s, %d row(s)\n", r.DurationMs, r.Collection, r.Page.Outcome, len(r.Page.Items))
 			// The applied set, not the asked-for one: a dropped key is a
 			// finding, so it is printed as an absence rather than hidden.
-			if len(r.Filters) > 0 {
-				parts := make([]string, 0, len(r.Filters))
-				for _, key := range pluginhost.FilterKeys(r.Filters) {
-					parts = append(parts, key+"="+r.Filters[key])
-				}
-				_, _ = fmt.Fprintf(env.Stdout, "            filters   %s\n", strings.Join(parts, " "))
+			if line := appliedFiltersLine(r.Filters); line != "" {
+				_, _ = fmt.Fprintf(env.Stdout, "            filters   %s\n", line)
 			}
 			for _, item := range r.Page.Items {
 				_, _ = fmt.Fprintf(env.Stdout, "            %s  %s\n", item.ID, primaryCell(item))
@@ -1366,6 +1364,11 @@ func writePluginCheckText(env Env, report pluginCheckReport) {
 	if r := report.Get; r != nil {
 		if r.OK {
 			_, _ = fmt.Fprintf(env.Stdout, "  get       ok in %dms — %s  %s\n", r.DurationMs, r.Resource.Identity, r.Resource.Title)
+			// The scope the row was expanded under, on the same rule the list
+			// block prints: the applied set, so a dropped key shows as dropped.
+			if line := appliedFiltersLine(r.Filters); line != "" {
+				_, _ = fmt.Fprintf(env.Stdout, "            filters   %s\n", line)
+			}
 			for _, section := range r.Sections {
 				_, _ = fmt.Fprintf(env.Stdout, "            section %s (%s)\n", section.Title, sectionShape(section))
 			}
@@ -1374,6 +1377,19 @@ func writePluginCheckText(env Env, report pluginCheckReport) {
 			writeErrorText(env, "            ", r.Error)
 		}
 	}
+}
+
+// appliedFiltersLine renders an applied filter set in the host's own key order,
+// so `--list` and `--get` report the scope they ran under the same way.
+func appliedFiltersLine(filters map[string]string) string {
+	if len(filters) == 0 {
+		return ""
+	}
+	parts := make([]string, 0, len(filters))
+	for _, key := range pluginhost.FilterKeys(filters) {
+		parts = append(parts, key+"="+filters[key])
+	}
+	return strings.Join(parts, " ")
 }
 
 // primaryCell is the honest stand-in for the row label in a text listing: the
@@ -1589,8 +1605,8 @@ func runPluginCall(env Env, args []string) int {
 		}
 	}
 	if len(flagFilters) > 0 {
-		if method != pluginhost.MethodList {
-			cliErrf(env.Stderr, "--filter applies only to list\n\n%s", help)
+		if method != pluginhost.MethodList && method != pluginhost.MethodGet {
+			cliErrf(env.Stderr, "--filter applies only to list and get\n\n%s", help)
 			return pluginExitUsage
 		}
 		// A flag wins over the same key inside --params: it is the later, more
