@@ -8,16 +8,24 @@ import (
 	"github.com/marcus/sidecar/internal/resource"
 )
 
-// Protocol is the plugin contract this host speaks. It is a draft: it freezes
-// the way sidecar.terminal-resource/v1 did, after one real external plugin has
-// implemented it against a live tool and both have revised what they found.
+// Protocol is the plugin contract this host speaks. It is frozen, the way
+// sidecar.terminal-resource/v1 is: the host implemented it, one real external
+// plugin implemented it against a live tool, and both revised from what the
+// other found before the identifier stopped moving.
+//
+// The host sends this value and validates the answer against it strictly. It
+// accepts no alias: a plugin answering the pre-freeze draft identifier is a
+// protocol failure here, because tolerance belongs on the plugin side. A
+// plugin that accepts either identifier on a request and answers with whichever
+// it was asked keeps working with an older Sidecar and with this one, and the
+// host's rule stays literally true.
 //
 // The frozen resource identifier lives in internal/resource and is unchanged.
 // One host speaks both: an instance configured under terminalResources is
 // dispatched with resource.Protocol, an instance configured under
 // plugins.external with this one, and the answer is translated into the same
 // host types either way.
-const Protocol = "sidecar.plugin/v1-draft"
+const Protocol = "sidecar.plugin/v1"
 
 // Method names. An unknown method must return an internal error rather than
 // crash the plugin; the host never sends one.
@@ -91,9 +99,19 @@ type SortOrder struct {
 }
 
 // GetParams addresses one row of one collection.
+//
+// Filters is the applied filter set of the list that produced the row, sent
+// exactly as that list sent it. A row found under a filter-chosen scope has to
+// expand under the same scope: sending nothing makes the plugin resolve the row
+// under its declared defaults, which is at best a different document and at
+// worst a refusal, because the row was only visible under the scope the user
+// chose. Same shape and same rule as ListParams.Filters — a missing key means
+// the filter's declared default, and the host drops undeclared keys before the
+// call.
 type GetParams struct {
-	Collection string `json:"collection"`
-	ID         string `json:"id"`
+	Collection string            `json:"collection"`
+	ID         string            `json:"id"`
+	Filters    map[string]string `json:"filters,omitempty"`
 }
 
 // ActParams addresses one action. A collection or item action carries

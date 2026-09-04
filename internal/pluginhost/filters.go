@@ -170,3 +170,24 @@ func FilterKeys(applied map[string]string) []string {
 	sort.Strings(keys)
 	return keys
 }
+
+// FilterCacheKey renders an applied set as one canonical string, so two
+// identical scopes are one cache entry and two different ones are two. It is
+// the get cache's half of the rule that a row expanded under a filter-chosen
+// scope is a different document from the same row expanded under another.
+//
+// The separators are NUL, which resource.SanitizeLine strips from every value
+// that reaches here, so no filter value can spell a different set.
+func FilterCacheKey(applied map[string]string) string {
+	if len(applied) == 0 {
+		return ""
+	}
+	var b strings.Builder
+	for _, key := range FilterKeys(applied) {
+		b.WriteString(key)
+		b.WriteByte(0)
+		b.WriteString(applied[key])
+		b.WriteByte(0)
+	}
+	return b.String()
+}

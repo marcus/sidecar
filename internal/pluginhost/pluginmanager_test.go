@@ -60,7 +60,7 @@ func (p *countingPlugin) List(_ context.Context, params ListParams, _ *Context, 
 	return Page{Outcome: OutcomeAnswered, Items: []Item{{ID: "r1", Cells: map[string]string{"title": params.Query}}}}, nil
 }
 
-func (p *countingPlugin) Get(_ context.Context, params GetParams, _ *Context) (resource.Document, error) {
+func (p *countingPlugin) Get(_ context.Context, params GetParams, _ *Context, _ Collection) (resource.Document, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.get++

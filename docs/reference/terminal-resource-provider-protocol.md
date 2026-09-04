@@ -20,9 +20,9 @@ from what both implementations found before being frozen. Changes after this
 point require a new protocol identifier.
 
 **This contract is a subset of the Sidecar plugin protocol.** The plugin
-protocol, `sidecar.plugin/v1-draft`, is this one grown rather than replaced: the
-same invocation model, environment allowlist, process-group rules, sanitization,
-limits, error codes, and matcher rules, plus three methods (`list`, `get`,
+protocol, `sidecar.plugin/v1`, is frozen too, and is this one grown rather than
+replaced: the same invocation model, environment allowlist, process-group rules,
+sanitization, limits, error codes, and matcher rules, plus three methods (`list`, `get`,
 `act`), a `sections` field on the resource object, and declarations of the
 collections and actions a plugin offers. One host runs both — an instance
 configured under `terminalResources.providers` is dispatched with the identifier

@@ -193,6 +193,33 @@ func clearTabView(t *testing.T, instance, collection string) {
 	}
 }
 
+// listsFor counts the list calls made for one collection. A Tab placement also
+// reads the plugin's NEXT collection once, to fill the empty detail box, so a
+// test about what the collection on screen asked for has to say which
+// collection it means.
+func listsFor(host *fakeHost, collection string) int {
+	n := 0
+	for _, call := range host.lists {
+		if call.Params.Collection == collection {
+			n++
+		}
+	}
+	return n
+}
+
+// lastListFor is the newest list call for one collection, which is what a test
+// about the collection on screen means when it says "the list".
+func lastListFor(t *testing.T, host *fakeHost, collection string) ListCall {
+	t.Helper()
+	for i := len(host.lists) - 1; i >= 0; i-- {
+		if host.lists[i].Params.Collection == collection {
+			return host.lists[i]
+		}
+	}
+	t.Fatalf("no list was ever run for %q", collection)
+	return ListCall{}
+}
+
 // run executes a command and feeds whatever it produced back into the model,
 // following batches, which is what the Bubble Tea runtime does.
 func run(t *testing.T, m *Model, cmd tea.Cmd) {
@@ -308,8 +335,8 @@ func TestDescribeFailureRendersTheSetupCard(t *testing.T) {
 func TestRequiredSearchWithNoQueryStartsNoProcess(t *testing.T) {
 	host := &fakeHost{page: testPage(3)}
 	m := newTestModel(t, host)
-	if len(host.lists) != 0 {
-		t.Fatalf("an empty required query started %d list calls", len(host.lists))
+	if n := listsFor(host, "results"); n != 0 {
+		t.Fatalf("an empty required query started %d list calls", n)
 	}
 	view := strip(m.View())
 	if !strings.Contains(view, "This collection needs a query.") {
@@ -336,8 +363,8 @@ func TestQueryDebounceRunsOnlyTheNewestKeystroke(t *testing.T) {
 			t.Fatalf("typing %q scheduled no debounce", key)
 		}
 	}
-	if len(host.lists) != 0 {
-		t.Fatalf("typing listed %d times before the debounce elapsed", len(host.lists))
+	if n := listsFor(host, "results"); n != 0 {
+		t.Fatalf("typing listed %d times before the debounce elapsed", n)
 	}
 	s := m.activeState()
 	if s.queryText() != "dex" {
@@ -345,17 +372,18 @@ func TestQueryDebounceRunsOnlyTheNewestKeystroke(t *testing.T) {
 	}
 	// The two superseded ticks do nothing at all.
 	run(t, m, m.Update(QueryDebouncedMsg{Instance: "fixture", Collection: "results", Sequence: s.debounce - 1}))
-	if len(host.lists) != 0 {
-		t.Fatalf("a superseded debounce listed %d times", len(host.lists))
+	if n := listsFor(host, "results"); n != 0 {
+		t.Fatalf("a superseded debounce listed %d times", n)
 	}
 	run(t, m, m.Update(QueryDebouncedMsg{Instance: "fixture", Collection: "results", Sequence: s.debounce}))
-	if len(host.lists) != 1 {
-		t.Fatalf("the newest debounce listed %d times, want 1", len(host.lists))
+	if n := listsFor(host, "results"); n != 1 {
+		t.Fatalf("the newest debounce listed %d times, want 1", n)
 	}
-	if host.lists[0].Params.Query != "dex" {
-		t.Fatalf("listed query = %q, want dex", host.lists[0].Params.Query)
+	listed := lastListFor(t, host, "results")
+	if listed.Params.Query != "dex" {
+		t.Fatalf("listed query = %q, want dex", listed.Params.Query)
 	}
-	if host.lists[0].PaneKey == "" {
+	if listed.PaneKey == "" {
 		t.Fatal("a list with no pane key can never be superseded")
 	}
 	if host.lists[0].Context == nil || host.lists[0].Context.Project == nil {
@@ -441,20 +469,21 @@ func TestPagingHappensOnDemand(t *testing.T) {
 	s := m.activeState()
 	s.setQuery("dex")
 	run(t, m, m.list(m.desc.Collections[0], s, false))
-	if len(host.lists) != 1 {
-		t.Fatalf("lists = %d, want the first page only", len(host.lists))
+	if n := listsFor(host, "results"); n != 1 {
+		t.Fatalf("lists = %d, want the first page only", n)
 	}
 	press(t, m, "j")
 	press(t, m, "j")
-	if len(host.lists) != 1 {
-		t.Fatalf("paging happened before the cursor reached the end: lists = %d", len(host.lists))
+	if n := listsFor(host, "results"); n != 1 {
+		t.Fatalf("paging happened before the cursor reached the end: lists = %d", n)
 	}
 	press(t, m, "j")
-	if len(host.lists) != 2 {
-		t.Fatalf("reaching past the last row did not page: lists = %d", len(host.lists))
+	if n := listsFor(host, "results"); n != 2 {
+		t.Fatalf("reaching past the last row did not page: lists = %d", n)
 	}
-	if !host.lists[1].Append || host.lists[1].Params.Cursor != "page-2" {
-		t.Fatalf("the paging call was %+v", host.lists[1].Params)
+	paged := lastListFor(t, host, "results")
+	if !paged.Append || paged.Params.Cursor != "page-2" {
+		t.Fatalf("the paging call was %+v", paged.Params)
 	}
 }
 
@@ -687,8 +716,11 @@ func TestViewIsHeldToItsBox(t *testing.T) {
 	}
 }
 
-// Below the table floor a row takes two lines: the primary cell on the first,
-// the short columns and the secondary text folded into a dimmed second.
+// Below the table floor a row takes two lines, on the rule the protocol states
+// fully: the columns declared BEFORE the primary — here the rank — stay with
+// the primary name on line one, and the remaining short columns, the status
+// label and the secondary text fold into a dimmed line two, indented to sit
+// under the primary. This is mockups/recall-studio.narrow-pane.txt.
 func TestNarrowRowsReflow(t *testing.T) {
 	host := &fakeHost{page: testPage(3)}
 	m := newTestModel(t, host)
@@ -701,11 +733,81 @@ func TestNarrowRowsReflow(t *testing.T) {
 	if strings.Contains(view, "TITLE") {
 		t.Fatalf("a narrow pane still drew column headings:\n%s", view)
 	}
-	if !strings.Contains(view, "Row 1") {
-		t.Fatalf("the primary cell is missing:\n%s", view)
+
+	name, fold := "", ""
+	for _, line := range strings.Split(view, "\n") {
+		if strings.Contains(line, "Row 1") {
+			name = line
+		}
+		if strings.Contains(line, "excerpt 1") {
+			fold = line
+		}
 	}
-	if !strings.Contains(view, "notes · exact ·") {
-		t.Fatalf("the second line did not fold the short columns in:\n%s", view)
+	if name == "" || fold == "" {
+		t.Fatalf("a row did not render as two lines:\n%s", view)
+	}
+
+	// The rank rides on line one, in front of the name it numbers.
+	rank := strings.Index(name, "1")
+	title := strings.Index(name, "Row 1")
+	if rank < 0 || title < 0 || rank >= title {
+		t.Fatalf("the rank is not on line one ahead of the primary: %q", name)
+	}
+	// And it is not repeated in the fold.
+	if strings.Contains(fold, "1 ·") {
+		t.Fatalf("the rank was folded into line two as well: %q", fold)
+	}
+	// The fold is the remaining short column, then the status label, then the
+	// secondary text, in that order.
+	if !strings.Contains(fold, "notes · exact · …excerpt 1…") {
+		t.Fatalf("line two did not fold columns, status and secondary in that order: %q", fold)
+	}
+	// And it sits under the primary rather than under the cursor gutter.
+	if got, want := columnOf(fold, "notes"), columnOf(name, "Row 1"); got != want {
+		t.Fatalf("line two starts at column %d, want it under the primary at %d:\n%q\n%q", got, want, name, fold)
+	}
+}
+
+// columnOf is the display column a substring starts at, which is what "sits
+// under" means on a line that carries box drawing and multi-byte runes.
+func columnOf(line, want string) int {
+	i := strings.Index(line, want)
+	if i < 0 {
+		return -1
+	}
+	return ansi.StringWidth(line[:i])
+}
+
+// With nothing declared ahead of the primary there is no rank column to hold
+// line two's indent, so the fold keeps a plain hanging indent instead of
+// starting under the cursor gutter.
+func TestNarrowReflowWithoutALeadingColumn(t *testing.T) {
+	host := &fakeHost{page: testPage(2)}
+	m := newTestModel(t, host)
+	host.desc = testDescription()
+	// Drop the rank: title is now the first declared column and the primary.
+	host.desc.Collections[0].Columns = host.desc.Collections[0].Columns[1:]
+	run(t, m, m.Refresh())
+	s := m.activeState()
+	s.setQuery("dex")
+	run(t, m, m.list(m.desc.Collections[0], s, false))
+
+	m.SetSize(52, 24)
+	view := strip(m.View())
+	name, fold := "", ""
+	for _, line := range strings.Split(view, "\n") {
+		if strings.Contains(line, "Row 1") {
+			name = line
+		}
+		if strings.Contains(line, "excerpt 1") {
+			fold = line
+		}
+	}
+	if name == "" || fold == "" {
+		t.Fatalf("a row did not render as two lines:\n%s", view)
+	}
+	if got, want := columnOf(fold, "notes"), columnOf(name, "Row 1")+2; got != want {
+		t.Fatalf("line two starts at column %d, want the hanging indent at %d:\n%q\n%q", got, want, name, fold)
 	}
 }
 

@@ -7,8 +7,8 @@ It exists to be copied. [`hello_plugin.py`](hello_plugin.py) answers `describe`,
 Run it by hand:
 
 ```bash
-echo '{"protocol":"sidecar.plugin/v1-draft","method":"describe","instance":"hello","deadlineMs":5000}' | python3 hello_plugin.py
-echo '{"protocol":"sidecar.plugin/v1-draft","method":"list","instance":"hello","params":{"collection":"greetings","query":"bon"}}' | python3 hello_plugin.py
+echo '{"protocol":"sidecar.plugin/v1","method":"describe","instance":"hello","deadlineMs":5000}' | python3 hello_plugin.py
+echo '{"protocol":"sidecar.plugin/v1","method":"list","instance":"hello","params":{"collection":"greetings","query":"bon"}}' | python3 hello_plugin.py
 ```
 
 Run it through Sidecar:

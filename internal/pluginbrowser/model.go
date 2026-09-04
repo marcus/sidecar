@@ -219,9 +219,14 @@ type Model struct {
 
 	// Pane mode. paneShape is PaneNone in a tab placement; the rest is the one
 	// collection or document a Resource leaf's tab is pinned to. See pane.go.
-	paneShape       PaneShape
-	paneCollection  string
-	onOpenRow       func(collection, id string) tea.Cmd
+	paneShape      PaneShape
+	paneCollection string
+	// paneDocFilters is the applied filter set the row this document tab shows
+	// was found under. A document tab runs no list of its own, so this is the
+	// only place the scope can come from, and a get that dropped it would
+	// expand the row under the plugin's defaults instead.
+	paneDocFilters  map[string]string
+	onOpenRow       func(collection, id string, filters map[string]string) tea.Cmd
 	restore         paneRestore
 	pendingCursorID string
 
@@ -588,11 +593,38 @@ func (m *Model) ensureListed() tea.Cmd {
 	if !ok {
 		return nil
 	}
+	var cmds []tea.Cmd
 	s := m.state(c)
+	if !s.loaded && !s.loading {
+		cmds = append(cmds, m.list(c, s, false))
+	}
+	if cmd := m.ensureNextCollectionListed(); cmd != nil {
+		cmds = append(cmds, cmd)
+	}
+	return tea.Batch(cmds...)
+}
+
+// ensureNextCollectionListed reads the collection the empty detail box is
+// showing, once.
+//
+// It runs only while that box is empty, so a reader who went straight to a
+// document never pays for it, and never for a `search: required` collection,
+// which has nothing to say without a query and would spend a process being told
+// so. Everything after the first read is the collection state's own: opening
+// its tab finds it already listed.
+func (m *Model) ensureNextCollectionListed() tea.Cmd {
+	if m.detail.loaded || m.detail.loading {
+		return nil
+	}
+	next, ok := m.nextCollection()
+	if !ok || next.Search == pluginhost.SearchRequired {
+		return nil
+	}
+	s := m.state(next)
 	if s.loaded || s.loading {
 		return nil
 	}
-	return m.list(c, s, false)
+	return m.list(next, s, false)
 }
 
 // list asks for a page. append extends the current items with the next cursor;
@@ -971,12 +1003,34 @@ func (m *Model) openDocument(collection, id string, mode openMode) tea.Cmd {
 		// One key for the box, not one per row: the detail shows one document
 		// at a time, so a get for a new row supersedes the one still running
 		// for the row the cursor has left.
-		PaneKey:    detailPaneKey(m.id, m.instance),
-		Params:     pluginhost.GetParams{Collection: collection, ID: id},
+		PaneKey: detailPaneKey(m.id, m.instance),
+		Params: pluginhost.GetParams{
+			Collection: collection, ID: id,
+			Filters: m.appliedFilters(c),
+		},
 		Context:    m.context(),
 		Refresh:    mode == openRefresh,
 		Generation: m.detail.generation,
 	})
+}
+
+// appliedFilters is the filter set the list that produced this row was run
+// with, which is what a get carries so the row expands under the scope it was
+// found in.
+//
+// A document tab has no list of its own — it was opened from one, or restored
+// from a tab record — so it carries the set it was armed with. Everywhere else
+// the collection's own state is the authority, and a collection nobody has
+// listed has applied nothing, which IS the plugin's declared defaults.
+func (m *Model) appliedFilters(c pluginhost.Collection) map[string]string {
+	if m.paneShape == PaneDocument {
+		return pluginhost.NormalizeFilters(c, m.paneDocFilters)
+	}
+	s, ok := m.states[c.ID]
+	if !ok {
+		return nil
+	}
+	return pluginhost.NormalizeFilters(c, s.filters)
 }
 
 // Close releases what this browser has in flight. A surface that goes away

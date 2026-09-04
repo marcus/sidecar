@@ -6,7 +6,7 @@
 // policy. An instance configured under terminalResources is dispatched with the
 // frozen sidecar.terminal-resource/v1 identifier and answers describe and
 // resolve; an instance configured under plugins.external is dispatched with
-// sidecar.plugin/v1-draft and additionally answers list, get, and act. Both end
+// sidecar.plugin/v1 and additionally answers list, get, and act. Both end
 // up as the same host types, because the second protocol is the first one grown
 // rather than a replacement.
 //
@@ -61,8 +61,10 @@ type PluginProvider interface {
 	// which cells a row is allowed to carry.
 	List(ctx context.Context, params ListParams, callCtx *Context, collection Collection) (Page, error)
 
-	// Get expands one row into one document, with sections.
-	Get(ctx context.Context, params GetParams, callCtx *Context) (resource.Document, error)
+	// Get expands one row into one document, with sections. collection is the
+	// validated declaration, which is how the host narrows the applied filters
+	// the row was found under before they reach the plugin.
+	Get(ctx context.Context, params GetParams, callCtx *Context, collection Collection) (resource.Document, error)
 
 	// Act performs one typed operation. It is the only method that mutates.
 	Act(ctx context.Context, params ActParams, callCtx *Context) (Outcome, error)

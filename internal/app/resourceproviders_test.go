@@ -297,7 +297,7 @@ func externalPluginConfig(argv0 string) *config.Config {
 	return cfg
 }
 
-// Each section has its own flag. Turning the draft protocol off must not take a
+// Each section has its own flag. Turning the plugin protocol off must not take a
 // working terminal resource provider down with it, and turning it on must not
 // resurrect providers whose own flag is off.
 func TestEachPluginSectionIsGatedByItsOwnFlag(t *testing.T) {

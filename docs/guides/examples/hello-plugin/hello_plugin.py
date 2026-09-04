@@ -18,7 +18,7 @@ with nothing to show the user.
 import json
 import sys
 
-PROTOCOL = "sidecar.plugin/v1-draft"
+PROTOCOL = "sidecar.plugin/v1"
 
 # The plugin's data. A real plugin runs its own CLI here, or reads its own
 # store; nothing else about the file changes.

@@ -80,7 +80,17 @@ func (m *Model) detailBlock(width int) []string {
 // detailEmptyLines is the box with nothing open. It says what the next gesture
 // does rather than showing a blank card, which is the difference between an
 // empty surface and a broken one.
+//
+// In a Tab placement, where the box stands beside the list rather than instead
+// of it, a plugin with a second collection gets that collection here instead of
+// the help text. A plugin's next collection is very often the ledger explaining
+// the list — recall's `sources` beside recall's `results` — so "no matches"
+// and "why" are on screen together, which is what makes an `abstained` page
+// verifiable in place rather than one keystroke away.
 func (m *Model) detailEmptyLines(width int) []string {
+	if next, ok := m.nextCollection(); ok {
+		return m.nextCollectionLines(next, width)
+	}
 	c, ok := m.ActiveCollection()
 	if !ok {
 		return []string{styles.Muted.Render(ansi.Truncate("Nothing to open.", width, "…"))}
@@ -101,6 +111,126 @@ func (m *Model) detailEmptyLines(width int) []string {
 			fmt.Sprintf("a  offers %d plugin action(s), each confirmed by the host.", len(m.desc.Actions)), width, "…")))
 	}
 	return lines
+}
+
+// nextCollection is the collection the empty detail box shows: the one after
+// the collection on screen, wrapping to the first.
+//
+// It exists only in a Tab placement. A pane shows one shape at a time and has
+// no second box to put anything in, and a browser with one collection has no
+// "next" — both keep the help text.
+func (m *Model) nextCollection() (pluginhost.Collection, bool) {
+	if m == nil || m.paneMode() || !m.described {
+		return pluginhost.Collection{}, false
+	}
+	cols := m.Collections()
+	if len(cols) < 2 {
+		return pluginhost.Collection{}, false
+	}
+	active := m.active
+	if active < 0 || active >= len(cols) {
+		active = 0
+	}
+	return cols[(active+1)%len(cols)], true
+}
+
+// nextCollectionRows is how many of the next collection's rows the box shows.
+// It is a preview, not a second list: the collection's own tab is one keystroke
+// away and is where a reader who wants all of them goes.
+const nextCollectionRows = 8
+
+// nextCollectionLines draws that collection in the empty box: its title, then
+// what it currently says, then the rows it has.
+func (m *Model) nextCollectionLines(c pluginhost.Collection, width int) []string {
+	title := c.Title
+	if title == "" {
+		title = c.ID
+	}
+	lines := []string{styles.Title.Render(ansi.Truncate(m.Name()+" · "+title, width, "…")), ""}
+
+	s := m.states[c.ID]
+	queried := s != nil && strings.TrimSpace(s.queryText()) != ""
+	switch {
+	case (c.Search == pluginhost.SearchRequired && !queried) || (s != nil && s.unqueried):
+		// A required-search collection was never asked, so it claims nothing.
+		// This box never asks one either, so "not read yet" would blame the
+		// host for a silence the collection's own contract explains, and "no
+		// rows" would report an answer nobody gave.
+		lines = append(lines, styles.Subtle.Render(ansi.Truncate(
+			"This collection answers a query, and there is none.", width, "…")))
+	case s == nil || (!s.loaded && !s.loading):
+		lines = append(lines, styles.Muted.Render(ansi.Truncate("Not read yet.", width, "…")))
+	case s.loading && !s.loaded:
+		lines = append(lines, styles.Muted.Render(ansi.Truncate("Reading "+title+"…", width, "…")))
+	case s.err != nil:
+		lines = append(lines, styles.Body.Foreground(styles.Error).Render(ansi.Truncate(
+			errorHeadline(s.err.Code), width, "…")))
+	case len(s.items) == 0:
+		lines = append(lines, styles.Muted.Render(ansi.Truncate(
+			emptyHeadline(s.outcome), width, "…")))
+	default:
+		lines = append(lines, m.nextCollectionRowLines(c, s, width)...)
+	}
+
+	// The closing line says what this box is, and what the box would hold if
+	// the reader opened something. A collection whose rows have no document
+	// behind them says that instead of promising an Enter that does nothing.
+	closing := "Enter on a row opens it here."
+	if active, ok := m.ActiveCollection(); ok && !active.Detail {
+		closing = "The list beside this has no documents behind its rows."
+	}
+	return append(lines, "",
+		styles.Subtle.Render(ansi.Truncate("This plugin's next collection.", width, "…")),
+		styles.Subtle.Render(ansi.Truncate(closing, width, "…")))
+}
+
+// nextCollectionRowLines is the preview's rows: the primary cell, with the
+// status label right-aligned where there is room for it. No table, no cursor —
+// this box is not a second list to drive.
+func (m *Model) nextCollectionRowLines(c pluginhost.Collection, s *collectionState, width int) []string {
+	primary, hasPrimary := c.PrimaryColumn()
+	rows := make([]string, 0, nextCollectionRows+1)
+	for i, item := range s.items {
+		if i >= nextCollectionRows {
+			rows = append(rows, styles.Subtle.Render(ansi.Truncate(
+				fmt.Sprintf("+%d more", len(s.items)-nextCollectionRows), width, "…")))
+			break
+		}
+		name := item.ID
+		if hasPrimary {
+			if cell := strings.TrimSpace(item.Cells[primary.ID]); cell != "" {
+				name = cell
+			}
+		}
+		label := ""
+		if item.Status != nil {
+			label = ansi.Truncate(item.Status.Label, statusColumnMax, "…")
+		}
+		left := styles.Body.Render(ansi.Truncate(name, max0(width-ansi.StringWidth(label)-2), "…"))
+		if label == "" {
+			rows = append(rows, left)
+			continue
+		}
+		rows = append(rows, padBetween(left, toneStyle(item.Status.Tone).Render(label), width))
+	}
+	return rows
+}
+
+// emptyHeadline is the one-line version of the list's own empty state, for a
+// preview that has no room for the full card. The three claims stay distinct
+// here for the reason they are distinct there: each says a different thing
+// about the same empty list.
+func emptyHeadline(outcome pluginhost.PageOutcome) string {
+	switch outcome {
+	case pluginhost.OutcomeFailed:
+		return "Nothing could be asked; every source failed."
+	case pluginhost.OutcomeDegraded:
+		return "No rows, and coverage was incomplete."
+	case pluginhost.OutcomeAbstained:
+		return "No rows, and every source answered."
+	default:
+		return "No rows."
+	}
 }
 
 // documentLines renders one resource: identity, fields, body, then sections in

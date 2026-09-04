@@ -13,7 +13,7 @@ import (
 )
 
 // protocolTabConfig configures one external plugin with a tab placement, behind
-// the flag that gates the whole draft protocol.
+// the flag that gates the whole plugin protocol.
 func protocolTabConfig(t *testing.T, placements ...string) *config.Config {
 	t.Helper()
 	if len(placements) == 0 {

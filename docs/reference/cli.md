@@ -2053,7 +2053,8 @@ and --project.
 --diff with no spec is the working tree. --plugin names a configured plugin instance:
 with --collection it opens that collection's tab (add --query to open it searched,
 --filter id=value for one of the collection's own declared filters, or a
-positional row id to open that row's document instead), and without --collection it
+positional row id to open that row's document instead — a row takes --filter too,
+because that is the scope the row is expanded under), and without --collection it
 opens a matched locator through the plugin's matchers. --provider is the older spelling
 of the locator form and still works. Either way the instance is required for a resource:
 a bare locator is never guessed at.
@@ -2154,7 +2155,7 @@ executable that answers JSON on stdout and that Sidecar renders itself.
 
 An external plugin speaks one of two protocols, decided by the config section
 it is written in and never by the executable. plugins.external entries speak
-sidecar.plugin/v1-draft, which has describe, resolve, list, get, and act;
+sidecar.plugin/v1, which has describe, resolve, list, get, and act;
 terminalResources.providers entries speak the frozen
 sidecar.terminal-resource/v1, which has describe and resolve. The
 `sidecar terminal-links` verbs remain the surface for that older section.
@@ -2233,9 +2234,10 @@ plugin's own CLI.
 describe always runs. --list and --get are separate, explicit flags because
 they can perform network access and print private data; neither is ever
 implied. --query applies only to --list, and a collection whose search is
-required needs one. --filter applies only to --list too, is repeatable, and
-takes id=value naming a filter the collection declared; what is printed back
-is what the host actually sent, so a key that was dropped shows as dropped.
+required needs one. --filter applies to --list and to --get, because a row is
+expanded under the scope it was found in; it is repeatable and takes id=value
+naming a filter the collection declared. What is printed back is what the
+host actually sent, so a key that was dropped shows as dropped.
 
 Only what the host kept is printed, never the plugin's raw stdout: every
 string shown has been through the host's own sanitization and bounds, so what
@@ -2249,7 +2251,7 @@ Usage: sidecar plugin check [--list COLLECTION [--query Q]] [--get COLLECTION ID
 
 - `--list COLLECTION`: Also call list on this collection
 - `--query TEXT`: Query to send with --list
-- `--filter ID=VALUE`: Apply one declared filter with --list (repeatable)
+- `--filter ID=VALUE`: Apply one declared filter with --list or --get (repeatable)
 - `--get COLLECTION ID`: Also call get on this collection row (two values)
 - `--json`: Write one structured result object to stdout
 - `-h, --help`: Show this help
@@ -2269,6 +2271,7 @@ sidecar plugin check recall
 sidecar plugin check recall --list results --query dex --json
 sidecar plugin check recall --list results --query dex --filter profile=docs
 sidecar plugin check recall --get results rc:notes:1 --json
+sidecar plugin check recall --get results rc:notes:1 --filter profile=docs
 ```
 
 ### `sidecar plugin call`
@@ -2283,15 +2286,16 @@ exactly what survives.
 --params is the method's params object as JSON:
   resolve  {"matcher":"issue-key","locator":"CASH-1"}
   list     {"collection":"results","query":"dex","filters":{"profile":"docs"},"cursor":"","limit":100}
-  get      {"collection":"results","id":"rc:notes:1"}
+  get      {"collection":"results","id":"rc:notes:1","filters":{"profile":"docs"}}
   act      {"action":"log-note","collection":"results","id":"rc:notes:1","inputs":{"text":"…"}}
 
-list first runs describe, because the declared columns are what a page is
-sanitized against — a cell keyed by an undeclared column is dropped, and that
-is a finding worth seeing here rather than in a pane. The same is true of
-filters: --filter id=value is shorthand for a key inside params.filters, and
-a key the collection never declared, or a value equal to that filter's own
-default, is dropped before the plugin is called.
+list and get both run describe first, because the declared columns are what a
+page is sanitized against — a cell keyed by an undeclared column is dropped,
+and that is a finding worth seeing here rather than in a pane. The same is
+true of filters: --filter id=value is shorthand for a key inside
+params.filters, and a key the collection never declared, or a value equal to
+that filter's own default, is dropped before the plugin is called. get takes
+filters because a row is expanded under the scope it was found in.
 
 No host context is sent: this process has no surface, so it has no project
 and no selection to offer.
@@ -2303,7 +2307,7 @@ Usage: sidecar plugin call [--params JSON] [--json] <id> <method>
 **Options:**
 
 - `--params JSON`: The method's params object
-- `--filter ID=VALUE`: Apply one declared filter to list (repeatable)
+- `--filter ID=VALUE`: Apply one declared filter to list or get (repeatable)
 - `--json`: Write one structured result object to stdout
 - `-h, --help`: Show this help
 

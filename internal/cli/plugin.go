@@ -212,14 +212,18 @@ type noticeReport struct {
 }
 
 type pluginGetCallReport struct {
-	OK         bool            `json:"ok"`
-	Outcome    string          `json:"outcome"`
-	DurationMs int64           `json:"durationMs"`
-	Collection string          `json:"collection"`
-	ID         string          `json:"id"`
-	Resource   *documentReport `json:"resource,omitempty"`
-	Sections   []sectionReport `json:"sections,omitempty"`
-	Error      *errorReport    `json:"error,omitempty"`
+	OK         bool   `json:"ok"`
+	Outcome    string `json:"outcome"`
+	DurationMs int64  `json:"durationMs"`
+	Collection string `json:"collection"`
+	ID         string `json:"id"`
+	// Filters is what the host actually sent, on the same rule as the list
+	// report's: a row is expanded under the scope it was found in, so the
+	// applied set is part of what a `get` is.
+	Filters  map[string]string `json:"filters,omitempty"`
+	Resource *documentReport   `json:"resource,omitempty"`
+	Sections []sectionReport   `json:"sections,omitempty"`
+	Error    *errorReport      `json:"error,omitempty"`
 }
 
 type sectionReport struct {
@@ -335,16 +339,17 @@ func pluginCommand() *Command {
 			"describe always runs. --list and --get are separate, explicit flags because\n" +
 			"they can perform network access and print private data; neither is ever\n" +
 			"implied. --query applies only to --list, and a collection whose search is\n" +
-			"required needs one. --filter applies only to --list too, is repeatable, and\n" +
-			"takes id=value naming a filter the collection declared; what is printed back\n" +
-			"is what the host actually sent, so a key that was dropped shows as dropped.\n\n" +
+			"required needs one. --filter applies to --list and to --get, because a row is\n" +
+			"expanded under the scope it was found in; it is repeatable and takes id=value\n" +
+			"naming a filter the collection declared. What is printed back is what the\n" +
+			"host actually sent, so a key that was dropped shows as dropped.\n\n" +
 			"Only what the host kept is printed, never the plugin's raw stdout: every\n" +
 			"string shown has been through the host's own sanitization and bounds, so what\n" +
 			"you see is what a pane would draw.",
 		Flags: []Flag{
 			{Name: "--list", Arg: "COLLECTION", Summary: "Also call list on this collection"},
 			{Name: "--query", Arg: "TEXT", Summary: "Query to send with --list"},
-			{Name: "--filter", Arg: "ID=VALUE", Summary: "Apply one declared filter with --list (repeatable)"},
+			{Name: "--filter", Arg: "ID=VALUE", Summary: "Apply one declared filter with --list or --get (repeatable)"},
 			{Name: "--get", Arg: "COLLECTION ID", Summary: "Also call get on this collection row (two values)"},
 			jsonFlag, helpFlag,
 		},
@@ -361,6 +366,7 @@ func pluginCommand() *Command {
 			{Command: "sidecar plugin check recall --list results --query dex --json"},
 			{Command: "sidecar plugin check recall --list results --query dex --filter profile=docs"},
 			{Command: "sidecar plugin check recall --get results rc:notes:1 --json"},
+			{Command: "sidecar plugin check recall --get results rc:notes:1 --filter profile=docs"},
 		},
 		Agent: AgentDoc{
 			Invocation: "sidecar plugin check <id> --json",
@@ -380,19 +386,20 @@ func pluginCommand() *Command {
 			"--params is the method's params object as JSON:\n" +
 			"  resolve  {\"matcher\":\"issue-key\",\"locator\":\"CASH-1\"}\n" +
 			"  list     {\"collection\":\"results\",\"query\":\"dex\",\"filters\":{\"profile\":\"docs\"},\"cursor\":\"\",\"limit\":100}\n" +
-			"  get      {\"collection\":\"results\",\"id\":\"rc:notes:1\"}\n" +
+			"  get      {\"collection\":\"results\",\"id\":\"rc:notes:1\",\"filters\":{\"profile\":\"docs\"}}\n" +
 			"  act      {\"action\":\"log-note\",\"collection\":\"results\",\"id\":\"rc:notes:1\",\"inputs\":{\"text\":\"…\"}}\n\n" +
-			"list first runs describe, because the declared columns are what a page is\n" +
-			"sanitized against — a cell keyed by an undeclared column is dropped, and that\n" +
-			"is a finding worth seeing here rather than in a pane. The same is true of\n" +
-			"filters: --filter id=value is shorthand for a key inside params.filters, and\n" +
-			"a key the collection never declared, or a value equal to that filter's own\n" +
-			"default, is dropped before the plugin is called.\n\n" +
+			"list and get both run describe first, because the declared columns are what a\n" +
+			"page is sanitized against — a cell keyed by an undeclared column is dropped,\n" +
+			"and that is a finding worth seeing here rather than in a pane. The same is\n" +
+			"true of filters: --filter id=value is shorthand for a key inside\n" +
+			"params.filters, and a key the collection never declared, or a value equal to\n" +
+			"that filter's own default, is dropped before the plugin is called. get takes\n" +
+			"filters because a row is expanded under the scope it was found in.\n\n" +
 			"No host context is sent: this process has no surface, so it has no project\n" +
 			"and no selection to offer.",
 		Flags: []Flag{
 			{Name: "--params", Arg: "JSON", Summary: "The method's params object"},
-			{Name: "--filter", Arg: "ID=VALUE", Summary: "Apply one declared filter to list (repeatable)"},
+			{Name: "--filter", Arg: "ID=VALUE", Summary: "Apply one declared filter to list or get (repeatable)"},
 			jsonFlag, helpFlag,
 		},
 		Args: ArgSpec{Min: 2, Max: 2, Description: "plugin id and method"},
@@ -565,7 +572,7 @@ func pluginCommand() *Command {
 			"executable that answers JSON on stdout and that Sidecar renders itself.\n\n" +
 			"An external plugin speaks one of two protocols, decided by the config section\n" +
 			"it is written in and never by the executable. plugins.external entries speak\n" +
-			"sidecar.plugin/v1-draft, which has describe, resolve, list, get, and act;\n" +
+			"sidecar.plugin/v1, which has describe, resolve, list, get, and act;\n" +
 			"terminalResources.providers entries speak the frozen\n" +
 			"sidecar.terminal-resource/v1, which has describe and resolve. The\n" +
 			"`sidecar terminal-links` verbs remain the surface for that older section.\n\n" +
@@ -1092,8 +1099,8 @@ func runPluginCheck(env Env, args []string) int {
 		cliErrf(env.Stderr, "--query applies only to --list\n\n%s", help)
 		return pluginExitUsage
 	}
-	if len(filters) > 0 && !wantList {
-		cliErrf(env.Stderr, "--filter applies only to --list\n\n%s", help)
+	if len(filters) > 0 && !wantList && !wantGet {
+		cliErrf(env.Stderr, "--filter applies only to --list and --get\n\n%s", help)
 		return pluginExitUsage
 	}
 
@@ -1146,7 +1153,7 @@ func runPluginCheck(env Env, args []string) int {
 				}
 			}
 			if wantGet {
-				report.Get = callGet(ctx, provider, getName, getID)
+				report.Get = callGet(ctx, provider, report.Describe, getName, getID, filters)
 				if !report.Get.OK {
 					failed = true
 				}
@@ -1250,10 +1257,20 @@ func callList(ctx context.Context, provider *pluginhost.CommandProvider, describ
 	return out
 }
 
-func callGet(ctx context.Context, provider *pluginhost.CommandProvider, name, id string) *pluginGetCallReport {
+func callGet(ctx context.Context, provider *pluginhost.CommandProvider, describe *pluginDescribeReport, name, id string, filters map[string]string) *pluginGetCallReport {
 	out := &pluginGetCallReport{Collection: name, ID: id}
+	collection, ok := declaredCollection(describe, name)
+	if !ok {
+		out.Outcome = "invalid-request"
+		out.Error = toErrorReport(resource.Errorf(resource.CodeNotFound, "the plugin declares no collection named %q", name))
+		return out
+	}
+	// A row is expanded under the scope it was found in, so `check --get`
+	// carries the same --filter set `check --list` does. What is reported is
+	// what the host will actually send, for the reason callList prints it.
+	out.Filters = pluginhost.NormalizeFilters(collection, filters)
 	started := time.Now()
-	doc, err := provider.Get(ctx, pluginhost.GetParams{Collection: name, ID: id}, nil)
+	doc, err := provider.Get(ctx, pluginhost.GetParams{Collection: name, ID: id, Filters: filters}, nil, collection)
 	out.DurationMs = time.Since(started).Milliseconds()
 	out.Outcome = pluginhost.OutcomeCode(err)
 	if err != nil {
@@ -1331,12 +1348,8 @@ func writePluginCheckText(env Env, report pluginCheckReport) {
 			_, _ = fmt.Fprintf(env.Stdout, "  list      ok in %dms — %s, %s, %d row(s)\n", r.DurationMs, r.Collection, r.Page.Outcome, len(r.Page.Items))
 			// The applied set, not the asked-for one: a dropped key is a
 			// finding, so it is printed as an absence rather than hidden.
-			if len(r.Filters) > 0 {
-				parts := make([]string, 0, len(r.Filters))
-				for _, key := range pluginhost.FilterKeys(r.Filters) {
-					parts = append(parts, key+"="+r.Filters[key])
-				}
-				_, _ = fmt.Fprintf(env.Stdout, "            filters   %s\n", strings.Join(parts, " "))
+			if line := appliedFiltersLine(r.Filters); line != "" {
+				_, _ = fmt.Fprintf(env.Stdout, "            filters   %s\n", line)
 			}
 			for _, item := range r.Page.Items {
 				_, _ = fmt.Fprintf(env.Stdout, "            %s  %s\n", item.ID, primaryCell(item))
@@ -1374,6 +1387,11 @@ func writePluginCheckText(env Env, report pluginCheckReport) {
 	if r := report.Get; r != nil {
 		if r.OK {
 			_, _ = fmt.Fprintf(env.Stdout, "  get       ok in %dms — %s  %s\n", r.DurationMs, r.Resource.Identity, r.Resource.Title)
+			// The scope the row was expanded under, on the same rule the list
+			// block prints: the applied set, so a dropped key shows as dropped.
+			if line := appliedFiltersLine(r.Filters); line != "" {
+				_, _ = fmt.Fprintf(env.Stdout, "            filters   %s\n", line)
+			}
 			for _, section := range r.Sections {
 				_, _ = fmt.Fprintf(env.Stdout, "            section %s (%s)\n", section.Title, sectionShape(section))
 			}
@@ -1382,6 +1400,19 @@ func writePluginCheckText(env Env, report pluginCheckReport) {
 			writeErrorText(env, "            ", r.Error)
 		}
 	}
+}
+
+// appliedFiltersLine renders an applied filter set in the host's own key order,
+// so `--list` and `--get` report the scope they ran under the same way.
+func appliedFiltersLine(filters map[string]string) string {
+	if len(filters) == 0 {
+		return ""
+	}
+	parts := make([]string, 0, len(filters))
+	for _, key := range pluginhost.FilterKeys(filters) {
+		parts = append(parts, key+"="+filters[key])
+	}
+	return strings.Join(parts, " ")
 }
 
 // primaryCell is the honest stand-in for the row label in a text listing: the
@@ -1597,8 +1628,8 @@ func runPluginCall(env Env, args []string) int {
 		}
 	}
 	if len(flagFilters) > 0 {
-		if method != pluginhost.MethodList {
-			cliErrf(env.Stderr, "--filter applies only to list\n\n%s", help)
+		if method != pluginhost.MethodList && method != pluginhost.MethodGet {
+			cliErrf(env.Stderr, "--filter applies only to list and get\n\n%s", help)
 			return pluginExitUsage
 		}
 		// A flag wins over the same key inside --params: it is the later, more
@@ -1694,8 +1725,27 @@ func runPluginCall(env Env, args []string) int {
 		}
 
 	case pluginhost.MethodGet:
+		// describe first, as list does: the collection declaration is what the
+		// applied filters are narrowed against before they reach the plugin.
+		describe := describePluginInstance(ctx, instance)
+		if !describe.OK {
+			report.Describe = describe
+			report.Outcome = describe.Outcome
+			report.Error = describe.Error
+			report.DurationMs = describe.DurationMs
+			return finishCall(env, jsonOutput, report)
+		}
+		collection, declared := declaredCollection(describe, params.Collection)
+		if !declared {
+			report.Outcome = "invalid-request"
+			report.Error = toErrorReport(resource.Errorf(resource.CodeNotFound, "the plugin declares no collection named %q", params.Collection))
+			return finishCall(env, jsonOutput, report)
+		}
+		started = time.Now()
 		var doc resource.Document
-		doc, callErr = provider.Get(ctx, pluginhost.GetParams{Collection: params.Collection, ID: params.ID}, nil)
+		doc, callErr = provider.Get(ctx, pluginhost.GetParams{
+			Collection: params.Collection, ID: params.ID, Filters: params.Filters,
+		}, nil, collection)
 		if callErr == nil {
 			report.Resource = toDocumentReport(doc)
 			report.Sections = toSectionReports(doc.Sections)

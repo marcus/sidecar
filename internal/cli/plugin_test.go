@@ -198,7 +198,7 @@ func TestPluginListReportsExternalPlugins(t *testing.T) {
 	if last.Source != config.PluginSourceExternal {
 		t.Fatalf("source = %q", last.Source)
 	}
-	if last.Protocol != "sidecar.plugin/v1-draft" {
+	if last.Protocol != "sidecar.plugin/v1" {
 		t.Fatalf("protocol = %q", last.Protocol)
 	}
 	if !last.Enabled || !last.Active {
@@ -341,7 +341,7 @@ func TestPluginCheckHumanOutputAndRefusals(t *testing.T) {
 	if code := runPluginCheck(env, []string{"fixture"}); code != 0 {
 		t.Fatalf("exit %d: %s", code, errOut.String())
 	}
-	for _, want := range []string{"collection results", "action log-note", "reads context project", "sidecar.plugin/v1-draft"} {
+	for _, want := range []string{"collection results", "action log-note", "reads context project", "sidecar.plugin/v1"} {
 		if !strings.Contains(out.String(), want) {
 			t.Fatalf("human output is missing %q:\n%s", want, out.String())
 		}
@@ -709,8 +709,48 @@ func TestPluginCheckPrintsTheAppliedFilters(t *testing.T) {
 		}
 	}
 
-	// A filter with no list to apply it to is a usage error, exactly as a
-	// stray --query is.
+	// --get carries the same set, because a row is expanded under the scope it
+	// was found in, and reports it the same way the list block does.
+	env, out, errOut = pluginProtocolEnv(t, externalPluginJSON(bin))
+	code = runPluginCheck(env, []string{
+		"fixture", "--get", "results", "rc:notes:1",
+		"--filter", "scope=notes", // declared, not the default: sent
+		"--filter=source=any",    // declared, but IS the default: dropped
+		"--filter", "smuggled=x", // never declared: dropped
+	})
+	if code != 0 {
+		t.Fatalf("exit %d: %s\n%s", code, errOut.String(), out.String())
+	}
+	if !strings.Contains(out.String(), "filters   scope=notes") {
+		t.Fatalf("the get block did not print the scope it ran under:\n%s", out.String())
+	}
+	env, out, errOut = pluginProtocolEnv(t, externalPluginJSON(bin))
+	code = runPluginCheck(env, []string{
+		"fixture", "--get", "results", "rc:notes:1",
+		"--filter", "scope=notes", "--filter=source=any", "--filter", "smuggled=x", "--json",
+	})
+	if code != 0 {
+		t.Fatalf("exit %d: %s\n%s", code, errOut.String(), out.String())
+	}
+	report = pluginCheckReport{}
+	if err := json.Unmarshal(out.Bytes(), &report); err != nil {
+		t.Fatalf("decode: %v (%s)", err, out.String())
+	}
+	if report.Get == nil || len(report.Get.Filters) != 1 || report.Get.Filters["scope"] != "notes" {
+		t.Fatalf("applied get filters = %v, want only scope=notes", report.Get.Filters)
+	}
+	scope := ""
+	for _, f := range report.Get.Resource.Fields {
+		if f.Label == "Scope" {
+			scope = f.Value
+		}
+	}
+	if scope != "scope=notes" {
+		t.Fatalf("the plugin received scope %q on get", scope)
+	}
+
+	// A filter with no list or get to apply it to is a usage error, exactly as
+	// a stray --query is.
 	env, _, errOut = pluginProtocolEnv(t, externalPluginJSON(bin))
 	if code := runPluginCheck(env, []string{"fixture", "--filter", "scope=notes"}); code != pluginExitUsage {
 		t.Fatalf("stray --filter exit = %d", code)
@@ -742,7 +782,7 @@ func TestPluginCallAcceptsFilterFlags(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("exit %d: %s\n%s", code, errOut.String(), out.String())
 	}
-	var report pluginCallReport
+	report := pluginCallReport{}
 	if err := json.Unmarshal(out.Bytes(), &report); err != nil {
 		t.Fatalf("decode: %v (%s)", err, out.String())
 	}
@@ -750,11 +790,38 @@ func TestPluginCallAcceptsFilterFlags(t *testing.T) {
 		t.Fatalf("the plugin received %q; --filter merges with params.filters", got)
 	}
 
-	env, _, errOut = pluginProtocolEnv(t, externalPluginJSON(bin))
-	if code := runPluginCall(env, []string{"fixture", "get", "--filter", "scope=notes"}); code != pluginExitUsage {
-		t.Fatalf("--filter on get exit = %d", code)
+	// get takes them too: a row is expanded under the scope it was found in.
+	env, out, errOut = pluginProtocolEnv(t, externalPluginJSON(bin))
+	code = runPluginCall(env, []string{
+		"fixture", "get",
+		"--params", `{"collection":"results","id":"rc:notes:1","filters":{"since":"2026-08-01"}}`,
+		"--filter", "scope=notes",
+		"--json",
+	})
+	if code != 0 {
+		t.Fatalf("exit %d: %s\n%s", code, errOut.String(), out.String())
 	}
-	if !strings.Contains(errOut.String(), "applies only to list") {
+	report = pluginCallReport{}
+	if err := json.Unmarshal(out.Bytes(), &report); err != nil {
+		t.Fatalf("decode: %v (%s)", err, out.String())
+	}
+	scope := ""
+	for _, f := range report.Resource.Fields {
+		if f.Label == "Scope" {
+			scope = f.Value
+		}
+	}
+	if scope != "scope=notes;since=2026-08-01" {
+		t.Fatalf("the plugin received scope %q; --filter merges with params.filters on get too", scope)
+	}
+
+	// act still refuses them: an action names its own subject, and a filter
+	// there would be describing a page nobody is looking at.
+	env, _, errOut = pluginProtocolEnv(t, externalPluginJSON(bin))
+	if code := runPluginCall(env, []string{"fixture", "act", "--filter", "scope=notes"}); code != pluginExitUsage {
+		t.Fatalf("--filter on act exit = %d", code)
+	}
+	if !strings.Contains(errOut.String(), "applies only to list and get") {
 		t.Fatalf("the refusal did not explain itself: %s", errOut.String())
 	}
 }

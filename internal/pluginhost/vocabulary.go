@@ -52,6 +52,17 @@ const (
 	MaxPageItems = 500
 	// MaxCellChars bounds one table cell.
 	MaxCellChars = 512
+	// StatusLabelRenderChars is how much of a row's status.label the host will
+	// ever draw: the reserved status column never grows past it, and a longer
+	// label is truncated into it.
+	//
+	// It is a RENDER bound, not a wire bound. resource.MaxStatusLabelChars is
+	// frozen at 64 and stays exactly where it is — a longer label is still
+	// accepted, sanitized, and carried, and a plugin that sends one is not
+	// wrong. It simply cannot be read past this width, which is what the
+	// protocol reference states so a plugin author can choose a label that
+	// fits rather than discovering the truncation in a pane.
+	StatusLabelRenderChars = 24
 	// MaxNotices and MaxNoticeChars bound the notice rows above a list.
 	MaxNotices     = 4
 	MaxNoticeChars = 200

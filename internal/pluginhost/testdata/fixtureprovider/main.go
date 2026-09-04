@@ -6,7 +6,7 @@
 // It speaks both protocol identifiers from one binary, because that is the
 // property the host has to hold: the same executable answers
 // sidecar.terminal-resource/v1 with matchers and resolve, and
-// sidecar.plugin/v1-draft with collections, actions, list, get, and act. It
+// sidecar.plugin/v1 with collections, actions, list, get, and act. It
 // answers on whichever identifier the request carried, which is also how the
 // "wrong dialect" cases are built.
 //
@@ -35,7 +35,13 @@ import (
 
 const (
 	resourceProtocol = "sidecar.terminal-resource/v1"
-	pluginProtocol   = "sidecar.plugin/v1-draft"
+	pluginProtocol   = "sidecar.plugin/v1"
+	// draftPluginProtocol is the identifier the plugin protocol carried before
+	// it froze. The host never sends it and never accepts it; the fixture keeps
+	// it for one reason, the -mode=draft-answer case, which is how the "a plugin
+	// answering the draft identifier is a protocol failure" rule is tested
+	// rather than asserted.
+	draftPluginProtocol = "sidecar.plugin/v1-draft"
 )
 
 type request struct {
@@ -408,6 +414,15 @@ func run(mode string, req request, rawRequest []byte, subject, pidfile string) {
 		return
 	case "no-protocol":
 		fmt.Println(`{"provider":{"kind":"fixture"},"matchers":[]}`)
+		return
+	case "draft-answer":
+		// A plugin still answering the pre-freeze draft identifier, whatever it
+		// was asked on. The host validates strictly and refuses it, which is
+		// what makes "tolerance lives on the plugin side" a rule with a test
+		// rather than a sentence in a document.
+		resp := describePluginResponse()
+		resp.Protocol = draftPluginProtocol
+		emit(resp)
 		return
 	case "resource-only":
 		// A plugin that only ever speaks the frozen resource protocol, whatever
@@ -1011,8 +1026,10 @@ func getResponse(req request, id string) response {
 		return response{Protocol: wire, Error: &protocolError{Code: "not_found", Message: "no such row"}}
 	}
 	collectionID := ""
+	var filters map[string]string
 	if req.Params != nil {
 		collectionID = req.Params.Collection
+		filters = req.Params.Filters
 	}
 	return response{
 		Protocol: wire,
@@ -1024,6 +1041,12 @@ func getResponse(req request, id string) response {
 			Fields: []field{
 				{Label: "Collection", Value: collectionID},
 				{Label: "Locator", Value: id},
+				// The scope the row was expanded under, echoed exactly as it
+				// reached the plugin. A row found under a filter-chosen scope
+				// has to expand under that same scope, and echoing it is how a
+				// host test proves the get carried it rather than trusting the
+				// host's own encoder.
+				{Label: "Scope", Value: encodeFilters(filters)},
 			},
 			Body: &body{Format: "markdown", Text: "Deterministic detail for `" + id + "`.\n"},
 			Sections: []section{

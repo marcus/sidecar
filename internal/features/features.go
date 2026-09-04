@@ -141,8 +141,8 @@ var (
 	}
 
 	// PluginProtocol gates the plugin protocol host: the plugins.external
-	// configuration section, the protocol envelope, and every `sidecar plugin`
-	// verb that talks to an external plugin process.
+	// configuration section, the sidecar.plugin/v1 envelope, and every
+	// `sidecar plugin` verb that talks to an external plugin process.
 	//
 	// On by default now that the contract is frozen. Like the resource flag it
 	// costs a default install nothing — nothing is configured, so nothing is

@@ -10,7 +10,7 @@ The contract itself — every field, every bound, every rule — is [docs/refere
 
 ## Before you start
 
-The plugin host is governed by the `plugin_protocol` feature flag, which is on by default — an install with nothing configured starts nothing, so it costs you nothing until you configure a plugin. Every `sidecar plugin` command below needs it; with `features.flags.plugin_protocol: false` in `~/.config/sidecar/config.json` they exit `4` and say so, which is also how you stop every plugin process while leaving the configuration in place. The identifier is `sidecar.plugin/v1-draft` until the protocol freezes; see [the reference's draft status](../../reference/plugin-protocol.md#draft-status-what-is-settled-and-what-is-not) for what that does and does not mean for your plugin.
+The plugin host is governed by the `plugin_protocol` feature flag, which is on by default — an install with nothing configured starts nothing, so it costs you nothing until you configure a plugin. Every `sidecar plugin` command below needs it; with `features.flags.plugin_protocol: false` in `~/.config/sidecar/config.json` they exit `4` and say so, which is also how you stop every plugin process while leaving the configuration in place. The identifier is `sidecar.plugin/v1-draft` until the protocol freezes; see [the reference's draft status](../../reference/plugin-protocol.md#draft-status-what-is-settled-and-what-is-not) for what that does and does not mean for your plugin. The identifier is `sidecar.plugin/v1` and it is frozen; see [what the freeze promises](../../reference/plugin-protocol.md#frozen-what-that-promises), including the one rule that keeps your plugin working with a Sidecar released before it.
 
 ## Which class of plugin do you want?
 
@@ -49,7 +49,7 @@ Each call is one process: Sidecar writes one JSON object to your stdin and close
 The example's skeleton is the whole shape:
 
 ```python
-PROTOCOL = "sidecar.plugin/v1-draft"
+PROTOCOL = "sidecar.plugin/v1"
 
 def answer(request):
     if request.get("protocol") != PROTOCOL:
@@ -172,6 +172,8 @@ When a page is `degraded` or `failed`, send `coverage[]` with it. The host's cov
 
 Do not repeat `updatedAt` as a field: the host owns rendering it, and renders it relatively.
 
+**`get.params.filters` is the scope the row was found in**, sent exactly as the `list` that produced the row sent it. Read it the same way you read it on `list`. If a filter of yours changes what a row *means* — a profile, a sensitivity level, an account — then resolving the row without it is resolving a different row, and a plugin that ignores it will eventually answer a document the user cannot explain, or refuse one they could see a moment ago.
+
 ## Configure it, and what that means
 
 ```bash
@@ -187,7 +189,7 @@ Configure "hello" as an external plugin.
     argv[0]  python3
     argv[1]  /path/to/hello_plugin.py
   Working directory: /Users/you/.config/sidecar
-  Protocol:          sidecar.plugin/v1-draft
+  Protocol:          sidecar.plugin/v1
   Scope:             global
   Placements:        tab, panes
   Timeout:           10s
@@ -209,7 +211,7 @@ Everything after `--command` is the argv, executed with no shell, so it goes las
 ```console
 $ sidecar plugin check hello
 hello  [enabled, ready]  plugins.external
-  protocol  sidecar.plugin/v1-draft
+  protocol  sidecar.plugin/v1
   command   python3 /path/to/hello_plugin.py
   resolves  /opt/homebrew/bin/python3
   scope     global

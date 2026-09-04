@@ -1,5 +1,5 @@
 {
-  "protocol": "sidecar.plugin/v1-draft",
+  "protocol": "sidecar.plugin/v1",
   "plugin": {
     "kind": "recall",
     "name": "Recall",
