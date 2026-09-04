@@ -114,7 +114,8 @@ func (m *Manager) Get(ctx context.Context, req GetRequest) (resource.Document, e
 	if err != nil {
 		return resource.Document{}, err
 	}
-	if _, ok := m.Collection(req.Instance, req.Params.Collection); !ok {
+	collection, ok := m.Collection(req.Instance, req.Params.Collection)
+	if !ok {
 		return resource.Document{}, &resource.Error{
 			Code:    resource.CodeInvalidRequest,
 			Message: "That plugin does not declare a collection with that id.",
@@ -130,9 +131,15 @@ func (m *Manager) Get(ctx context.Context, req GetRequest) (resource.Document, e
 	// The cache key carries a NUL separator, which SanitizeLine strips from
 	// every locator, so a get can never collide with a resolve of the same
 	// instance however a plugin spells its ids.
-	lookup := "get\x00" + req.Params.Collection + "\x00" + req.Params.ID
+	//
+	// The applied filters are part of the key. The same row expanded under two
+	// scopes is two documents — that is the whole reason the filters are sent —
+	// so a cache keyed by collection and id alone would answer the second scope
+	// with the first scope's document.
+	lookup := "get\x00" + req.Params.Collection + "\x00" + req.Params.ID +
+		"\x00" + FilterCacheKey(NormalizeFilters(collection, req.Params.Filters))
 	return m.fetch(ctx, req.Instance, MethodGet, lookup, req.Refresh, func(ctx context.Context) (resource.Document, error) {
-		return provider.Get(ctx, req.Params, req.Context)
+		return provider.Get(ctx, req.Params, req.Context, collection)
 	})
 }
 

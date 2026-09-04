@@ -99,9 +99,19 @@ type SortOrder struct {
 }
 
 // GetParams addresses one row of one collection.
+//
+// Filters is the applied filter set of the list that produced the row, sent
+// exactly as that list sent it. A row found under a filter-chosen scope has to
+// expand under the same scope: sending nothing makes the plugin resolve the row
+// under its declared defaults, which is at best a different document and at
+// worst a refusal, because the row was only visible under the scope the user
+// chose. Same shape and same rule as ListParams.Filters — a missing key means
+// the filter's declared default, and the host drops undeclared keys before the
+// call.
 type GetParams struct {
-	Collection string `json:"collection"`
-	ID         string `json:"id"`
+	Collection string            `json:"collection"`
+	ID         string            `json:"id"`
+	Filters    map[string]string `json:"filters,omitempty"`
 }
 
 // ActParams addresses one action. A collection or item action carries

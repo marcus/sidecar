@@ -61,8 +61,10 @@ type PluginProvider interface {
 	// which cells a row is allowed to carry.
 	List(ctx context.Context, params ListParams, callCtx *Context, collection Collection) (Page, error)
 
-	// Get expands one row into one document, with sections.
-	Get(ctx context.Context, params GetParams, callCtx *Context) (resource.Document, error)
+	// Get expands one row into one document, with sections. collection is the
+	// validated declaration, which is how the host narrows the applied filters
+	// the row was found under before they reach the plugin.
+	Get(ctx context.Context, params GetParams, callCtx *Context, collection Collection) (resource.Document, error)
 
 	// Act performs one typed operation. It is the only method that mutates.
 	Act(ctx context.Context, params ActParams, callCtx *Context) (Outcome, error)

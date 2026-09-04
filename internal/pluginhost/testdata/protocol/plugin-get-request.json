@@ -5,6 +5,7 @@
   "deadlineMs": 10000,
   "params": {
     "collection": "results",
-    "id": "rc:notes:2026-08-14-dex-design"
+    "id": "rc:notes:2026-08-14-dex-design",
+    "filters": {"profile": "docs", "since": "2026-08-01"}
   }
 }

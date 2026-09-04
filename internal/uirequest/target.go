@@ -315,6 +315,11 @@ func TargetFromSpan(span terminallink.Span) (Target, bool) {
 // with no row opens the collection tab and carries its opening query; a
 // collection with a row opens that row's document tab, and a query there would
 // be describing a search nobody is running.
+//
+// Both shapes carry filters. On a collection they are the scope the tab opens
+// under; on a row they are the scope the row was found under, which `get` sends
+// so the document is the one the user was looking at rather than the plugin's
+// default view of that id.
 // Equal reports whether two targets name the same thing. It is spelled out
 // because a resource target carries an applied filter map, which makes the
 // struct uncomparable with ==; every field still takes part.
@@ -387,9 +392,10 @@ func ResolveCollectionTarget(plugin, collection, query, row string, filters map[
 		}
 		applied[id] = value
 	}
-	if row != "" && len(applied) > 0 {
-		return Target{}, fmt.Errorf("a row id and a filter name different things to open; pass one")
-	}
+	// A row and its filters are not competing requests, unlike a row and a
+	// query: the filters are the scope the row was found under, and `get`
+	// carries them so the row expands in that scope rather than the plugin's
+	// defaults. A row opened with no filters is a row with no scope recorded.
 	return Target{
 		Kind: TargetKindResource, Value: row,
 		Provider: plugin, Collection: collection, Query: query, Filters: applied,

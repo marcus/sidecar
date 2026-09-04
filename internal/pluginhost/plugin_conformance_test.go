@@ -644,7 +644,7 @@ func TestOnlyDeclaredContextReachesThePlugin(t *testing.T) {
 	doc, err := provider.Get(context.Background(), GetParams{Collection: "results", ID: "mode:request-echo:row"}, &Context{
 		Project:   &ProjectContext{Root: "/checkout", Name: "sidecar", Branch: "main", HostID: "workstation"},
 		Selection: &SelectionContext{Text: "secret selection"},
-	})
+	}, Collection{ID: "results"})
 	if err != nil {
 		t.Fatalf("Get: %v", err)
 	}
@@ -663,7 +663,7 @@ func TestUndescribedPluginReceivesNoContext(t *testing.T) {
 	provider, _ := newFixturePlugin(t, "fixture")
 	doc, err := provider.Get(context.Background(), GetParams{Collection: "results", ID: "mode:request-echo:row"}, &Context{
 		Project: &ProjectContext{Root: "/checkout"},
-	})
+	}, Collection{ID: "results"})
 	if err != nil {
 		t.Fatalf("Get: %v", err)
 	}
@@ -689,7 +689,7 @@ func TestPluginRequestEnvelopeOnTheWire(t *testing.T) {
 		t.Fatal("a resource answer to list should be a shape failure")
 	}
 
-	echoed, err := provider.Get(context.Background(), GetParams{Collection: "results", ID: "mode:request-echo:row"}, nil)
+	echoed, err := provider.Get(context.Background(), GetParams{Collection: "results", ID: "mode:request-echo:row"}, nil, Collection{ID: "results"})
 	if err != nil {
 		t.Fatalf("Get: %v", err)
 	}
@@ -750,7 +750,13 @@ func TestPluginProtocolGoldens(t *testing.T) {
 			Method:     MethodGet,
 			Instance:   "recall",
 			DeadlineMs: resource.DefaultResolveTimeout.Milliseconds(),
-			Params:     &GetParams{Collection: "results", ID: "rc:notes:2026-08-14-dex-design"},
+			// The filters are the ones the list that produced this row was run
+			// with, sent verbatim: the golden pairs with plugin-list-request.json
+			// on purpose, because "exactly what the list sent" is the rule.
+			Params: &GetParams{
+				Collection: "results", ID: "rc:notes:2026-08-14-dex-design",
+				Filters: map[string]string{"profile": "docs", "since": "2026-08-01"},
+			},
 		}
 		assertMatchesGolden(t, "plugin-get-request.json", req)
 	})
@@ -918,7 +924,7 @@ func TestFromInstancesDispatchesEachSectionOnItsOwnProtocol(t *testing.T) {
 // environment exactly.
 func TestPluginMarkerIsSetOnlyForThePluginProtocol(t *testing.T) {
 	provider, _ := newFixturePlugin(t, "fixture")
-	doc, err := provider.Get(context.Background(), GetParams{Collection: "results", ID: "mode:env-report:row"}, nil)
+	doc, err := provider.Get(context.Background(), GetParams{Collection: "results", ID: "mode:env-report:row"}, nil, Collection{ID: "results"})
 	if err != nil {
 		t.Fatalf("Get: %v", err)
 	}
@@ -979,6 +985,57 @@ func TestFiltersAtTheirDefaultsAreNotSent(t *testing.T) {
 	if got := page.Items[0].Cells["title"]; got != "(none)" {
 		t.Fatalf("the plugin received %q, want no filters at all", got)
 	}
+}
+
+// A row found under a filter-chosen scope expands under that same scope: `get`
+// carries the applied filters, narrowed against the declaration exactly as
+// `list` narrows them.
+//
+// The fixture echoes what reached it into the document's Scope field, so this
+// is proved from the plugin's side of the pipe rather than from the host's own
+// encoder.
+func TestGetCarriesTheAppliedFilters(t *testing.T) {
+	m, _ := newFixtureManager(t)
+	doc, err := m.Get(context.Background(), GetRequest{Instance: "fixture", Params: GetParams{
+		Collection: "results", ID: "rc:notes:1",
+		Filters: map[string]string{
+			"scope": "project",
+			// Dropped: at its default.
+			"source": "any",
+			"since":  "2026-08-01",
+			// Dropped: undeclared.
+			"smuggled": "yes",
+		},
+	}})
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if got := scopeField(t, doc); got != "scope=project;since=2026-08-01" {
+		t.Fatalf("the plugin received %q; get must send the applied set the list sent, narrowed the same way", got)
+	}
+
+	// The same row under no filters is a different question, and the get cache
+	// must not answer it with the first scope's document.
+	plain, err := m.Get(context.Background(), GetRequest{Instance: "fixture", Params: GetParams{
+		Collection: "results", ID: "rc:notes:1",
+	}})
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if got := scopeField(t, plain); got != "(none)" {
+		t.Fatalf("the second scope was answered with %q from the first scope's cache entry", got)
+	}
+}
+
+func scopeField(t *testing.T, doc resource.Document) string {
+	t.Helper()
+	for _, f := range doc.Fields {
+		if f.Label == "Scope" {
+			return f.Value
+		}
+	}
+	t.Fatalf("the fixture document carries no Scope field: %+v", doc.Fields)
+	return ""
 }
 
 // A degraded page carries what a one-line notice cannot: the counts it held

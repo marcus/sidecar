@@ -89,12 +89,22 @@ func TestResolveCollectionTargetCarriesFilters(t *testing.T) {
 		t.Fatalf("filters = %v", got.Filters)
 	}
 
+	// A row carries its filters too: they are the scope the row was found
+	// under, and `get` sends them so the row expands in that scope rather than
+	// the plugin's defaults.
+	row, err := ResolveCollectionTarget("recall", "results", "", "rc:notes:1", map[string]string{"profile": "docs"})
+	if err != nil {
+		t.Fatalf("a row with the scope it was found under was refused: %v", err)
+	}
+	if row.Value != "rc:notes:1" || row.Filters["profile"] != "docs" {
+		t.Fatalf("row target = %+v", row)
+	}
+
 	refusals := []struct {
 		name    string
 		row     string
 		filters map[string]string
 	}{
-		{"a row and a filter", "rc:notes:1", map[string]string{"profile": "docs"}},
 		{"an empty id", "", map[string]string{" ": "docs"}},
 		{"a control character", "", map[string]string{"profile": "do\x00cs"}},
 		{"an over-long id", "", map[string]string{strings.Repeat("p", 33): "docs"}},

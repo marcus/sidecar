@@ -4,6 +4,8 @@ import (
 	"strings"
 	"testing"
 
+	tea "charm.land/bubbletea/v2"
+
 	"github.com/marcus/sidecar/internal/pluginhost"
 	"github.com/marcus/sidecar/internal/resource"
 	"github.com/marcus/sidecar/internal/state"
@@ -505,4 +507,80 @@ func coverageTestPage() pluginhost.Page {
 func (m *Model) plugin(t *testing.T) *TabPlugin {
 	t.Helper()
 	return &TabPlugin{id: m.instance, model: m}
+}
+
+func lastGet(t *testing.T, host *fakeHost) GetCall {
+	t.Helper()
+	if len(host.gets) == 0 {
+		t.Fatal("no get was ever run")
+	}
+	return host.gets[len(host.gets)-1]
+}
+
+// Expanding a row carries the scope the row was found under. A row is only
+// visible because of the filters the list ran with, so a get that dropped them
+// would expand it under the plugin's declared defaults — a different document
+// at best, and a refusal at worst.
+func TestGetCarriesTheListsAppliedFilters(t *testing.T) {
+	host := &fakeHost{page: testPage(2)}
+	m := newFilteredModel(t, host)
+	s := m.activeState()
+	s.filters = map[string]string{"scope": "project", "since": "2026-08-01"}
+
+	run(t, m, m.openDocument("results", "rc:notes:1", openReplace))
+	got := lastGet(t, host).Params.Filters
+	if len(got) != 2 || got["scope"] != "project" || got["since"] != "2026-08-01" {
+		t.Fatalf("get params.filters = %v, want the applied set the list was run with", got)
+	}
+
+	// The same narrowing list sends: an undeclared key and a value equal to its
+	// filter's own default never reach the plugin.
+	s.filters = map[string]string{"scope": "project", "source": "any", "smuggled": "x"}
+	run(t, m, m.openDocument("results", "rc:notes:1", openReplace))
+	if got := lastGet(t, host).Params.Filters; len(got) != 1 || got["scope"] != "project" {
+		t.Fatalf("get params.filters = %v; undeclared keys and defaults must be dropped", got)
+	}
+
+	// Nothing applied is the declared defaults, which is an absent field rather
+	// than an object full of them.
+	s.filters = nil
+	run(t, m, m.openDocument("results", "rc:notes:1", openReplace))
+	if got := lastGet(t, host).Params.Filters; got != nil {
+		t.Fatalf("get params.filters = %v, want the field omitted", got)
+	}
+}
+
+// A document tab has no list of its own: it was opened from one, or restored
+// from a tab record, so the scope it was armed with is the scope it expands
+// under.
+func TestPaneDocumentGetCarriesItsArmedFilters(t *testing.T) {
+	host := &fakeHost{page: testPage(2)}
+	m := newFilteredModel(t, host)
+	m.ArmPaneDocument("results", "rc:notes:1", map[string]string{"scope": "project"})
+	run(t, m, m.SetPaneDocument("results", "rc:notes:1", map[string]string{"scope": "project"}))
+
+	if got := lastGet(t, host).Params.Filters; len(got) != 1 || got["scope"] != "project" {
+		t.Fatalf("get params.filters = %v, want the armed scope", got)
+	}
+}
+
+// Enter on a row in a pane opens the row as a second tab, and the scope travels
+// with it: the host builds that tab's reference from what this list was run
+// with.
+func TestPaneOpenRowHandsOnTheAppliedFilters(t *testing.T) {
+	host := &fakeHost{page: testPage(2)}
+	m := newFilteredModel(t, host)
+	m.SetPaneCollection("results")
+	s := m.activeState()
+	s.filters = map[string]string{"scope": "project"}
+
+	var handed map[string]string
+	m.SetOnOpenRow(func(_, _ string, filters map[string]string) tea.Cmd {
+		handed = filters
+		return nil
+	})
+	press(t, m, "enter")
+	if len(handed) != 1 || handed["scope"] != "project" {
+		t.Fatalf("the row was handed %v, want the list's applied scope", handed)
+	}
 }

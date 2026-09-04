@@ -219,9 +219,14 @@ type Model struct {
 
 	// Pane mode. paneShape is PaneNone in a tab placement; the rest is the one
 	// collection or document a Resource leaf's tab is pinned to. See pane.go.
-	paneShape       PaneShape
-	paneCollection  string
-	onOpenRow       func(collection, id string) tea.Cmd
+	paneShape      PaneShape
+	paneCollection string
+	// paneDocFilters is the applied filter set the row this document tab shows
+	// was found under. A document tab runs no list of its own, so this is the
+	// only place the scope can come from, and a get that dropped it would
+	// expand the row under the plugin's defaults instead.
+	paneDocFilters  map[string]string
+	onOpenRow       func(collection, id string, filters map[string]string) tea.Cmd
 	restore         paneRestore
 	pendingCursorID string
 
@@ -971,12 +976,34 @@ func (m *Model) openDocument(collection, id string, mode openMode) tea.Cmd {
 		// One key for the box, not one per row: the detail shows one document
 		// at a time, so a get for a new row supersedes the one still running
 		// for the row the cursor has left.
-		PaneKey:    detailPaneKey(m.id, m.instance),
-		Params:     pluginhost.GetParams{Collection: collection, ID: id},
+		PaneKey: detailPaneKey(m.id, m.instance),
+		Params: pluginhost.GetParams{
+			Collection: collection, ID: id,
+			Filters: m.appliedFilters(c),
+		},
 		Context:    m.context(),
 		Refresh:    mode == openRefresh,
 		Generation: m.detail.generation,
 	})
+}
+
+// appliedFilters is the filter set the list that produced this row was run
+// with, which is what a get carries so the row expands under the scope it was
+// found in.
+//
+// A document tab has no list of its own — it was opened from one, or restored
+// from a tab record — so it carries the set it was armed with. Everywhere else
+// the collection's own state is the authority, and a collection nobody has
+// listed has applied nothing, which IS the plugin's declared defaults.
+func (m *Model) appliedFilters(c pluginhost.Collection) map[string]string {
+	if m.paneShape == PaneDocument {
+		return pluginhost.NormalizeFilters(c, m.paneDocFilters)
+	}
+	s, ok := m.states[c.ID]
+	if !ok {
+		return nil
+	}
+	return pluginhost.NormalizeFilters(c, s.filters)
 }
 
 // Close releases what this browser has in flight. A surface that goes away

@@ -84,8 +84,14 @@ func (m *Model) bindOpenRow() {
 			return func() tea.Msg { return OpenRowMsg{Ref: ref} }
 		}
 	}
-	m.browser.SetOnOpenRow(func(collection, id string) tea.Cmd {
-		return open(resource.Reference{Instance: instance, Collection: collection, Locator: id})
+	m.browser.SetOnOpenRow(func(collection, id string, filters map[string]string) tea.Cmd {
+		return open(resource.Reference{
+			Instance: instance, Collection: collection, Locator: id,
+			// The row's reference carries the scope it was found under, so the
+			// tab that opens — and the tab record that outlives this session —
+			// expands it under that scope rather than the plugin's defaults.
+			Filters: resource.FilterValues(filters),
+		})
 	})
 }
 
@@ -118,7 +124,7 @@ func (m *Model) bindPlugin(ref resource.Reference) {
 		// Armed, not fetched: a restored row tab must name the row in the strip
 		// before anything is asked for, or the tab reads as its collection until
 		// the document lands.
-		m.browser.ArmPaneDocument(ref.Collection, ref.Locator)
+		m.browser.ArmPaneDocument(ref.Collection, ref.Locator, resource.FilterMap(ref.Filters))
 	}
 	m.bindOpenRow()
 }
@@ -145,7 +151,8 @@ func (m *Model) pluginLoad() tea.Cmd {
 		if m.browser.PaneDocumentShowing(m.ref.Locator) {
 			return m.browser.Refresh()
 		}
-		return batch(m.browser.Refresh(), m.browser.SetPaneDocument(m.ref.Collection, m.ref.Locator))
+		return batch(m.browser.Refresh(),
+			m.browser.SetPaneDocument(m.ref.Collection, m.ref.Locator, resource.FilterMap(m.ref.Filters)))
 	}
 	return m.browser.Refresh()
 }

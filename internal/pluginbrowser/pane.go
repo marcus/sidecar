@@ -55,25 +55,32 @@ func (m *Model) SetPaneCollection(id string) {
 
 // SetPaneDocument puts the browser in pane mode showing one document, and
 // returns the command that fetches it. A document tab has no list.
-func (m *Model) SetPaneDocument(collection, id string) tea.Cmd {
+//
+// filters is the applied set of the list the row was found in. It is not
+// optional decoration: a row found under a filter-chosen scope has to expand
+// under that scope, and a document tab has no list of its own to read it from.
+func (m *Model) SetPaneDocument(collection, id string, filters map[string]string) tea.Cmd {
 	if m == nil {
 		return nil
 	}
 	m.paneShape = PaneDocument
 	m.paneCollection = strings.TrimSpace(collection)
+	m.paneDocFilters = filters
 	m.focus = FocusDetail
 	return m.openDocument(m.paneCollection, strings.TrimSpace(id), openReplace)
 }
 
 // ArmPaneDocument points the browser at one row without fetching it. A restored
 // tab starts here, so relaunch does not fan out one process per remembered tab
-// and the strip still names what each tab is.
-func (m *Model) ArmPaneDocument(collection, id string) {
+// and the strip still names what each tab is. It carries the scope for the same
+// reason SetPaneDocument does: the fetch that follows is the armed one.
+func (m *Model) ArmPaneDocument(collection, id string, filters map[string]string) {
 	if m == nil {
 		return
 	}
 	m.paneShape = PaneDocument
 	m.paneCollection = strings.TrimSpace(collection)
+	m.paneDocFilters = filters
 	m.focus = FocusDetail
 	m.detail.collection = m.paneCollection
 	m.detail.id = strings.TrimSpace(id)
@@ -99,7 +106,7 @@ func (m *Model) PaneCollection() string {
 // room for the document beside the list, so the host opens it as a second tab
 // in the same leaf; without a handler Enter does nothing rather than replacing
 // the list.
-func (m *Model) SetOnOpenRow(open func(collection, id string) tea.Cmd) {
+func (m *Model) SetOnOpenRow(open func(collection, id string, filters map[string]string) tea.Cmd) {
 	if m != nil {
 		m.onOpenRow = open
 	}
@@ -483,7 +490,9 @@ func (m *Model) paneOpenRow() tea.Cmd {
 	if !ok {
 		return nil
 	}
-	return m.onOpenRow(c.ID, item.ID)
+	// The scope travels with the row: the tab that opens expands it under the
+	// filters this list was run with, not under the plugin's defaults.
+	return m.onOpenRow(c.ID, item.ID, m.appliedFilters(c))
 }
 
 // PaneScroll is the wheel over a pane-mode browser. Over a list it moves the

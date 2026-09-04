@@ -1026,8 +1026,10 @@ func getResponse(req request, id string) response {
 		return response{Protocol: wire, Error: &protocolError{Code: "not_found", Message: "no such row"}}
 	}
 	collectionID := ""
+	var filters map[string]string
 	if req.Params != nil {
 		collectionID = req.Params.Collection
+		filters = req.Params.Filters
 	}
 	return response{
 		Protocol: wire,
@@ -1039,6 +1041,12 @@ func getResponse(req request, id string) response {
 			Fields: []field{
 				{Label: "Collection", Value: collectionID},
 				{Label: "Locator", Value: id},
+				// The scope the row was expanded under, echoed exactly as it
+				// reached the plugin. A row found under a filter-chosen scope
+				// has to expand under that same scope, and echoing it is how a
+				// host test proves the get carried it rather than trusting the
+				// host's own encoder.
+				{Label: "Scope", Value: encodeFilters(filters)},
 			},
 			Body: &body{Format: "markdown", Text: "Deterministic detail for `" + id + "`.\n"},
 			Sections: []section{

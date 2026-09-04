@@ -262,13 +262,19 @@ func (p *CommandProvider) List(ctx context.Context, params ListParams, callCtx *
 }
 
 // Get runs the get method and sanitizes the document, sections included.
-func (p *CommandProvider) Get(ctx context.Context, params GetParams, callCtx *Context) (resource.Document, error) {
+//
+// collection is the validated declaration, for the same reason List takes it:
+// the applied filters are narrowed against it here, at the process boundary, so
+// "a key the collection did not declare never reaches the plugin" is a property
+// of the host rather than a promise every caller has to keep.
+func (p *CommandProvider) Get(ctx context.Context, params GetParams, callCtx *Context, collection Collection) (resource.Document, error) {
 	if err := p.requirePluginMethod(MethodGet); err != nil {
 		return resource.Document{}, err
 	}
 	if params.Collection == "" || params.ID == "" {
 		return resource.Document{}, p.invalidRequest(MethodGet, "get needs both a collection and an id")
 	}
+	params.Filters = NormalizeFilters(collection, params.Filters)
 	req := p.newRequest(MethodGet, p.resolveTimeout, &params)
 	req.Context = p.allowedContext(callCtx)
 	return p.document(ctx, MethodGet, req)

@@ -262,8 +262,14 @@ Status tones are the frozen protocol's and mean the same thing across every plug
 ## `get`
 
 ```json
-{"method": "get", "params": {"collection": "results", "id": "rc:notes:2026-08-14-dex-design"}}
+{"method": "get", "params": {"collection": "results", "id": "rc:notes:2026-08-14-dex-design", "filters": {"profile": "docs", "since": "2026-08-01"}}}
 ```
+
+| Field | Meaning |
+| --- | --- |
+| `collection` | The collection the row belongs to. A collection the newest `describe` does not declare is refused before any process starts, exactly as on `list`. |
+| `id` | The row's `id`, verbatim from the page it was on. |
+| `filters` | **The applied filter set of the list that produced this row, sent exactly as that `list` sent it** — same shape, same narrowing, a missing key still meaning that filter's declared default. Read it and resolve the row in that scope. A row is only visible because of the filters its list ran under, so expanding it under your defaults is at best a different document and at worst a refusal the user cannot explain. A `get` reached without a list behind it — a restored row tab, `sidecar open --plugin PLUGIN --collection C ROW` — carries whatever scope that tab recorded, and nothing when there was none. |
 
 Returns a `resource`, the same object `resolve` returns, extended with `sections`:
 
@@ -295,7 +301,7 @@ Returns a `resource`, the same object `resolve` returns, extended with `sections
 
 `sections[]` is bounded to 8, and each section is exactly one of `{body}`, `{fields[]}`, or `{items[]}` — a timeline, whose `when` is RFC 3339 and is rendered relatively. A section that sends more than one keeps the first in that order rather than being refused, so a plugin that sends two still shows the user something. A resource with no `sections` renders exactly as a resource v1 card does today, which is how a frozen-protocol provider keeps working.
 
-`get` shares the resolve cache under a `get`-prefixed key, so a second Enter on the same row costs no process.
+`get` shares the resolve cache under a `get`-prefixed key that includes the applied filters, so a second Enter on the same row costs no process while the same row under a different scope is a different question and is asked.
 
 ## `act`
 

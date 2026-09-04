@@ -492,7 +492,8 @@ func RootCommand() *Command {
 			"--diff with no spec is the working tree. --plugin names a configured plugin instance:\n" +
 			"with --collection it opens that collection's tab (add --query to open it searched,\n" +
 			"--filter id=value for one of the collection's own declared filters, or a\n" +
-			"positional row id to open that row's document instead), and without --collection it\n" +
+			"positional row id to open that row's document instead — a row takes --filter too,\n" +
+			"because that is the scope the row is expanded under), and without --collection it\n" +
 			"opens a matched locator through the plugin's matchers. --provider is the older spelling\n" +
 			"of the locator form and still works. Either way the instance is required for a resource:\n" +
 			"a bare locator is never guessed at.\n" +
