@@ -8,10 +8,10 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/marcus/sidecar/internal/contentservice"
 	"github.com/marcus/sidecar/internal/docview"
-	"github.com/marcus/sidecar/internal/features"
 	"github.com/marcus/sidecar/internal/filefind"
 	appmsg "github.com/marcus/sidecar/internal/msg"
 	"github.com/marcus/sidecar/internal/panelayout"
+	"github.com/marcus/sidecar/internal/panelpref"
 	"github.com/marcus/sidecar/internal/resourceview"
 	"github.com/marcus/sidecar/internal/uirequest"
 	"github.com/marcus/sidecar/internal/workspacecreate"
@@ -19,13 +19,14 @@ import (
 	"github.com/marcus/sidecar/internal/workspaceops"
 )
 
-// notesWanted mirrors assembly.NotesWanted, which this package cannot import:
-// the Note row exists exactly when the Notes plugin does.
+// notesWanted asks the same function the Notes descriptor's own Enabled does,
+// so the Note row exists exactly when the Notes plugin does. It used to restate
+// the rule here, which is how a surface drifts from the descriptor.
 func (m *Model) notesWanted() bool {
 	if m.config == nil {
 		return false
 	}
-	return m.config.Plugins.TDMonitor.Enabled && features.IsEnabled(features.NotesPlugin.Name)
+	return panelpref.Notes(m.config)
 }
 
 // configuredProviders is one kind row per enabled terminal-resource provider.

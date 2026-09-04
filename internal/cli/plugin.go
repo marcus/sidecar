@@ -293,10 +293,11 @@ func pluginCommand() *Command {
 			"are rebuilt on a project switch, global ones are built once), the placements\n" +
 			"its content can occupy, and whether it is enabled. An external row also\n" +
 			"reports the config section it was read from.\n\n" +
-			"Enablement is plugins.<id>.enabled. Two deprecated feature flags, tasks_plugin\n" +
-			"and notes_plugin, still answer for their plugin while that key is absent. A\n" +
-			"plugin that is enabled but whose feature flag is off is reported inactive,\n" +
-			"naming the flag.\n\n" +
+			"Enablement is plugins.<id>.enabled. The tasks_plugin and notes_plugin feature\n" +
+			"flags are read-only aliases of those keys, kept for one minor release: each\n" +
+			"answers only while its key is absent, and nothing writes one back. A plugin\n" +
+			"that is enabled but whose feature flag is off is reported inactive, naming the\n" +
+			"flag.\n\n" +
 			"Without --describe this reads configuration and runs nothing: no running\n" +
 			"Sidecar, no PATH lookup, no subprocess. --describe opts in to running each\n" +
 			"active external plugin's describe method, with the same environment, working\n" +
@@ -424,6 +425,10 @@ func pluginCommand() *Command {
 			"auto-enables anything, and never lets a repository declare a plugin.\n\n" +
 			"Everything after --command is the argv, executed directly with no shell. Put\n" +
 			"it last.\n\n" +
+			"The id is the config key, the CLI name and the persisted tab id, so an id one\n" +
+			"of Sidecar's own surfaces already answers to — tasks, notes, td-monitor,\n" +
+			"git-status, file-browser, conversations, workspace-manager, sessions,\n" +
+			"activity — is refused, naming the surface that holds it.\n\n" +
 			"Nothing is started: add prints exactly what will run — every argv element on\n" +
 			"its own line, the working directory, and the variables that will be passed by\n" +
 			"name — and asks for confirmation. --yes skips the question, which is what a\n" +
@@ -564,9 +569,10 @@ func pluginCommand() *Command {
 			"terminalResources.providers entries speak the frozen\n" +
 			"sidecar.terminal-resource/v1, which has describe and resolve. The\n" +
 			"`sidecar terminal-links` verbs remain the surface for that older section.\n\n" +
-			"The draft protocol is behind the plugin_protocol feature flag. Turn it on\n" +
-			"with `sidecar --enable-feature=plugin_protocol`, or set\n" +
-			"features.flags.plugin_protocol.\n\n" +
+			"The plugin_protocol feature flag governs the host. It is on by default and\n" +
+			"costs an install with nothing configured nothing at all; turn it off with\n" +
+			"features.flags.plugin_protocol to stop every plugin process while leaving the\n" +
+			"configuration in place.\n\n" +
 			"Writing one: docs/guides/active/creating-plugins.md is the walkthrough, from\n" +
 			"choosing a class to a plugin that passes `plugin check`, with a complete\n" +
 			"example under docs/guides/examples/hello-plugin/. The contract itself is\n" +
@@ -720,6 +726,23 @@ func writePluginListText(env Env, items []pluginJSONItem) {
 			writeDescribeText(env, "    ", d)
 		}
 	}
+}
+
+// reservedPluginID reports whether id already names one of Sidecar's own
+// surfaces, and what that surface is called.
+//
+// It reads the descriptor catalog, which the CLI can see and internal/config
+// cannot, and falls back to the list config restates for the app-owned global
+// tabs that have no descriptor. Validation refuses the same collision on the
+// next load; refusing here means the file never gets the entry that would be
+// refused, and the message names the surface rather than the section.
+func reservedPluginID(id string) (string, bool) {
+	for _, d := range assembly.Descriptors() {
+		if d.ID == id {
+			return d.Name, true
+		}
+	}
+	return config.ReservedPluginID(id)
 }
 
 // pluginItems projects the descriptor catalog onto the reported rows. It is a
@@ -1827,6 +1850,11 @@ func runPluginAdd(env Env, args []string) int {
 	}
 	if !requireProtocolFlag(env, nil) {
 		return pluginExitRefused
+	}
+	if name, reserved := reservedPluginID(entry.ID); reserved {
+		cliErrf(env.Stderr, "%q is the id of Sidecar's built-in %s surface; the id is the config key, the CLI name and the persisted tab id, so choose another one\n",
+			entry.ID, name)
+		return pluginExitUsage
 	}
 	if existing, found := cfg.PluginInstance(entry.ID); found {
 		cliErrf(env.Stderr, "a plugin named %q is already configured in %s\n", entry.ID, existing.Source)

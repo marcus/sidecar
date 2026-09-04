@@ -2,7 +2,7 @@ package notes
 
 import (
 	"github.com/marcus/sidecar/internal/config"
-	"github.com/marcus/sidecar/internal/features"
+	"github.com/marcus/sidecar/internal/panelpref"
 	"github.com/marcus/sidecar/internal/plugin"
 )
 
@@ -16,6 +16,11 @@ import (
 // panel. That dependency is deliberately not part of the preference: a user who
 // asked for Notes and then turned td off has not changed their mind about
 // Notes, and the settings page must not rewrite the choice to say they have.
+//
+// Both answers come from internal/panelpref rather than being written here,
+// because the create pickers in internal/overview and
+// internal/plugins/workspace need the same answer and cannot import this
+// package. One rule, one place.
 func Descriptor() plugin.Descriptor {
 	return plugin.Descriptor{
 		ID:         pluginID,
@@ -26,18 +31,9 @@ func Descriptor() plugin.Descriptor {
 		Placements: []plugin.Placement{plugin.PlacementTab},
 		Detail:     "Project notes, kept inside Sidecar",
 		Why:        "Notes adds project notes to Sidecar.",
-		Enabled: func(cfg *config.Config) bool {
-			return cfg.Plugins.TDMonitor.Enabled && preference(cfg)
-		},
-		Preference: preference,
+		Enabled:    panelpref.Notes,
+		Preference: panelpref.NotesPreference,
 		SetEnabled: func(p *config.PluginsConfig, on bool) { p.Notes.Enabled = &on },
 		New:        func() plugin.Plugin { return New() },
 	}
-}
-
-func preference(cfg *config.Config) bool {
-	if cfg.Plugins.Notes.Enabled != nil {
-		return *cfg.Plugins.Notes.Enabled
-	}
-	return features.IsEnabled(features.NotesPlugin.Name)
 }

@@ -168,7 +168,8 @@ func buildPluginFixture(t *testing.T) string {
 }
 
 // pluginProtocolEnv points the plugin verbs at a config of their own, with the
-// draft protocol turned on.
+// plugin protocol pinned on rather than left to the default, so a test does not
+// silently change meaning if the default ever moves.
 func pluginProtocolEnv(t *testing.T, contents string) (Env, *bytes.Buffer, *bytes.Buffer) {
 	t.Helper()
 	env, out, errOut := pluginTestEnv(t, contents)
@@ -214,6 +215,10 @@ func TestPluginListReportsLegacyResourceProviders(t *testing.T) {
 	bin := buildPluginFixture(t)
 	contents := `{"terminalResources":{"providers":[{"id":"jira","command":["` + bin + `"],"enabled":true}]}}`
 	env, out, errOut := pluginProtocolEnv(t, contents)
+	// terminal_resource_providers is on by default, so this turns it off: the
+	// row being asserted is the one for a configured, enabled entry that is not
+	// being hosted because its own flag is off.
+	env.FeatureOverrides[features.TerminalResourceProviders.Name] = false
 	if code := runPluginList(env, []string{"--json"}); code != 0 {
 		t.Fatalf("exit %d: %s", code, errOut.String())
 	}
@@ -231,9 +236,6 @@ func TestPluginListReportsLegacyResourceProviders(t *testing.T) {
 	if len(last.Placements) != 1 || last.Placements[0] != "panes" {
 		t.Fatalf("placements = %v, want [panes]", last.Placements)
 	}
-	// terminal_resource_providers is off by default, so an entry that is
-	// configured and enabled is still not being hosted, and the row says so
-	// rather than claiming it is on.
 	if last.Active || last.InactiveReason != features.TerminalResourceProviders.Name {
 		t.Fatalf("row = %+v, want inactive naming terminal_resource_providers", last)
 	}
@@ -244,6 +246,9 @@ func TestPluginListReportsLegacyResourceProviders(t *testing.T) {
 func TestPluginListMarksAnInactivePluginWithItsFlag(t *testing.T) {
 	bin := buildPluginFixture(t)
 	env, out, errOut := pluginTestEnv(t, externalPluginJSON(bin))
+	// plugin_protocol is on by default; this is the row for a user who turned
+	// the host off and left the configuration in place.
+	env.FeatureOverrides = map[string]bool{features.PluginProtocol.Name: false}
 	if code := runPluginList(env, []string{"--json"}); code != 0 {
 		t.Fatalf("exit %d: %s", code, errOut.String())
 	}
@@ -492,6 +497,42 @@ func TestPluginAddPrintsThePlanAndStartsNothing(t *testing.T) {
 	}
 }
 
+// An id that Sidecar's own surfaces already answer to is refused before
+// anything is written. The id is the config key, the CLI name and the persisted
+// tab id, so a second "notes" is not a duplicate row: the header paints two
+// tabs, every lookup answers with the first, and the plugin's tab is reachable
+// only by click.
+func TestPluginAddRefusesAnIDThatCollidesWithABuiltInSurface(t *testing.T) {
+	script := filepath.Join(t.TempDir(), "plugin.sh")
+	if err := os.WriteFile(script, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct{ id, surface string }{
+		{"notes", "Notes"},
+		{"tasks", "Tasks"},
+		{"td-monitor", "td"},
+		{"sessions", "Sessions"},
+	} {
+		t.Run(tc.id, func(t *testing.T) {
+			env, _, errOut := pluginProtocolEnv(t, `{}`)
+			code := runPluginAdd(env, []string{tc.id, "--yes", "--json", "--command", script})
+			if code != pluginExitUsage {
+				t.Fatalf("exit %d, want %d", code, pluginExitUsage)
+			}
+			if !strings.Contains(errOut.String(), tc.surface) || !strings.Contains(errOut.String(), tc.id) {
+				t.Fatalf("the refusal does not name the collision: %s", errOut.String())
+			}
+			cfg, err := config.Load()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(cfg.Plugins.External) != 0 {
+				t.Fatalf("a refused add still wrote an entry: %+v", cfg.Plugins.External)
+			}
+		})
+	}
+}
+
 func TestPluginAddEnableDisableRemove(t *testing.T) {
 	script := filepath.Join(t.TempDir(), "plugin.sh")
 	if err := os.WriteFile(script, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
@@ -582,8 +623,9 @@ func pluginProtocolEnvKeepingConfig(t *testing.T) (Env, *bytes.Buffer, *bytes.Bu
 	}, &out, &errOut
 }
 
-// Every verb that would run or configure a draft-protocol plugin refuses while
-// the flag is off, and says how to turn it on.
+// Every verb that would run or configure a protocol plugin refuses while the
+// flag is off, and says how to turn it on. The flag is on by default, so each
+// case turns it off explicitly.
 func TestPluginVerbsRefuseWhileTheFlagIsOff(t *testing.T) {
 	bin := buildPluginFixture(t)
 	cases := []struct {
@@ -601,6 +643,7 @@ func TestPluginVerbsRefuseWhileTheFlagIsOff(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			env, _, errOut := pluginTestEnv(t, externalPluginJSON(bin))
+			env.FeatureOverrides = map[string]bool{features.PluginProtocol.Name: false}
 			if code := tc.run(env, tc.args); code != pluginExitRefused {
 				t.Fatalf("exit %d, want %d", code, pluginExitRefused)
 			}

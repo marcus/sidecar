@@ -1,9 +1,11 @@
 package config
 
 import (
+	"bytes"
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 )
 
@@ -333,4 +335,137 @@ func TestSave_RoundTripsNotesDefaultEditor(t *testing.T) {
 	if got := loaded.Plugins.Notes.DefaultEditor; got != NotesEditorPane {
 		t.Fatalf("default editor = %q, want %q", got, NotesEditorPane)
 	}
+}
+
+// A subsection under "plugins" that this build does not know about — a newer
+// release's key, or a hand-written one — must survive a save the way an unknown
+// top-level key does. Save used to rewrite the whole plugins object, so a
+// plugins.external entry written by a newer Sidecar was silently dropped by an
+// older one, which is exactly the case the migration into plugins.external
+// makes common.
+func TestSavePreservesUnknownPluginsSubkeys(t *testing.T) {
+	path := writeConfig(t, `{
+	  "plugins": {
+	    "td-monitor": {"enabled": true},
+	    "recall": {"kept": ["by", "the", "merge"]},
+	    "external-experiment": {"enabled": false}
+	  }
+	}`)
+	SetTestConfigPath(path)
+	t.Cleanup(ResetTestConfigPath)
+
+	if err := SaveUI(func(ui *UIConfig) { ui.ShowClock = true }); err != nil {
+		t.Fatalf("SaveUI: %v", err)
+	}
+
+	var plugins map[string]json.RawMessage
+	if err := json.Unmarshal(readRawConfig(t, path)["plugins"], &plugins); err != nil {
+		t.Fatalf("plugins section: %v", err)
+	}
+	for _, key := range []string{"recall", "external-experiment"} {
+		if _, ok := plugins[key]; !ok {
+			t.Fatalf("Save dropped the unmanaged plugins.%s subsection; kept %v", key, sortedKeys(plugins))
+		}
+	}
+	var compact bytes.Buffer
+	if err := json.Compact(&compact, plugins["recall"]); err != nil {
+		t.Fatalf("compact plugins.recall: %v", err)
+	}
+	if got := compact.String(); got != `{"kept":["by","the","merge"]}` {
+		t.Fatalf("plugins.recall after save = %s", got)
+	}
+	if _, ok := plugins["td-monitor"]; !ok {
+		t.Fatal("Save stopped writing the managed td-monitor subsection")
+	}
+}
+
+// The merge must not resurrect a managed subsection the user just emptied.
+// plugins.external is the one that can empty: `sidecar plugin remove` on the
+// last instance has to leave the key gone, not carried forward from the old
+// file.
+func TestSaveDropsAnEmptiedExternalPluginList(t *testing.T) {
+	path := writeConfig(t, `{
+	  "plugins": {
+	    "external": [{"id": "recall", "command": ["sidecar-recall"]}],
+	    "unmanaged": {"survives": true}
+	  }
+	}`)
+	SetTestConfigPath(path)
+	t.Cleanup(ResetTestConfigPath)
+
+	if err := SavePlugins(func(p *PluginsConfig) { p.External = nil }); err != nil {
+		t.Fatalf("SavePlugins: %v", err)
+	}
+
+	var plugins map[string]json.RawMessage
+	if err := json.Unmarshal(readRawConfig(t, path)["plugins"], &plugins); err != nil {
+		t.Fatalf("plugins section: %v", err)
+	}
+	if _, ok := plugins["external"]; ok {
+		t.Fatalf("an emptied plugins.external was resurrected from the old file: %s", plugins["external"])
+	}
+	if _, ok := plugins["unmanaged"]; !ok {
+		t.Fatal("the merge dropped an unmanaged subsection while deleting the emptied one")
+	}
+}
+
+// terminalResources is a read-only alias: it is still read and still dispatched
+// on the frozen resource identifier, and Save must leave the section exactly as
+// the user wrote it — including the keys inside an entry that this build does
+// not know about, which a re-serialized section would lose.
+func TestSaveLeavesTerminalResourcesUntouched(t *testing.T) {
+	body := `{
+  "terminalResources": {
+    "providers": [
+      {
+        "id": "jira-work",
+        "command": [
+          "sidecar-jira"
+        ],
+        "enabled": true,
+        "timeout": "12s",
+        "somethingNewerSidecarWrote": {
+          "kept": true
+        }
+      }
+    ]
+  },
+  "ui": {
+    "showClock": false
+  }
+}`
+	path := writeConfig(t, body)
+	SetTestConfigPath(path)
+	t.Cleanup(ResetTestConfigPath)
+
+	before := readRawConfig(t, path)["terminalResources"]
+	if err := SaveUI(func(ui *UIConfig) { ui.ShowClock = true }); err != nil {
+		t.Fatalf("SaveUI: %v", err)
+	}
+	after := readRawConfig(t, path)["terminalResources"]
+	if string(before) != string(after) {
+		t.Fatalf("terminalResources changed across a save:\nbefore: %s\nafter:  %s", before, after)
+	}
+
+	// Still read, and still the legacy protocol's section.
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	instance, ok := cfg.PluginInstance("jira-work")
+	if !ok {
+		t.Fatal("the preserved provider is no longer loaded")
+	}
+	if !instance.IsLegacyResourceProvider() {
+		t.Fatalf("source after a save = %q", instance.Source)
+	}
+}
+
+func sortedKeys(m map[string]json.RawMessage) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	slices.Sort(out)
+	return out
 }

@@ -2,7 +2,7 @@ package tasks
 
 import (
 	"github.com/marcus/sidecar/internal/config"
-	"github.com/marcus/sidecar/internal/features"
+	"github.com/marcus/sidecar/internal/panelpref"
 	"github.com/marcus/sidecar/internal/plugin"
 	"github.com/marcus/sidecar/internal/version"
 )
@@ -16,7 +16,9 @@ import (
 // here and the host reads it.
 //
 // Enablement is plugins.tasks.enabled, with the tasks_plugin feature flag as a
-// read-only alias while the config key is absent.
+// read-only alias while the config key is absent. The rule lives in
+// internal/panelpref so that every reader of it — this descriptor, the update
+// checks, the settings pages — gives the same answer.
 func Descriptor() plugin.Descriptor {
 	return plugin.Descriptor{
 		ID:    pluginID,
@@ -31,13 +33,8 @@ func Descriptor() plugin.Descriptor {
 		Why:         "Tasks adds an embedded task board to Sidecar's global space. It is a beta integration.",
 		Beta:        true,
 		Integration: version.TasksDescriptor(),
-		Enabled: func(cfg *config.Config) bool {
-			if cfg.Plugins.Tasks.Enabled != nil {
-				return *cfg.Plugins.Tasks.Enabled
-			}
-			return features.IsEnabled(features.TasksPlugin.Name)
-		},
-		SetEnabled: func(p *config.PluginsConfig, on bool) { p.Tasks.Enabled = &on },
-		New:        func() plugin.Plugin { return New() },
+		Enabled:     panelpref.Tasks,
+		SetEnabled:  func(p *config.PluginsConfig, on bool) { p.Tasks.Enabled = &on },
+		New:         func() plugin.Plugin { return New() },
 	}
 }

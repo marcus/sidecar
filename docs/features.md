@@ -123,7 +123,7 @@ Sidecar puts your entire software engineering workflow into a single, unified te
 
 ## 7. Embedded Tasks TUI Plugin
 
-- **Embedded Application Facade:** Wraps `github.com/marcus/tasks/pkg/tui` inside Sidecar (`tasks_plugin` flag).
+- **Embedded Application Facade:** Wraps `github.com/marcus/tasks/pkg/tui` inside Sidecar (`plugins.tasks.enabled`; the `tasks_plugin` flag is a read-only alias while that key is absent).
 - **Rich Shortcut Registry:** Features 355+ keybindings across 14 focus contexts for full task lifecycle management.
 - **Isolated Session Namespace:** Keeps state in `$XDG_STATE_HOME/tasks/hosts/sidecar/tui.json` to prevent config drift.
 - **Task Management Engine:** Task lists, kanban cards, priority levels, tag filtering, journal logs, undo history, and automated agent execution queues.
@@ -132,7 +132,7 @@ Sidecar puts your entire software engineering workflow into a single, unified te
 
 ## 8. Notes & Scratchpad Plugin
 
-- **Project Scratchpad:** Project-scoped note-taking engine for quick thoughts, scratch code, and agent instructions (`notes_plugin`).
+- **Project Scratchpad:** Project-scoped note-taking engine for quick thoughts, scratch code, and agent instructions (`plugins.notes.enabled`; the `notes_plugin` flag is a read-only alias while that key is absent).
 - **Inline Note Editor:** Multi-line text editor with mouse text selection and instant disk save. Opened by clicking a note or pressing `enter` (`i` from the preview); needs no tmux.
 - **Editor in the Right Pane:** `e` runs `$EDITOR` inside the notes pane rather than taking over the screen.
 - **External Editor:** `E` opens the note in `$EDITOR`, leaving Sidecar until you exit.

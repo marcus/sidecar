@@ -50,6 +50,42 @@ const (
 	PluginSourceTerminalResources = "terminalResources.providers"
 )
 
+// reservedPluginIDs are the IDs Sidecar's own surfaces already answer to,
+// mapped to the name a message should call them by: every embedded plugin
+// descriptor, plus the two app-owned global tabs.
+//
+// An external plugin may not take one. The ID is the config key, the CLI name
+// and the persisted tab ID, so a second surface answering to "tasks" is not a
+// duplicate row but an ambiguity: the header paints two entries, the lookup by
+// ID answers with the first, and the plugin's own tab becomes reachable only by
+// click.
+//
+// It is restated here rather than read from the descriptor catalog because
+// internal/config is a leaf package — internal/plugin imports it, not the other
+// way round. TestReservedPluginIDsCoverTheCatalog in internal/plugins/assembly
+// fails if a descriptor or a global surface is ever added without being named
+// here.
+var reservedPluginIDs = map[string]string{
+	"td-monitor":        "td",
+	"git-status":        "Git",
+	"file-browser":      "Files",
+	"conversations":     "Conversations",
+	"workspace-manager": "Workspaces",
+	"notes":             "Notes",
+	"tasks":             "Tasks",
+	"sessions":          "Sessions",
+	"activity":          "Activity",
+}
+
+// ReservedPluginID reports whether id names a built-in Sidecar surface, and
+// what that surface is called. It is exported so `sidecar plugin add` can
+// refuse a collision before it writes one, with the same message validation
+// would have produced on the next load.
+func ReservedPluginID(id string) (string, bool) {
+	name, ok := reservedPluginIDs[strings.TrimSpace(id)]
+	return name, ok
+}
+
 // PluginInstanceConfig is one configured external plugin instance.
 //
 // It is the terminal resource provider entry plus the two facts a protocol
@@ -220,6 +256,10 @@ func validatePluginInstances(entries []PluginInstanceConfig) ([]PluginInstanceCo
 			return nil, fmt.Errorf("plugins.external: plugin id %q is configured more than once", p.ID)
 		}
 		seen[p.ID] = true
+		if name, ok := ReservedPluginID(p.ID); ok {
+			return nil, fmt.Errorf("plugins.external: plugin id %q is already the id of Sidecar's built-in %s surface; "+
+				"the id is the config key, the CLI name and the persisted tab id, so choose another one", p.ID, name)
+		}
 
 		argv := append(make([]string, 0, len(p.Command)), p.Command...)
 		if len(argv) == 0 || strings.TrimSpace(argv[0]) == "" {

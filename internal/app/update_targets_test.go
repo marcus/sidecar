@@ -32,7 +32,7 @@ func productIDs(descs []version.Descriptor) []version.ProductID {
 // disabled plugin schedules no Tasks check at all.
 func TestUpdateDescriptors_TasksGatedByFeature(t *testing.T) {
 	withTasksFeature(t, false)
-	got := productIDs(updateDescriptors())
+	got := productIDs(updateDescriptors(nil))
 	for _, id := range got {
 		if id == version.ProductTasks {
 			t.Fatalf("Tasks must not be discovered while disabled: %v", got)
@@ -41,7 +41,7 @@ func TestUpdateDescriptors_TasksGatedByFeature(t *testing.T) {
 
 	withTasksFeature(t, true)
 	found := false
-	for _, id := range productIDs(updateDescriptors()) {
+	for _, id := range productIDs(updateDescriptors(nil)) {
 		if id == version.ProductTasks {
 			found = true
 		}
@@ -56,7 +56,7 @@ func TestUpdateDescriptors_CLIOverrideWins(t *testing.T) {
 	withTasksFeature(t, true)
 	features.SetOverride(features.TasksPlugin.Name, false)
 
-	for _, id := range productIDs(updateDescriptors()) {
+	for _, id := range productIDs(updateDescriptors(nil)) {
 		if id == version.ProductTasks {
 			t.Fatal("a CLI override disabling Tasks must exclude it from discovery")
 		}
