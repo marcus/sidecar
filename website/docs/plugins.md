@@ -44,7 +44,7 @@ To keep it on, set it in `~/.config/sidecar/config.json`:
 }
 ```
 
-Every `sidecar plugin` verb that runs a plugin needs the flag; without it they exit `4` and say so. In the app, press `,` for Configuration and open **Feature Flags** under System.
+Every `sidecar plugin` verb that runs or configures a `plugins.external` plugin needs the flag; without it they exit `4` and say so. `sidecar plugin list` is the exception: it still lists those plugins, reporting each as inactive and naming the flag that is off. In the app, press `,` for Configuration and open **Feature Flags** under System.
 
 ## Configure one
 
@@ -94,7 +94,7 @@ Enablement is `plugins.<id>.enabled` for every plugin, embedded or protocol, and
 
 **A process boundary is crash isolation, not a sandbox.** Configuring a plugin trusts that executable with your full OS privileges, exactly as running it in your shell would. Sidecar does not install, upgrade, verify, or restrict it; it only decides when to run it and what to send.
 
-Configuring the plugin is the trust act, and it is the only one. There is no second prompt, no per-call grant, and no permission dialog. What the plugin can read from Sidecar is a declaration it makes in `describe` (`project` and `selection` are the only kinds this version has), and the host filters what it sends against that declaration at the process boundary. `sidecar plugin list` and the settings page show you those kinds before anything runs.
+Configuring the plugin is the trust act, and it is the only one. There is no second prompt, no per-call grant, and no permission dialog. What the plugin can read from Sidecar is a declaration it makes in `describe` (`project` and `selection` are the only kinds this version has), and the host filters what it sends against that declaration at the process boundary. `sidecar plugin check ID` prints the kinds a plugin declared, so you can read what it asks for before you put it on a surface.
 
 Plugin text is data, never markup: it can never become ANSI, a body is sanitized before and after Markdown rendering, and the only thing a plugin can supply that opens a URL is a validated `http(s)` `sourceUrl` you activate yourself.
 
@@ -200,9 +200,11 @@ Nothing refreshes while no tab from that plugin is on screen, so a plugin you ar
 
 ## Remote surfaces
 
-When a workspace is bound to a [remote host](remote-hosts.md), the project context a plugin receives carries that host's ID and that host's paths. Sidecar never substitutes a local path for a remote one. A plugin that only knows this machine should say so with a typed `unavailable` error naming the host, which is the same rule Sidecar's own content sources follow.
+Which machine runs the plugin depends on which surface asked, and the rule is the same one every other content kind follows: the machine that owns the pane answers for it.
 
-Protocol plugins themselves run on the machine that hosts the Sidecar you are typing into; running a plugin on the remote side is not part of this version.
+**A collection or row pane bound to a [remote host](remote-hosts.md) asks that host's plugins, not this machine's.** Sidecar goes over the connection it already holds open, the host runs its own configured plugin, and what comes back is the page *it* kept, already sanitized and already bounded. So the plugin has to be configured on the host, in the host's own `plugins.external`; a pane that quietly listed local data while saying it was showing a remote workspace would be answering a question nobody asked.
+
+**A plugin's navbar tab runs on the machine you are typing into.** When the project it is asked about is bound to a remote host, the project context carries that host's ID and that host's paths — Sidecar never substitutes a local path for a remote one. A plugin that only knows this machine should say so with a typed `unavailable` error naming the host, which is the same rule Sidecar's own content sources follow.
 
 ## Inspect and troubleshoot from a terminal
 
