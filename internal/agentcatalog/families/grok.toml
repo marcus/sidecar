@@ -1,0 +1,9 @@
+# Grok. Unchanged from the Go literal.
+id = "grok"
+order = 90
+name = "Grok"
+short = "Grok"
+command = "grok"
+skip_permissions_arg = "--always-approve"
+resume_args = ["--resume"]
+resume_kinds = ["id"]

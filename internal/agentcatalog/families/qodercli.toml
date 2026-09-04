@@ -1,0 +1,25 @@
+# Qoder CLI (Alibaba).
+#
+# Sources, read 2026-09-03:
+#   command, install  https://docs.qoder.com/cli/installation and https://qoder.com/install
+#   flags, resume     https://docs.qoder.com/cli/cli-reference
+#   bin names         https://registry.npmjs.org/@qoder-ai/qodercli/latest
+#   resume            also Herdr agent_resume.rs, `qodercli --resume <id>`
+#
+# The id is `qodercli` and the command is `qoder`, and the two differ on purpose.
+# `qodercli` is Herdr's label, the name of the vendored manifest file and the key
+# into aliases.upstream.json, so it is the id everywhere in Sidecar; a prettier
+# Sidecar-only spelling would buy a third entry in agentactivity.ManifestAgentID
+# and HerdrAgentLabel and nothing else. The npm package ships both binaries
+# (`qoder` and `qodercli`) and every official example types `qoder`, so that is
+# what Sidecar launches. The CN edition is a separate package with the
+# `qodercn`/`qoderclicn` binaries, which is where those two aliases come from.
+id = "qodercli"
+order = 190
+name = "Qoder CLI"
+short = "Qoder"
+command = "qoder"
+skip_permissions_arg = "--yolo"
+aliases = ["qoder", "qoderclicn", "qodercn"]
+resume_args = ["--resume"]
+resume_kinds = ["id"]

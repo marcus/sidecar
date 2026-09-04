@@ -4,6 +4,14 @@ All notable changes to sidecar are documented here.
 
 ## [Unreleased]
 
+### Features
+
+- **Every agent Sidecar can recognise is now an agent it can start, and you can add your own without waiting for a release.** Twelve families gained a launch command: Cline, Devin, Droid, Hermes, Kilo, Kimi, Kiro, Maki, Qoder, Qwen, plus OMP and Mastra Code, which have their first Sidecar identity here. Each one's command, auto-approve flag and resume arguments were read from the provider's own documentation or `--help`, and where a provider has no auto-approve flag the catalog says so instead of guessing one. The catalog itself moved from Go code to one TOML file per family, embedded in the binary, so a family is a file rather than a rebuild-shaped change.
+
+- **You can override an agent or add one of your own.** Drop a `.toml` file into `agents/` beside your config file (`~/.config/sidecar/agents/` by default) and it joins the catalog at startup. A file named after a family Sidecar ships overrides only the fields it states, so `command = "claude-next"` is a complete file and Claude keeps everything else; a file with a new name adds a whole family, launchable and resumable, at the end of the creation picker. A malformed file is reported and skipped rather than stopping Sidecar. See `docs/reference/agent-catalog.md`.
+
+- **The creation pickers offer the agents you actually have.** Create Workspace, Create Shell and the Sessions create now list a family when its command is on your `PATH`, or when you have named it in `plugins.workspace.agents`. Naming one still offers it whether or not it is installed. Configuration → Agents keeps listing every agent Sidecar knows, marking the ones that are not installed, so nothing is hidden from you, and the CLI still launches any family by name, installed or not. The `PATH` lookup happens once per process, off every render path.
+
 ### Bug Fixes
 
 - **A worktree created non-interactively can now be deleted non-interactively through the same lifecycle as the TUI.** `sidecar worktree delete TARGET --plan --json` reports the exact checkout, dirtiness, remote availability, branch-cleanup choices, and pinned branch and HEAD without changing anything; using the returned absolute path and re-running with `--expect-branch BRANCH --expect-head-oid OID --yes` closes its Sidecar worktree session and rooted managed shells before removing the directory. Local and remote branch cleanup remain explicit flags, as the confirmation's unchecked boxes are, and a failed create's exact pending-creation journal is cleared only after deletion succeeds. A rooted shell that refuses teardown is reported as a warning after the checkout is removed, while requested branch and journal cleanup still finish. The shared refusal rules still protect main, bare, detached, locked, missing, and prunable worktrees. (td-85b0c4)

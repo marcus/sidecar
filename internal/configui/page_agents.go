@@ -173,7 +173,10 @@ func (m *Model) buildAgents(b *paneBuilder) {
 
 	if len(m.Config().Plugins.Workspace.Agents) == 0 {
 		b.blank()
-		b.note("No allowlist is set, so creation offers every agent. Turn one off to narrow the list.")
+		b.note("No allowlist is set, so creation offers every agent whose command is installed. Turn one off to narrow the list.")
+	} else {
+		b.blank()
+		b.note("An allowlist is set, so creation offers exactly these, installed or not.")
 	}
 	b.blank()
 	b.lead("Enter on a launch command edits it; an empty value restores the default.")
@@ -218,12 +221,28 @@ func (m *Model) buildAgentRow(b *paneBuilder, family agentcatalog.Family) {
 	}
 
 	line := FormRow(family.Short, toggle+"  "+field, toggleState)
-	if !overridden && !editing {
-		// "default" is a quiet annotation, not part of the control. On a pane
-		// too narrow to hold it, dropping it is honest; letting it run off the
-		// edge would put an ellipsis where the row's own value should be.
-		if suffix := "  " + Muted("default"); ansi.StringWidth(line)+ansi.StringWidth(suffix) <= b.inner {
-			line += suffix
+	if !editing {
+		// Quiet annotations, not part of the control. On a pane too narrow to
+		// hold them, dropping them is honest; letting them run off the edge
+		// would put an ellipsis where the row's own value should be.
+		//
+		// This page lists every family Sidecar can start, installed or not,
+		// because "what exists" is the question a configuration page answers.
+		// The creation picker asks a different one -- "what can I start right
+		// now" -- and filters to what is on PATH, so the annotation is what
+		// stops the two lists reading as a contradiction.
+		var notes []string
+		if !overridden {
+			notes = append(notes, "default")
+		}
+		if agentcatalog.InstalledKnown() && !agentcatalog.Installed(family.ID) {
+			notes = append(notes, "not installed")
+		}
+		if len(notes) > 0 {
+			suffix := "  " + Muted(strings.Join(notes, " · "))
+			if ansi.StringWidth(line)+ansi.StringWidth(suffix) <= b.inner {
+				line += suffix
+			}
 		}
 	}
 	y := len(b.lines)

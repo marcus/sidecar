@@ -16,7 +16,7 @@ Adding a new agent CLI touches up to seven distinct subsystems. "Up to" is load-
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │ 1. Catalog & Launch Registry (internal/agentcatalog)                        │
-│    Canonical ID, display name, default command, auto-approve flag, resume   │
+│    One TOML file: id, display name, command, auto-approve flag, resume      │
 └──────────────┬──────────────────────────────────────────────┬───────────────┘
                │                                              │
                ▼                                              ▼
@@ -48,49 +48,58 @@ Adding a new agent CLI touches up to seven distinct subsystems. "Up to" is load-
 
 ## Step 1: Catalog & Launch/Resume Registry
 
-`internal/agentcatalog` is the single shared source of truth for agent families Sidecar can launch, configure, and resume.
+`internal/agentcatalog` is the single shared source of truth for agent families Sidecar can launch, configure, and resume. **It is data, not code: one TOML file per family under `internal/agentcatalog/families/`, embedded in the binary.** Adding a family is writing one file. There is no Go slice to edit, and no other file in that package changes.
 
 > [!NOTE]
-> A **detection-only** family skips this step's launch registry and gets a four-field entry in `detectionFamilies` instead. See [Step 2.0](#20-decide-which-shape-you-are-adding).
+> A **detection-only** family is the same file with no `command`. See [Step 2.0](#20-decide-which-shape-you-are-adding).
 
-### 1.1 Register Family in `internal/agentcatalog/agentcatalog.go`
+### 1.1 Write `internal/agentcatalog/families/<id>.toml`
 
-Add the new CLI family entry to `families` in `internal/agentcatalog/agentcatalog.go`:
+The file name is the id. Every field is documented in [`internal/agentcatalog/families/README.md`](../../../internal/agentcatalog/families/README.md), which is the schema of record; the user-facing half is [`docs/reference/agent-catalog.md`](../../reference/agent-catalog.md).
 
-```go
-{
-    ID:                 "muse",
-    Name:               "Muse Spark",       // Display name is Muse Spark (CLI binary is `muse`, product is Muse Code)
-    Short:              "Muse",
-    Command:            "muse",
-    SkipPermissionsArg: "--yolo",            // Muse Code: --yolo disables approval + sandbox (also --disable-approval, --trust-workspace)
-    Aliases:            []string{"muse-cli"},
-    AdapterID:          "muse",            // ID of the conversation history adapter
-    ResumeArgs:         []string{"resume"}, // muse resume <id> | muse resume --last (picker when no arg on TTY)
-    ResumeKinds:        []string{"id"},    // "id" only; Muse does not resume from path
-},
+```toml
+# Muse Spark.
+#
+# Sources, read 2026-08-31: `muse --help` from the installed CLI; --yolo
+# disables approval and sandbox (also --disable-approval, --trust-workspace).
+# Resume shape confirmed against Herdr's agent_resume.rs.
+id = "muse"
+order = 100
+name = "Muse Spark"
+short = "Muse"
+command = "muse"
+skip_permissions_arg = "--yolo"
+adapter_id = "muse"
+resume_args = ["resume"]
+resume_kinds = ["id"]
 ```
 
-### 1.2 Family Fields Explained
+### 1.2 The three rules a file has to follow
 
-- **`ID`**: Canonical identity stored in `config.json` (`plugins.workspace.agents`, `agentStart`, `defaultAgentType`).
-- **`Name`**: Full human-readable display name for modals and menus.
-- **`Short`**: Compact label for settings tables and tabs.
-- **`Command`**: Binary executable name launched by default.
-- **`SkipPermissionsArg`**: Argv flag appended when auto-approval is toggled on in creation modals or CLI (`--skip-permissions`).
-- **`Aliases`**: Alternative identifiers (such as legacy names or conversation adapter IDs) that resolve to this family.
-- **`ResumeArgs`**: Command arguments placed between `Command` and the session identifier (e.g. `muse resume <session-id>`).
-- **`ResumeKinds`**: Slice containing `"id"`, `"path"`, or both.
-- **`AdapterID`**: Conversation adapter ID if different from `ID`.
+**Record where every fact came from, in a comment at the top.** A command name, an auto-approve flag and a resume shape are claims about somebody else's software. The next person needs to know whether they came from the provider's `--help`, its documentation, or Herdr's `agent_resume.rs` — which is the reference for resume, and the only launch-adjacent knowledge upstream holds.
 
-### 1.3 What Inherits This Automatically
+**Never guess a flag.** A provider with no auto-approve mode gets no `skip_permissions_arg`, and the file says so and says why. Three bundled families have none, for three different reasons: Cline auto-approves by default and its flag takes a value, Devin's bypass is two argv entries the single-entry field cannot hold, and Mastra Code's is an in-app toggle. A guessed flag is a command line nothing has run.
 
-Adding a family to `internal/agentcatalog` automatically wires:
-- Creation pickers in `internal/workspacecreate/form.go` (Worktree & Shell modals).
-- Configuration settings in `internal/configui/page_agents.go` (Agent toggle allowlist and launch command override editors).
+**The session value is always the last argv entry**, and `resume_args` are what comes before it. A provider whose resume only works joined (`--resume=<value>`) cannot be expressed and gets no resume rather than an invented one; Copilot is the standing example.
+
+### 1.3 What inherits this automatically
+
+Writing the file wires all of:
+- Creation pickers in `internal/workspacecreate/form.go` (Worktree & Shell modals) and the global Sessions create.
+- Configuration settings in `internal/configui/page_agents.go` (allowlist toggles and launch command overrides).
 - Workspace default agent dropdown in `internal/configui/page_workspaces.go`.
 - CLI commands: `sidecar create shell --agent <kind>`, `sidecar create worktree --agent <kind>`, `sidecar agent start --kind <kind>`.
 - Structured resume command generation via `agentcatalog.BuildResume` and `agentcatalog.DisplayCommand`.
+
+### 1.4 Installation filtering, and what it means for a new family
+
+The creation pickers offer a family when its command resolves on `PATH`, or when the user has already named it in `plugins.workspace.agents`. Configuration → Agents lists every launchable family regardless, annotated `not installed`.
+
+So a family you add is invisible in the picker on a machine without the CLI, which is correct and is not a bug to work around. `agentcatalog.PrimeInstalled` does the `PATH` walk once per process from `cmd/sidecar/main.go`; nothing on a render path may call `exec.LookPath`.
+
+### 1.5 The user overlay
+
+Users extend the same catalog without a rebuild by dropping files into `<config dir>/agents/`, loaded by `agentcatalog.LoadOverlay` from `cmd/sidecar/main.go` and `internal/cli/cli.go`. A file naming a bundled family overrides only the fields it states; a new id adds a family. This is worth knowing when you are deciding whether a provider quirk belongs in the bundled catalog at all: if the answer is "only this user wants it", it is already supported.
 
 ---
 
@@ -102,15 +111,19 @@ That makes this step three moves rather than a subsystem: **sync or vendor the m
 
 ### 2.0 Decide which shape you are adding
 
-There are two kinds of agent family, and picking the wrong one is the difference between one commit and seven.
+There are two kinds of agent family, and picking the wrong one is the difference between one commit and seven. Both are one TOML file; what differs is whether the file states a `command`.
 
-**Detection-only** is an agent Sidecar recognises in a pane and never offers to start. It is registered in `detectionFamilies` in `internal/agentcatalog/agentcatalog.go` with an id, a display name, a short label, and Herdr's process aliases, and nothing else: no `Command`, no `ResumeArgs`, no `AdapterID`, no `SkipPermissionsArg`. It skips Steps 1, 3, 4, 5 and 6 entirely. Ten of them were registered in Phase 4 of the parity plan (Cline, Devin, Droid, Hermes, Kilo, Kimi, Kiro, Maki, Qoder, Qwen) and none of them cost a line of theme work, because `styles.AgentColor` answers `TextMuted` for a provider no theme registers and `styles.AgentLabel` falls back to the bare name. This is the right shape when Herdr publishes a manifest for the agent and nobody has asked Sidecar to launch it.
+**Detection-only** is an agent Sidecar recognises in a pane and never offers to start. Its file carries an id, a display name, a short label, and Herdr's process aliases — and no `command`, so no resume, no adapter id and no auto-approve flag either. It skips Steps 1, 3, 4, 5 and 6 entirely, and it costs no theme work, because `styles.AgentColor` answers `TextMuted` for a provider no theme registers and `styles.AgentLabel` falls back to the short label. This is the right shape when Herdr publishes a manifest for the agent and nobody has established what starts it.
 
-**Full** is an agent Sidecar launches, resumes, reads transcripts for, and colours. It is registered in `families` in the same file and works through all seven subsystems below. This is the right shape when a user will pick the agent from a creation modal.
+Sidecar ships no detection-only family today. Ten were registered in Phase 4 of the parity plan and all ten gained a command in Slice 5, once somebody read each provider's documentation. The bucket stays because the next agent Herdr adds is detection-only from the moment its manifest is vendored until that reading is done, and a picker must never offer a program nobody can start.
 
-Promoting a detection-only family to a full one later is exactly the seven steps in this guide with detection already done. Nothing has to be undone first: move the entry from `detectionFamilies` to `families`, fill in the launch fields, and add it to the `detectionOnly` switch's opposite side in `internal/agentactivity/activity.go`.
+**Full** is an agent Sidecar launches, resumes, reads transcripts for, and colours. Its file states a `command` and it works through all seven subsystems below. This is the right shape when a user will pick the agent from a creation modal.
 
-The id of a detection-only family is **Herdr's own agent label**, not a prettier product name, so the manifest file name, the key into `aliases.upstream.json`, and `sidecar agent explain --agent` all agree with no mapping. That is why Qoder is registered as `qodercli`. A full family may use a Sidecar spelling, at the cost of an entry in `ManifestAgentID` and `HerdrAgentLabel` in `manifest_detect.go` (today: `copilot` → `github-copilot`, `antigravity` → `agy`).
+Promoting a detection-only family to a full one is: add `command`, `skip_permissions_arg` and `resume_args` to the file it already has, then work the remaining steps. Nothing has to be undone, and nothing moves between lists — the bucket is derived from the presence of a command, not from a flag or a second file.
+
+The id of a detection-only family is **Herdr's own agent label**, not a prettier product name, so the manifest file name, the key into `aliases.upstream.json`, and `sidecar agent explain --agent` all agree with no mapping. That is why Qoder is registered as `qodercli` even though the program it launches is `qoder`; where the two differ, `short` follows the command, because a chip reading `qodercli` names a manifest file rather than a program. A full family may use a Sidecar spelling, at the cost of an entry in `ManifestAgentID` and `HerdrAgentLabel` in `manifest_detect.go` (today: `copilot` → `github-copilot`, `antigravity` → `agy`).
+
+Two catalog families have no vendored manifest at all: `omp` and `mastracode`, which Herdr ships hooks-only. They are launchable and `identifyProcessName` names them, so a hook report can be checked against the pane, but `Supports` is false for them and no row carries a chip that could only ever read unknown. They are declared in `familiesWithNoScreenManifest` in `internal/agentactivity/detection_only_test.go`.
 
 ### 2.1 Sync or vendor the manifest
 
@@ -131,11 +144,11 @@ case oneOf(name, "qwen", "qwen code", "qwen-code"):
 
 `normalizeProcessName` has already lower-cased, trimmed, taken the path basename, and stripped one launcher suffix (`.exe .cmd .bat .ps1 .js`), so the case carries bare names only. Two alias shapes in the table are not plain strings and are handled outside the switch: `versioned_binary_prefixes` (Herdr's `muse-bin-<digit>` rule, which today only Muse needs) and `normalized_suffixes`, which is the stripping above.
 
-Then add the id to `Supports` in the same file: the `detectionOnly` switch for a detection-only family, or the launchable list for a full one. `Supports` is what `Detect` gates on, so an agent missing from it answers `unsupported-agent` for every pane and shows no badge. `TestSupportedProviderSetIsFrozen` in `compat_test.go` is deliberately a frozen set: widening it is a decision, and the reason belongs in that test's comment.
+Then add the id to `Supports` in the same file: the `aliasGatedFamily` switch for a family with no hand-written process gate, or the hand-gated list for one that has written a `<provider>Process` predicate. `Supports` is what `Detect` gates on, so an agent missing from it answers `unsupported-agent` for every pane and shows no badge. `TestSupportedProviderSetIsFrozen` in `compat_test.go` is deliberately a frozen set: widening it is a decision, and the reason belongs in that test's comment.
 
-A **detection-only** family needs no process gate of its own. `processGate` in `manifest_detect.go` falls through to `identifyProcessName(command) == agent || ob.ProcessIdentity == agent`, which is the same refusal every provider makes, evaluate `qwen.toml` only against a pane running Qwen, without a file per agent to say so. It reads both identity inputs because `Identify` resolves `ProcessIdentity` first: a pane reporting `node` whose foreground argv[0] basename is `qwen` is claimed as Qwen, and a gate reading only the command name would then refuse every observation on it, leaving the row with a provider chip stuck at unknown. It is still strict: where neither input names the agent, such as a `#!/usr/bin/env node` shim whose argv[0] is the interpreter, the pane is refused rather than evaluated. That costs a missing badge and buys the guarantee that one agent's manifest never reads another's screen.
+An **alias-gated** family needs no process gate of its own. `processGate` in `manifest_detect.go` falls through to `identifyProcessName(command) == agent || ob.ProcessIdentity == agent`, which is the same refusal every provider makes, evaluate `qwen.toml` only against a pane running Qwen, without a file per agent to say so. It reads both identity inputs because `Identify` resolves `ProcessIdentity` first: a pane reporting `node` whose foreground argv[0] basename is `qwen` is claimed as Qwen, and a gate reading only the command name would then refuse every observation on it, leaving the row with a provider chip stuck at unknown. It is still strict: where neither input names the agent, such as a `#!/usr/bin/env node` shim whose argv[0] is the interpreter, the pane is refused rather than evaluated. That costs a missing badge and buys the guarantee that one agent's manifest never reads another's screen.
 
-A **full** family writes `<provider>Process(command string) bool` in `internal/agentactivity/<provider>.go` and registers it in `processGate`. Do that when the agent runs under a shared runtime and the gate has to admit the wrapper.
+A family that needs a wider gate writes `<provider>Process(command string) bool` in `internal/agentactivity/<provider>.go` and registers it in `processGate`. Do that when the agent runs under a shared runtime and the gate has to admit the wrapper.
 
 ### 2.3 Mint a fixture from `explain --file`
 
@@ -165,7 +178,7 @@ An overlay rule is a claim that upstream is wrong or silent about a screen you h
 
 - **Do not reintroduce a Go rule table.** If a screen is misread, the fix is an overlay rule with a fixture, or a pull request to Herdr.
 - **Overlays that retain state need corroborating chrome.** A rule keyed on a bare word ("transcript", "resume session") freezes the badge for `SkipRetentionCap` whenever a turn merely discusses one. Two such rules were deleted in the Phase 2 cutover for exactly this reason.
-- **Do not add a curated colour, an icon, a picker entry, a resume path, or a conversation adapter for a detection-only family.** Each of those has its own cost in twenty curated themes and the website palette, and none of them is needed for a state badge.
+- **Do not add a curated colour, an icon, a resume path, or a conversation adapter for a detection-only family.** Each of those has its own cost in twenty curated themes and the website palette, and none of them is needed for a state badge.
 - **Verify with tests**: `go test ./internal/agentactivity/... ./internal/agentcatalog/...`, and specifically `TestTheProcessNameVocabularyMatchesTheAgentCatalog` (both halves of the catalog resolve), `TestUpstreamAliasesResolveForClaimedFamilies` (every upstream alias for every registered family resolves), and `TestEveryVendoredManifestIsRegisteredOrDeclaredUnregistered` (a synced-in agent is either registered or has a recorded reason it is not).
 
 ---
@@ -365,9 +378,9 @@ SIDECAR_BIN=$HOME/go/bin/sidecar ./scripts/tmux-drive.sh start 200 50
 
 ### Detection-only family
 
-- [ ] **Step 2.0**: Add a four-field entry to `detectionFamilies` in `internal/agentcatalog/agentcatalog.go`: id (Herdr's agent label), display name, short label, Herdr's aliases, and nothing else. The display name and the short label are read: `agentcatalog.Label` is what a prose surface shows, and `styles.AgentLabel` lowercases the short label into the agent chip, which is why Qoder's chip reads `qoder` while its id stays `qodercli`.
+- [ ] **Step 2.0**: Write `internal/agentcatalog/families/<id>.toml` with an id (Herdr's agent label), an order, a display name, a short label, Herdr's aliases, and **no `command`**. The display name and the short label are read: `agentcatalog.Label` is what a prose surface shows, and `styles.AgentLabel` lowercases the short label into the agent chip, which is why Qoder's chip reads `qoder` while its id stays `qodercli`.
 - [ ] **Step 2.1**: Confirm the manifest is vendored under `internal/agentactivity/manifests/upstream/`, or run `scripts/sync-herdr.sh`.
-- [ ] **Step 2.2**: Add the alias case to `identifyProcessName()` and the id to the `detectionOnly` switch in `internal/agentactivity/activity.go`.
+- [ ] **Step 2.2**: Add the alias case to `identifyProcessName()` and the id to the `aliasGatedFamily` switch in `internal/agentactivity/activity.go`.
 - [ ] **Step 2.3**: Optionally mint a fixture with `sidecar agent explain --file`.
 - [ ] **Tests**: `go test ./internal/agentactivity/... ./internal/agentcatalog/... ./internal/styles/...`.
 
@@ -375,8 +388,8 @@ Steps 1, 3, 4, 5 and 6 do not apply, and no theme, icon, adapter, picker or resu
 
 ### Full family
 
-- [ ] **Step 1 (`internal/agentcatalog`)**: Add `Family` entry with launch/resume args and skip-permissions flag (`--yolo` for Muse).
-- [ ] **Step 2 (`internal/agentactivity`)**: Vendor or sync the detection manifest, add the process alias to `identifyProcessName()` and the id to `Supports()`, write `<provider>Process` and register it in `processGate`, and mint a fixture with `sidecar agent explain --file`.
+- [ ] **Step 1 (`internal/agentcatalog`)**: Write `families/<id>.toml` with the command, launch/resume args and skip-permissions flag (`--yolo` for Muse), and a comment recording the source of each fact.
+- [ ] **Step 2 (`internal/agentactivity`)**: Vendor or sync the detection manifest, add the process alias to `identifyProcessName()` and the id to `Supports()`, write `<provider>Process` and register it in `processGate` if the agent runs under a shared runtime, and mint a fixture with `sidecar agent explain --file`.
 - [ ] **Step 3 (`internal/plugins/workspace`)**: Add `AgentType` constant, append to `buildSkipPermissionsFlags()`, and set optional system prompt / print mode flags; add `AgentMuse` case to `detectAgentSessionStatus` if file-based status is supported.
 - [ ] **Step 4 (`internal/agentlifecycle` & `agentsession`)**: Add capability to `capabilities.json` (use `screen-fallback`/`none` if no hooks as for Muse), register official source only when a hook is shipped, and configure approved store roots (`XDG_DATA_HOME/muse/sessions` for Muse).
 - [ ] **Step 5 (`internal/adapter`)**: Implement conversation adapter (`adapter.go`, `types.go`, `watcher.go`, `register.go`), register constructor, and add blank import in `cmd/sidecar/main.go`.

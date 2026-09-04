@@ -1,0 +1,21 @@
+# Qwen Code.
+#
+# Sources, read 2026-09-03:
+#   command, install  https://github.com/QwenLM/qwen-code
+#   flags, resume     packages/cli/src/config/top-level-options.ts in that repo
+#                     (`yolo` alias `y`, `resume` alias `r`)
+#   resume            also Herdr agent_resume.rs, `qwen --resume <id>`
+#
+# The flag definitions are read from the repository's main branch rather than
+# from a published options page, because the docs tree no longer carries one.
+# `--yolo` and `--approval-mode yolo` are equivalent and passing both is
+# rejected, so only the single-entry form is recorded.
+id = "qwen"
+order = 200
+name = "Qwen Code"
+short = "Qwen"
+command = "qwen"
+skip_permissions_arg = "--yolo"
+aliases = ["qwen code", "qwen-code"]
+resume_args = ["--resume"]
+resume_kinds = ["id"]

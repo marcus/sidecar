@@ -753,6 +753,22 @@ func ConfigPath() string {
 	return filepath.Join(home, configDir, configFile)
 }
 
+// AgentCatalogDir returns the directory holding the user's agent catalog
+// overlay: one TOML file per family, beside the config file.
+//
+// It is derived from ConfigPath rather than from $HOME so that -config moves it
+// with everything else, the way state.json and debug.log already move
+// (td-8d18de). agentcatalog is a leaf package and cannot compute this itself,
+// so this is the one place it is computed and agentcatalog.LoadOverlay takes it
+// as an argument.
+func AgentCatalogDir() string {
+	path := ConfigPath()
+	if path == "" {
+		return ""
+	}
+	return filepath.Join(filepath.Dir(path), "agents")
+}
+
 // StateDir returns the directory for sidecar state files.
 // Follows XDG Base Directory Specification: $XDG_STATE_HOME/sidecar
 // (defaults to ~/.local/state/sidecar).

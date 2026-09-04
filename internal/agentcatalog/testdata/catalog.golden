@@ -119,127 +119,151 @@
     launch+skip muse --yolo --model 'space value'
     resume/id   muse resume SESSION
     resume/path error: provider "muse" cannot resume from a "path" reference; it resumes from: id
-# detection-only, in id order
   cline
     name        Cline
     short       Cline
-    command     
+    command     cline
     skipPerms   
     aliases     
     adapter     cline
-    resumeKinds 
-    launch      error: provider has no launch capability
-    launch+skip error: provider has no launch capability
-    resume/id   error: provider has no launch capability
-    resume/path error: provider has no launch capability
+    resumeKinds id
+    launch      cline
+    launch+skip cline --model 'space value'
+    resume/id   cline --id SESSION
+    resume/path error: provider "cline" cannot resume from a "path" reference; it resumes from: id
   devin
     name        Devin CLI
     short       Devin
-    command     
+    command     devin
     skipPerms   
     aliases     devin cli devin-cli
     adapter     devin
-    resumeKinds 
-    launch      error: provider has no launch capability
-    launch+skip error: provider has no launch capability
-    resume/id   error: provider has no launch capability
-    resume/path error: provider has no launch capability
+    resumeKinds id
+    launch      devin
+    launch+skip devin --model 'space value'
+    resume/id   devin --resume SESSION
+    resume/path error: provider "devin" cannot resume from a "path" reference; it resumes from: id
   droid
     name        Droid
     short       Droid
-    command     
-    skipPerms   
+    command     droid
+    skipPerms   --skip-permissions-unsafe
     aliases     
     adapter     droid
-    resumeKinds 
-    launch      error: provider has no launch capability
-    launch+skip error: provider has no launch capability
-    resume/id   error: provider has no launch capability
-    resume/path error: provider has no launch capability
+    resumeKinds id
+    launch      droid
+    launch+skip droid --skip-permissions-unsafe --model 'space value'
+    resume/id   droid --resume SESSION
+    resume/path error: provider "droid" cannot resume from a "path" reference; it resumes from: id
   hermes
     name        Hermes Agent
     short       Hermes
-    command     
-    skipPerms   
+    command     hermes
+    skipPerms   --yolo
     aliases     hermes-agent
     adapter     hermes
-    resumeKinds 
-    launch      error: provider has no launch capability
-    launch+skip error: provider has no launch capability
-    resume/id   error: provider has no launch capability
-    resume/path error: provider has no launch capability
+    resumeKinds id
+    launch      hermes
+    launch+skip hermes --yolo --model 'space value'
+    resume/id   hermes --resume SESSION
+    resume/path error: provider "hermes" cannot resume from a "path" reference; it resumes from: id
   kilo
     name        Kilo Code CLI
     short       Kilo
-    command     
-    skipPerms   
+    command     kilo
+    skipPerms   --auto
     aliases     kilo code kilo-code
     adapter     kilo
-    resumeKinds 
-    launch      error: provider has no launch capability
-    launch+skip error: provider has no launch capability
-    resume/id   error: provider has no launch capability
-    resume/path error: provider has no launch capability
+    resumeKinds id
+    launch      kilo
+    launch+skip kilo --auto --model 'space value'
+    resume/id   kilo --session SESSION
+    resume/path error: provider "kilo" cannot resume from a "path" reference; it resumes from: id
   kimi
     name        Kimi Code CLI
     short       Kimi
-    command     
-    skipPerms   
+    command     kimi
+    skipPerms   --auto
     aliases     kimi code kimi-code
     adapter     kimi
-    resumeKinds 
-    launch      error: provider has no launch capability
-    launch+skip error: provider has no launch capability
-    resume/id   error: provider has no launch capability
-    resume/path error: provider has no launch capability
+    resumeKinds id
+    launch      kimi
+    launch+skip kimi --auto --model 'space value'
+    resume/id   kimi --session SESSION
+    resume/path error: provider "kimi" cannot resume from a "path" reference; it resumes from: id
   kiro
     name        Kiro CLI
     short       Kiro
-    command     
-    skipPerms   
+    command     kiro-cli
+    skipPerms   --trust-all-tools
     aliases     kiro-cli
     adapter     kiro
-    resumeKinds 
-    launch      error: provider has no launch capability
-    launch+skip error: provider has no launch capability
-    resume/id   error: provider has no launch capability
-    resume/path error: provider has no launch capability
+    resumeKinds id
+    launch      kiro-cli chat
+    launch+skip kiro-cli chat --trust-all-tools --model 'space value'
+    resume/id   kiro-cli chat --resume-id SESSION
+    resume/path error: provider "kiro" cannot resume from a "path" reference; it resumes from: id
   maki
     name        Maki
     short       Maki
-    command     
-    skipPerms   
+    command     maki
+    skipPerms   --yolo
     aliases     
     adapter     maki
-    resumeKinds 
-    launch      error: provider has no launch capability
-    launch+skip error: provider has no launch capability
-    resume/id   error: provider has no launch capability
-    resume/path error: provider has no launch capability
+    resumeKinds id
+    launch      maki
+    launch+skip maki --yolo --model 'space value'
+    resume/id   maki --session SESSION
+    resume/path error: provider "maki" cannot resume from a "path" reference; it resumes from: id
   qodercli
     name        Qoder CLI
     short       Qoder
-    command     
-    skipPerms   
+    command     qoder
+    skipPerms   --yolo
     aliases     qoder qoderclicn qodercn
     adapter     qodercli
-    resumeKinds 
-    launch      error: provider has no launch capability
-    launch+skip error: provider has no launch capability
-    resume/id   error: provider has no launch capability
-    resume/path error: provider has no launch capability
+    resumeKinds id
+    launch      qoder
+    launch+skip qoder --yolo --model 'space value'
+    resume/id   qoder --resume SESSION
+    resume/path error: provider "qodercli" cannot resume from a "path" reference; it resumes from: id
   qwen
     name        Qwen Code
     short       Qwen
-    command     
-    skipPerms   
+    command     qwen
+    skipPerms   --yolo
     aliases     qwen code qwen-code
     adapter     qwen
+    resumeKinds id
+    launch      qwen
+    launch+skip qwen --yolo --model 'space value'
+    resume/id   qwen --resume SESSION
+    resume/path error: provider "qwen" cannot resume from a "path" reference; it resumes from: id
+  omp
+    name        OMP
+    short       OMP
+    command     omp
+    skipPerms   --yolo
+    aliases     
+    adapter     omp
+    resumeKinds id path
+    launch      omp
+    launch+skip omp --yolo --model 'space value'
+    resume/id   omp --resume SESSION
+    resume/path omp --resume SESSION
+  mastracode
+    name        Mastra Code
+    short       Mastracode
+    command     mastracode
+    skipPerms   
+    aliases     mastra code mastra-code
+    adapter     mastracode
     resumeKinds 
-    launch      error: provider has no launch capability
-    launch+skip error: provider has no launch capability
-    resume/id   error: provider has no launch capability
-    resume/path error: provider has no launch capability
+    launch      mastracode
+    launch+skip mastracode --model 'space value'
+    resume/id   error: provider "mastracode" has no native resume command
+    resume/path error: provider "mastracode" has no native resume command
+# detection-only, in id order
 # legacy launch, in id order
   aider
     name        Aider

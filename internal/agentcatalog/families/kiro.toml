@@ -1,0 +1,28 @@
+# Kiro CLI (AWS, formerly the Amazon Q Developer CLI).
+#
+# Sources, read 2026-09-03:
+#   command, install  https://kiro.dev/docs/cli/ and https://kiro.dev/docs/upgrade-guides/migrating-from-q/
+#   flags, resume     https://kiro.dev/docs/reference/cli-commands/
+#                     https://kiro.dev/docs/cli/chat/session-management/
+#
+# The command is `kiro-cli`, and the distinction is load-bearing: bare `kiro`
+# is the Kiro IDE launcher, a VS Code fork. On the maintainer's machine
+# `/opt/homebrew/bin/kiro` is a symlink into Kiro.app and `kiro --help` prints
+# VS Code options. Recording `kiro` here would offer the agent in the creation
+# picker on any machine with the IDE installed and then open a window instead of
+# starting an agent. `q` still works as a preserved entry point from the rename;
+# `kiro-cli` is what AWS documents.
+#
+# Every flag is scoped to the `chat` subcommand, which is why launch_args exists:
+# `kiro-cli --trust-all-tools` is rejected as an unexpected argument, and
+# `kiro-cli chat --trust-all-tools` is not.
+id = "kiro"
+order = 170
+name = "Kiro CLI"
+short = "Kiro"
+command = "kiro-cli"
+launch_args = ["chat"]
+skip_permissions_arg = "--trust-all-tools"
+aliases = ["kiro-cli"]
+resume_args = ["chat", "--resume-id"]
+resume_kinds = ["id"]

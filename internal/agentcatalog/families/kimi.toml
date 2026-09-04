@@ -1,0 +1,23 @@
+# Kimi Code CLI (Moonshot).
+#
+# Sources, read 2026-09-03:
+#   command, flags, resume  https://moonshotai.github.io/kimi-code/en/reference/kimi-command
+#   install                 https://github.com/MoonshotAI/kimi-code
+#   resume                  also Herdr agent_resume.rs, `kimi --session <id>`
+#
+# Kimi has two auto-approve levels and `--auto` is the stronger one: `--yolo`
+# still asks when needed, `--auto` never interrupts. Sidecar's checkbox means
+# "do not stop to ask me", so it is `--auto`. The two are mutually exclusive.
+#
+# Two products install a binary named `kimi`: the current TypeScript Kimi Code
+# (versions 0.x) and the legacy Python kimi-cli (1.4x). These flags are Kimi
+# Code's and were not confirmed against the legacy CLI.
+id = "kimi"
+order = 160
+name = "Kimi Code CLI"
+short = "Kimi"
+command = "kimi"
+skip_permissions_arg = "--auto"
+aliases = ["kimi code", "kimi-code"]
+resume_args = ["--session"]
+resume_kinds = ["id"]

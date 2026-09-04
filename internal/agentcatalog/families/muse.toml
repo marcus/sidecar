@@ -1,0 +1,9 @@
+# Muse Spark. Unchanged from the Go literal.
+id = "muse"
+order = 100
+name = "Muse Spark"
+short = "Muse"
+command = "muse"
+skip_permissions_arg = "--yolo"
+resume_args = ["resume"]
+resume_kinds = ["id"]

@@ -1,0 +1,17 @@
+# Maki.
+#
+# Sources, read 2026-09-03:
+#   command, install, flags, resume  https://maki.sh/docs/cli/ and https://github.com/tontinton/maki
+#
+# Herdr's agent_resume.rs has no Maki entry; the resume below is from Maki's own
+# reference, which documents `--session <ID>` (short `-s`) and accepts `--resume
+# <ID>` as well. `--yolo` is the documented bypass and `--dangerously-skip-permissions`
+# is its alias.
+id = "maki"
+order = 180
+name = "Maki"
+short = "Maki"
+command = "maki"
+skip_permissions_arg = "--yolo"
+resume_args = ["--session"]
+resume_kinds = ["id"]

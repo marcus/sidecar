@@ -1,0 +1,12 @@
+# Antigravity. Unchanged from the Go literal. The command is `agy`, which is
+# also Herdr's label for this agent; the family id is `antigravity` and
+# agentactivity.HerdrAgentLabel is the one place that mapping lives.
+id = "antigravity"
+order = 40
+name = "Antigravity"
+short = "Antigravity"
+command = "agy"
+skip_permissions_arg = "--dangerously-skip-permissions"
+aliases = ["agy"]
+resume_args = ["--conversation"]
+resume_kinds = ["id"]
