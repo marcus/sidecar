@@ -293,10 +293,11 @@ func pluginCommand() *Command {
 			"are rebuilt on a project switch, global ones are built once), the placements\n" +
 			"its content can occupy, and whether it is enabled. An external row also\n" +
 			"reports the config section it was read from.\n\n" +
-			"Enablement is plugins.<id>.enabled. Two deprecated feature flags, tasks_plugin\n" +
-			"and notes_plugin, still answer for their plugin while that key is absent. A\n" +
-			"plugin that is enabled but whose feature flag is off is reported inactive,\n" +
-			"naming the flag.\n\n" +
+			"Enablement is plugins.<id>.enabled. The tasks_plugin and notes_plugin feature\n" +
+			"flags are read-only aliases of those keys, kept for one minor release: each\n" +
+			"answers only while its key is absent, and nothing writes one back. A plugin\n" +
+			"that is enabled but whose feature flag is off is reported inactive, naming the\n" +
+			"flag.\n\n" +
 			"Without --describe this reads configuration and runs nothing: no running\n" +
 			"Sidecar, no PATH lookup, no subprocess. --describe opts in to running each\n" +
 			"active external plugin's describe method, with the same environment, working\n" +
@@ -424,6 +425,10 @@ func pluginCommand() *Command {
 			"auto-enables anything, and never lets a repository declare a plugin.\n\n" +
 			"Everything after --command is the argv, executed directly with no shell. Put\n" +
 			"it last.\n\n" +
+			"The id is the config key, the CLI name and the persisted tab id, so an id one\n" +
+			"of Sidecar's own surfaces already answers to — tasks, notes, td-monitor,\n" +
+			"git-status, file-browser, conversations, workspace-manager, sessions,\n" +
+			"activity — is refused, naming the surface that holds it.\n\n" +
 			"Nothing is started: add prints exactly what will run — every argv element on\n" +
 			"its own line, the working directory, and the variables that will be passed by\n" +
 			"name — and asks for confirmation. --yes skips the question, which is what a\n" +

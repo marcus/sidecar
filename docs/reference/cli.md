@@ -2185,10 +2185,11 @@ are rebuilt on a project switch, global ones are built once), the placements
 its content can occupy, and whether it is enabled. An external row also
 reports the config section it was read from.
 
-Enablement is plugins.<id>.enabled. Two deprecated feature flags, tasks_plugin
-and notes_plugin, still answer for their plugin while that key is absent. A
-plugin that is enabled but whose feature flag is off is reported inactive,
-naming the flag.
+Enablement is plugins.<id>.enabled. The tasks_plugin and notes_plugin feature
+flags are read-only aliases of those keys, kept for one minor release: each
+answers only while its key is absent, and nothing writes one back. A plugin
+that is enabled but whose feature flag is off is reported inactive, naming the
+flag.
 
 Without --describe this reads configuration and runs nothing: no running
 Sidecar, no PATH lookup, no subprocess. --describe opts in to running each
@@ -2332,6 +2333,11 @@ auto-enables anything, and never lets a repository declare a plugin.
 
 Everything after --command is the argv, executed directly with no shell. Put
 it last.
+
+The id is the config key, the CLI name and the persisted tab id, so an id one
+of Sidecar's own surfaces already answers to — tasks, notes, td-monitor,
+git-status, file-browser, conversations, workspace-manager, sessions,
+activity — is refused, naming the surface that holds it.
 
 Nothing is started: add prints exactly what will run — every argv element on
 its own line, the working directory, and the variables that will be passed by

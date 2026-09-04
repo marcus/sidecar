@@ -3,6 +3,7 @@ package configui
 import (
 	"github.com/marcus/sidecar/internal/config"
 	"github.com/marcus/sidecar/internal/features"
+	"github.com/marcus/sidecar/internal/panelpref"
 	"github.com/marcus/sidecar/internal/plugin"
 	"github.com/marcus/sidecar/internal/version"
 )
@@ -56,10 +57,8 @@ func testPluginDescriptors() []plugin.Descriptor {
 			Placements: []plugin.Placement{plugin.PlacementTab},
 			Detail:     "Project notes, kept inside Sidecar",
 			Why:        "Notes adds project notes to Sidecar.",
-			Enabled: func(c *config.Config) bool {
-				return c.Plugins.TDMonitor.Enabled && notesPreference(c)
-			},
-			Preference: notesPreference,
+			Enabled:    panelpref.Notes,
+			Preference: panelpref.NotesPreference,
 			SetEnabled: func(p *config.PluginsConfig, on bool) { p.Notes.Enabled = &on },
 		},
 		{
@@ -69,20 +68,8 @@ func testPluginDescriptors() []plugin.Descriptor {
 			Why:         "Tasks adds an embedded task board to Sidecar's global space. It is a beta integration.",
 			Beta:        true,
 			Integration: version.TasksDescriptor(),
-			Enabled: func(c *config.Config) bool {
-				if c.Plugins.Tasks.Enabled != nil {
-					return *c.Plugins.Tasks.Enabled
-				}
-				return features.IsEnabled(features.TasksPlugin.Name)
-			},
-			SetEnabled: func(p *config.PluginsConfig, on bool) { p.Tasks.Enabled = &on },
+			Enabled:     panelpref.Tasks,
+			SetEnabled:  func(p *config.PluginsConfig, on bool) { p.Tasks.Enabled = &on },
 		},
 	}
-}
-
-func notesPreference(c *config.Config) bool {
-	if c.Plugins.Notes.Enabled != nil {
-		return *c.Plugins.Notes.Enabled
-	}
-	return features.IsEnabled(features.NotesPlugin.Name)
 }
