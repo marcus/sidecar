@@ -16,7 +16,7 @@ The plugin protocol is a draft, gated by a feature flag that is off by default:
 sidecar --enable-feature=plugin_protocol
 ```
 
-or, permanently, `features.flags.plugin_protocol: true` in `~/.config/sidecar/config.json`. Every `sidecar plugin` command below needs it; without it they exit `4` and say so. The identifier is `sidecar.plugin/v1-draft` until the protocol freezes; see [the reference's draft status](../../reference/plugin-protocol.md#draft-status-what-is-settled-and-what-is-not) for what that does and does not mean for your plugin.
+or, permanently, `features.flags.plugin_protocol: true` in `~/.config/sidecar/config.json`. Every `sidecar plugin` command below needs it; without it they exit `4` and say so. The identifier is `sidecar.plugin/v1` and it is frozen; see [what the freeze promises](../../reference/plugin-protocol.md#frozen-what-that-promises), including the one rule that keeps your plugin working with a Sidecar released before it.
 
 ## Which class of plugin do you want?
 
@@ -55,7 +55,7 @@ Each call is one process: Sidecar writes one JSON object to your stdin and close
 The example's skeleton is the whole shape:
 
 ```python
-PROTOCOL = "sidecar.plugin/v1-draft"
+PROTOCOL = "sidecar.plugin/v1"
 
 def answer(request):
     if request.get("protocol") != PROTOCOL:
@@ -193,7 +193,7 @@ Configure "hello" as an external plugin.
     argv[0]  python3
     argv[1]  /path/to/hello_plugin.py
   Working directory: /Users/you/.config/sidecar
-  Protocol:          sidecar.plugin/v1-draft
+  Protocol:          sidecar.plugin/v1
   Scope:             global
   Placements:        tab, panes
   Timeout:           10s
@@ -215,7 +215,7 @@ Everything after `--command` is the argv, executed with no shell, so it goes las
 ```console
 $ sidecar plugin check hello
 hello  [enabled, ready]  plugins.external
-  protocol  sidecar.plugin/v1-draft
+  protocol  sidecar.plugin/v1
   command   python3 /path/to/hello_plugin.py
   resolves  /opt/homebrew/bin/python3
   scope     global

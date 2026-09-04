@@ -1,8 +1,8 @@
 # Sidecar plugin protocol
 
-**Status:** draft — implemented by the host, not yet frozen
-**Protocol identifier:** `sidecar.plugin/v1-draft`
-**Related:** [Terminal resource provider protocol](terminal-resource-provider-protocol.md) is the frozen v1 this grows from · [Creating a Sidecar plugin](../guides/active/creating-plugins.md) is the authoring guide · [the plan set](../plans/active/plugin-ecosystem/README.md) holds the design rationale and the revisions still pending
+**Status:** frozen
+**Protocol identifier:** `sidecar.plugin/v1`
+**Related:** [Terminal resource provider protocol](terminal-resource-provider-protocol.md) is the frozen v1 this grows from · [Creating a Sidecar plugin](../guides/active/creating-plugins.md) is the authoring guide · [the plan set](../plans/active/plugin-ecosystem/README.md) holds the design rationale
 
 A Sidecar plugin is an explicitly configured local executable that gives Sidecar content to render and typed actions to offer. Sidecar owns rendering, keys, focus, tabs, persistence, theme, and safety. The plugin owns its data, its rules, its credentials, and its network access.
 
@@ -12,11 +12,11 @@ The plugin never sends a user interface. It sends content in a small declarative
 
 Every response is data. Plugin text never becomes ANSI, never binds a key, never chooses a colour, and never opens a URL except through the separately validated `sourceUrl`.
 
-## Draft status: what is settled and what is not
+## Frozen: what that promises
 
-Everything described here is implemented and enforced by the host today, and `sidecar plugin check` will hold a plugin to it. What is not settled is the identifier: while the protocol is a draft it is `sidecar.plugin/v1-draft`, and a host may refuse that value at any point. It freezes as `sidecar.plugin/v1` the way `sidecar.terminal-resource/v1` did — the host has implemented it, one real external plugin (recall) implements it against a live tool, and both revise from what the other found.
+The identifier is `sidecar.plugin/v1` and it no longer moves. It froze the way `sidecar.terminal-resource/v1` did: the host implemented it, one real external plugin (recall) implemented it against a live tool, and both revised from what the other found. Everything described here is implemented and enforced by the host, and `sidecar plugin check` will hold a plugin to it. A change that is not an additive field requires a new identifier.
 
-Revisions the M0 mockups and the recall implementation surfaced are listed, with their proposed shapes, in the plan README's [pending revisions table](../plans/active/plugin-ecosystem/README.md#protocol-revisions-pending-from-the-m0-recall-mockup). The four that milestone M4b applied — `filters[]`, `page.omitted`, the `failed` outcome, and `page.coverage[]` — are described here and implemented by the host; everything still in that table is not, and nothing in this document describes it. A plugin written against what is here keeps working when the rest land, because each is an additive field.
+**The host is strict, and the tolerance belongs on your side.** Sidecar sends `sidecar.plugin/v1` and refuses any other value in the response, including the identifier this protocol carried before it froze; there is no alias and no silent upgrade. The rule that makes an old host and a new plugin work together is therefore a rule for the plugin: **accept either identifier on a request and answer with whichever one you were asked.** A plugin written that way keeps working with a Sidecar released before the freeze and with every one after it, and needs no version detection of its own. The pre-freeze identifier is named in [History](#history).
 
 A plugin that answers only `sidecar.terminal-resource/v1` is not affected by any of this. That protocol is frozen, its contract is [its own reference](terminal-resource-provider-protocol.md), and a provider written against it keeps working unchanged.
 
@@ -29,7 +29,7 @@ Unchanged from the resource protocol, restated for one reason: a plugin author r
 - Every invocation is its own process group, killed as a group on timeout or cancel, so a forked descendant dies with it. Sidecar never signals a process outside the group it created.
 - A typed success **or** typed failure exits `0`. Non-zero exit, malformed JSON, no JSON, more than one top-level JSON value (a trailing log line counts), oversize stdout, timeout, or a missing or mismatched `protocol` field is a *transport* failure attributed to the plugin rather than to the service behind it.
 - The environment is the documented allowlist plus the instance's `passEnv`, plus `SIDECAR_PLUGIN=1`. The marker is set by the host rather than inherited, so a tool whose ordinary CLI and whose plugin subcommand share a binary can tell which one it is running as. It is added only on this protocol; the frozen one publishes its child environment exactly. The allowlist itself, and what is deliberately excluded from it, is in [the frozen reference's execution environment](terminal-resource-provider-protocol.md#execution-environment).
-- **Which identifier an instance is asked on comes from the config section it is configured in, never from anything the executable says.** `plugins.external` entries are asked on `sidecar.plugin/v1-draft`; `terminalResources.providers` entries on `sidecar.terminal-resource/v1`. A plugin must answer on the identifier it was asked on; answering with the other one is a protocol failure, not a silent upgrade.
+- **Which identifier an instance is asked on comes from the config section it is configured in, never from anything the executable says.** `plugins.external` entries are asked on `sidecar.plugin/v1`; `terminalResources.providers` entries on `sidecar.terminal-resource/v1`. A plugin must answer on the identifier it was asked on; answering with the other one is a protocol failure, not a silent upgrade.
 
 Plugins are one-shot. There is no resident process, no framing, no multiplexing. Live behaviour — search-as-you-type, background refresh, mutations — is built from one-shot calls plus the host-side mechanisms under [Freshness](#freshness-live-behaviour-without-a-resident-process).
 
@@ -51,7 +51,7 @@ Matching itself never starts a process and never performs I/O.
 
 | Field | Present on | Meaning |
 | --- | --- | --- |
-| `protocol` | all | `sidecar.plugin/v1-draft`. A plugin that does not support the value must return `invalid_request` naming what it does support. This is the version-negotiation seam. |
+| `protocol` | all | `sidecar.plugin/v1`. A plugin that does not support the value must return `invalid_request` naming what it does support. This is the version-negotiation seam. |
 | `method` | all | One of the five. An unrecognised method returns `invalid_request`, not a crash. |
 | `instance` | all | The configured instance ID. Informational: a plugin may use it to select its own configuration, but argv selection takes precedence and a plugin must behave correctly if it ignores `instance` entirely. |
 | `deadlineMs` | all | Milliseconds the host waits before killing the process group. Advisory but accurate. Budget inside it and return a typed `unavailable` rather than be killed: a typed timeout gives the user a real error card and a working Retry, where a SIGKILL gives them an opaque transport failure. |
@@ -71,7 +71,7 @@ The identity block is spelled `plugin`. A response that spells it `provider`, th
 
 ```json
 {
-  "protocol": "sidecar.plugin/v1-draft",
+  "protocol": "sidecar.plugin/v1",
   "plugin": {"kind": "recall", "name": "Recall", "version": "0.4.0", "docsUrl": "https://example.test/recall/sidecar"},
   "context": ["project"],
   "matchers": [
@@ -195,7 +195,7 @@ Actions never carry code, keys the host did not grant, or colours.
 
 ```json
 {
-  "protocol": "sidecar.plugin/v1-draft",
+  "protocol": "sidecar.plugin/v1",
   "method": "list",
   "instance": "recall",
   "deadlineMs": 10000,
@@ -214,7 +214,7 @@ Actions never carry code, keys the host did not grant, or colours.
 
 ```json
 {
-  "protocol": "sidecar.plugin/v1-draft",
+  "protocol": "sidecar.plugin/v1",
   "page": {
     "outcome": "degraded",
     "items": [
@@ -269,7 +269,7 @@ Returns a `resource`, the same object `resolve` returns, extended with `sections
 
 ```json
 {
-  "protocol": "sidecar.plugin/v1-draft",
+  "protocol": "sidecar.plugin/v1",
   "resource": {
     "identity": "rc:notes:2026-08-14-dex-design",
     "title": "DEX schema notes",
@@ -314,7 +314,7 @@ Returns a `resource`, the same object `resolve` returns, extended with `sections
 
 ```json
 {
-  "protocol": "sidecar.plugin/v1-draft",
+  "protocol": "sidecar.plugin/v1",
   "outcome": {
     "status": "done",
     "message": "Logged a note for Ada",
@@ -341,7 +341,7 @@ Unchanged codes and semantics from resource v1: `not_found`, `unauthorized`, `fo
 
 ```json
 {
-  "protocol": "sidecar.plugin/v1-draft",
+  "protocol": "sidecar.plugin/v1",
   "error": {
     "code": "invalid_config",
     "message": "Recall has no index for this machine yet",
@@ -448,7 +448,7 @@ Two rules this protocol restates because it widens what a plugin can ask for:
 - `timeout` is clamped to [1s, 60s]; `claimHosts` means what it means for a resource provider.
 - Array order is precedence. At most 16 instances across both sections.
 
-Everything under `plugins.external` is behind the `plugin_protocol` feature flag, default off while the protocol is a draft. Turn it on with `sidecar --enable-feature=plugin_protocol` or `features.flags.plugin_protocol` in config. The flag gates only this section: `terminal_resource_providers` governs the frozen one on its own, so turning the draft protocol off cannot take a working resource provider down with it.
+Everything under `plugins.external` is behind the `plugin_protocol` feature flag. Turn it on with `sidecar --enable-feature=plugin_protocol` or `features.flags.plugin_protocol` in config. The flag gates only this section: `terminal_resource_providers` governs the frozen resource protocol on its own, so turning the plugin protocol off cannot take a working resource provider down with it.
 
 An ID configured in both sections is one plugin: `plugins.external` wins and the legacy entry is dropped, so a half-finished migration cannot start two child processes under one identity.
 
@@ -479,5 +479,6 @@ The smallest complete plugin, in Python and checked in, is `docs/guides/examples
 
 ## History
 
-- 2026-09-03: M4b applied four revisions: `filters[]` on a collection, `list.params.filters`, `page.omitted`, `page.coverage[]`, and the `failed` outcome; and stated the rule that `outcome` describes only the row set. Everything still in the plan README's pending table remains unimplemented.
-- 2026-09-03: published as the single authority for `sidecar.plugin/v1-draft`, carrying the contract that was drafted in `docs/plans/active/plugin-ecosystem/protocol.md` and implemented in M2a and M2b. Still a draft; the identifier freezes in M4d.
+- 2026-09-03: frozen as `sidecar.plugin/v1`. The identifier the host sends and validates changed from `sidecar.plugin/v1-draft`, with no alias: tolerance lives on the plugin side, so a plugin that accepts either identifier on a request and answers with whichever it was asked works with a Sidecar from before the freeze and with every one after it. Three revisions landed with the freeze — `params.filters{}` on `get`, the 24-character render bound on `status.label`, and the narrow reflow rule stated fully — and two were closed without a wire change: the excerpt kind is a v2 note, and `asOf` is out of scope for v1 because a plugin that needs it declares a text filter.
+- 2026-09-03: M4b applied four revisions: `filters[]` on a collection, `list.params.filters`, `page.omitted`, `page.coverage[]`, and the `failed` outcome; and stated the rule that `outcome` describes only the row set. The rest of the plan README's pending table was settled at the freeze.
+- 2026-09-03: published as the single authority for the contract that was drafted in `docs/plans/active/plugin-ecosystem/protocol.md` and implemented in M2a and M2b. It was a draft then, under the identifier `sidecar.plugin/v1-draft`.

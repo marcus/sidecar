@@ -560,11 +560,11 @@ func pluginCommand() *Command {
 			"executable that answers JSON on stdout and that Sidecar renders itself.\n\n" +
 			"An external plugin speaks one of two protocols, decided by the config section\n" +
 			"it is written in and never by the executable. plugins.external entries speak\n" +
-			"sidecar.plugin/v1-draft, which has describe, resolve, list, get, and act;\n" +
+			"sidecar.plugin/v1, which has describe, resolve, list, get, and act;\n" +
 			"terminalResources.providers entries speak the frozen\n" +
 			"sidecar.terminal-resource/v1, which has describe and resolve. The\n" +
 			"`sidecar terminal-links` verbs remain the surface for that older section.\n\n" +
-			"The draft protocol is behind the plugin_protocol feature flag. Turn it on\n" +
+			"The plugin protocol is behind the plugin_protocol feature flag. Turn it on\n" +
 			"with `sidecar --enable-feature=plugin_protocol`, or set\n" +
 			"features.flags.plugin_protocol.\n\n" +
 			"Writing one: docs/guides/active/creating-plugins.md is the walkthrough, from\n" +

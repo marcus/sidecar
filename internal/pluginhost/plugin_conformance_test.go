@@ -346,6 +346,7 @@ func TestPluginHostileCasesAreBounded(t *testing.T) {
 		{name: "action names an undeclared collection", mode: "action-unknown-collection", wantDescribeErr: true, detail: "not declared"},
 		{name: "choice input with no choices", mode: "choice-without-choices", wantDescribeErr: true, detail: "no choices"},
 		{name: "answers the resource protocol only", mode: "resource-only", wantDescribeErr: true, detail: ""},
+		{name: "answers the pre-freeze draft identifier", mode: "draft-answer", wantDescribeErr: true, detail: ""},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -383,6 +384,28 @@ func TestResourceOnlyPluginIsAProtocolFailure(t *testing.T) {
 	}
 	if len(desc.Matchers) != 2 || len(desc.Collections) != 0 {
 		t.Fatalf("resource-provider describe = %+v; it must carry matchers and no collections", desc)
+	}
+}
+
+// The identifier is frozen and the host validates it strictly: a plugin that
+// still answers the pre-freeze draft identifier is a protocol failure, not a
+// tolerated older dialect.
+//
+// This is the other half of the freeze rule. Tolerance lives on the plugin
+// side — a plugin that accepts either identifier on a request and answers with
+// whichever it was asked keeps working with an older Sidecar and with this
+// one — and the host stays strict so the reference's rule is literally true.
+func TestDraftIdentifierAnswerIsAProtocolFailure(t *testing.T) {
+	provider, _ := newFixturePlugin(t, "fixture", "-mode=draft-answer")
+	_, err := provider.Describe(context.Background())
+	if err == nil {
+		t.Fatal("Describe accepted an answer on the pre-freeze draft identifier")
+	}
+	if OutcomeCode(err) != string(ReasonProtocol) {
+		t.Fatalf("outcome = %q, want %q", OutcomeCode(err), ReasonProtocol)
+	}
+	if !strings.Contains(err.Error(), Protocol) {
+		t.Fatalf("error = %q, want it to name the identifier the host asked on (%s)", err, Protocol)
 	}
 }
 

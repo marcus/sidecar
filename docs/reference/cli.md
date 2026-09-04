@@ -2154,12 +2154,12 @@ executable that answers JSON on stdout and that Sidecar renders itself.
 
 An external plugin speaks one of two protocols, decided by the config section
 it is written in and never by the executable. plugins.external entries speak
-sidecar.plugin/v1-draft, which has describe, resolve, list, get, and act;
+sidecar.plugin/v1, which has describe, resolve, list, get, and act;
 terminalResources.providers entries speak the frozen
 sidecar.terminal-resource/v1, which has describe and resolve. The
 `sidecar terminal-links` verbs remain the surface for that older section.
 
-The draft protocol is behind the plugin_protocol feature flag. Turn it on
+The plugin protocol is behind the plugin_protocol feature flag. Turn it on
 with `sidecar --enable-feature=plugin_protocol`, or set
 features.flags.plugin_protocol.
 

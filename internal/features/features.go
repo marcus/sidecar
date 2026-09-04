@@ -134,7 +134,7 @@ var (
 	}
 
 	// PluginProtocol gates the plugin protocol host: the plugins.external
-	// configuration section, the sidecar.plugin/v1-draft envelope, and every
+	// configuration section, the sidecar.plugin/v1 envelope, and every
 	// `sidecar plugin` verb that talks to an external plugin process.
 	//
 	// Off by default while the contract is a draft. Deliberately a flag rather

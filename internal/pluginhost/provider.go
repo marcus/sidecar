@@ -6,7 +6,7 @@
 // policy. An instance configured under terminalResources is dispatched with the
 // frozen sidecar.terminal-resource/v1 identifier and answers describe and
 // resolve; an instance configured under plugins.external is dispatched with
-// sidecar.plugin/v1-draft and additionally answers list, get, and act. Both end
+// sidecar.plugin/v1 and additionally answers list, get, and act. Both end
 // up as the same host types, because the second protocol is the first one grown
 // rather than a replacement.
 //

@@ -4,6 +4,10 @@ All notable changes to sidecar are documented here.
 
 ## [Unreleased]
 
+### Features
+
+- **The plugin protocol is frozen as `sidecar.plugin/v1`.** Sidecar sends that identifier and validates the answer against it strictly: there is no alias, and a plugin still answering the pre-freeze `sidecar.plugin/v1-draft` is a protocol failure with a named reason rather than a silent downgrade. Tolerance belongs on the plugin side — a plugin that accepts either identifier on a request and answers with whichever it was asked keeps working with a Sidecar released before the freeze and with every one after it. The canonical request and response JSON under `internal/pluginhost/testdata/protocol/`, the reference fixture, the reference, the authoring guide, the runnable example, and the generated CLI reference all name the frozen identifier. (td-6c49c5)
+
 ### Bug Fixes
 
 - **A worktree created non-interactively can now be deleted non-interactively through the same lifecycle as the TUI.** `sidecar worktree delete TARGET --plan --json` reports the exact checkout, dirtiness, remote availability, branch-cleanup choices, and pinned branch and HEAD without changing anything; using the returned absolute path and re-running with `--expect-branch BRANCH --expect-head-oid OID --yes` closes its Sidecar worktree session and rooted managed shells before removing the directory. Local and remote branch cleanup remain explicit flags, as the confirmation's unchecked boxes are, and a failed create's exact pending-creation journal is cleared only after deletion succeeds. A rooted shell that refuses teardown is reported as a warning after the checkout is removed, while requested branch and journal cleanup still finish. The shared refusal rules still protect main, bare, detached, locked, missing, and prunable worktrees. (td-85b0c4)

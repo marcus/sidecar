@@ -168,7 +168,7 @@ func buildPluginFixture(t *testing.T) string {
 }
 
 // pluginProtocolEnv points the plugin verbs at a config of their own, with the
-// draft protocol turned on.
+// plugin protocol turned on.
 func pluginProtocolEnv(t *testing.T, contents string) (Env, *bytes.Buffer, *bytes.Buffer) {
 	t.Helper()
 	env, out, errOut := pluginTestEnv(t, contents)
@@ -197,7 +197,7 @@ func TestPluginListReportsExternalPlugins(t *testing.T) {
 	if last.Source != config.PluginSourceExternal {
 		t.Fatalf("source = %q", last.Source)
 	}
-	if last.Protocol != "sidecar.plugin/v1-draft" {
+	if last.Protocol != "sidecar.plugin/v1" {
 		t.Fatalf("protocol = %q", last.Protocol)
 	}
 	if !last.Enabled || !last.Active {
@@ -336,7 +336,7 @@ func TestPluginCheckHumanOutputAndRefusals(t *testing.T) {
 	if code := runPluginCheck(env, []string{"fixture"}); code != 0 {
 		t.Fatalf("exit %d: %s", code, errOut.String())
 	}
-	for _, want := range []string{"collection results", "action log-note", "reads context project", "sidecar.plugin/v1-draft"} {
+	for _, want := range []string{"collection results", "action log-note", "reads context project", "sidecar.plugin/v1"} {
 		if !strings.Contains(out.String(), want) {
 			t.Fatalf("human output is missing %q:\n%s", want, out.String())
 		}

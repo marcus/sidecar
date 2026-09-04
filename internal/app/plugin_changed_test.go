@@ -45,7 +45,7 @@ func TestPluginChangedBroadcastsToEveryBrowser(t *testing.T) {
 	}
 }
 
-// The flag gates it: with the draft protocol off there is no collection tab a
+// The flag gates it: with the plugin protocol off there is no collection tab a
 // refresh could reach, and the request is declined rather than silently
 // swallowed.
 func TestPluginChangedIsRefusedWhenTheFlagIsOff(t *testing.T) {

@@ -134,7 +134,7 @@ func describeResourceProvidersCmd(cfg *config.Config) tea.Cmd {
 
 		// Each flag gates its own section. terminal_resource_providers keeps
 		// answering for the frozen protocol whatever the plugin flag says, so
-		// turning the draft protocol off cannot take a working Jira provider
+		// turning the plugin protocol off cannot take a working Jira provider
 		// down with it.
 		instances := enabledPluginInstances(cfg, resources, protocol)
 		if len(instances) == 0 {
@@ -220,7 +220,7 @@ func (m *Model) publishResourceProviders() tea.Cmd {
 		}
 		// The collection shape's half of the same injection. It is behind the
 		// flag rather than the manager: a Resource leaf must keep resolving
-		// matched documents when the draft protocol is off, and a collection tab
+		// matched documents when the plugin protocol is off, and a collection tab
 		// that could not exist has nothing to bind.
 		plugins, ok := surface.(resourceview.PluginSurface)
 		if !ok || !features.IsEnabled(features.PluginProtocol.Name) {

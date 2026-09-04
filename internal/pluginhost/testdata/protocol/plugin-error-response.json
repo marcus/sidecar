@@ -1,5 +1,5 @@
 {
-  "protocol": "sidecar.plugin/v1-draft",
+  "protocol": "sidecar.plugin/v1",
   "error": {
     "code": "invalid_config",
     "message": "Recall has no index for this machine yet",

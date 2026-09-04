@@ -1,5 +1,5 @@
 {
-  "protocol": "sidecar.plugin/v1-draft",
+  "protocol": "sidecar.plugin/v1",
   "resource": {
     "identity": "rc:notes:2026-08-14-dex-design",
     "title": "DEX schema notes",
