@@ -219,12 +219,20 @@ type MastracodeHook struct {
 }
 
 // mastracodeHooks is the provider half, ported row for row from Herdr's
-// MASTRACODE_HOOK_EVENTS at HERDR_INTEGRATION_VERSION=2, in upstream's order.
+// MASTRACODE_HOOK_EVENTS at HERDR_INTEGRATION_VERSION=2, in upstream's order with
+// one row moved.
 //
-// The order is upstream's and is preserved for review rather than for behaviour:
-// Mastra Code matches hooks by event key, so nothing in the runtime depends on
-// it, and a reviewer diffing this against src/integration/mod.rs should see the
-// same eleven rows in the same sequence.
+// A reviewer diffing this against src/integration/mod.rs should see the same
+// eleven rows in the same sequence, with one difference: upstream's first row
+// binds the session on SessionStart and this one binds it on AgentStart, sitting
+// immediately before AgentStart's own lane row. The section above carries the
+// measurement that moved it.
+//
+// Order across events is preserved for review rather than for behaviour, since
+// Mastra Code matches hooks by event key. Order WITHIN an event is behaviour:
+// Mastra Code dispatches an event's hooks sequentially in array order, so the
+// AgentStart pair binds the conversation before it reports the lane, which is the
+// order Herdr's pi asset also uses.
 //
 // The lane of each row is upstream's. The reason code is Sidecar's, and each one
 // is the narrowest value in the frozen vocabulary that is true of the event:
