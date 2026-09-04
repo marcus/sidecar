@@ -525,11 +525,15 @@ func clampStart(s string, width int) string {
 // path wants, so the filename stays visible.
 //
 // ansi.TruncateLeft's count is how many cells to *remove* from the left, not
-// how many to keep, and the prefix it adds occupies one of the cells that
-// survive. Passing the target width straight through therefore cut a 43-column
-// path down to ten columns rather than to thirty-four, which is how the Projects
-// page's path column and the Integrations table's files column both ended up
-// showing an ellipsis and a suffix.
+// how many to keep. Passing the target width straight through therefore cut a
+// 43-column path down to ten columns rather than to thirty-four, which is how
+// the Projects page's path column and the Integrations table's files column
+// both ended up showing an ellipsis and a suffix.
+//
+// The ellipsis is prepended here rather than handed to TruncateLeft as its
+// prefix, because that prefix is written only when the string is longer than
+// the count -- so asking for exactly one column, where the count is the whole
+// string, dropped the ellipsis too and returned nothing at all.
 func clampEnd(s string, width int) string {
 	if width < 1 {
 		return ""
@@ -538,7 +542,7 @@ func clampEnd(s string, width int) string {
 	if total <= width {
 		return s
 	}
-	return ansi.TruncateLeft(s, total-width+1, "…")
+	return "…" + ansi.TruncateLeft(s, total-width+1, "")
 }
 
 func padDisplay(s string, width int) string {

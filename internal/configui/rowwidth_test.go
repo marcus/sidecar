@@ -68,3 +68,45 @@ func TestRowWidthNeverExceedsThePane(t *testing.T) {
 		}
 	}
 }
+
+// clampEnd is the one clamp whose argument is not what it looks like.
+// ansi.TruncateLeft's count is how many columns to remove from the left, not
+// how many to keep, and the ellipsis it prepends occupies one of the columns
+// that survive. Passing the target width straight through cut a 43-column path
+// to ten rather than to thirty-four, in the Projects page's path column and in
+// the Integrations table's files column alike, and nothing failed: both callers
+// pad the result, so a result that was far too short still filled its cell.
+//
+// The property is the whole contract: whatever comes back is exactly the width
+// that was asked for, and it is the end of the string, because the end of a
+// path is the part that identifies the file.
+func TestClampEndKeepsExactlyTheWidthItWasAsked(t *testing.T) {
+	const path = "/Users/someone/.config/opencode/plugin/sidecar-lifecycle.js"
+	for width := 1; width <= ansi.StringWidth(path)+3; width++ {
+		got := clampEnd(path, width)
+		want := min(width, ansi.StringWidth(path))
+		if w := ansi.StringWidth(got); w != want {
+			t.Fatalf("clampEnd(width %d) returned %d columns: %q", width, w, got)
+		}
+		switch {
+		case width >= ansi.StringWidth(path):
+			if got != path {
+				t.Fatalf("clampEnd(width %d) shortened a path that fits: %q", width, got)
+			}
+		case width == 1:
+			if got != "…" {
+				t.Fatalf("clampEnd(width 1) returned %q", got)
+			}
+		default:
+			if !strings.HasPrefix(got, "…") {
+				t.Fatalf("clampEnd(width %d) dropped the ellipsis: %q", width, got)
+			}
+			if !strings.HasSuffix(path, strings.TrimPrefix(got, "…")) {
+				t.Fatalf("clampEnd(width %d) kept %q, which is not the end of the path", width, got)
+			}
+		}
+	}
+	if got := clampEnd(path, 0); got != "" {
+		t.Fatalf("clampEnd(width 0) returned %q", got)
+	}
+}
