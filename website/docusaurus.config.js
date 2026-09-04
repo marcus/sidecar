@@ -121,6 +121,19 @@ const config = {
     ],
   ],
 
+  plugins: [
+    [
+      '@docusaurus/plugin-client-redirects',
+      {
+        // Kept URLs. A page that moved keeps answering at the address people
+        // and search engines already have.
+        redirects: [
+          {from: '/docs/terminal-resources', to: '/docs/plugins'},
+        ],
+      },
+    ],
+  ],
+
   themeConfig:
     /** @type {import('@docusaurus/preset-classic').ThemeConfig} */
     ({
