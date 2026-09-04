@@ -226,6 +226,21 @@ func entryAssetStatus(dir, file FileState, scan hookTreeScan, spec hookEntrySpec
 		return agentlifecycle.StatusNeedsRepair, "the installed entry in " + name + " invokes Sidecar's report-session command but no longer matches what Sidecar ships", ""
 	case anyOwnedEntry(scan, func(o ownedHookEntry) bool { return !o.groupCanonical }):
 		return agentlifecycle.StatusNeedsRepair, "the installed entry in " + name + " sits under a changed event or matcher, so it no longer fires the way Sidecar qualified it", scan.owned[0].version
+	case !ownedEntriesCoverEachEvent(scan, spec):
+		// The right NUMBER of entries in the wrong places. Counting alone cannot
+		// see this: a hand edit that moves two entries onto an event that
+		// already has one leaves six entries, every one byte-identical to the
+		// bundled entry and every one under an event the spec names, so the two
+		// branches above are both satisfied and the file reads as current while
+		// two of Devin's events fire nothing at all.
+		//
+		// A single-event integration cannot reach this branch: it arrives here
+		// with exactly one owned entry whose group is canonical, which for a
+		// one-event spec is coverage by construction. So Claude and Codex are
+		// unchanged by it.
+		return agentlifecycle.StatusNeedsRepair, "Sidecar's session-identity entries in " + name +
+			" are not one under each of the " + strconv.Itoa(wanted) + " hook events they belong under, so some events " +
+			"would report twice and others not at all; repair restores one under each", scan.owned[0].version
 	case anyOwnedEntry(scan, func(o ownedHookEntry) bool { return o.version != spec.current().version }):
 		return agentlifecycle.StatusOutdated, "version " + scan.owned[0].version + " is installed; this build ships version " + spec.current().version, scan.owned[0].version
 	}
@@ -243,6 +258,24 @@ func anyOwnedEntry(scan hookTreeScan, pred func(ownedHookEntry) bool) bool {
 		}
 	}
 	return false
+}
+
+// ownedEntriesCoverEachEvent reports whether the scan holds exactly one
+// Sidecar-owned entry under every event the spec installs under.
+//
+// It is the distribution question, which the count is not: len(scan.owned) says
+// how many entries exist and this says whether they are in the right places.
+func ownedEntriesCoverEachEvent(scan hookTreeScan, spec hookEntrySpec) bool {
+	perEvent := map[string]int{}
+	for _, o := range scan.owned {
+		perEvent[o.event]++
+	}
+	for _, event := range spec.eventNames() {
+		if perEvent[event] != 1 {
+			return false
+		}
+	}
+	return true
 }
 
 func versionOf(scan hookTreeScan) string {

@@ -434,3 +434,49 @@ func devinStatus(t *testing.T, s Service) Status {
 	}
 	return st
 }
+
+// TestDevinEntriesPiledOnOneEventReadAsDamage is the counting bug this suite
+// nearly shipped with.
+//
+// entryAssetStatus decided coverage from the NUMBER of Sidecar-owned entries
+// alone, so six entries all piled under SessionStart counted as six and read as
+// current. Every one of them is byte-identical to the bundled entry and sits
+// under an event the spec names, so no other check catches it either: the file
+// reports healthy, SessionStart fires three times, and the four events that
+// actually carry Devin's session id on a later turn fire not at all. That is
+// the exact failure the "N of the 6" message exists to name, reached by a hand
+// edit that moves entries rather than one that deletes them.
+func TestDevinEntriesPiledOnOneEventReadAsDamage(t *testing.T) {
+	svc, _, paths := devinFixture(t)
+	devinSetUp(t, paths)
+	applyTo(t, svc, DevinProvider, ActionInstall)
+
+	// Move two entries onto SessionStart instead of deleting them, so the file
+	// still holds exactly six of Sidecar's entries.
+	top := mustParseAny(t, readFileForTest(t, paths.Settings)).(map[string]any)
+	hooks := top["hooks"].(map[string]any)
+	start := hooks["SessionStart"].([]any)
+	for _, event := range []string{"PreToolUse", "PostToolUse"} {
+		start = append(start, hooks[event].([]any)...)
+		delete(hooks, event)
+	}
+	hooks["SessionStart"] = start
+	edited, err := json.Marshal(top)
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeFileForTest(t, paths.Settings, string(edited))
+
+	st := devinStatus(t, svc)
+	if st.Status != agentlifecycle.StatusCurrent {
+		t.Logf("status = %q (%s)", st.Status, st.Message)
+	}
+	if st.Status != agentlifecycle.StatusNeedsRepair {
+		t.Fatalf("status = %q, want needs-repair: six entries under four events is not an installation", st.Status)
+	}
+
+	applyTo(t, svc, DevinProvider, ActionRepair)
+	if got := devinStatus(t, svc); got.Status != agentlifecycle.StatusCurrent {
+		t.Fatalf("status after repair = %q (%s)", got.Status, got.Message)
+	}
+}
