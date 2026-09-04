@@ -178,6 +178,8 @@ When a page is `degraded` or `failed`, send `coverage[]` with it. The host's cov
 
 Do not repeat `updatedAt` as a field: the host owns rendering it, and renders it relatively.
 
+**`get.params.filters` is the scope the row was found in**, sent exactly as the `list` that produced the row sent it. Read it the same way you read it on `list`. If a filter of yours changes what a row *means* — a profile, a sensitivity level, an account — then resolving the row without it is resolving a different row, and a plugin that ignores it will eventually answer a document the user cannot explain, or refuse one they could see a moment ago.
+
 ## Configure it, and what that means
 
 ```bash
