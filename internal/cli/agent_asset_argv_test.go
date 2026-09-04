@@ -112,8 +112,18 @@ func acceptAssetArgv(t *testing.T, store lifecyclestore.Store, argv []string) (u
 		if cmd == nil {
 			t.Fatal("no `agent report-session` command is registered")
 		}
-		if _, code := parseReportSessionFlags(env, argv[2:], RenderHelp(cmd)); code != -1 {
+		f, code := parseReportSessionFlags(env, argv[2:], RenderHelp(cmd))
+		if code != -1 {
 			t.Fatalf("the shipped CLI refused an argv the asset spawns: %v\nexit %d: %s", argv, code, errOut.String())
+		}
+		// The kind gate, which parsing alone does not reach and which the Kilo
+		// port found the hard way: `--kind kilo` parsed cleanly and was then
+		// refused with exit 5, because resolution searched the launchable
+		// families only. Every value here is one the ASSET chose, so it belongs
+		// in this seam alongside the flags themselves. The rest of the verb
+		// needs a live pane and stays out.
+		if _, err := resolveReportedKind(f.kind); err != nil {
+			t.Fatalf("the shipped CLI refused the kind an asset claims: %v\n%v", argv, err)
 		}
 		return 0, false
 
