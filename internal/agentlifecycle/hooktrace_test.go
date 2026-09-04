@@ -136,7 +136,7 @@ var valueBearingTraceKeys = map[string]bool{
 // every test in the tree. So the allowlist above is enforced here: a `=` on any
 // key outside it fails, whatever the value looks like.
 func TestNoHookTraceCarriesAValue(t *testing.T) {
-	for _, provider := range []string{"codex", "claude", "pi", "kilo", "kimi"} {
+	for _, provider := range []string{"codex", "claude", "pi", "kilo", "kimi", "qwen"} {
 		entries, err := os.ReadDir(filepath.Join("testdata", "traces", provider))
 		if err != nil {
 			t.Fatalf("%s has no traces but its capability entry claims real evidence: %v", provider, err)
@@ -936,5 +936,63 @@ func TestKimiNonInteractiveRunsSkipThePermissionPair(t *testing.T) {
 		if e == "PermissionRequest" || e == "PermissionResult" {
 			t.Fatalf("the non-interactive trace now contains %s; the recorded finding is that it contains neither", e)
 		}
+	}
+}
+
+// TestQwenSessionStartFiresBeforeAuthentication is the whole of Qwen's tier,
+// re-derived from the capture that earned it.
+//
+// A session-identity port has one thing to prove and this is it: a released
+// build fires the event and the payload names the conversation. What makes the
+// Qwen capture worth its own test is the second half -- it was taken while the
+// pane sat on the provider picker with no auth type selected, so the event
+// belongs to session creation rather than to a configured session. That is the
+// fact that makes requalifying this provider cost one process start instead of
+// a model turn, and it would be lost the moment it lived only in prose.
+func TestQwenSessionStartFiresBeforeAuthentication(t *testing.T) {
+	rows := readHookTrace(t, "qwen", "session-start.tsv")
+	assertEvents(t, eventsOf(rows), "SessionStart")
+
+	fields := map[string]bool{}
+	for _, f := range rows[0].fields {
+		fields[strings.SplitN(f, "=", 2)[0]] = true
+	}
+	// The identifier the binding is made from. Without it the entry installs
+	// cleanly and binds nothing, which is the failure this trace rules out.
+	if !fields["session_id"] {
+		t.Fatal("the captured SessionStart payload carries no session_id, so nothing could bind the pane")
+	}
+	// A transcript path is present too, so the binding has a fallback shape if
+	// the id ever stops arriving.
+	if !fields["transcript_path"] {
+		t.Error("the payload carries no transcript_path; report-session's path fallback has nothing to use")
+	}
+	// source is the discriminator, and only startup is traced. A trace edited
+	// to claim resume, clear or compact without a capture fails here.
+	var source string
+	for _, f := range rows[0].fields {
+		if strings.HasPrefix(f, "source=") {
+			source = strings.TrimPrefix(f, "source=")
+		}
+	}
+	if source != "startup" {
+		t.Fatalf("the capture records source=%q; only startup was traced", source)
+	}
+	// The tier this earns, and no more. Session identity is the ceiling by
+	// construction: the asset installs one entry and reports which conversation
+	// occupies the pane, never what state it is in.
+	capability, ok := CapabilityForSource("sidecar.qwen.hooks")
+	if !ok {
+		t.Fatal("no capability entry for sidecar.qwen.hooks")
+	}
+	if capability.Tier != TierSessionIdentity || capability.Evidence != EvidenceRealTrace {
+		t.Fatalf("qwen is %s on %s evidence; the capture earns session-identity on real-trace",
+			capability.Tier, capability.Evidence)
+	}
+	if len(capability.Covered) != 1 || !capability.Covers(TransitionSessionIdentity) {
+		t.Fatalf("covered = %v; one SessionStart proves session identity and nothing else", capability.Covered)
+	}
+	if capability.TestedProviderRange != "0.23.0" {
+		t.Fatalf("testedProviderRange = %q, want the version the capture was taken from", capability.TestedProviderRange)
 	}
 }

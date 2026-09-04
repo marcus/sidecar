@@ -36,7 +36,7 @@ This is enforced rather than documented. `Capability.TierFor` polices every tier
 | Devin CLI | not run | docs-only | `screen-fallback` | session only | not traced; one capture carrying a session id promotes it to `session-identity` and nothing else has to change |
 | Droid | not run | docs-only | `screen-fallback` | session only | not traced; and a `~/.factory/hooks.json`, if you have one, shadows the entry entirely |
 | Qoder CLI | not run | docs-only | `screen-fallback` | session only | not traced; `QODER_CONFIG_DIR` is honoured on Herdr's word rather than a published contract |
-| Qwen Code | not run | docs-only | `screen-fallback` | session only | not traced; its hook timeout counts in milliseconds, which is the one unit difference in this group |
+| Qwen Code | 0.23.0 | real-trace | `session-identity` | session only | none; session identity is this asset's ceiling by construction and it is reached |
 
 Pi's row went out of `capabilities.json` when nothing could produce a report for it, came back at `session-identity` when `PiAdapter` and `assets/pi/sidecar-lifecycle.js` shipped, and is now at `advisory` on `real-trace` evidence because a live Pi 0.84.3 session has been traced. It is the only row here that has reached its own ceiling: `advisory` is as high as Pi can ever go, because `full` needs `blocked_on_request` and `unblocked` and Pi ships no permission system to produce either. See "Why the Pi entry was retracted, and what brought it back".
 
@@ -377,9 +377,19 @@ Sidecar installs into the user-level file only. A per-project copy would follow 
 
 ## Qwen Code
 
-**Source:** Herdr's qwen integration at `HERDR_INTEGRATION_VERSION=1`, then Qwen Code's own published hooks reference and its `packages/core/src/config/storage.ts`. **Not traced.** No released Qwen Code fired this hook here, so the entry is `screen-fallback` on `docs-only` evidence.
+**Source:** Herdr's qwen integration at `HERDR_INTEGRATION_VERSION=1`, then Qwen Code's own published hooks reference and its `packages/core/src/config/storage.ts`, and **traced against qwen-code 0.23.0 on darwin/arm64, 2026-09-04.** The trace is `internal/agentlifecycle/testdata/traces/qwen/session-start.tsv`; `TestQwenSessionStartFiresBeforeAuthentication` re-derives every claim from it. This is the one of the four session-identity ports in Slice 4 that reached its tier, and `session-identity` is that asset's ceiling by construction rather than a waypoint: it installs one entry and reports which conversation occupies the pane, never what state it is in.
 
 Qwen keeps hooks in `~/.qwen/settings.json`, or `$QWEN_HOME/settings.json` when that variable is set, in Claude Code's nested group shape. Sidecar adds one session-identity entry under `SessionStart` with the `"*"` matcher `install_qwen` writes. That is upstream's whole table and always has been: version 1 is the first release, no lifecycle rows were ever added, and upstream even names its asset `herdr-agent-session.sh` rather than `herdr-agent-state.sh`.
+
+### The event fires before authentication, which is what made the tier reachable
+
+The proof pane was sitting on Qwen's "Connect a Provider" picker, with no auth type selected and no credentials configured for it, at the moment the hook had already run and Sidecar had already bound the pane. The same payload arrives under `qwen -p`, where the run then refuses with "No auth type is selected". So the event belongs to session creation rather than to a configured session, and requalifying this provider costs one process start rather than a model turn. That is worth knowing for every future requalification, and it is the reason a credential-free environment could earn this tier at all.
+
+Only `source=startup` is traced. `qwen --resume <id>` on the captured id produced no second `SessionStart` in roughly 25 seconds of watching, but the resume's own success was never established, so that is an unexplained observation rather than a measured absence. The `"*"` matcher is proved to catch `startup` and nothing more.
+
+### Qwen rewrites its own settings.json underneath the entry
+
+During the proof Qwen added a `$version` key and a `ui.autoModeAcknowledged` key to the very file Sidecar had installed into. The uninstall preserved both, and a hand-added `theme`, and removed only Sidecar's `hooks` key. That is the token-preserving edit working against a file the provider changed *after* the install, which is precisely the case an installer that rewrote whole files would have destroyed.
 
 ### The timeout counts in milliseconds
 

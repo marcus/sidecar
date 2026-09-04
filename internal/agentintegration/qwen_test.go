@@ -24,7 +24,7 @@ func qwenFixture(t *testing.T, opts ...func(*Env)) (Service, Env, sessionEntryPa
 			}
 			return "", errors.New("not found")
 		},
-		ProviderVersion: func(string) string { return "0.2.0" },
+		ProviderVersion: func(string) string { return "0.23.0" },
 		UID:             os.Getuid(),
 	}
 	for _, o := range opts {
@@ -105,11 +105,18 @@ func TestQwenBundledEntryMatchesTheRegistry(t *testing.T) {
 	if capability.AssetVersion != asset.Version {
 		t.Fatalf("asset version %q but registry records %q", asset.Version, capability.AssetVersion)
 	}
-	if capability.Tier != agentlifecycle.TierScreenFallback {
-		t.Fatalf("tier %q, want screen-fallback until a released Qwen is traced", capability.Tier)
+	// Traced against a released 0.23.0, so this is the one of the four
+	// session-identity ports that reached its tier. It is also that tier's
+	// ceiling: the asset installs one entry and reports which conversation
+	// occupies the pane, never what state it is in.
+	if capability.Tier != agentlifecycle.TierSessionIdentity {
+		t.Fatalf("tier %q, want session-identity", capability.Tier)
 	}
-	if capability.Evidence != agentlifecycle.EvidenceDocsOnly {
-		t.Fatalf("evidence %q, want docs-only", capability.Evidence)
+	if capability.Evidence != agentlifecycle.EvidenceRealTrace {
+		t.Fatalf("evidence %q, want real-trace", capability.Evidence)
+	}
+	if len(capability.Covered) != 1 || !capability.Covers(agentlifecycle.TransitionSessionIdentity) {
+		t.Fatalf("covered %v claims more than one SessionStart proves", capability.Covered)
 	}
 	if want := "sidecar agent report-session --kind qwen --hook-stdin"; reportSessionCommand(QwenProvider) != want {
 		t.Fatalf("command %q, want %q", reportSessionCommand(QwenProvider), want)

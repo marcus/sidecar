@@ -183,6 +183,9 @@ func (s sessionEntrySpec) dirFor(env Env) string {
 	}
 	if s.dirFromConfigHome {
 		if base := strings.TrimSpace(env.ConfigHome); base != "" {
+			// The provider-named leaf is the last segment of the $HOME default,
+			// which is what makes ~/.config/devin and $XDG_CONFIG_HOME/devin one
+			// declaration rather than two that could disagree.
 			return filepath.Join(expandHomePath(env.Home, base), s.dirSegments[len(s.dirSegments)-1])
 		}
 	}
@@ -237,7 +240,6 @@ type sessionEntryState struct {
 	dir      FileState
 	settings FileState
 	backup   FileState
-	raw      []byte
 	scan     hookTreeScan
 
 	providerPath    string
@@ -268,7 +270,7 @@ func (a sessionEntryAdapter) inspect(env Env) sessionEntryState {
 		s.providerPath = path
 		s.providerVersion = env.providerVersion(a.spec.command)
 	}
-	s.raw, s.scan = scanEntryFile(s.settings, s.spec)
+	_, s.scan = scanEntryFile(s.settings, s.spec)
 	if len(s.scan.owned) > 0 {
 		ownEntry(&s.settings, s.scan.owned[len(s.scan.owned)-1].version)
 	}

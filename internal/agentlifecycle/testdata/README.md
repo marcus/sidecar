@@ -79,12 +79,15 @@ Captured 2026-08-30 on darwin/arm64.
 | `traces/kimi/cancelled-turn.tsv` | kimi-code | 0.40.1 | openrouter openai/gpt-4.1-mini | user cancellation | Slice 2 |
 | `traces/kimi/session-end.tsv` | kimi-code | 0.40.1 | openrouter openai/gpt-4.1-mini | /quit | Slice 2 |
 | `traces/kimi/exec-turn-auto-approves.tsv` | kimi-code | 0.40.1 | openrouter openai/gpt-4.1-mini | success under `kimi -p`, no permission pair | Slice 2 |
+| `traces/qwen/session-start.tsv` | qwen-code | 0.23.0 | none (no auth type selected) | session start, before authentication | Slice 4 |
 
 The Pi traces were captured 2026-09-02 on darwin/arm64; the four rows above are
 one Pi 0.84.3 process each for the first three and a second process for the
 fourth. Their capture procedure and their extra sanitization rule are in the Pi
 section below, because they are the first traces in this directory to record any
 event *value*.
+
+The Qwen row was captured 2026-09-04 on darwin/arm64, and it is the first trace here taken with **no model and no credentials** -- a property of the provider rather than a shortcut. Qwen Code fires `SessionStart` before an auth type is selected, so the capture was taken with the pane sitting on its provider picker; the same payload arrives under `qwen -p`, where the run then refuses for want of auth. A session-identity integration has exactly one thing to prove, and for this provider proving it costs one process start.
 
 The error trace is kept deliberately. A failed turn is a real lifecycle path,
 and it is the one that shows `session.error` resolving to `session.idle` rather

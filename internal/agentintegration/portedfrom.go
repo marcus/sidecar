@@ -258,9 +258,10 @@ var portedFrom = []PortedFrom{
 			"dependency are gone; no --seq is sent, because Sidecar's store assigns; and upstream's " +
 			"--session-start-source pass-through is NOT copied, because report-session has no such flag and the " +
 			"payload's source field answers no question Sidecar's binding asks -- a session id is the same " +
-			"conversation whether it arrived at startup, on resume, or after a compact. NOT traced: no capture of " +
-			"a live Qwen session backs any of it, which is why the capability entry is docs-only at " +
-			"screen-fallback.",
+			"conversation whether it arrived at startup, on resume, or after a compact. TRACED against a released " +
+			"qwen-code 0.23.0: the SessionStart entry this port installs fired and bound the pane, so the " +
+			"capability entry is real-trace at session-identity. The capture is " +
+			"internal/agentlifecycle/testdata/traces/qwen/session-start.tsv.",
 	},
 }
 
