@@ -107,8 +107,17 @@ func TestRequiredSearchNextCollectionIsNotListed(t *testing.T) {
 	if n := listsFor(host, "sources"); n != 0 {
 		t.Fatalf("a required-search next collection was listed %d times", n)
 	}
-	if !strings.Contains(strip(m.View()), "Fixture · Sources") {
+	view := strip(m.View())
+	if !strings.Contains(view, "Fixture · Sources") {
 		t.Fatal("the box does not name the next collection at all")
+	}
+	// And it says why it is empty. "Not read yet" would blame the host for a
+	// silence the collection's own contract explains.
+	if !strings.Contains(view, "This collection answers a query, and there is none.") {
+		t.Fatalf("the box does not say the next collection needs a query:\n%s", view)
+	}
+	if strings.Contains(view, "Not read yet.") {
+		t.Fatalf("the box claims the next collection is merely unread:\n%s", view)
 	}
 }
 

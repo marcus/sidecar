@@ -137,7 +137,9 @@ var (
 	// configuration section, the sidecar.plugin/v1 envelope, and every
 	// `sidecar plugin` verb that talks to an external plugin process.
 	//
-	// Off by default while the contract is a draft. Deliberately a flag rather
+	// Off by default. The contract is frozen; flipping this default on is its
+	// own decision and belongs to the config-and-flags lane, not to the
+	// freeze. Deliberately a flag rather
 	// than "is anything configured": a user must be able to write the
 	// configuration and turn it on separately, and turning it off must stop
 	// every plugin process rather than only hide the surfaces.

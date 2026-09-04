@@ -307,19 +307,6 @@ func TargetFromSpan(span terminallink.Span) (Target, bool) {
 	}
 }
 
-// ResolveCollectionTarget validates a `--plugin` request without contacting
-// anything, for the same reason ResolveResourceTarget does: a short-lived CLI
-// process must never start a plugin to answer `sidecar open`.
-//
-// The two shapes are distinguished by whether a row was named. A collection
-// with no row opens the collection tab and carries its opening query; a
-// collection with a row opens that row's document tab, and a query there would
-// be describing a search nobody is running.
-//
-// Both shapes carry filters. On a collection they are the scope the tab opens
-// under; on a row they are the scope the row was found under, which `get` sends
-// so the document is the one the user was looking at rather than the plugin's
-// default view of that id.
 // Equal reports whether two targets name the same thing. It is spelled out
 // because a resource target carries an applied filter map, which makes the
 // struct uncomparable with ==; every field still takes part.
@@ -340,6 +327,19 @@ func (t Target) Equal(other Target) bool {
 	return true
 }
 
+// ResolveCollectionTarget validates a `--plugin` request without contacting
+// anything, for the same reason ResolveResourceTarget does: a short-lived CLI
+// process must never start a plugin to answer `sidecar open`.
+//
+// The two shapes are distinguished by whether a row was named. A collection
+// with no row opens the collection tab and carries its opening query; a
+// collection with a row opens that row's document tab, and a query there would
+// be describing a search nobody is running.
+//
+// Both shapes carry filters. On a collection they are the scope the tab opens
+// under; on a row they are the scope the row was found under, which `get` sends
+// so the document is the one the user was looking at rather than the plugin's
+// default view of that id.
 func ResolveCollectionTarget(plugin, collection, query, row string, filters map[string]string) (Target, error) {
 	plugin = strings.TrimSpace(plugin)
 	collection = strings.TrimSpace(collection)

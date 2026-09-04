@@ -149,7 +149,15 @@ func (m *Model) nextCollectionLines(c pluginhost.Collection, width int) []string
 	lines := []string{styles.Title.Render(ansi.Truncate(m.Name()+" · "+title, width, "…")), ""}
 
 	s := m.states[c.ID]
+	queried := s != nil && strings.TrimSpace(s.queryText()) != ""
 	switch {
+	case (c.Search == pluginhost.SearchRequired && !queried) || (s != nil && s.unqueried):
+		// A required-search collection was never asked, so it claims nothing.
+		// This box never asks one either, so "not read yet" would blame the
+		// host for a silence the collection's own contract explains, and "no
+		// rows" would report an answer nobody gave.
+		lines = append(lines, styles.Subtle.Render(ansi.Truncate(
+			"This collection answers a query, and there is none.", width, "…")))
 	case s == nil || (!s.loaded && !s.loading):
 		lines = append(lines, styles.Muted.Render(ansi.Truncate("Not read yet.", width, "…")))
 	case s.loading && !s.loaded:
@@ -157,11 +165,6 @@ func (m *Model) nextCollectionLines(c pluginhost.Collection, width int) []string
 	case s.err != nil:
 		lines = append(lines, styles.Body.Foreground(styles.Error).Render(ansi.Truncate(
 			errorHeadline(s.err.Code), width, "…")))
-	case s.unqueried:
-		// A required-search collection was never asked, so it claims nothing.
-		// Saying "no rows" here would report an answer nobody gave.
-		lines = append(lines, styles.Subtle.Render(ansi.Truncate(
-			"This collection answers a query, and there is none.", width, "…")))
 	case len(s.items) == 0:
 		lines = append(lines, styles.Muted.Render(ansi.Truncate(
 			emptyHeadline(s.outcome), width, "…")))

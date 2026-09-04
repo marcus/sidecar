@@ -10,7 +10,7 @@ The contract itself — every field, every bound, every rule — is [docs/refere
 
 ## Before you start
 
-The plugin protocol is a draft, gated by a feature flag that is off by default:
+The plugin protocol is frozen, and is gated by a feature flag that is off by default:
 
 ```bash
 sidecar --enable-feature=plugin_protocol
