@@ -838,15 +838,23 @@ func (m *Model) windowIntegrationRows(lines []string, height int) []string {
 		state.rowScroll = 0
 		return lines
 	}
-	// The window is bought and paid for in rows, so it is only taken where it
-	// buys something: enough rows hidden and the whole page fits, fewer than the
-	// floor and it would hide rows and still truncate, which is strictly worse
-	// than truncating alone. On a pane too short for either, the height
-	// contract truncates exactly as it did before.
+	// The window is bought and paid for in rows: hide enough of them and the
+	// whole page fits.
 	visible := count - over
-	if visible >= count || visible < integrationRowsFloor {
+	if visible >= count {
 		state.rowScroll = 0
 		return lines
+	}
+	if visible < integrationRowsFloor {
+		// The pane is too short for any window to make the whole page fit, so
+		// the rest of it truncates at the height contract exactly as it did
+		// before the window existed. The rows still give way down to the floor,
+		// because the alternative is worse than truncation: with fifteen
+		// providers on a 60x24 pane the row block alone runs past the bottom
+		// edge, so the cursor lands on a row nobody can see and leaves a hit
+		// region over a line nobody painted. Below the floor the page is not a
+		// table any more, which is why the floor is where this stops.
+		visible = min(count, integrationRowsFloor)
 	}
 
 	// The window follows the cursor rather than the pointer or the top of the
