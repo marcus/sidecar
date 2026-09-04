@@ -1238,6 +1238,9 @@ func TestOmpRefusesAnAgentDirectoryItCannotResolve(t *testing.T) {
 	if len(st.TargetPaths) != 0 {
 		t.Fatalf("a status with no resolvable directory still names target paths %v", st.TargetPaths)
 	}
+	if got := OmpPaths(env); len(got) != 0 {
+		t.Fatalf("OmpPaths = %v with no resolvable directory; a surface would print a path Sidecar cannot touch", got)
+	}
 }
 
 // TestOmpInstallIntoACleanTreeIsExplicitAndIdempotent is the installer's basic
@@ -1343,9 +1346,7 @@ func TestAMissingOmpProviderRefusesInstallButStillAllowsCleanup(t *testing.T) {
 	svc, _, paths := ompFixture(t)
 	ompApply(t, svc, ActionInstall)
 
-	gone, _, _ := ompFixture(t, func(e *Env) { e.Home = filepath.Dir(filepath.Dir(filepath.Dir(paths.OwnedDir))) })
-	_ = gone
-
+	// The same tree, read by a service whose PATH no longer finds omp.
 	svc2 := Service{Env: envWithout(svc.Env, withoutOmp), Adapters: DefaultAdapters()}
 	if _, err := svc2.Plan(OmpProvider, ActionInstall); err == nil {
 		t.Fatal("install was allowed with no omp on PATH")

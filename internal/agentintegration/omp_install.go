@@ -115,7 +115,15 @@ type ompPaths struct {
 // surface that wants to name them before asking for confirmation should not have
 // to reconstruct them.
 func OmpPaths(env Env) []string {
-	return []string{ompPathsFor(env).Owned}
+	// Nothing, rather than one empty string, when the agent directory cannot be
+	// resolved. An empty path in a list a surface is about to print reads as a
+	// path Sidecar would touch, and there is none: the refusal in Plan says why
+	// instead. See ompUnresolvableAgentDir.
+	owned := ompPathsFor(env).Owned
+	if owned == "" {
+		return nil
+	}
+	return []string{owned}
 }
 
 func ompPathsFor(env Env) ompPaths {
