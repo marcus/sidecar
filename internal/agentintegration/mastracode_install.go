@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"path/filepath"
+	"slices"
 	"strconv"
 
 	"github.com/marcus/sidecar/internal/agentlifecycle"
@@ -204,23 +205,47 @@ type mastracodeScan struct {
 
 // converged reports whether the file already holds exactly the bundled
 // integration: one owned entry per row, each under its own event, each
-// byte-equivalent to the canonical entry for that row, and no other owned entry
-// anywhere.
+// byte-equivalent to the canonical entry for that row, no other owned entry
+// anywhere, and the rows within one event in the order the table declares them.
+//
+// That last clause is not tidiness. Mastra Code dispatches an event's hooks
+// sequentially in array order, and AgentStart carries two: the session binding
+// and then the lane. Swapped, the pane reports a lane for a run before it is
+// bound to the conversation that run belongs to. Without this check a file whose
+// pair had been swapped by hand would read as `current` forever, because every
+// other test it passes is per-entry.
+//
+// The order of the EVENT keys is deliberately not checked. Install appends to an
+// event array the user's file already had, in place, so the events come out in
+// whatever order that file put them, and requiring the table's order would report
+// a correct install as damaged.
 func (s mastracodeScan) converged() bool {
 	if s.parseErr != "" || len(s.owned) != len(mastracodeHooks) {
 		return false
 	}
-	seen := map[int]bool{}
-	for _, o := range s.owned {
-		if o.canonicalFor < 0 || seen[o.canonicalFor] {
-			return false
-		}
-		if mastracodeHooks[o.canonicalFor].Event != o.event {
-			return false
-		}
-		seen[o.canonicalFor] = true
+	// The rows this build ships for each event, in table order.
+	want := map[string][]int{}
+	for i, h := range mastracodeHooks {
+		want[h.Event] = append(want[h.Event], i)
 	}
-	return len(seen) == len(mastracodeHooks)
+	// s.owned is built by walking the file, so entries under one event arrive in
+	// the order that event's array holds them.
+	got := map[string][]int{}
+	for _, o := range s.owned {
+		if o.canonicalFor < 0 || mastracodeHooks[o.canonicalFor].Event != o.event {
+			return false
+		}
+		got[o.event] = append(got[o.event], o.canonicalFor)
+	}
+	if len(got) != len(want) {
+		return false
+	}
+	for event, rows := range want {
+		if !slices.Equal(got[event], rows) {
+			return false
+		}
+	}
+	return true
 }
 
 // scanMastracodeConfig reads hooks.json, honouring the file inspection that

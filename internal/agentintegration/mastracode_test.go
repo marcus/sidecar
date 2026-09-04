@@ -821,3 +821,74 @@ func TestMastracodeStatusComesFromTheInstalledBytes(t *testing.T) {
 		t.Fatalf("status after repair is %q, want current", st.Status)
 	}
 }
+
+// TestMastracodeSwappedAgentStartPairIsNeedsRepair is the case the converge check
+// exists for, and it is invisible to every per-entry test.
+//
+// Mastra Code dispatches an event's hooks sequentially in array order, and
+// AgentStart carries two: the session binding and then the lane. Swapped, the
+// pane reports a lane for a run before it is bound to the conversation that run
+// belongs to. Both entries are still byte-identical to what this build ships, so
+// nothing that looks at one entry at a time can tell.
+func TestMastracodeSwappedAgentStartPairIsNeedsRepair(t *testing.T) {
+	svc, _, paths := mastracodeFixture(t)
+	applyTo(t, svc, MastracodeProvider, ActionInstall)
+
+	var doc map[string][]json.RawMessage
+	if err := json.Unmarshal([]byte(readFileForTest(t, paths.Config)), &doc); err != nil {
+		t.Fatal(err)
+	}
+	if len(doc["AgentStart"]) != 2 {
+		t.Fatalf("AgentStart holds %d entries, want the session row and the lane row", len(doc["AgentStart"]))
+	}
+	doc["AgentStart"][0], doc["AgentStart"][1] = doc["AgentStart"][1], doc["AgentStart"][0]
+	swapped, err := json.MarshalIndent(doc, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeFileForTest(t, paths.Config, string(swapped)+"\n")
+
+	if st := mastracodeStatus(t, svc); st.Status != agentlifecycle.StatusNeedsRepair {
+		t.Fatalf("a swapped AgentStart pair reads as %q; both entries are exactly what this build ships, "+
+			"so only their order says the integration is wrong", st.Status)
+	}
+	applyTo(t, svc, MastracodeProvider, ActionRepair)
+
+	after := mastracodeHooksJSON(t, paths.Config)
+	session := mastracodeHooks[1]
+	if got, _ := after["AgentStart"][0]["command"].(string); got != MastracodeHookCommand(session) {
+		t.Errorf("after repair the first AgentStart entry is %q, want the session binding", got)
+	}
+	if st := mastracodeStatus(t, svc); st.Status != agentlifecycle.StatusCurrent {
+		t.Fatalf("status after repair is %q, want current", st.Status)
+	}
+}
+
+// TestMastracodeConvergeIgnoresTheOrderOfTheEventKeys is the other half, and it
+// is why the check above is scoped to one event rather than to the whole file.
+//
+// Install appends to an event array the user's file already had, in place, so the
+// event keys come out in whatever order that file put them. A converge check that
+// required the table's order would report a correct install as damaged.
+func TestMastracodeConvergeIgnoresTheOrderOfTheEventKeys(t *testing.T) {
+	svc, _, paths := mastracodeFixture(t)
+	// Stop and PermissionResult exist first, in the reverse of the table's order,
+	// each holding a hook of the user's.
+	writeFileForTest(t, paths.Config, `{
+  "Stop": [{"type": "command", "command": "/usr/local/bin/on-stop"}],
+  "PermissionResult": [{"type": "command", "command": "/usr/local/bin/on-permission"}]
+}
+`)
+	applyTo(t, svc, MastracodeProvider, ActionInstall)
+
+	if st := mastracodeStatus(t, svc); st.Status != agentlifecycle.StatusCurrent {
+		t.Fatalf("status after installing into a file whose event keys are in another order is %q, want current", st.Status)
+	}
+	plan, err := svc.Plan(MastracodeProvider, ActionInstall)
+	if err != nil {
+		t.Fatalf("second install: %v", err)
+	}
+	if !plan.Unchanged {
+		t.Fatal("a second install is not a no-op, so the event key order is being read as damage")
+	}
+}
