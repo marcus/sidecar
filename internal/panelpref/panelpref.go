@@ -1,13 +1,14 @@
 // Package panelpref answers "does the user want this embedded panel", for the
 // two panels whose feature flag is now a read-only alias of their config key.
 //
-// The answer has several readers and only some of them can import the plugin
+// The answer has several readers and not all of them can import the plugin
 // package that owns the descriptor: internal/plugins/notes imports
-// internal/app, which imports internal/overview, so the two create pickers
-// cannot import the descriptor back. Rather than let each of them restate the
-// rule — which is how the Flags page and the Panels page came to disagree about
-// Notes and Tasks — every reader binds here, the descriptors included. There is
-// one rule, in one place, and a leaf package can read it.
+// internal/app, which imports internal/overview, so the global create picker
+// cannot import the Notes descriptor back. Its project twin could, and having
+// the two projections of one surface answer the same question by different
+// routes is how they drift — which is how the Flags page and the Panels page
+// came to disagree about Notes and Tasks. Every reader binds here instead, the
+// descriptors included: one rule, in one place, reachable from a leaf.
 //
 // The feature flags are read-only aliases: they answer only while the config
 // key is absent, and nothing here ever writes one.
