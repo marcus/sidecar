@@ -67,14 +67,54 @@ import (
 // the eight unguarded rows are enough for a systemic failure to still be visible.
 // TestMastracodeCannotBlockTheAgentItReportsOn is the guard on the guard.
 //
+// # The session binding is on AgentStart, not on SessionStart, and that is a
+// measured correction rather than a preference
+//
+// Upstream binds the pane's conversation on SessionStart, which is the obvious
+// event and is what every other provider's port does. On Mastra Code 0.38.0 that
+// event carries no conversation.
+//
+// The mechanism is exact and is in the released package. `createMastraCode`
+// constructs the hook manager with the LITERAL string "session-init" as its
+// session id (index.js). The only thing that ever replaces it is
+// `wireSessionConcerns`, which calls `hookManager.setSessionId` from a
+// subscription on the session's `thread_created` and `thread_changed` events.
+// And `MastraTUI.run()` dispatches `hookMgr.runSessionStart()` immediately after
+// `init()`, before any thread exists. So SessionStart's payload always reads
+// `"session_id": "session-init"`, on every session, in every project, on every
+// machine, and no later SessionStart fires once the real thread arrives.
+//
+// That was measured, not inferred: the first proof run installed upstream's
+// mapping unchanged and Sidecar's shells.json came back holding
+// `{"kind":"id","value":"session-init","reported":true}` while the TUI was
+// showing `Created thread: b42847d3-…`. A reference from an official source is
+// marked resumable, so shipping that row would have made every mastracode shell
+// on a machine claim the same non-existent conversation and a cold restore offer
+// to resume it. agentsession's own rule is that resuming the wrong conversation
+// is worse than resuming none.
+//
+// Every OTHER event carries the real thread id, captured in the same run:
+// UserPromptSubmit, AgentStart, PermissionRequest, PermissionResult, PreToolUse,
+// PostToolUse, AgentEnd and Stop all read `"session_id":
+// "b42847d3-d1ce-4105-9e5b-a7d8e9daf72a"`. So the binding moves to AgentStart,
+// which is non-blocking, fires once per agent run, and re-binds a pane whose
+// thread changed under `/new` or a resume without needing an event for it. That
+// is not a new idea either: Herdr's own pi asset re-binds per turn on its
+// agent-start event for the same reason.
+//
+// AgentStart therefore carries two rows, the session one first, which is the
+// order Herdr's pi asset also uses. Mastra Code dispatches an event's hooks
+// sequentially, so the order in the array is the order they run.
+//
 // # Ordering is sequential, and unlike Kimi that costs nothing
 //
 // Mastra Code awaits each hook in turn for a given event (`for (const hook of
 // applicable) { const result = await executeHook(...) }`), so two rows on one
-// event could not race the way Kimi's parallel dispatch would. This port ships
-// one row per event anyway, because upstream does, but the property is recorded
-// so a later reader does not import Kimi's constraint into a provider that does
-// not have it.
+// event cannot race the way Kimi's parallel dispatch would. That is what makes
+// the AgentStart pair above safe: the session report and the state report are
+// two processes, they run in array order, and the store's sequence follows the
+// order the events happened rather than the order a scheduler chose. Under
+// Kimi's contract the same pair would have been a coin toss.
 //
 // # Deliberate differences from upstream
 //
@@ -92,6 +132,11 @@ import (
 //     asset is a shell script whose every exit path is `exit 0`, so upstream has
 //     this property by construction and did not need to state it; Sidecar's
 //     transport is a general-purpose CLI and has to.
+//  5. The session binding is on AgentStart rather than on SessionStart, per the
+//     section above. It is the one row of upstream's eleven whose event moved,
+//     and it moved because the event upstream chose carries a placeholder rather
+//     than a conversation on every released Mastra Code this port was measured
+//     against.
 
 // Mastracode integration identity.
 const (
@@ -197,6 +242,9 @@ type MastracodeHook struct {
 //   - Interrupt is the user cancelling, so `cancelled` rather than turn_complete.
 //     Both report idle; only the reason tells a later reader whether the turn
 //     finished.
+//   - AgentStart carries the session binding as well as its lane, for the reason
+//     the section above gives. It is the only event with two rows, and they are
+//     two different reports rather than two of the same one.
 //   - AgentEnd and Stop are both turn completion. Mastra Code emits AgentEnd for
 //     the agent run and Stop for the turn around it, and upstream maps both to
 //     idle; the port keeps that rather than picking one, because which of the two
@@ -204,12 +252,12 @@ type MastracodeHook struct {
 //     turn open if the other were the last event of some path.
 var mastracodeHooks = []MastracodeHook{
 	{
-		Event:  "SessionStart",
-		Reason: "", Why: "bind the pane to the conversation Mastra Code just started or resumed",
-	},
-	{
 		Event: "UserPromptSubmit", State: agentactivity.StateWorking,
 		Reason: agentlifecycle.ReasonTurnStart, Why: "the user submitted a prompt, so a turn has begun",
+	},
+	{
+		Event:  "AgentStart",
+		Reason: "", Why: "bind the pane to the conversation this agent run belongs to",
 	},
 	{
 		Event: "AgentStart", State: agentactivity.StateWorking,

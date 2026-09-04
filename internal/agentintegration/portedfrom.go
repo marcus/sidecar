@@ -192,10 +192,19 @@ var portedFrom = []PortedFrom{
 			"code, which Herdr's wire has no vocabulary for; and the three rows on Mastra Code's BLOCKING events " +
 			"(PreToolUse, Stop, UserPromptSubmit) end in `|| true`, because that provider reads exit code 2 on " +
 			"those three as a refusal of the agent's own work and `sidecar agent report` exits 2 on a usage error, " +
-			"where Herdr's shell asset has the same property by construction. NOT copied: " +
-			"MASTRACODE_REMOVED_HOOK_EVENTS, upstream's hand-written list of two superseded rows, because Sidecar " +
-			"identifies its own entries by the source their command names rather than by an (event, command) pair " +
-			"and therefore strips a stale row of any version without a list to keep current.",
+			"where Herdr's shell asset has the same property by construction. ONE row's EVENT moved, and it is the " +
+			"only change to the mapping itself: upstream binds the session on SessionStart, and on this release " +
+			"that event's payload carries the literal \"session-init\" the hook manager is constructed with rather " +
+			"than a thread id. Measured, not inferred -- the first proof run installed upstream's mapping unchanged " +
+			"and shells.json came back holding {\"kind\":\"id\",\"value\":\"session-init\",\"reported\":true} " +
+			"while the TUI printed a real thread id -- and a reference from an official source is marked resumable, " +
+			"so every Mastra Code shell would have claimed the same non-existent conversation. UserPromptSubmit " +
+			"carries the placeholder too, so AgentStart is the earliest event that can name the conversation; the " +
+			"binding is there, which also re-binds a pane whose thread changed, exactly as Herdr's own pi asset " +
+			"re-binds per turn on its agent-start event. NOT copied: MASTRACODE_REMOVED_HOOK_EVENTS, upstream's " +
+			"hand-written list of two superseded rows, because Sidecar identifies its own entries by the source " +
+			"their command names rather than by an (event, command) pair and therefore strips a stale row of any " +
+			"version without a list to keep current.",
 	},
 }
 

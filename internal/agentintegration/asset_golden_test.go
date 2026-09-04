@@ -68,7 +68,13 @@ var assetGoldens = []assetGolden{
 	// description its own `/hooks` command prints back. A change to any of them
 	// lands here, which is the intent: the event-to-lane mapping is the part a
 	// tier is granted against.
-	{provider: MastracodeProvider, name: "hooks.json", version: "1", checksum: "eda0988d55e4e4f51d42846ce04aad779eb3f1d05bbff3655b96e3388b3764b6"},
+	// Like Pi, mastracode stays at version 1 across a content change, and for the
+	// same reason: no release has shipped `agent integration install mastracode`,
+	// so there is no copy of version 1 on any machine to be misread as current.
+	// The change that moved this checksum is the one the live proof found -- the
+	// session binding moving from SessionStart, whose payload carries the literal
+	// "session-init", to AgentStart, which carries the real thread id.
+	{provider: MastracodeProvider, name: "hooks.json", version: "1", checksum: "e2ee505ac99b886e89f36c265bb12235e01d5eb9df7b868710088f294e5e8494"},
 }
 
 // bumpInstructions is the whole point of the guard: a failure here has to tell

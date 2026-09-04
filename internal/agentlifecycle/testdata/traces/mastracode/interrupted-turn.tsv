@@ -1,0 +1,20 @@
+# ms	event	session	turn	tool	fields
+0	UserPromptSubmit	session-1	-	-	cwd,hook_event_name,session_id=thread,user_message
+189	AgentStart	session-1	turn-1	-	cwd,hook_event_name,run_id,session_id=thread
+2866	PreToolUse	session-1	turn-1	execute_command	cwd,hook_event_name,run_id,session_id=thread,tool_input,tool_name
+15981	PostToolUse	session-1	turn-1	execute_command	cwd,hook_event_name,run_id,session_id=thread,tool_error,tool_input,tool_name,tool_output
+16036	Interrupt	session-1	turn-1	-	cwd,hook_event_name,reason=user_interrupt,run_id,session_id=thread
+16050	AgentEnd	session-1	turn-1	-	cwd,hook_event_name,run_id,session_id=thread,stop_reason=aborted
+16123	Stop	session-1	turn-1	-	cwd,hook_event_name,run_id,session_id=thread,stop_reason=aborted
+#
+# A turn interrupted with Escape while a shell tool was running.
+#
+# Interrupt fires carrying reason=user_interrupt, which is what the port maps to
+# idle/cancelled. Both AgentEnd and Stop carry stop_reason=aborted, and neither is
+# read by upstream's mapping or by this port, so the LAST report of a cancelled
+# turn carries reason=turn_complete rather than cancelled. The lane is idle
+# throughout and correct; only the reason a later reader sees is the weaker one.
+#
+# The order of Interrupt against AgentEnd is not stable. This capture has Interrupt
+# first; an earlier capture in the same session had AgentEnd first. Stop is last in
+# both. Nothing in the port depends on which, because all three report idle.

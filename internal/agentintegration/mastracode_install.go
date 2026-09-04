@@ -158,13 +158,19 @@ func mastracodeHomeDir(home string) string {
 // It is the only precondition on the path, and that is a correction this port
 // made against a measurement rather than a rule it inherited. The Pi and Kimi
 // adapters refuse when the provider's directory is absent, because those
-// providers create it themselves and its absence means the provider has never
-// run. Mastra Code does not: a real `mastracode -p` run in an empty home created
-// ~/Library/Application Support/mastracode and nothing else, and nothing in the
-// 0.38.0 package creates ~/.mastracode at startup. That directory is where a user
-// puts hooks.json, mcp.json and commands/, so it exists when they have written
-// one and not otherwise, and refusing on its absence would mean the integration
-// could never be installed until somebody hand-created an empty directory.
+// providers create it on startup and its absence means the provider has never
+// run. Mastra Code's is not that kind of directory.
+//
+// What was measured: a real `mastracode -p` run in an empty home created
+// ~/Library/Application Support/mastracode and nothing else. ~/.mastracode is
+// where a user puts hooks.json, mcp.json and commands/, and the only thing in the
+// 0.38.0 package that creates it unasked is the TUI's analytics writer, which
+// mkdirs it to drop analytics.json and which the user can turn off. So it exists
+// after a TUI run, does not exist after headless use, and does not exist before
+// the first launch -- which is exactly when somebody installing an integration is
+// likely to be standing. Refusing on its absence would have meant the integration
+// could not be installed until the agent had been launched once, for a directory
+// that carries no state Sidecar would be inventing.
 //
 // So Sidecar creates it, exactly as Herdr's install_mastracode does and exactly
 // as Sidecar's own Claude adapter does for ~/.claude. The provider gate is the

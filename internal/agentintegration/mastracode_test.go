@@ -3,12 +3,16 @@ package agentintegration
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/marcus/sidecar/internal/agentactivity"
 	"github.com/marcus/sidecar/internal/agentlifecycle"
+	"github.com/marcus/sidecar/internal/agentresolve"
 )
 
 // --- fixtures ---
@@ -84,15 +88,37 @@ func TestMastracodeHookTableMatchesItsRecordedFixture(t *testing.T) {
 // twice and a store sequence spent twice, and there is no event here where that
 // would be right. Sidecar's own converge oracle also assumes one entry per event
 // when it decides current-versus-outdated.
-func TestMastracodeFiresExactlyOneHookPerEvent(t *testing.T) {
-	seen := map[string]int{}
+func TestMastracodeSendsEachReportAtMostOncePerEvent(t *testing.T) {
+	state := map[string]int{}
+	session := map[string]int{}
 	for _, h := range MastracodeHooks() {
-		seen[h.Event]++
-	}
-	for event, n := range seen {
-		if n > 1 {
-			t.Errorf("%d rows fire on %s; the port ships one row per event and the converge oracle assumes it", n, event)
+		if h.Session() {
+			session[h.Event]++
+			continue
 		}
+		state[h.Event]++
+	}
+	for event, n := range state {
+		if n > 1 {
+			t.Errorf("%d state rows fire on %s; one provider event may author one lane", n, event)
+		}
+	}
+	for event, n := range session {
+		if n > 1 {
+			t.Errorf("%d session rows fire on %s; one provider event may bind the pane once", n, event)
+		}
+	}
+	// AgentStart is the one event with two rows, and they are two different
+	// reports rather than two of the same. Named rather than derived, so moving
+	// the session binding somewhere else is a deliberate edit here too.
+	if session["AgentStart"] != 1 || state["AgentStart"] != 1 {
+		t.Errorf("AgentStart carries %d session rows and %d state rows, want one of each: it binds the "+
+			"conversation and reports the lane, because SessionStart's payload carries no thread id",
+			session["AgentStart"], state["AgentStart"])
+	}
+	if session["SessionStart"] != 0 {
+		t.Error("the session binding is back on SessionStart, whose payload on Mastra Code 0.38.0 is the " +
+			"literal \"session-init\" on every session; see mastracode.go")
 	}
 }
 
@@ -258,15 +284,123 @@ func TestMastracodeOwnershipIsNarrow(t *testing.T) {
 
 // --- the lane walk ---
 
+// mastracodeHookFor returns the row that reports a LANE for an event. AgentStart
+// carries a session row as well, and a caller asking "what does this event report"
+// is asking about the lane.
 func mastracodeHookFor(t *testing.T, event string) MastracodeHook {
 	t.Helper()
 	for _, h := range MastracodeHooks() {
-		if h.Event == event {
+		if h.Event == event && !h.Session() {
 			return h
 		}
 	}
-	t.Fatalf("no mastracode hook fires for event %s", event)
+	t.Fatalf("no mastracode state hook fires for event %s", event)
 	return MastracodeHook{}
+}
+
+// mastracodeEmit stores the report one hook would send, exactly as the installed
+// config entry would spawn it: no sequence of its own, so the store assigns.
+func mastracodeEmit(t *testing.T, rig *steelRig, h MastracodeHook) {
+	t.Helper()
+	if h.Session() {
+		return
+	}
+	rec := agentlifecycle.Report{
+		SchemaVersion: agentlifecycle.SchemaVersion,
+		ID:            fmt.Sprintf("mastracode-%d", time.Now().UnixNano()),
+		Kind:          agentlifecycle.KindState,
+		Identity: agentlifecycle.Identity{
+			Host:              testHost,
+			ServerIncarnation: testServer,
+			PaneID:            testPane,
+			Provider:          MastracodeProvider,
+			RunID:             "mastracode-run-1",
+			ProcessGeneration: testGen,
+		},
+		Source:        MastracodeSource,
+		SourceVersion: MastracodeAssetVersion,
+		ObservedAt:    rig.now,
+		State:         h.State,
+		Reason:        h.Reason,
+	}
+	if _, _, err := rig.store.AppendNext(rec); err != nil {
+		t.Fatalf("storing %s: %v", h.Event, err)
+	}
+}
+
+// TestMastracodeLaneWalkDrivesEveryBranchOfTheLadder feeds the checked-in turns
+// through the real lifecycle store, the real StoreSource and the real resolver,
+// and requires the pane to be in the lane the fixture records after every event.
+//
+// The capability is the registry's own, which the five checked-in captures of
+// mastracode 0.38.0 earned `advisory` for. So this walk is what the shipped build
+// actually does rather than a rehearsal of what it might do later: at
+// screen-fallback the reports would author nothing and the first row would fail.
+func TestMastracodeLaneWalkDrivesEveryBranchOfTheLadder(t *testing.T) {
+	rig := newSteelRig(t)
+	capability, ok := agentlifecycle.CapabilityForSource(MastracodeSource)
+	if !ok {
+		t.Fatal("no capability is registered for the mastracode source, so its reports would be refused outright")
+	}
+
+	seenReasons := map[agentlifecycle.ReasonCode]bool{}
+	for i, row := range mastracodeFixtureRows(t, "lane-walk.tsv") {
+		if len(row) != 3 {
+			t.Fatalf("row %d has %d columns, want 3", i, len(row))
+		}
+		event, wantLane, wantReason := row[0], agentactivity.State(row[1]), agentlifecycle.ReasonCode(row[2])
+
+		h := mastracodeHookFor(t, event)
+		if h.State != wantLane {
+			t.Fatalf("row %d: %s reports %q, the fixture says %q", i, event, h.State, wantLane)
+		}
+		if h.Reason != wantReason {
+			t.Fatalf("row %d: %s carries reason %q, the fixture says %q", i, event, h.Reason, wantReason)
+		}
+		seenReasons[h.Reason] = true
+
+		rig.advance(2 * time.Second)
+		mastracodeEmit(t, rig, h)
+		exp := mastracodeResolve(rig, capability)
+		if exp.State != wantLane {
+			t.Fatalf("row %d: after %s the pane is %q, the fixture says %q (authority %q, fallback %q)",
+				i, event, exp.State, wantLane, exp.Authority, exp.FallbackReason)
+		}
+		if exp.Authority != agentlifecycle.AuthorityLifecycle {
+			t.Fatalf("row %d: the lane was authored by %q rather than by the hook (fallback %q)",
+				i, event, exp.Authority)
+		}
+	}
+
+	// Every reason the port can send has to appear somewhere in the walk, or the
+	// fixture is exercising a subset and calling it the ladder.
+	for _, h := range MastracodeHooks() {
+		if h.Session() {
+			continue
+		}
+		if !seenReasons[h.Reason] {
+			t.Errorf("reason %q is never reached by lane-walk.tsv", h.Reason)
+		}
+	}
+}
+
+// mastracodeResolve runs one surface refresh with a capability the test supplies,
+// mirroring steelRig.poll's body. Everything except the capability and the screen
+// comes from the real StoreSource.
+func mastracodeResolve(rig *steelRig, capability agentlifecycle.Capability) agentlifecycle.Explanation {
+	in := agentlifecycle.Input{Now: rig.now, Screen: blankScreen}
+	if ev, ok := rig.source.Evidence(agentresolve.PaneRef{Session: testSession}); ok {
+		in.Live = ev.Live
+		in.ProcessAlive = ev.ProcessAlive
+		in.Status = ev.Status
+		in.ProviderInTestedRange = ev.ProviderInTestedRange
+		in.Latest = ev.Latest
+		in.StoreUnavailable = ev.StoreUnavailable
+		in.InvalidReports = ev.InvalidReports
+	}
+	in.Capability = capability
+	in.Status = agentlifecycle.StatusCurrent
+	return agentlifecycle.Resolve(in).Explanation
 }
 
 // --- the installer ---
@@ -322,11 +456,12 @@ func mastracodeHooksJSON(t *testing.T, path string) map[string][]map[string]any 
 // clean-tree case, and it pins the directory decision this port made against a
 // measurement.
 //
-// Mastra Code does not create ~/.mastracode itself: a real headless run in an
-// empty home created ~/Library/Application Support/mastracode and nothing else.
-// So an installer that refused on the directory's absence, as the Pi and Kimi
-// adapters correctly do for providers that DO create theirs, could never install
-// on a machine where nobody had hand-made an empty directory.
+// ~/.mastracode is not a directory Mastra Code creates on startup the way Pi and
+// Kimi create theirs: a real headless run in an empty home created
+// ~/Library/Application Support/mastracode and nothing else, and the only thing
+// in the package that creates it unasked is the TUI's analytics writer. So an
+// installer that refused on its absence could not install before the agent's
+// first launch, which is exactly when somebody is likely to be installing.
 func TestInstallingMastracodeCreatesTheDirectoryAndWritesEveryEntry(t *testing.T) {
 	svc, _, paths := mastracodeFixture(t)
 
@@ -336,16 +471,27 @@ func TestInstallingMastracodeCreatesTheDirectoryAndWritesEveryEntry(t *testing.T
 	applyTo(t, svc, MastracodeProvider, ActionInstall)
 
 	doc := mastracodeHooksJSON(t, paths.Config)
+	// Read by row rather than by event, because AgentStart carries two: the
+	// session binding first, then the lane. The order inside an event array is
+	// the order Mastra Code runs them in.
+	at := map[string]int{}
 	for _, h := range MastracodeHooks() {
-		entries, ok := doc[h.Event]
-		if !ok || len(entries) != 1 {
-			t.Fatalf("hooks.json holds %d entries under %s, want exactly one", len(entries), h.Event)
+		entries := doc[h.Event]
+		i := at[h.Event]
+		at[h.Event]++
+		if len(entries) <= i {
+			t.Fatalf("hooks.json holds %d entries under %s, want at least %d", len(entries), h.Event, i+1)
 		}
-		if got, _ := entries[0]["command"].(string); got != MastracodeHookCommand(h) {
-			t.Errorf("%s carries command %q, not the one this build renders", h.Event, got)
+		if got, _ := entries[i]["command"].(string); got != MastracodeHookCommand(h) {
+			t.Errorf("%s[%d] carries command %q, not the one this build renders", h.Event, i, got)
 		}
-		if got, _ := entries[0]["type"].(string); got != "command" {
-			t.Errorf("%s carries type %q; Mastra Code's loader drops an entry whose type is not \"command\"", h.Event, got)
+		if got, _ := entries[i]["type"].(string); got != "command" {
+			t.Errorf("%s[%d] carries type %q; Mastra Code's loader drops an entry whose type is not \"command\"", h.Event, i, got)
+		}
+	}
+	for event, n := range at {
+		if len(doc[event]) != n {
+			t.Errorf("hooks.json holds %d entries under %s, and the port ships %d", len(doc[event]), event, n)
 		}
 	}
 	if st := mastracodeStatus(t, svc); st.Status != agentlifecycle.StatusCurrent {

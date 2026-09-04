@@ -79,6 +79,11 @@ Captured 2026-08-30 on darwin/arm64.
 | `traces/kimi/cancelled-turn.tsv` | kimi-code | 0.40.1 | openrouter openai/gpt-4.1-mini | user cancellation | Slice 2 |
 | `traces/kimi/session-end.tsv` | kimi-code | 0.40.1 | openrouter openai/gpt-4.1-mini | /quit | Slice 2 |
 | `traces/kimi/exec-turn-auto-approves.tsv` | kimi-code | 0.40.1 | openrouter openai/gpt-4.1-mini | success under `kimi -p`, no permission pair | Slice 2 |
+| `traces/mastracode/session-start-carries-no-thread.tsv` | mastracode | 0.38.0 | openai/gpt-5.5 | first session in a project with no thread | Slice 2 |
+| `traces/mastracode/declined-permission-turn.tsv` | mastracode | 0.38.0 | openai/gpt-5.5 | one `write_file` asked for and DENIED | Slice 2 |
+| `traces/mastracode/tool-turn-auto-approved.tsv` | mastracode | 0.38.0 | openai/gpt-5.5 | success, one tool, no permission pair | Slice 2 |
+| `traces/mastracode/interrupted-turn.tsv` | mastracode | 0.38.0 | openai/gpt-5.5 | user cancellation mid-tool | Slice 2 |
+| `traces/mastracode/session-end.tsv` | mastracode | 0.38.0 | openai/gpt-5.5 | /exit | Slice 2 |
 
 The Pi traces were captured 2026-09-02 on darwin/arm64; the four rows above are
 one Pi 0.84.3 process each for the first three and a second process for the
@@ -317,6 +322,64 @@ A second, smaller one: a macOS login shell re-runs `path_helper`, which puts
 first in the harness's `PATH` therefore lost to the Homebrew-installed `sidecar`
 inside the created pane. Export the `PATH` again *in the pane* before starting
 the provider, and check `command -v sidecar` before trusting a run.
+
+## Mastra Code
+
+Mastra Code's traces use the same six-column hook layout, and its provider half
+is a table of configuration entries like Kimi's, so they have the same job: show
+that every event the eleven rows depend on really fires, in the order the ladder
+assumes, on a released Mastra Code.
+
+Four values are recorded that no earlier trace carried, all enumerations Mastra
+Code's own `types.d.ts` closes: `stop_reason` (complete, aborted, error,
+suspended), `decision` (approved, declined, dismissed, auto_approved,
+auto_declined) and `permission_kind` (tool_approval, sandbox_access,
+plan_approval). Its `reason`, which names why an `Interrupt` or a `Notification`
+fired, was already allowlisted.
+
+The fourth needs its own paragraph, because unlike every other allowlisted key it
+names a field whose real value is an identifier. **`session_id` records only the
+word `placeholder` or the word `thread`** — never an id — in the way
+`ctx.sessionFile` records only present or absent. The distinction is the whole
+evidence for this port's one correction to upstream's mapping: Mastra Code's
+`SessionStart` and, on a first session, its `UserPromptSubmit` both carry the
+literal `"session-init"` the hook manager is constructed with, so a bare field
+name could not show that the event upstream binds on names no conversation.
+
+### How they were captured, and what was not touched
+
+mastracode 0.38.0 was installed with `npm install --prefix` into a scratch
+directory, so nothing reached the user's `PATH`, global npm tree, or shell rc.
+Mastra Code reads **no environment variable at all** for its configuration
+directory — `configDirName` is a constructor argument defaulting to
+`.mastracode`, validated to be a single directory name, and the TUI entry point
+passes neither it nor `homeDir` — so the only lever is `HOME`, and the run moved
+it. The user's `~/.mastracode` did not exist before the run and does not exist
+after it. `XDG_CONFIG_HOME`, `XDG_DATA_HOME`, `XDG_STATE_HOME` and
+`XDG_CACHE_HOME` were moved as well, per the kilo lane's finding, and the run
+never wrote outside the scratch tree.
+
+The model was OpenAI `gpt-5.5` through an `OPENAI_API_KEY` the environment
+already exported. Sidecar's entries were installed with `sidecar agent
+integration install mastracode` rather than by hand, so the run proves the
+installer too, and Mastra Code's own `/hooks` command listed all eleven as loaded
+with the descriptions Sidecar wrote. Mastra Code was then driven in a real TUI
+inside a Sidecar-managed shell on a **private tmux server**, with
+`XDG_STATE_HOME`, `-config` and `SIDECAR_ISOLATED_STATE=1` under a scratch tree,
+`TMUX` unset and every `SIDECAR_*` variable scrubbed before the shell was
+created, and `PATH` and `SIDECAR_BIN` re-exported inside the pane against the
+`path_helper` trap recorded above.
+
+Two capture facts that cost time here. The tracer is a **capture-only** project
+hook — `<cwd>/.mastracode/hooks.json`, which Mastra Code appends after the global
+file — that tees stdin to a log and reports nothing. It has to be a separate hook
+rather than a wrapper around Sidecar's, for the reason the Kimi section records:
+a wrapper reports alongside Sidecar's own. And the placeholder in
+`session-start-carries-no-thread.tsv` is only visible from a project with **no
+thread history**. A TUI restarted into an existing thread fires `thread_changed`
+during `init()`, so its `SessionStart` carries the real id; every capture taken
+by restarting in the same project would have made upstream's mapping look
+correct.
 
 ## Re-capturing
 
