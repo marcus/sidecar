@@ -1,0 +1,6 @@
+{
+  "name": "sidecar-omp-lifecycle",
+  "private": true,
+  "type": "module",
+  "//": "Present so `node` treats sidecar-omp-lifecycle.js as ESM when the behavioral equivalence test drives it directly. Only sidecar-omp-lifecycle.js is ever installed beside a user's OMP; this file is a build-time detail of the repo and is not part of the asset. OMP itself does not need it: it runs on Bun, whose loader imports a bare .js or .ts extension file without consulting a package.json type field."
+}

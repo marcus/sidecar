@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -42,6 +43,7 @@ func OfficialSources() []string {
 		"sidecar.pi.extension",
 		"sidecar.kilo.plugin",
 		"sidecar.kimi.hooks",
+		"sidecar.omp.extension",
 	}
 }
 
@@ -72,6 +74,8 @@ func OfficialSourceFor(kind string) string {
 		return "sidecar.kilo.plugin"
 	case "kimi":
 		return "sidecar.kimi.hooks"
+	case "omp":
+		return "sidecar.omp.extension"
 	default:
 		return ""
 	}
@@ -128,6 +132,98 @@ func PiAgentDir(home, override string) string {
 		return filepath.Join(home, strings.TrimPrefix(strings.TrimPrefix(value, "~"), "/"))
 	}
 	return value
+}
+
+// OMP's default config directory name, relative to home. It is what
+// CONFIG_DIR_NAME is in OMP's own @oh-my-pi/pi-utils/src/dirs.ts.
+const ompDefaultConfigDirName = ".omp"
+
+// ompProfileName is OMP's own profile-name grammar
+// (PROFILE_NAME_RE in @oh-my-pi/pi-utils/src/dirs.ts, verified against 18.1.8).
+var ompProfileName = regexp.MustCompile(`^[a-z0-9][a-z0-9._\-]{0,63}$`)
+
+// ompWindowsReservedName is the other half of OMP's profile validation: Windows
+// reserves these basenames and any BASENAME.<anything> form, so OMP refuses them
+// rather than letting a directory creation fail later with a confusing errno.
+var ompWindowsReservedName = regexp.MustCompile(`^(?i:CON|PRN|AUX|NUL|COM[0-9]|LPT[0-9])(\..*)?$`)
+
+// OmpProfile resolves OMP's active profile the way OMP resolves it.
+//
+// OMP_PROFILE is canonical and PI_PROFILE is a legacy fallback consulted only
+// when OMP_PROFILE is not set at all — which is why this takes a separate
+// `ompSet` rather than inferring it from an empty string. An explicitly empty
+// OMP_PROFILE selects the default profile and suppresses PI_PROFILE, and that
+// distinction decides which directory the extension has to be installed into.
+//
+// An invalid name resolves to no profile here. OMP throws on one, and its CLI
+// turns that into "Invalid OMP profile" and refuses to start; its own module-load
+// path takes the same lenient reading this does. Either way there is no session
+// to report from, so the conservative answer is the default directory.
+func OmpProfile(ompProfile string, ompSet bool, piProfile string) string {
+	raw := piProfile
+	if ompSet {
+		raw = ompProfile
+	}
+	name := strings.TrimSpace(raw)
+	if name == "" || name == "default" {
+		return ""
+	}
+	if name == "." || name == ".." || strings.HasSuffix(name, ".") {
+		return ""
+	}
+	if !ompProfileName.MatchString(name) || ompWindowsReservedName.MatchString(name) {
+		return ""
+	}
+	return name
+}
+
+// OmpAgentDir resolves OMP's agent directory the way OMP itself does.
+//
+// It exists for the same reason PiAgentDir does, and it is called from the same
+// two places: the installer, which writes the extension into
+// <this>/extensions, and the store root below, which decides which session paths
+// a report from that extension may name. Deriving it twice is how those two
+// drifted for Pi, so there is one derivation and both call it.
+//
+// The derivation, read from OMP 18.1.8's own @oh-my-pi/pi-utils/src/dirs.ts
+// rather than from Herdr's installer, because the two disagree in one place:
+//
+//	configRoot = $HOME/${PI_CONFIG_DIR:-.omp}            (getBaseConfigRoot)
+//	           + /profiles/<profile>  when one is active  (getProfileConfigRoot)
+//	agentDir   = configRoot/agent
+//	           unless no profile is active and PI_CODING_AGENT_DIR is set, in
+//	           which case it is that value, path.resolve'd (DirResolver)
+//
+// Two facts in there are easy to get wrong and both were checked against the
+// source. A NAMED PROFILE IGNORES PI_CODING_AGENT_DIR entirely
+// (`const agentDirOverride = profile ? undefined : options.agentDirOverride`),
+// so an installer that honoured the variable under a profile would write where
+// OMP never looks. And PI_CODING_AGENT_DIR IS NOT TILDE-EXPANDED: OMP calls
+// path.resolve on it, where Pi calls its own tilde expansion and Herdr's
+// omp_extension_dir expands a tilde too. path.resolve makes a relative value —
+// "~/..." included, since a leading tilde is not special to it — resolve against
+// whatever directory OMP was launched from, which Sidecar cannot know. So a
+// non-absolute override returns the empty string here, meaning "unknowable", and
+// the adapter refuses with that reason rather than guessing a directory.
+func OmpAgentDir(home, configDirName, agentDirOverride, profile string) string {
+	if override := strings.TrimSpace(agentDirOverride); override != "" && profile == "" {
+		if !filepath.IsAbs(override) {
+			return ""
+		}
+		return filepath.Clean(override)
+	}
+	if home == "" {
+		return ""
+	}
+	name := strings.TrimSpace(configDirName)
+	if name == "" {
+		name = ompDefaultConfigDirName
+	}
+	root := filepath.Join(home, name)
+	if profile != "" {
+		root = filepath.Join(root, "profiles", profile)
+	}
+	return filepath.Join(root, "agent")
 }
 
 // Roots describes where a provider is allowed to keep its conversations.
@@ -218,6 +314,53 @@ func (r Roots) For(kind string) []string {
 			return nil
 		}
 		return []string{filepath.Join(base, "sessions")}
+	case "omp":
+		// OMP keeps its conversations at getSessionsDir(), which is
+		// <agentDir>/sessions with one twist: on linux and darwin, when
+		// XDG_DATA_HOME is set and $XDG_DATA_HOME/omp exists and no agent-dir
+		// override is in play, the agent/ prefix is flattened away and sessions
+		// live at $XDG_DATA_HOME/omp/sessions instead (DirResolver, verified
+		// against OMP 18.1.8). Both are listed, because this is an allowlist and
+		// the existence check that decides between them is OMP's to make at its
+		// own startup rather than Sidecar's to make at report time.
+		//
+		// The profile is resolved under the lenient reading of OMP_PROFILE — an
+		// empty value is treated as unset — because a func(string) string cannot
+		// tell an empty variable from an absent one, and OMP's own rule turns on
+		// exactly that. The installer reads it precisely, through os.LookupEnv.
+		// Where the two readings can differ, the DEFAULT-profile directory is
+		// listed as well, so this side is never the one that refuses a binding
+		// the installer's own extension sent. It is an allowlist, so the cost of
+		// the extra entry is one directory OMP itself may use.
+		var roots []string
+		add := func(profile string) {
+			base := OmpAgentDir(r.Home, r.env("PI_CONFIG_DIR"), r.env("PI_CODING_AGENT_DIR"), profile)
+			if base == "" {
+				return
+			}
+			roots = append(roots, filepath.Join(base, "sessions"))
+			data := r.env("XDG_DATA_HOME")
+			if data == "" || (profile == "" && strings.TrimSpace(r.env("PI_CODING_AGENT_DIR")) != "") {
+				return
+			}
+			app := filepath.Join(data, "omp")
+			if profile != "" {
+				app = filepath.Join(app, "profiles", profile)
+			}
+			roots = append(roots, filepath.Join(app, "sessions"))
+		}
+		omp := r.env("OMP_PROFILE")
+		profile := OmpProfile(omp, omp != "", r.env("PI_PROFILE"))
+		add(profile)
+		// The two readings can only differ when the profile came from PI_PROFILE,
+		// because that is the case where an OMP_PROFILE this side cannot see may be
+		// set to an empty value and be selecting the default profile instead. A
+		// non-empty OMP_PROFILE is the same answer under either reading, so no
+		// second directory is listed for it.
+		if profile != "" && omp == "" {
+			add("")
+		}
+		return roots
 	case "muse":
 		base := r.env("XDG_DATA_HOME")
 		if base == "" {

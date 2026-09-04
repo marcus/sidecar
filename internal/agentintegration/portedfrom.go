@@ -171,6 +171,41 @@ var portedFrom = []PortedFrom{
 			"same upstream shape; no --seq is sent, because Sidecar's store assigns; and each row carries a " +
 			"bounded Sidecar reason code, which Herdr's wire has no vocabulary for.",
 	},
+	{
+		Provider:    OmpProvider,
+		UpstreamID:  "omp",
+		UpstreamDir: "omp",
+		Version:     "9",
+		Commit:      herdrVendoredCommit,
+		Evidence: "Ported line by line from the vendored upstream/omp/herdr-agent-state.ts at that commit, " +
+			"where it carries HERDR_INTEGRATION_VERSION=9. The provider half is kept verbatim in behavior: the " +
+			"four-rung desiredState ladder (explicit block, then provider failure, then working-or-retry-hold, " +
+			"then idle), the hasUI gate rather than a mode gate, activateRootSession being re-entered from four " +
+			"later handlers so a session whose session_start this extension missed is still adopted, the forced " +
+			"publish and isIdle()===false reload recovery on session_start, the full state reset on " +
+			"session_switch, the per-turn re-binding on agent_start, agent_end's three guards (rootSession, a " +
+			"duplicate end while inactive, and willContinue===true), the 250ms idle debounce, the 2500ms retry " +
+			"grace and its error classifier verbatim, the tool_approval_requested/resolved pair, the `ask`-only " +
+			"tool_execution_start/end pair with upstream's own label fallbacks, and session_shutdown cancelling " +
+			"timers without reporting. Every event, ctx field and guard was re-checked against OMP 18.1.8's own " +
+			"shipped TypeScript (src/extensibility/extensions/types.ts, src/extensibility/shared-events.ts, " +
+			"src/main.ts, and @oh-my-pi/pi-utils/src/dirs.ts) rather than taken on trust, which is where four of " +
+			"the differences from Sidecar's Pi port come from: OMP has no agent_settled event at all, it has a " +
+			"real permission system, it retries provider errors itself, and its hasUI is false for print, json " +
+			"and plain rpc so the Pi asset's reason for preferring ctx.mode does not apply. Five deliberate " +
+			"differences from upstream, each with its reason in the asset: the transport is Sidecar's; the " +
+			"blocked channel is sidecar:blocked rather than Herdr's namespace; the state queue serializes " +
+			"instead of coalescing; no --seq is sent, because Sidecar's store assigns and upstream's clock seed " +
+			"is about 1600x over MaxSequence; and a session binding is emitted at most once per event, because " +
+			"upstream's activateRootSession and three of its handlers each report the session and on a " +
+			"subprocess transport that is a duplicate spawn rather than a duplicate socket frame. Each report " +
+			"also carries a bounded Sidecar reason code, which Herdr's wire has no vocabulary for. NOT copied: " +
+			"remove_legacy_pi_extension_from_omp_dir, which deletes a file carrying Herdr's own pi marker out " +
+			"of the omp directory. That is Herdr cleaning up a mistake of its own making; Sidecar has never " +
+			"installed a Pi asset into an OMP directory, and removing a file on the strength of a marker that " +
+			"is not Sidecar's own would break the ownership rule outright. The extension-directory collision " +
+			"refusal in install_omp IS copied, with its reason restated in Sidecar's terms.",
+	},
 }
 
 // PortedFromRecords returns the provenance of every Sidecar integration asset.

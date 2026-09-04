@@ -53,6 +53,7 @@ func TestBundledAssetsSpawnArgvTheShippedCLIAccepts(t *testing.T) {
 		{name: "opencode", run: runOpenCodeOrderingHarness},
 		{name: "kilo", run: runKiloOrderingHarness},
 		{name: "kimi", run: runKimiHookCorpus},
+		{name: "omp", run: runOmpOrderingHarness},
 	} {
 		t.Run(provider.name, func(t *testing.T) {
 			argvs := provider.run(t, node, t.TempDir())
@@ -209,6 +210,28 @@ func runPiOrderingHarness(t *testing.T, node, dir string) [][]string {
 	}
 	if err := json.Unmarshal(out, &result); err != nil {
 		t.Fatalf("the pi ordering harness output is not JSON: %q (%v)", out, err)
+	}
+	argvs := make([][]string, 0, len(result.Order))
+	for _, label := range result.Order {
+		argvs = append(argvs, result.Argv[label])
+	}
+	return argvs
+}
+
+// runOmpOrderingHarness does the same for OMP. Its harness records one more
+// process than Pi's, because OMP's turn completion is published by a debounce
+// timer rather than inline, and that report has to go through this seam too: it
+// is the one whose argv nothing else in the tree constructs from a real spawn.
+func runOmpOrderingHarness(t *testing.T, node, dir string) [][]string {
+	t.Helper()
+	out := runAssetHarness(t, node, "omp", dir,
+		filepath.Join(dir, "sidecar-stub"), filepath.Join(dir, "order.log"), filepath.Join(dir, "argv"))
+	var result struct {
+		Order []string            `json:"order"`
+		Argv  map[string][]string `json:"argv"`
+	}
+	if err := json.Unmarshal(out, &result); err != nil {
+		t.Fatalf("the omp ordering harness output is not JSON: %q (%v)", out, err)
 	}
 	argvs := make([][]string, 0, len(result.Order))
 	for _, label := range result.Order {

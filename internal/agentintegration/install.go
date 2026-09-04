@@ -367,6 +367,27 @@ type Env struct {
 	// honouring it is what lets a relocated Kimi be found — and what lets a
 	// proof run redirect the provider away from the user's real ~/.kimi-code.
 	KimiCodeHome string
+	// OmpConfigDir is $PI_CONFIG_DIR when set, and empty otherwise. It is OMP's
+	// own override for the NAME of its config directory under $HOME, defaulting
+	// to ".omp" — not a path, and not Pi's variable. Pi has no PI_CONFIG_DIR at
+	// all; the spelling is a legacy of OMP being a rebranded fork.
+	//
+	// OMP's whole-directory override is PI_CODING_AGENT_DIR, which it shares with
+	// Pi, so [Env.PiAgentDir] carries that one for both adapters. That sharing is
+	// the collision OmpAdapter refuses.
+	OmpConfigDir string
+	// OmpProfile and OmpProfileSet are $OMP_PROFILE, and the second field is not
+	// redundant. OMP consults $PI_PROFILE only when OMP_PROFILE is not set at
+	// all, so an OMP_PROFILE exported with an empty value selects the default
+	// profile and suppresses PI_PROFILE — and which profile is active decides
+	// which directory the extension has to be installed into, so the difference
+	// between "empty" and "absent" is the difference between installing where OMP
+	// looks and installing where it does not.
+	OmpProfile    string
+	OmpProfileSet bool
+	// PiProfile is $PI_PROFILE, OMP's legacy fallback for the same setting. It is
+	// read by OMP, not by Pi.
+	PiProfile string
 	// LookPath finds a provider executable. Defaults to exec.LookPath.
 	LookPath func(file string) (string, error)
 	// ProviderVersion reports an installed provider's version string.
@@ -382,12 +403,17 @@ type Env struct {
 
 // OSEnv returns the real machine.
 func OSEnv() Env {
+	ompProfile, ompProfileSet := os.LookupEnv("OMP_PROFILE")
 	return Env{
 		Home:            os.Getenv("HOME"),
 		ConfigHome:      os.Getenv("XDG_CONFIG_HOME"),
 		PiAgentDir:      os.Getenv("PI_CODING_AGENT_DIR"),
 		KiloConfigDir:   os.Getenv("KILO_CONFIG_DIR"),
 		KimiCodeHome:    os.Getenv("KIMI_CODE_HOME"),
+		OmpConfigDir:    os.Getenv("PI_CONFIG_DIR"),
+		OmpProfile:      ompProfile,
+		OmpProfileSet:   ompProfileSet,
+		PiProfile:       os.Getenv("PI_PROFILE"),
 		LookPath:        exec.LookPath,
 		ProviderVersion: detectProviderVersion,
 		UID:             os.Getuid(),
@@ -523,7 +549,7 @@ type Adapter interface {
 
 // DefaultAdapters returns the adapters this build ships.
 func DefaultAdapters() []Adapter {
-	return []Adapter{OpenCodeAdapter{}, CodexAdapter{}, ClaudeAdapter{}, PiAdapter{}, KiloAdapter{}, KimiAdapter{}}
+	return []Adapter{OpenCodeAdapter{}, CodexAdapter{}, ClaudeAdapter{}, PiAdapter{}, KiloAdapter{}, KimiAdapter{}, OmpAdapter{}}
 }
 
 // Service is the application service behind the CLI and the Configuration

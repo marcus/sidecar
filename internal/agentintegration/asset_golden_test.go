@@ -60,6 +60,13 @@ var assetGoldens = []assetGolden{
 	// does. A change to any of them lands here, which is the intent: the
 	// event-to-lane mapping is the part a tier is granted against.
 	{provider: KimiProvider, name: "config.toml", version: "1", checksum: "438867d8dc4b6406dd28bb2829438221f0c96e5b57c7d840819e7a729196bd39"},
+	// OMP's asset is deliberately not called sidecar-lifecycle.js. OMP and Pi
+	// read the same PI_CODING_AGENT_DIR, so with that variable set the two
+	// resolve to one extensions directory, and a shared filename would put this
+	// asset exactly where Sidecar's Pi asset lives. The install refuses that
+	// state outright; the distinct name is the second, structural half of the
+	// same answer. See OmpAssetName.
+	{provider: OmpProvider, name: "sidecar-omp-lifecycle.js", version: "1", checksum: "bfa72842e418fc1fb66a1e0bc77117cade1186e8c77dee2aa1e3a5ed788609ca"},
 }
 
 // bumpInstructions is the whole point of the guard: a failure here has to tell
@@ -69,7 +76,7 @@ const bumpInstructions = `
 An asset's bytes changed. Before updating the golden below, do this in order:
 
   1. Bump the asset's version constant (OpenCodeAssetVersion, CodexAssetVersion,
-     ClaudeAssetVersion, PiAssetVersion, KiloAssetVersion, or KimiAssetVersion) if it has not already moved. An installed copy is
+     ClaudeAssetVersion, PiAssetVersion, KiloAssetVersion, KimiAssetVersion, or OmpAssetVersion) if it has not already moved. An installed copy is
      recognised as outdated by its version, so without this every existing
      install keeps reporting itself current while running different code.
   2. Update the matching AssetVersion in internal/agentlifecycle/capabilities.json,

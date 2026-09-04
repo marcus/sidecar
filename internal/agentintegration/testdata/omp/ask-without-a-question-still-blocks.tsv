@@ -1,0 +1,3 @@
+# offset_ms	event	reason	has_ui	idle	session_path	session_id	tool	question	blocked_active	blocked_label	will_continue	stop_reason	error_message
+0	session_start	-	true	true	-	-	-	-	-	-	-	-	-
+10	tool_execution_start	-	true	false	-	-	ask	-	-	-	-	-	-

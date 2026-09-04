@@ -1,0 +1,5 @@
+# offset_ms	event	reason	has_ui	idle	session_path	session_id	tool	question	blocked_active	blocked_label	will_continue	stop_reason	error_message
+0	session_start	-	false	true	/tmp/omp-h.jsonl	omp-h	-	-	-	-	-	-	-
+10	agent_start	-	false	false	-	-	-	-	-	-	-	-	-
+20	agent_end	-	false	true	-	-	-	-	-	-	-	stop	-
+30	tool_approval_requested	-	false	false	-	-	bash	-	-	-	-	-	-

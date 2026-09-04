@@ -1,0 +1,7 @@
+# offset_ms	event	reason	has_ui	idle	session_path	session_id	tool	question	blocked_active	blocked_label	will_continue	stop_reason	error_message
+0	session_start	-	true	true	-	-	-	-	-	-	-	-	-
+10	agent_start	-	true	false	-	-	-	-	-	-	-	-	-
+20	tool_execution_start	-	true	false	-	-	read	-	-	-	-	-	-
+30	tool_execution_end	-	true	false	-	-	read	-	-	-	-	-	-
+40	tool_execution_start	-	true	false	-	-	ask	Which branch should I push to?	-	-	-	-	-
+50	tool_execution_end	-	true	false	-	-	ask	-	-	-	-	-	-
