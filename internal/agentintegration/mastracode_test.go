@@ -780,6 +780,43 @@ func TestMastracodeRefusesWhenTheProviderIsNotOnPath(t *testing.T) {
 	}
 }
 
+// TestASymlinkAtTheMastracodeConfigPathIsRefusedRatherThanFollowed is the check
+// an ordinary Stat can never make: the link resolves to a perfectly healthy
+// regular file, and following it would write Sidecar's eleven entries into a
+// file outside the directory Sidecar owns.
+//
+// It matters more here than for a dropped-file asset, because hooks.json is a
+// file the user owns and a link at that path is a plausible thing for somebody
+// with a dotfiles repository to have made deliberately.
+func TestASymlinkAtTheMastracodeConfigPathIsRefusedRatherThanFollowed(t *testing.T) {
+	svc, _, paths := mastracodeFixture(t)
+	if err := os.MkdirAll(paths.Dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	theirs := "{\n  \"Stop\": []\n}\n"
+	elsewhere := filepath.Join(t.TempDir(), "hooks.json")
+	if err := os.WriteFile(elsewhere, []byte(theirs), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(elsewhere, paths.Config); err != nil {
+		t.Fatal(err)
+	}
+
+	if st := mastracodeStatus(t, svc); st.Status != agentlifecycle.StatusNeedsRepair {
+		t.Fatalf("a symlinked hooks.json reads as %q, want needs-repair", st.Status)
+	}
+	for _, act := range Actions() {
+		_, err := svc.Plan(MastracodeProvider, act)
+		r := refusalFrom(t, err)
+		if r.Code != RefuseUnsafePath && r.Code != RefuseNeedsRepair {
+			t.Errorf("%s refused with %s, want unsafe_path", act, r.Code)
+		}
+	}
+	if got := readFileForTest(t, elsewhere); got != theirs {
+		t.Errorf("the symlink target was written through:\n%s", got)
+	}
+}
+
 // TestMastracodeDryRunAndApplyProduceTheSameOps is the honesty property of
 // --dry-run: what a cautious user reads is what a run does.
 func TestMastracodeDryRunAndApplyProduceTheSameOps(t *testing.T) {
