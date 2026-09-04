@@ -44,6 +44,7 @@ func OfficialSources() []string {
 		"sidecar.kimi.hooks",
 		"sidecar.antigravity.hooks",
 		"sidecar.copilot.hooks",
+		"sidecar.cursor.hooks",
 	}
 }
 
@@ -78,6 +79,8 @@ func OfficialSourceFor(kind string) string {
 		return "sidecar.antigravity.hooks"
 	case "copilot":
 		return "sidecar.copilot.hooks"
+	case "cursor":
+		return "sidecar.cursor.hooks"
 	default:
 		return ""
 	}

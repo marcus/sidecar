@@ -537,7 +537,7 @@ type Adapter interface {
 
 // DefaultAdapters returns the adapters this build ships.
 func DefaultAdapters() []Adapter {
-	return []Adapter{OpenCodeAdapter{}, CodexAdapter{}, ClaudeAdapter{}, PiAdapter{}, KiloAdapter{}, KimiAdapter{}, NewAntigravityAdapter(), NewCopilotAdapter()}
+	return []Adapter{OpenCodeAdapter{}, CodexAdapter{}, ClaudeAdapter{}, PiAdapter{}, KiloAdapter{}, KimiAdapter{}, NewAntigravityAdapter(), NewCopilotAdapter(), NewCursorAdapter()}
 }
 
 // Service is the application service behind the CLI and the Configuration

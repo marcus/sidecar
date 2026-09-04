@@ -213,6 +213,28 @@ var portedFrom = []PortedFrom{
 			"copied, because Sidecar never shipped them and the ownership rule finds a Sidecar entry on any event " +
 			"without a list that would go stale.",
 	},
+	{
+		Provider:    CursorProvider,
+		UpstreamID:  "cursor",
+		UpstreamDir: "cursor",
+		Version:     "1",
+		Commit:      herdrVendoredCommit,
+		Evidence: "Ported from Herdr's cursor integration at that commit, where the vendored " +
+			"upstream/cursor/herdr-agent-state.sh carries HERDR_INTEGRATION_VERSION=1. The provider half is kept: " +
+			"the single sessionStart registration, the flat handler array, and the minimal `{command: ...}` entry " +
+			"shape Herdr writes per Cursor's published hooks documentation. The upstream asset's own guard -- accept " +
+			"a payload whose hook_event_name is absent or sessionStart, then read session_id, sessionId, " +
+			"conversation_id or conversationId -- is structural here, because the entry is registered on one event " +
+			"and report-session reads those field spellings itself. Every fact was re-checked against cursor-agent " +
+			"2026.08.25's shipped bundle rather than taken on trust, and two of the checks changed the port. " +
+			"CURSOR_CONFIG_DIR is NOT honoured, although Herdr honours it: cursor-agent has a config-dir resolver " +
+			"that reads it, and its hook loader does not use that resolver, building the user hooks path from " +
+			"homedir() and \".cursor\" directly, so following the variable would install into a directory the " +
+			"loader never opens. And the top-level `version` member is written only into a file Sidecar creates, " +
+			"where Herdr adds it to any file lacking one: the loader never reads the key, so adding it to a user's " +
+			"file would edit bytes outside Sidecar's entry for no effect. One further difference: the transport is " +
+			"Sidecar's, so the dropped shell script and its python3 dependency are gone.",
+	},
 }
 
 // PortedFromRecords returns the provenance of every Sidecar integration asset.

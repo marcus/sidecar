@@ -59,13 +59,19 @@ type sessionHookIntegration struct {
 	// item is what gets appended to the canonical event's array: a matcher
 	// group for a grouped provider, the handler object itself for a flat one.
 	item func() json.RawMessage
-	// ensure are top-level members the provider requires the file to carry and
-	// Sidecar adds when it is absent -- Cursor's `"version": 1` is the only one
-	// today. They are removed again at uninstall, but only when they are all
-	// that is left and each still holds the exact value Sidecar wrote, so a
-	// file Sidecar created is a file Sidecar takes away and a value the user
+	// newFileMembers are top-level members Sidecar writes when it CREATES the
+	// file, and never adds to one that already exists. Cursor's `"version": 1`
+	// is the only one today: cursor-agent's own writer puts it at the top of a
+	// hooks.json it generates, so a file Sidecar creates should look like one
+	// Cursor created, but its hook loader never reads the key, so adding it to
+	// a user's existing file would be changing their file for no reason and
+	// would leave uninstall unable to give it back byte for byte.
+	//
+	// They are removed again at uninstall when they are all that is left and
+	// each still holds the exact value Sidecar wrote, so a file Sidecar created
+	// does not survive as a stub nobody wrote on purpose, and a value the user
 	// changed is a value the user keeps.
-	ensure []jsonMember
+	newFileMembers []jsonMember
 }
 
 // sessionHookAdapter is the Adapter every session-identity provider shares.
@@ -106,12 +112,12 @@ func (i sessionHookIntegration) canonicalFile() []byte {
 		// is unreachable.
 		return nil
 	}
-	return renderJSONFile(ensureMembers(top, i.ensure))
+	return renderJSONFile(withNewFileMembers(top, i.newFileMembers))
 }
 
-// ensureMembers adds each required member the top level does not already carry,
-// preserving the order of what is there.
-func ensureMembers(top []jsonMember, required []jsonMember) []jsonMember {
+// withNewFileMembers adds each new-file member the top level does not already
+// carry, preserving the order of what is there.
+func withNewFileMembers(top []jsonMember, required []jsonMember) []jsonMember {
 	for _, want := range required {
 		if _, ok := lastMember(top, want.key); ok {
 			continue
@@ -123,10 +129,11 @@ func ensureMembers(top []jsonMember, required []jsonMember) []jsonMember {
 	return top
 }
 
-// onlyEnsuredMembersRemain reports whether every member left is one Sidecar
-// itself added, still holding the value Sidecar wrote. It is the test for
-// whether removing the entry leaves a file that was Sidecar's own creation.
-func onlyEnsuredMembersRemain(top []jsonMember, required []jsonMember) bool {
+// onlyNewFileMembersRemain reports whether every member left is one Sidecar
+// itself writes when it creates the file, still holding the value Sidecar
+// wrote. It is the test for whether removing the entry leaves a file that was
+// Sidecar's own creation.
+func onlyNewFileMembersRemain(top []jsonMember, required []jsonMember) bool {
 	if len(required) == 0 {
 		return false
 	}
@@ -287,7 +294,7 @@ func (a sessionHookAdapter) planConverge(s sessionHookState, p Plan, act Action)
 		return Plan{}, err
 	}
 
-	if s.scan.converged(s.spec) && !ensureMembersMissing(s.scan.top, i.ensure) {
+	if s.scan.converged(s.spec) {
 		p.Unchanged = true
 		return p, nil
 	}
@@ -300,7 +307,14 @@ func (a sessionHookAdapter) planConverge(s sessionHookState, p Plan, act Action)
 	if err != nil {
 		return Plan{}, refuse(RefuseUnreadable, s.paths.File, "%s: %v", s.paths.File, err)
 	}
-	content := renderJSONFile(ensureMembers(top, i.ensure))
+	// The provider's own file header goes in only when Sidecar is creating the
+	// file. Adding it to a file the user already has would be editing bytes
+	// outside the entry, which is the one thing this installer promises not to
+	// do.
+	if !s.file.Exists {
+		top = withNewFileMembers(top, i.newFileMembers)
+	}
+	content := renderJSONFile(top)
 
 	p.Ops = entryFileOps(nil, s.env, s.dir, s.file, s.backup, content,
 		"write the Sidecar session-identity hook entry, preserving every other setting", ownedEntry(i.assetVersion))
@@ -310,19 +324,6 @@ func (a sessionHookAdapter) planConverge(s sessionHookState, p Plan, act Action)
 	}
 	p.StatusAfter = agentlifecycle.StatusCurrent
 	return p, nil
-}
-
-// ensureMembersMissing reports whether the file is missing a member the
-// provider requires. A converged entry in a file whose header Sidecar owes it
-// is not converged, which is what stops `install` reporting "unchanged" for a
-// Cursor hooks.json that has lost its `version`.
-func ensureMembersMissing(top []jsonMember, required []jsonMember) bool {
-	for _, want := range required {
-		if _, ok := lastMember(top, want.key); !ok {
-			return true
-		}
-	}
-	return false
 }
 
 // planUninstall removes exactly Sidecar's entry and the containers that held
@@ -344,7 +345,7 @@ func (a sessionHookAdapter) planUninstall(s sessionHookState, p Plan) (Plan, err
 		p.Unchanged = true
 		return p, nil
 	}
-	if onlyEnsuredMembersRemain(top, a.integration.ensure) {
+	if onlyNewFileMembersRemain(top, a.integration.newFileMembers) {
 		// What is left is only the header Sidecar wrote to satisfy the
 		// provider, unchanged since. The file was Sidecar's own creation, so it
 		// goes rather than being left as a stub nobody wrote on purpose.
@@ -368,6 +369,8 @@ func sessionHookIntegrationOf(a Adapter) (sessionHookIntegration, bool) {
 	case AntigravityAdapter:
 		return v.integration, true
 	case CopilotAdapter:
+		return v.integration, true
+	case CursorAdapter:
 		return v.integration, true
 	}
 	return sessionHookIntegration{}, false

@@ -287,6 +287,18 @@ Answer open question 3 first. Then port in order of live use, confirming for eac
 
 **Herdr's nine removed-lifecycle event names are not copied.** They are the residue of a full-lifecycle hook set upstream withdrew; Sidecar never shipped it, and the ownership rule already finds a Sidecar entry on any event without a list that goes stale.
 
+#### Result for `cursor`, 2026-09-04 (`td-73c4ff`)
+
+**Shipped at `session-identity` on `docs-only` evidence.** One `sessionStart` entry in `~/.cursor/hooks.json`, in the flat handler array Cursor's `hooks` object holds per event, as the minimal `{"command": ...}` shape Cursor documents and Herdr writes. Ported from Herdr's cursor integration version 1 and re-checked against cursor-agent 2026.08.25's shipped bundle, and two of those checks changed the port.
+
+**The first is an override that would have been wrong to honour.** cursor-agent has a configuration-directory resolver reading `CURSOR_CONFIG_DIR`, then `$XDG_CONFIG_HOME/cursor`, then `~/.cursor`. Its hook loader does not use it: in the same bundle the user hooks path is built from `homedir()` and `.cursor` directly. Herdr honours the variable; following it here would install into a directory that resolver describes and the loader never opens, which is a silently dead integration rather than a relocated one. That is now the lane's stated rule, and it cuts in both directions: Claude's `CLAUDE_CONFIG_DIR` is honoured in the same lane because Claude does read it, and Antigravity's is ignored because agy's binary does not contain the variable at all. Follow the code path that reads the file, not the variable name that looks like it should.
+
+**The second is the file header.** Cursor's own writer puts a `version` at the top of a hooks.json it generates, and Herdr adds one to any file lacking it. Sidecar writes it into a file it creates and never into one the user already has, because 2026.08.25's hook loader never reads the key -- the word appears in that module only in sync-conflict messages and in `cursor_version` on the payload. Adding it to a user's file would edit bytes outside Sidecar's entry to no effect, and it is what would stop uninstall giving that file back byte for byte, which a test now drives directly. `sessionHookIntegration` grew `newFileMembers` for this, and the member goes away with the entry when it is all that is left, so a file Sidecar created does not survive as a stub.
+
+**Cursor reads Claude's settings too**, alongside the project-local Claude settings and enterprise and team paths, so Sidecar's Claude entry fires inside cursor-agent sessions exactly as it does inside grok. It is refused there rather than bound by the same `report-session` gate.
+
+**The scan accepts a handler with no `type`.** Cursor documents the minimal `{"command": ...}` form and Herdr writes it, while Cursor's own generator emits `{"type": "command", "command": ...}`, so both exist in the wild and a Sidecar entry in either is Sidecar's.
+
 ### Slice 5 — The launch catalog moves to TOML and grows to every recognised agent (medium)
 
 Today `internal/agentcatalog` holds ten launchable families as a Go slice and ten detection-only families as a second slice. The knowledge in the first is small and flat: a command, an auto-approve flag, resume arguments, aliases, an adapter id. That is configuration, and it belongs in data a user or an agent can read and extend without a rebuild.

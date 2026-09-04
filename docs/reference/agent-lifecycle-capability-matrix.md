@@ -35,6 +35,7 @@ This is enforced rather than documented. `Capability.TierFor` polices every tier
 | Kimi Code | 0.40.1 | real-trace | `advisory` | lifecycle authority | session identity is refused by Sidecar's own catalog, and process exit is unclaimed by choice; `full` needs both |
 | Antigravity | 1.1.22 | docs-only | `session-identity` | session only | shipped hook is one `PreInvocation` entry. The provider's ceiling is `advisory`: it has no blocking event and no cancellation event. |
 | GitHub Copilot CLI | not installed | docs-only | `session-identity` | session only | shipped hook is one `SessionStart` entry. Nothing here is verified against a released binary, which is the weakest evidence in the registry. |
+| Cursor Agent | 2026.08.25 | docs-only | `session-identity` | session only | shipped hook is one `sessionStart` entry. The provider's ceiling is `full` on paper, and tracing is mandatory before claiming it. |
 
 Pi's row went out of `capabilities.json` when nothing could produce a report for it, came back at `session-identity` when `PiAdapter` and `assets/pi/sidecar-lifecycle.js` shipped, and is now at `advisory` on `real-trace` evidence because a live Pi 0.84.3 session has been traced. It is the only row here that has reached its own ceiling: `advisory` is as high as Pi can ever go, because `full` needs `blocked_on_request` and `unblocked` and Pi ships no permission system to produce either. See "Why the Pi entry was retracted, and what brought it back".
 
@@ -62,17 +63,17 @@ Claude Code's `unblocked` and `turn complete` are marked PARTIAL *after* tracing
 
 The **session-identity ports** are a second table, because a column each in the one above would say `NO` or "not hooked" nine times per provider and hide the one row that matters. For all of them the shipped Sidecar asset registers exactly one entry and claims exactly `session_identity`; state keeps coming from the screen lane. What the table records is the provider's own ceiling, so a later lane can see what a fuller asset would be able to reach.
 
-| Transition | Antigravity | GitHub Copilot CLI |
-| --- | --- | --- |
-| work start | YES (`PreInvocation`), not hooked | YES (`UserPromptSubmit`), not hooked |
-| tool use | YES (`PreToolUse`/`PostToolUse`), not hooked | YES (`PreToolUse`/`PostToolUse`), not hooked |
-| blocked on request | NO | YES (`permissionRequest`), unverified |
-| unblocked | NO | unknown |
-| turn complete | YES (`Stop`), not hooked | YES (`Stop`), not hooked |
-| cancellation | NO | PARTIAL (`sessionEnd` abort reason, session-granular) |
-| session identity | YES (`conversationId` on every payload) | YES (`session_id` on `SessionStart`) |
-| subagent | NO | unknown |
-| process exit | NO | YES (`SessionEnd`), not hooked |
+| Transition | Antigravity | GitHub Copilot CLI | Cursor Agent |
+| --- | --- | --- | --- |
+| work start | YES (`PreInvocation`), not hooked | YES (`UserPromptSubmit`), not hooked | YES (`beforeSubmitPrompt`), not hooked |
+| tool use | YES (`PreToolUse`/`PostToolUse`), not hooked | YES (`PreToolUse`/`PostToolUse`), not hooked | YES (`preToolUse`/`postToolUse`), not hooked |
+| blocked on request | NO | YES (`permissionRequest`), unverified | unknown |
+| unblocked | NO | unknown | unknown |
+| turn complete | YES (`Stop`), not hooked | YES (`Stop`), not hooked | YES (`stop`), not hooked |
+| cancellation | NO | PARTIAL (`sessionEnd` abort reason, session-granular) | YES (`stop` status `aborted`, `postToolUseFailure.is_interrupt`), not hooked |
+| session identity | YES (`conversationId` on every payload) | YES (`session_id` on `SessionStart`) | YES (`session_id` on `sessionStart`) |
+| subagent | NO | unknown | YES (`subagentStart`/`subagentStop`), not hooked |
+| process exit | NO | YES (`SessionEnd`), not hooked | YES (`sessionEnd`), not hooked |
 
 Copilot's column is the only one in this document with `unknown` in it, and that is the honest word: it is read from Herdr's event lists and a documentation page rather than from a shipped artifact, because the CLI is not installed on any machine Sidecar has surveyed.
 
@@ -379,6 +380,32 @@ The Windows spelling of that field, `powershell`, is **not written**. Sidecar ha
 
 Herdr's installer removes its own registrations from nine further events -- `UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `PostToolUseFailure`, `Stop`, `agentStop`, `SessionEnd`, `notification` and `sessionStart` -- which is the residue of a full-lifecycle hook set it used to ship and withdrew. Sidecar never shipped those, so the list is not copied. The ownership rule covers the same ground without going stale: a Sidecar entry is recognised and removed wherever in the file it sits, on any event.
 
+## Cursor Agent
+
+**Source:** cursor-agent 2026.08.25's shipped bundle, cross-read against Herdr's `cursor` integration at `HERDR_INTEGRATION_VERSION=1`. Not traced.
+
+The port is one `sessionStart` entry in `~/.cursor/hooks.json`, in the flat handler array Cursor's `hooks` object holds per event, as the minimal `{"command": "..."}` shape Cursor documents and Herdr writes. Cursor's own generator emits `{"type": "command", "command": "..."}`, so both forms exist in the wild and the scan accepts a handler with no `type` for exactly that reason.
+
+Cursor's event names are camelCase and its payload's field names are snake_case: `sessionStart` carrying `session_id`, `hook_event_name` and `transcript_path`, which is Claude's spelling of the payload with Cursor's spelling of the event. Both halves of that crossing are Cursor's rather than a transcription error, and it is why the entry spec carries an event key separately from everything else.
+
+### The override that would have been wrong to honour
+
+cursor-agent **has** a configuration-directory resolver, and it reads `CURSOR_CONFIG_DIR`, then `$XDG_CONFIG_HOME/cursor`, then `~/.cursor`. Its hook loader **does not use it**: in the same bundle, the user hooks path is built from `homedir()` and `.cursor` directly. Herdr honours `CURSOR_CONFIG_DIR` here; Sidecar does not, because following it would put the entry in a directory that resolver describes and the loader never opens, which is a silently dead integration rather than a relocated one. `TestCursorInstallsWhereItsHookLoaderLooks` pins it, and a proof run redirects Cursor by moving `HOME`.
+
+That is the same rule that made Claude's `CLAUDE_CONFIG_DIR` worth honouring and Antigravity's `ANTIGRAVITY_CLI_CONFIG_DIR` worth ignoring: follow the code path that actually reads the file, not the variable name that looks like it should.
+
+### The version header goes only into a file Sidecar creates
+
+Cursor's own writer puts a `version` at the top of a hooks.json it generates, and Herdr adds one to any file lacking it. Sidecar writes it into a file it creates -- so a file it creates looks like one Cursor created -- and never into a file the user already has, because 2026.08.25's hook loader never reads the key. Adding it would be editing bytes outside Sidecar's entry to no effect, and it is what would stop uninstall giving a user's file back byte for byte. When removing the entry leaves nothing but that header, unchanged, the file goes with it rather than surviving as a stub nobody wrote on purpose.
+
+### Cursor reads Claude's settings too
+
+The same bundle resolves `~/.claude/settings.json`, the project-local `.claude/settings.json` and `.claude/settings.local.json` as hook sources, alongside enterprise and team paths. So Sidecar's Claude entry also fires inside cursor-agent sessions carrying `--kind claude`, exactly as it does inside grok, and is refused there rather than bound: `report-session` verifies the claimed kind against the pane's own occupant. The cursor entry beside it binds the session as `cursor`.
+
+### Why `session-identity` is what is claimed
+
+The provider's ceiling is `full` on paper -- the bundle carries a full registry including `stop` with an `aborted` status and `postToolUseFailure.is_interrupt`, which is a distinguishable cancellation, plus `subagentStart`/`subagentStop` and `sessionEnd`. None of it is traced, and there are user reports of events being omitted on particular versions, so tracing stays mandatory before any tier above this one. The shipped asset asks for none of it.
+
 ## Catalog agents evaluated but not built
 
 These are recorded rather than omitted so that "evaluated, and deliberately not built" is distinguishable from "never looked at". All are `screen-fallback` with `evidence: none`: **none is trace-backed**, so each selects a candidate rather than earning a tier, and `TierFor` would refuse them anything else regardless.
@@ -386,7 +413,6 @@ These are recorded rather than omitted so that "evaluated, and deliberately not 
 | Agent | Seen | Hook surface | Ceiling on paper | Why it is not built |
 | --- | --- | --- | --- | --- |
 | grok | 1.0.13 | strongest in the catalog | `full` | Untraced. The only provider anywhere with a dedicated cancellation event: `StopCancelled` carrying `user_interrupt`, `permission_rejected` and `permission_cancelled`, alongside `PermissionDenied` and `Notification{permission_prompt, idle_prompt}`. |
-| cursor | 2026.08.25 | full registry in the shipped bundle | `full` | Untraced, and there are user reports of events being omitted on particular versions, so tracing is mandatory rather than a formality. |
 | amp | not installed | TypeScript plugin process | `advisory` | Not installed and not traced. No permission event and no reliable process-exit signal, so two lanes would stay with screen detection anyway. |
 
 Two findings from this sweep are worth more than the table.

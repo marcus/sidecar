@@ -72,6 +72,11 @@ var assetGoldens = []assetGolden{
 	// released Copilot's, so a change to either is a change to an untested
 	// claim and should be noticed.
 	{provider: CopilotProvider, name: "settings.json", version: "1", checksum: "48174b6c5fbf7770da52242b8fb198e2383cfdd481498bc4b455f9e55acf5511"},
+	// Cursor's asset is the file Sidecar would create in an empty tree, so the
+	// checksum covers the `version` header as well as the entry. That header
+	// goes only into a file Sidecar creates, never into a user's own, so a
+	// change here is a change to what a fresh install looks like.
+	{provider: CursorProvider, name: "hooks.json", version: "1", checksum: "c5b43c13c5aa7b5bc368dd815c542b9060f2910c985f57b31376d3dab4296a72"},
 }
 
 // bumpInstructions is the whole point of the guard: a failure here has to tell

@@ -182,21 +182,28 @@
   {
     "schemaVersion": 1,
     "provider": "cursor",
-    "source": "",
-    "assetVersion": "",
-    "tier": "screen-fallback",
-    "evidence": "none",
+    "source": "sidecar.cursor.hooks",
+    "assetVersion": "1",
+    "tier": "session-identity",
+    "evidence": "docs-only",
     "minProviderVersion": "",
-    "testedProviderRange": "",
-    "covered": [],
+    "testedProviderRange": "2026.08.25",
+    "covered": [
+      "session_identity"
+    ],
     "knownGaps": [
-      "No Sidecar integration is built, so nothing is claimed and screen detection remains the sole authority.",
-      "Not traced. Read from the shipped bundle rather than observed.",
-      "There are user reports of events being omitted on particular versions, so tracing is mandatory rather than a formality before any tier is claimed."
+      "The shipped asset is a single sessionStart hook entry: session identity only, by design, and that is what the tier reflects. Cursor's own contract is far broader.",
+      "Not traced. The contract was read out of cursor-agent 2026.08.25's shipped bundle rather than observed, and there are user reports of events being omitted on particular versions, so tracing stays mandatory before any tier above this one.",
+      "The hooks file is ~/.cursor/hooks.json and no environment override moves it. cursor-agent HAS a configuration-directory resolver reading CURSOR_CONFIG_DIR then $XDG_CONFIG_HOME/cursor then ~/.cursor, but its hook loader does not use it: the user hooks path is built from homedir() and \".cursor\" directly in the same bundle. Herdr honours CURSOR_CONFIG_DIR, which would put an entry in a directory the loader never opens, so Sidecar does not.",
+      "Event names are camelCase (sessionStart, beforeSubmitPrompt, postToolUseFailure) while the payload's field names are snake_case (session_id, hook_event_name, transcript_path), which is Claude's spelling. Both halves of that crossing are Cursor's, not a transcription error.",
+      "The entry is the minimal documented shape, a lone `command` member, which is what Herdr writes. Cursor's own generator emits `{type, command}`, so both forms exist in the wild and the scan accepts a handler with no `type`.",
+      "cursor-agent also loads hooks from ~/.claude/settings.json and the project-local Claude settings, so Sidecar's Claude entry fires inside cursor sessions too. It is refused there rather than bound, because report-session verifies the claimed kind against the pane's own occupant.",
+      "The `version` member at the top of hooks.json is written only into a file Sidecar creates. 2026.08.25's hook loader never reads it, so adding it to a user's existing file would edit bytes outside Sidecar's entry for no effect. Herdr adds it unconditionally.",
+      "Sidecar's asset registers nothing else, so the full registry present in the bundle -- beforeSubmitPrompt, the tool events, stop carrying status \"aborted\", postToolUseFailure.is_interrupt, subagentStart/Stop and sessionEnd -- is a ceiling rather than a claim. A fuller asset could reach `full` on paper once traced."
     ],
     "orderingGuaranteed": false,
     "sourceDoc": "https://cursor.com/docs/agent/hooks",
-    "sourceVersionNote": "cursor-agent 2026.08.25. A full event registry is present in the shipped bundle: beforeSubmitPrompt, tool events, stop carrying status \"aborted\", postToolUseFailure.is_interrupt, subagentStart/Stop and sessionStart/End, configured through ~/.cursor/hooks.json. A full-tier candidate once traced."
+    "sourceVersionNote": "cursor-agent 2026.08.25 on darwin/arm64. The hooks file path, the flat handler array, the payload's field names and the absence of any version check were read out of the shipped bundle rather than from documentation. Ported from Herdr's cursor integration version 1."
   },
   {
     "schemaVersion": 1,
