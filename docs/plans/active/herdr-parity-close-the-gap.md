@@ -1,6 +1,17 @@
 # Herdr parity: close the remaining gap
 
-**Status:** Planning, opened 2026-09-02. This is the controlling plan for the work that remains after [Herdr detection parity](herdr-detection-parity.md) Phases 0 through 5 landed. That plan owns the screen lane and is finished except for its Phase 6, which this document replaces and expands. **Slices 1 and 3 are implemented** (see their result sections); Slice 2 is deferred and Slice 4 is unstarted.
+**Status:** In progress, opened 2026-09-02, scope settled 2026-09-03. This is the controlling plan for the work that remains after [Herdr detection parity](herdr-detection-parity.md) Phases 0 through 5 landed. That plan owns the screen lane and is finished except for its Phase 6, which this document replaces and expands. **Slices 1 and 3 are implemented** (see their result sections). Slices 2 and 4 are confirmed in full, and Slices 5 through 7 were added on 2026-09-03 for the user-facing half of the same goal: every agent Sidecar can recognise is one it can also start, and the surface that installs an integration reads as a table rather than an accordion.
+
+## Decisions, 2026-09-03
+
+Four questions were put to the maintainer and answered; they are recorded here so no slice reopens them.
+
+1. **Every agent with launch config is launchable, but the Create picker shows only the ones that are installed.** A family appears in the creation pickers when its command resolves on `PATH`, or when the user has already named it in `plugins.workspace.agents`. The full catalog stays reachable through configuration. This keeps the picker short and honest without hiding anything.
+2. **Slice 2 in full and all nine Slice 4 session-identity ports.** Open question 3 is answered: the ports are worth doing, because the user's stated goal is status and notifications as accurate as possible for whatever agent they happen to run, and exact session binding is what makes resume reliable. The maintenance surface is accepted; the sync report is what keeps each bump a diff review.
+3. **Missing provider CLIs may be installed into a scratch prefix to capture traces.** Nothing lands on the maintainer's real `PATH` or in their dotfiles; the prefix is removed after the proof run. A provider that needs credentials the environment does not already carry ships at the tier the rules allow without traces, and says so in its capability entry.
+4. **Work merges into `main` as soon as it is clearly better than `main`, chunk by chunk.** Each lane is reviewed and green on the feature branch, then the feature branch merges into `main`, so divergence stays small and a release cut at any moment carries every improvement already proven. Nothing waits for the whole plan to finish.
+
+Two facts established while settling scope, recorded because they keep coming up. First, the "known gaps" the integration status prints for Claude are gaps in Claude Code's own hook contract, found by Sidecar's tracing of 2.1.220, and Herdr rolled back its full-lifecycle Claude hooks for the same two reasons; they are not Sidecar-specific and not inherited. The two Sidecar-scope items in that list are the `CLAUDE_CONFIG_DIR` blind spot and the grok/Claude shared-settings binding bug. The second is already fixed and closed as `td-11040b` (report-session verifies `--kind` against the pane's occupant and the shell's recorded type, refusing on mismatch); the capability entry's text still says "tracked", and Slice 4 corrects that wording while it is in the file. The `CLAUDE_CONFIG_DIR` blind spot is real and Slice 4 closes it the same way the other ports honour their provider's config-dir override. Second, Herdr has no per-agent launch or auto-approve table; its `agent_resume.rs` is the only launch-adjacent knowledge upstream holds, and it is the reference for the resume arguments Slice 5 records.
 
 **Baseline:** Sidecar `main` at `9b8739f7`; Herdr vendored at `master` `d08e4468`, harness binary pinned at `preview-2026-08-31-b1ff4582e968`. Facts below were read from `internal/agentactivity/manifests/authority.upstream.json`, `aliases.upstream.json`, `upstream.lock.json`, `internal/agentlifecycle/capabilities.json` and the vendored asset tree at that commit, not from memory.
 
@@ -198,6 +209,30 @@ The real bound is narrower and is now written where the next person will hit it:
 Answer open question 3 first. Then port in order of live use, confirming for each that Sidecar's existing screen coverage plus the new session binding is worth the maintenance. Herdr's Claude asset is at v9 and Codex at v8; the sync report already shows the diff against the version Sidecar's adapters were written against, so re-porting those two is a diff review rather than new work.
 
 **Exit gate:** every port has a fixture, a capability entry earned by traces, and a `ported-from` header the sync report can diff.
+
+### Slice 5 — The launch catalog moves to TOML and grows to every recognised agent (medium)
+
+Today `internal/agentcatalog` holds ten launchable families as a Go slice and ten detection-only families as a second slice. The knowledge in the first is small and flat: a command, an auto-approve flag, resume arguments, aliases, an adapter id. That is configuration, and it belongs in data a user or an agent can read and extend without a rebuild.
+
+- One TOML file per family, embedded in the binary under `internal/agentcatalog/families/`, carrying every field `Family` has today. The Go slices go away; `Families()`, `DetectionFamilies()` and every finder read the parsed set, so no consumer changes.
+- An optional user overlay directory under the Sidecar config dir. A file there with a known id overrides that family's fields; a file with a new id adds a family. Overlay parsing happens once at startup, off the render path, and a malformed file is reported and skipped rather than fatal.
+- Every detection-only family that has a real CLI becomes launchable: `cline`, `devin`, `droid`, `hermes`, `kilo`, `kimi`, `kiro`, `maki`, `qodercli`, `qwen`, plus `omp` and `mastracode`, which gain their first identity here so Slice 2 can register adapters against them. Each entry's command, auto-approve flag and resume arguments are read from the provider's own documentation or `--help`, with Herdr's `agent_resume.rs` as the reference for resume, and the source is recorded in the file. A provider with no auto-approve mode says so rather than guessing a flag.
+- The creation pickers filter by installation: a family is offered when its command resolves on `PATH` or when it is already named in `plugins.workspace.agents`. The lookup is cached per process and never runs on a render path.
+- `docs/guides/active/adding-new-agent-clis.md` is rewritten so Step 1 is "write one TOML file".
+
+**Exit gate:** the ten existing families launch with byte-identical argv before and after; `TestAgentPickersFollowCatalog` and the vocabulary parity tests pass unchanged; a new family added as a TOML file in the overlay directory appears in the Create Workspace picker of a running Sidecar once its command is on `PATH`, and the picker on this machine offers exactly the installed set.
+
+### Slice 6 — The Integrations page is a table, not an accordion (small)
+
+The Configuration → Agents → Integrations route currently expands the focused row to show its detail line and action pills, so moving the cursor reflows the whole list and the pills are unreachable by mouse. It becomes a fixed-shape table: one row per supported provider with name, status, tier and the action pills always painted in a fixed column, dimmed when the service does not offer them. Unsupported providers collapse to one summary line. The gap count leaves the row; the command that lists gaps, `sidecar agent integration status <agent>`, is shown once at the foot of the page. Every fact still comes from `agentintegration.Service` and nothing is computed on a render path.
+
+**Exit gate:** moving the cursor changes only the highlight; every offered action is clickable on every row without moving the cursor first; the route renders the same for three, seven and seventeen providers.
+
+### Slice 7 — A maintenance skill, so the next port is a procedure (small)
+
+A skill under `.claude/skills/` that tells an agent how to pull Herdr, read the sync report, and port one hook or plugin integration following the Pi steel thread: which upstream files hold the provider half, how the transport half is swapped, where the adapter, fixtures, capability entry and `portedFrom` row go, the proof-run hazards Slice 1 recorded (`TMUX` on the CLI path, the `-config` shim, isolated state and a private tmux server), and how a tier is earned. The weekly sync report already diffs the vendored assets; the skill is what turns a diff into a port.
+
+**Exit gate:** an agent given only the skill and a provider name produces a port whose shape matches the existing ones, judged by the same tests that gate every other adapter.
 
 ## Acceptance evidence
 
