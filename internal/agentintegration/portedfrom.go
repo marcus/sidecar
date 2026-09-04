@@ -171,6 +171,26 @@ var portedFrom = []PortedFrom{
 			"same upstream shape; no --seq is sent, because Sidecar's store assigns; and each row carries a " +
 			"bounded Sidecar reason code, which Herdr's wire has no vocabulary for.",
 	},
+	{
+		Provider:    AntigravityProvider,
+		UpstreamID:  "agy",
+		UpstreamDir: "antigravity_cli",
+		Version:     "3",
+		Commit:      herdrVendoredCommit,
+		Evidence: "Ported from Herdr's antigravity_cli integration at that commit, where the vendored " +
+			"upstream/antigravity_cli/herdr-agent-state.sh carries HERDR_INTEGRATION_VERSION=3. The provider half is " +
+			"kept: the single PreInvocation registration from ANTIGRAVITY_CLI_HOOK_EVENTS in src/integration/mod.rs, " +
+			"the flat handler list rather than a matcher group, the ten second timeout, the camelCase conversationId " +
+			"field, and the empty JSON object every exit path writes to stdout. Every one of those was re-checked " +
+			"against agy 1.1.22's own embedded hooks documentation rather than taken on trust, and the two agree. " +
+			"Three deliberate differences, each with its reason in antigravity_install.go: the transport is Sidecar's, " +
+			"so the dropped shell script and its python3 dependency are gone and the config entry invokes the CLI " +
+			"directly, exactly as Sidecar's claude and codex adapters already do with the same upstream shape; " +
+			"ownership is by entry command rather than by Herdr's block name, so a Sidecar entry a user moved into " +
+			"another block is still found and removed; and ANTIGRAVITY_CLI_CONFIG_DIR is NOT honoured, because it is " +
+			"Herdr's own test seam and appears nowhere in the shipped agy binary, so following it would install into " +
+			"a directory the provider never opens.",
+	},
 }
 
 // PortedFromRecords returns the provenance of every Sidecar integration asset.

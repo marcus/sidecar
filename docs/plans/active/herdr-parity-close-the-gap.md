@@ -261,6 +261,20 @@ Answer open question 3 first. Then port in order of live use, confirming for eac
 
 **Exit gate:** every port has a fixture, a capability entry earned by traces, and a `ported-from` header the sync report can diff.
 
+#### Result for `antigravity`, 2026-09-04 (`td-73c4ff`)
+
+**Shipped at `session-identity` on `docs-only` evidence.** The port is one `PreInvocation` entry in `~/.gemini/config/hooks.json`, under a hook block named `sidecar`, invoking `sidecar agent report-session --kind antigravity --hook-stdin`. Everything about the contract was read from agy 1.1.22's own embedded hooks documentation and cross-checked against Herdr's `antigravity_cli` integration version 3; the two agree on every point.
+
+**The four session-identity ports share one adapter, and that is the shape rather than a shortcut.** Claude's installer was generalized into `sessionhook.go`, which is the whole lifecycle -- inspect, status, the four verbs, the ownership gate, the backup, the refusals -- driven by a descriptor. What a provider contributes is a file path, an event name, an entry shape and the key its command lives under. `hookconfig.go`'s scan grew the coordinates that made that possible: a block, an event, a flat-versus-grouped shape and a command key, whose zero values are exactly what Claude and Codex already had, so neither of those adapters changed behaviour and neither was rewritten onto the new one. Codex in particular stays where it is, because three owned mutations across two files in two formats would be a descriptor with a hole in it exactly where the hard part is.
+
+**Antigravity has no session event, so the earliest event is the session event.** Its whole surface is `PreToolUse`, `PostToolUse`, `PreInvocation`, `PostInvocation` and `Stop`, and the conversation id rides every payload. `PreInvocation` is the only one that fires before the model runs and on every turn, which is why Herdr subscribes to it and why this port does. The cost is real and is recorded rather than hidden: the binding lands one model call into the session, so a pane opened and left untouched is unbound until its first turn.
+
+**Three provider quirks are kept verbatim.** The payload is camelCase because Antigravity encodes it with protojson, so the id arrives as `conversationId`. A hook must write a JSON object to stdout, so the installed command ends `; printf '{}\n'` -- a fixed literal with nothing interpolated, under the `sh -c` Antigravity already uses, which also makes the hook fail open because the exit status the provider sees is printf's. And `hooks.json` is keyed by hook NAME rather than by event, so the scan walks every top-level block: an entry a user moved into a block of their own would otherwise keep firing while `integration status` reported nothing installed, and uninstall would never find it.
+
+**One deliberate divergence from Herdr, and it is the opposite call from the Claude fix in the same lane.** Herdr honours `ANTIGRAVITY_CLI_CONFIG_DIR`; that variable appears nowhere in agy's shipped binary, so it is Herdr's own test seam rather than the provider's contract, and honouring it would install into a directory the provider never opens. `CLAUDE_CONFIG_DIR` is honoured in the same lane for the mirror-image reason: Claude does read it. The rule is to follow the provider, not the upstream installer.
+
+**Ownership is stricter than upstream's.** Herdr's uninstall removes its whole block by name. Sidecar removes only entries whose command invokes `report-session`, keeps every other handler in the array in order, keeps a block that still holds something of the user's, and drops a block that held nothing else.
+
 ### Slice 5 — The launch catalog moves to TOML and grows to every recognised agent (medium)
 
 Today `internal/agentcatalog` holds ten launchable families as a Go slice and ten detection-only families as a second slice. The knowledge in the first is small and flat: a command, an auto-approve flag, resume arguments, aliases, an adapter id. That is configuration, and it belongs in data a user or an agent can read and extend without a rebuild.

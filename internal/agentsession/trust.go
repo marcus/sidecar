@@ -42,6 +42,7 @@ func OfficialSources() []string {
 		"sidecar.pi.extension",
 		"sidecar.kilo.plugin",
 		"sidecar.kimi.hooks",
+		"sidecar.antigravity.hooks",
 	}
 }
 
@@ -72,6 +73,8 @@ func OfficialSourceFor(kind string) string {
 		return "sidecar.kilo.plugin"
 	case "kimi":
 		return "sidecar.kimi.hooks"
+	case "antigravity":
+		return "sidecar.antigravity.hooks"
 	default:
 		return ""
 	}

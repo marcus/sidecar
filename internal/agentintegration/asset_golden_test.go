@@ -60,6 +60,12 @@ var assetGoldens = []assetGolden{
 	// does. A change to any of them lands here, which is the intent: the
 	// event-to-lane mapping is the part a tier is granted against.
 	{provider: KimiProvider, name: "config.toml", version: "1", checksum: "438867d8dc4b6406dd28bb2829438221f0c96e5b57c7d840819e7a729196bd39"},
+	// Antigravity's asset is not a file either: it is the hooks.json Sidecar
+	// would write into an empty tree, so the checksum covers the block name,
+	// the event, the flat handler shape, the exact command including the
+	// printf the provider's stdout contract requires, and the timeout. Those
+	// are the whole of what the integration does.
+	{provider: AntigravityProvider, name: "hooks.json", version: "1", checksum: "389e513eddf2d16c14124205f6409b1000165021853b9211af764d14def4ac60"},
 }
 
 // bumpInstructions is the whole point of the guard: a failure here has to tell

@@ -240,22 +240,29 @@
   {
     "schemaVersion": 1,
     "provider": "antigravity",
-    "source": "",
-    "assetVersion": "",
-    "tier": "screen-fallback",
-    "evidence": "none",
-    "minProviderVersion": "",
-    "testedProviderRange": "",
-    "covered": [],
+    "source": "sidecar.antigravity.hooks",
+    "assetVersion": "1",
+    "tier": "session-identity",
+    "evidence": "docs-only",
+    "minProviderVersion": "1.1.0",
+    "testedProviderRange": "1.1.22",
+    "covered": [
+      "session_identity"
+    ],
     "knownGaps": [
-      "No Sidecar integration is built, so nothing is claimed and screen detection remains the sole authority.",
-      "Not traced; read from documentation embedded in the shipped binary.",
-      "No session start or end event, no blocking event and no cancellation event, so neither the blocked lane nor process exit could be authored from hooks.",
-      "The hooks configuration path has already moved between releases, so any integration would need a version-aware installer."
+      "The shipped asset is a single PreInvocation hook entry: session identity only, by design, and that is what the tier reflects.",
+      "Antigravity has no session start or end event at all. Its whole hook surface is five events -- PreToolUse, PostToolUse, PreInvocation, PostInvocation and Stop -- so there is no moment that means \"this session began\" and the conversation is named by whichever event fires first. PreInvocation is that event: it fires before the model is called, on every turn, where the tool events fire only for a turn that calls a tool.",
+      "There is no blocking event and no cancellation event, so neither the blocked lane nor process exit could be authored from these hooks even if the asset tried. Stop carries a terminationReason and a fullyIdle flag and is the only turn-end signal; PreToolUse can return a decision, but a hook deciding is not the same as a hook being told the user was asked.",
+      "The payload is camelCase, because Antigravity encodes it with protojson. The session id arrives as conversationId and the transcript as transcriptPath, neither of which is a field name any other provider in this registry uses.",
+      "A hook must write a JSON object to stdout, so Sidecar's entry appends `printf '{}\\n'` after the report command, which prints nothing on success. The suffix is also what makes the hook fail open, because the exit status Antigravity sees is printf's.",
+      "The hooks configuration path has already moved between releases: agy's own changelog records fixing its /hooks command writing to ~/.gemini/antigravity-cli/hooks.json instead of the shared ~/.gemini/config/hooks.json. The installer targets the shared one, which is where 1.1.22 reads.",
+      "Antigravity honours no environment override for that directory. Herdr honours ANTIGRAVITY_CLI_CONFIG_DIR, but the variable appears nowhere in the shipped binary, so it is Herdr's test seam rather than the provider's contract and Sidecar does not follow it. Relocating the provider for a test means moving HOME.",
+      "Not traced. Every statement here is read from agy 1.1.22's own embedded hooks documentation and from the vendored Herdr asset, so the tier rests on documentation rather than on a capture.",
+      "Hooks run synchronously and block the agent loop, and only type \"command\" is supported. A slow report would slow a turn, which is why the entry declares a ten second timeout."
     ],
     "orderingGuaranteed": false,
     "sourceDoc": "https://antigravity.google/docs",
-    "sourceVersionNote": "agy 1.1.22. The thinnest hook surface in the catalog: exactly five events -- PreToolUse, PostToolUse, PreInvocation, PostInvocation and Stop -- carrying a conversationId. An advisory candidate at best."
+    "sourceVersionNote": "agy 1.1.22 on darwin/arm64. The hook contract was read from the documentation the shipped binary embeds, which documents all five events, the camelCase protojson payload, the per-event input and output contracts and the flat-versus-grouped structure per event. Ported from Herdr's antigravity_cli integration version 3."
   },
   {
     "schemaVersion": 1,
@@ -275,7 +282,7 @@
     ],
     "orderingGuaranteed": false,
     "sourceDoc": "https://dev.meta.ai/docs/muse-code/",
-    "sourceVersionNote": "muse 1.0.1 on darwin/arm64, inspected 2026-08-31. No hook contract found; session storage verified via local JSONL and SQLite traces, and live TUI captured via private tmux socket (braille title spinner U+2800-FF, \u25c8 Thinking + esc to interrupt chrome, \u27e9 prompt idle)."
+    "sourceVersionNote": "muse 1.0.1 on darwin/arm64, inspected 2026-08-31. No hook contract found; session storage verified via local JSONL and SQLite traces, and live TUI captured via private tmux socket (braille title spinner U+2800-FF, ◈ Thinking + esc to interrupt chrome, ⟩ prompt idle)."
   },
   {
     "schemaVersion": 1,

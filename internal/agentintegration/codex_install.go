@@ -570,7 +570,7 @@ func (a CodexAdapter) planConverge(s codexState, p Plan, act Action) (Plan, erro
 	// a trust record for content that does not exist.
 	wantKey, wantHash := s.wantKey, s.wantHash
 	if !s.hooksScan.converged(s.spec) {
-		top, _, err := stripOwnedHookEntries(s.hooksScan)
+		top, _, err := stripOwnedHookEntries(s.hooksScan, s.spec)
 		if err != nil {
 			return Plan{}, refuse(RefuseUnreadable, s.paths.Hooks, "%s: %v", s.paths.Hooks, err)
 		}
@@ -578,7 +578,7 @@ func (a CodexAdapter) planConverge(s codexState, p Plan, act Action) (Plan, erro
 		if err != nil {
 			return Plan{}, refuse(RefuseUnreadable, s.paths.Hooks, "%s: %v", s.paths.Hooks, err)
 		}
-		top, err = appendCanonicalGroup(top, codexCanonicalGroup())
+		top, err = appendCanonicalEntry(top, codexCanonicalGroup(), s.spec)
 		if err != nil {
 			return Plan{}, refuse(RefuseUnreadable, s.paths.Hooks, "%s: %v", s.paths.Hooks, err)
 		}
@@ -640,7 +640,7 @@ func (a CodexAdapter) planUninstall(s codexState, p Plan) (Plan, error) {
 	}
 
 	if len(s.hooksScan.owned) > 0 {
-		top, changed, err := stripOwnedHookEntries(s.hooksScan)
+		top, changed, err := stripOwnedHookEntries(s.hooksScan, s.spec)
 		if err != nil {
 			return Plan{}, refuse(RefuseUnreadable, s.paths.Hooks, "%s: %v", s.paths.Hooks, err)
 		}

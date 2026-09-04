@@ -33,6 +33,7 @@ This is enforced rather than documented. `Capability.TierFor` polices every tier
 | Pi | 0.84.3 | real-trace | `advisory` | lifecycle authority | blocking is structurally impossible; `advisory` is the ceiling and is reached |
 | Kilo Code | 7.5.9 | real-trace | `advisory` | lifecycle authority | cancellation is indistinguishable and the shipped asset releases nothing on exit, so `advisory` is the ceiling and is reached |
 | Kimi Code | 0.40.1 | real-trace | `advisory` | lifecycle authority | session identity is refused by Sidecar's own catalog, and process exit is unclaimed by choice; `full` needs both |
+| Antigravity | 1.1.22 | docs-only | `session-identity` | session only | shipped hook is one `PreInvocation` entry. The provider's ceiling is `advisory`: it has no blocking event and no cancellation event. |
 
 Pi's row went out of `capabilities.json` when nothing could produce a report for it, came back at `session-identity` when `PiAdapter` and `assets/pi/sidecar-lifecycle.js` shipped, and is now at `advisory` on `real-trace` evidence because a live Pi 0.84.3 session has been traced. It is the only row here that has reached its own ceiling: `advisory` is as high as Pi can ever go, because `full` needs `blocked_on_request` and `unblocked` and Pi ships no permission system to produce either. See "Why the Pi entry was retracted, and what brought it back".
 
@@ -57,6 +58,20 @@ Two columns are doing different jobs here and it is worth being explicit about w
 | process exit | YES (traced) | YES (traced) | YES (traced) | YES | YES (not consumed) | YES (traced), not hooked |
 
 Claude Code's `unblocked` and `turn complete` are marked PARTIAL *after* tracing rather than before: both events exist and both fire on the ordinary path, and both go missing on exactly the paths where they would matter most. See the Claude Code section.
+
+The **session-identity ports** are a second table, because a column each in the one above would say `NO` or "not hooked" nine times per provider and hide the one row that matters. For all of them the shipped Sidecar asset registers exactly one entry and claims exactly `session_identity`; state keeps coming from the screen lane. What the table records is the provider's own ceiling, so a later lane can see what a fuller asset would be able to reach.
+
+| Transition | Antigravity |
+| --- | --- |
+| work start | YES (`PreInvocation`), not hooked |
+| tool use | YES (`PreToolUse`/`PostToolUse`), not hooked |
+| blocked on request | NO |
+| unblocked | NO |
+| turn complete | YES (`Stop`), not hooked |
+| cancellation | NO |
+| session identity | YES (`conversationId` on every payload) |
+| subagent | NO |
+| process exit | NO |
 
 ## OpenCode
 
@@ -311,6 +326,36 @@ The installer owns one region of `config.toml`, delimited by two marker comments
 
 One hole in the ownership rule is worth recording because it is a real limit rather than a bug. Ownership reads the first word of a hook's command, so a copy of Sidecar's own command placed outside the managed block is detected and every mutation refuses. A hook that *wraps* that command in a script of the user's is not: a wrapper is not the `sidecar` binary. That fails in the documented direction — their entry is never adopted or deleted — but such a duplicate reports alongside Sidecar's own and is invisible to `integration status`. It was observed during the proof run, where a debug wrapper produced a second `idle` report for one `Stop`.
 
+## Antigravity CLI
+
+**Source:** the hooks documentation agy 1.1.22 embeds in its own binary, cross-read against Herdr's `antigravity_cli` integration at `HERDR_INTEGRATION_VERSION=3`. Not traced.
+
+Antigravity's hook surface is the thinnest Sidecar has integrated with: five events, `PreToolUse`, `PostToolUse`, `PreInvocation`, `PostInvocation` and `Stop`, configured in a single `hooks.json` under the shared customization root `~/.gemini/config`. Every payload carries the same common fields, `conversationId` among them, encoded with protojson and therefore camelCase.
+
+### There is no session event, so the earliest event is the session event
+
+Nothing in that list means "this session began". The conversation id rides every payload instead, so naming the pane's conversation is a question of which event fires first and always. `PreInvocation` is that event: it runs before the model is called, on every turn. The two tool events fire only for a turn that calls a tool, and `PostInvocation` and `Stop` come later in the same turn. Herdr subscribes to `PreInvocation` for the same reason, and this port keeps that choice.
+
+The practical consequence is that the binding lands one model call into the session rather than at startup, so a pane opened and left untouched is not bound until its first turn. That is a real difference from Claude's or Codex's `SessionStart`, and it is not fixable from this hook surface.
+
+### Three quirks the port keeps
+
+**The payload is camelCase.** `conversationId`, not `session_id`, and `transcriptPath`, not `transcript_path`. `agent report-session --hook-stdin` reads both spellings, which is what lets one verb serve six providers.
+
+**A hook must write a JSON object to stdout.** Every documented contract in that file says so, and Herdr's asset emits `{}` on every exit path including the ones that do nothing. `sidecar agent report-session` is silent on success, so the installed command is the report invocation followed by `; printf '{}\n'`. The suffix is a fixed literal with nothing interpolated, it runs under the `sh -c` Antigravity already uses, and it doubles as the fail-open guarantee: the exit status the provider sees is printf's, so a Sidecar that is missing, refusing or slow cannot fail an Antigravity turn. Hooks run synchronously and block the agent loop, which is why the entry also declares a ten second timeout.
+
+**hooks.json is keyed by hook NAME.** Each top-level member is a named block holding its own events object, and blocks from every source merge. Sidecar owns one block, `sidecar`, and **reads every block**, because an entry a user moved into a block of their own would otherwise fire while `integration status` reported nothing installed, an install would add a second copy beside it, and uninstall would never find the first. `TestAntigravityFindsItsEntryInAnyNamedBlock` is that rule.
+
+### Where it installs, and the one override it deliberately ignores
+
+`~/.gemini/config/hooks.json`. `~/.gemini/antigravity-cli/` is runtime data and is never read for hooks; the distinction is not academic, because agy's own changelog records fixing its `/hooks` command writing to that directory instead of the shared one, which is the release that made the path "already moved" in this document's earlier reading of it.
+
+Herdr honours an `ANTIGRAVITY_CLI_CONFIG_DIR` override here. **Sidecar does not**, and that is a deliberate divergence: the variable appears nowhere in agy 1.1.22's shipped binary, so it is Herdr's own test seam rather than the provider's contract, and following it would install into a directory the provider never opens. Relocating Antigravity for a proof means moving `HOME`, which moves the provider and the installer together. This is the opposite decision from Claude, where `CLAUDE_CONFIG_DIR` *is* the provider's own resolution and is honoured for exactly that reason.
+
+### Why `advisory` is the ceiling and `session-identity` is what is claimed
+
+`full` needs `blocked_on_request`, `unblocked` and `cancelled`, and Antigravity emits no event for any of them. `PreToolUse` can *return* a decision, but a hook deciding is not the same as a hook being told the user was asked, so there is nothing to report. `Stop` carries a `terminationReason` and a `fullyIdle` flag and is the only turn-end signal. A fuller asset could reach `advisory` by hooking `PreInvocation` for work start and `Stop` for turn completion; this one does not, because state comes from the screen lane and the port buys exact session binding.
+
 ## Catalog agents evaluated but not built
 
 These are recorded rather than omitted so that "evaluated, and deliberately not built" is distinguishable from "never looked at". All are `screen-fallback` with `evidence: none`: **none is trace-backed**, so each selects a candidate rather than earning a tier, and `TierFor` would refuse them anything else regardless.
@@ -321,7 +366,6 @@ These are recorded rather than omitted so that "evaluated, and deliberately not 
 | cursor | 2026.08.25 | full registry in the shipped bundle | `full` | Untraced, and there are user reports of events being omitted on particular versions, so tracing is mandatory rather than a formality. |
 | copilot | not installed | GA hooks incl. `permissionRequest` | `full` | Not installed on any surveyed machine, so nothing is verified even against a shipped artifact — the weakest evidence here. Interrupt also appears to be session-granular rather than per turn. |
 | amp | not installed | TypeScript plugin process | `advisory` | Not installed and not traced. No permission event and no reliable process-exit signal, so two lanes would stay with screen detection anyway. |
-| antigravity | 1.1.22 | five events | `advisory` | Untraced. No session start/end, no blocking, no cancellation, and the hooks configuration path has already moved between releases. |
 
 Two findings from this sweep are worth more than the table.
 

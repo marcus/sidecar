@@ -340,11 +340,11 @@ func (a ClaudeAdapter) planConverge(s claudeState, p Plan, act Action) (Plan, er
 		return p, nil
 	}
 
-	top, _, err := stripOwnedHookEntries(s.scan)
+	top, _, err := stripOwnedHookEntries(s.scan, s.spec)
 	if err != nil {
 		return Plan{}, refuse(RefuseUnreadable, s.paths.Settings, "%s: %v", s.paths.Settings, err)
 	}
-	top, err = appendCanonicalGroup(top, claudeCanonicalGroup())
+	top, err = appendCanonicalEntry(top, claudeCanonicalGroup(), s.spec)
 	if err != nil {
 		return Plan{}, refuse(RefuseUnreadable, s.paths.Settings, "%s: %v", s.paths.Settings, err)
 	}
@@ -371,7 +371,7 @@ func (a ClaudeAdapter) planUninstall(s claudeState, p Plan) (Plan, error) {
 		return Plan{}, err
 	}
 
-	top, changed, err := stripOwnedHookEntries(s.scan)
+	top, changed, err := stripOwnedHookEntries(s.scan, s.spec)
 	if err != nil {
 		return Plan{}, refuse(RefuseUnreadable, s.paths.Settings, "%s: %v", s.paths.Settings, err)
 	}

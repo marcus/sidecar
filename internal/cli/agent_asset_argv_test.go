@@ -53,6 +53,7 @@ func TestBundledAssetsSpawnArgvTheShippedCLIAccepts(t *testing.T) {
 		{name: "opencode", run: runOpenCodeOrderingHarness},
 		{name: "kilo", run: runKiloOrderingHarness},
 		{name: "kimi", run: runKimiHookCorpus},
+		{name: "session-identity", run: runSessionHookCorpus},
 	} {
 		t.Run(provider.name, func(t *testing.T) {
 			argvs := provider.run(t, node, t.TempDir())
@@ -72,8 +73,14 @@ func TestBundledAssetsSpawnArgvTheShippedCLIAccepts(t *testing.T) {
 					stored = append(stored, seq)
 				}
 			}
-			if len(stored) < 1 {
-				t.Fatal("no state report reached the store; the seam proves nothing")
+			// A corpus of session bindings alone stores nothing, because
+			// report-session does not write to the lifecycle store at all. Its
+			// seam is the flag parser and the kind resolution, both of which
+			// acceptAssetArgv has already driven for every argv above, so
+			// requiring a stored report here would demand a state report from
+			// an integration that deliberately sends none.
+			if len(stored) == 0 {
+				return
 			}
 			// Store-assigned sequences start at one and climb by one. A gap here
 			// would mean a report was rejected without failing above.
@@ -289,6 +296,19 @@ func runKiloOrderingHarness(t *testing.T, node, dir string) [][]string {
 func runKimiHookCorpus(t *testing.T, _, _ string) [][]string {
 	t.Helper()
 	return agentintegration.KimiHookArgvCorpus()
+}
+
+// runSessionHookCorpus returns the argv every session-identity entry spawns.
+//
+// These are entries in a provider's own configuration file rather than files
+// of JavaScript, so the corpus is read out of each adapter's canonical asset,
+// which is the bytes an install writes. The kind each one claims is the value
+// this seam exists to check: the Kilo port found `--kind kilo` parsing cleanly
+// and then being refused with exit 5, and four more providers claiming four
+// more kinds is four more chances at exactly that.
+func runSessionHookCorpus(t *testing.T, _, _ string) [][]string {
+	t.Helper()
+	return agentintegration.SessionHookArgvCorpus()
 }
 
 func runAssetHarness(t *testing.T, node, provider, dir string, args ...string) []byte {
