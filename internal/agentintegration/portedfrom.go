@@ -127,6 +127,31 @@ var portedFrom = []PortedFrom{
 			"traced: no capture of a live Pi session backs any of it, which is why the capability " +
 			"entry is docs-only at session-identity.",
 	},
+	{
+		Provider:    KiloProvider,
+		UpstreamID:  "kilo",
+		UpstreamDir: "kilo",
+		Version:     "4",
+		Commit:      herdrVendoredCommit,
+		Evidence: "Ported line by line from the vendored upstream/kilo/herdr-agent-state.js at that commit, " +
+			"where it carries HERDR_INTEGRATION_VERSION=4. The provider half is kept verbatim in behavior: " +
+			"the chat.message work signal, the session.created/session.updated binding, the session.status " +
+			"primary signal with its fallback to re-binding, the working set (tool.execute.before/after, " +
+			"permission.replied, question.replied, question.rejected, session.compacted), the blocked set " +
+			"(permission.asked, question.asked, session.error), session.idle as turn completion, and the " +
+			"deliberate silence on session.deleted. Every branch was re-checked against kilo 7.5.9's own " +
+			"shipped binary rather than taken on trust, and four sanitized captures of that version back it. " +
+			"ONE upstream bug is fixed: upstream reads session.status only when it is a string, and kilo's " +
+			"event carries an object whose `type` is the discriminator, so upstream's kilo asset never maps a " +
+			"status to a lane at all. Herdr's own opencode asset at version 10 reads `status?.type`; the kilo " +
+			"variant never received that fix, exactly as the pi variant never received omp's Windows-path fix. " +
+			"Three further deliberate differences, each with its reason in the asset: the transport is " +
+			"Sidecar's; an exact repeat of the lane or of the session binding is suppressed, because each " +
+			"report here is a subprocess rather than a socket write and Herdr's opencode v10 already " +
+			"suppresses the binding case; and the report queue is serialized, which upstream's kilo asset does " +
+			"not do and Herdr's opencode asset does. NOT copied: opencode v10's child-session tracking, which " +
+			"the kilo asset has never had.",
+	},
 }
 
 // PortedFromRecords returns the provenance of every Sidecar integration asset.

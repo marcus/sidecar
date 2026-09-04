@@ -50,6 +50,7 @@ func TestBundledAssetsSpawnArgvTheShippedCLIAccepts(t *testing.T) {
 	}{
 		{name: "pi", run: runPiOrderingHarness},
 		{name: "opencode", run: runOpenCodeOrderingHarness},
+		{name: "kilo", run: runKiloOrderingHarness},
 	} {
 		t.Run(provider.name, func(t *testing.T) {
 			argvs := provider.run(t, node, t.TempDir())
@@ -111,8 +112,18 @@ func acceptAssetArgv(t *testing.T, store lifecyclestore.Store, argv []string) (u
 		if cmd == nil {
 			t.Fatal("no `agent report-session` command is registered")
 		}
-		if _, code := parseReportSessionFlags(env, argv[2:], RenderHelp(cmd)); code != -1 {
+		f, code := parseReportSessionFlags(env, argv[2:], RenderHelp(cmd))
+		if code != -1 {
 			t.Fatalf("the shipped CLI refused an argv the asset spawns: %v\nexit %d: %s", argv, code, errOut.String())
+		}
+		// The kind gate, which parsing alone does not reach and which the Kilo
+		// port found the hard way: `--kind kilo` parsed cleanly and was then
+		// refused with exit 5, because resolution searched the launchable
+		// families only. Every value here is one the ASSET chose, so it belongs
+		// in this seam alongside the flags themselves. The rest of the verb
+		// needs a live pane and stays out.
+		if _, err := resolveReportedKind(f.kind); err != nil {
+			t.Fatalf("the shipped CLI refused the kind an asset claims: %v\n%v", argv, err)
 		}
 		return 0, false
 
@@ -234,6 +245,28 @@ func runOpenCodeOrderingHarness(t *testing.T, node, dir string) [][]string {
 	argvs := make([][]string, 0, len(keys))
 	for _, k := range keys {
 		argvs = append(argvs, result.Argv[k])
+	}
+	return argvs
+}
+
+// runKiloOrderingHarness does the same for Kilo, whose harness keys its recorded
+// argv by content label exactly as Pi's does. Kilo, like Pi, sends no sequence at
+// all: its plugin is one long-lived process but the reports are subprocesses, and
+// the store's AppendNext assigns under the lock it already holds.
+func runKiloOrderingHarness(t *testing.T, node, dir string) [][]string {
+	t.Helper()
+	out := runAssetHarness(t, node, "kilo", dir,
+		filepath.Join(dir, "sidecar-stub"), filepath.Join(dir, "order.log"), filepath.Join(dir, "argv"))
+	var result struct {
+		Order []string            `json:"order"`
+		Argv  map[string][]string `json:"argv"`
+	}
+	if err := json.Unmarshal(out, &result); err != nil {
+		t.Fatalf("the kilo ordering harness output is not JSON: %q (%v)", out, err)
+	}
+	argvs := make([][]string, 0, len(result.Order))
+	for _, label := range result.Order {
+		argvs = append(argvs, result.Argv[label])
 	}
 	return argvs
 }

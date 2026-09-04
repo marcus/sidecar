@@ -1,0 +1,36 @@
+# ms	event	session	turn	tool	fields
+0	hook:plugin.init	-	-	-	-
+152	bus:session.created	session-1	-	-	info,sessionID,info.id=present,info.parentID=absent
+2588	bus:session.updated	session-1	-	-	info,sessionID,info.id=present,info.parentID=absent
+2650	hook:chat.message	session-1	-	-	sessionID
+2655	bus:session.updated	session-1	-	-	info,sessionID,info.id=present,info.parentID=absent
+2673	bus:session.status	session-1	-	-	sessionID,status,status=busy
+5487	bus:session.updated	session-1	-	-	info,sessionID,info.id=present,info.parentID=absent
+5489	bus:session.diff	session-1	-	-	diff,sessionID
+5531	bus:session.status	session-1	-	-	sessionID,status,status=busy
+25222	bus:session.status	session-1	-	-	sessionID,status,status=busy
+25226	bus:session.updated	session-1	-	-	info,sessionID,info.id=present,info.parentID=absent
+25248	bus:session.diff	session-1	-	-	diff,sessionID
+25315	bus:session.status	session-1	-	-	sessionID,status,status=busy
+38265	bus:session.status	session-1	-	-	sessionID,status,status=busy
+38267	bus:session.status	session-1	-	-	sessionID,status,status=idle
+38268	bus:session.idle	session-1	-	-	sessionID
+38277	bus:session.drained	session-1	-	-	sessionID,token
+38279	bus:session.updated	session-1	-	-	info,sessionID,info.id=present,info.parentID=absent
+# One turn that really ran a bash tool. The run log records
+# `evaluated permission=bash pattern="echo sidecar-probe" action.action=allow`
+# and the command's output, between the session.status busy at 5531 and the one
+# at 25222.
+#
+# WHAT IS ABSENT IS THE POINT. Neither tool.execute.before nor
+# tool.execute.after appears anywhere between chat.message and session.idle.
+# They are plugin HOOKS in kilo -- the runtime calls
+# Plugin.trigger("tool.execute.before", ...) -- and not bus events, so an
+# `event` handler never sees them. Herdr's asset lists both in its event switch,
+# in its kilo and its opencode variants alike, so those two branches are dead
+# code against this release. Sidecar keeps the branches, because they cost one
+# comparison and would be correct if kilo ever published the names, and does not
+# claim `tool_use` in its capability entry on the strength of them.
+#
+# No capture window is owed: the absence is delimited by two rows a reader can
+# see rather than by a watch that ended.

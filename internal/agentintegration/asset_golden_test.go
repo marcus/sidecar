@@ -52,6 +52,7 @@ var assetGoldens = []assetGolden{
 	// earned the advisory tier still describe this asset exactly. See the note on
 	// PiAssetVersion, which states the same rule at the constant.
 	{provider: PiProvider, name: "sidecar-lifecycle.js", version: "1", checksum: "054a5b8b0134f2fc1dc8e3e5bb2047c8611bdd77cc618ef3b05c4c2738477516"},
+	{provider: KiloProvider, name: "sidecar-lifecycle.js", version: "1", checksum: "207dce18956f6504138f39eb43f44e0af987ae7836b68e4cbeabad9d28e042ee"},
 }
 
 // bumpInstructions is the whole point of the guard: a failure here has to tell
@@ -61,7 +62,7 @@ const bumpInstructions = `
 An asset's bytes changed. Before updating the golden below, do this in order:
 
   1. Bump the asset's version constant (OpenCodeAssetVersion, CodexAssetVersion,
-     ClaudeAssetVersion, or PiAssetVersion) if it has not already moved. An installed copy is
+     ClaudeAssetVersion, PiAssetVersion, or KiloAssetVersion) if it has not already moved. An installed copy is
      recognised as outdated by its version, so without this every existing
      install keeps reporting itself current while running different code.
   2. Update the matching AssetVersion in internal/agentlifecycle/capabilities.json,

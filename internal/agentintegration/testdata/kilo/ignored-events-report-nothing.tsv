@@ -1,0 +1,5 @@
+# ms	event	session_id	status_type	status_string
+0	session.created	ses-1	-	-
+10	session.deleted	ses-1	-	-
+20	session.diff	ses-1	-	-
+30	message.updated	ses-1	-	-

@@ -355,6 +355,13 @@ type Env struct {
 	// can be run twice. Empty means "no override", which is also what a test
 	// that never sets it gets.
 	PiAgentDir string
+	// KiloConfigDir is $KILO_CONFIG_DIR when set, and empty otherwise.
+	//
+	// A field for the same reason PiAgentDir is one: an adapter reading
+	// os.Getenv directly would make every test in this package depend on the
+	// developer's own environment. Empty means "no override", which is also what
+	// a test that never sets it gets.
+	KiloConfigDir string
 	// LookPath finds a provider executable. Defaults to exec.LookPath.
 	LookPath func(file string) (string, error)
 	// ProviderVersion reports an installed provider's version string.
@@ -374,6 +381,7 @@ func OSEnv() Env {
 		Home:            os.Getenv("HOME"),
 		ConfigHome:      os.Getenv("XDG_CONFIG_HOME"),
 		PiAgentDir:      os.Getenv("PI_CODING_AGENT_DIR"),
+		KiloConfigDir:   os.Getenv("KILO_CONFIG_DIR"),
 		LookPath:        exec.LookPath,
 		ProviderVersion: detectProviderVersion,
 		UID:             os.Getuid(),
@@ -509,7 +517,7 @@ type Adapter interface {
 
 // DefaultAdapters returns the adapters this build ships.
 func DefaultAdapters() []Adapter {
-	return []Adapter{OpenCodeAdapter{}, CodexAdapter{}, ClaudeAdapter{}, PiAdapter{}}
+	return []Adapter{OpenCodeAdapter{}, CodexAdapter{}, ClaudeAdapter{}, PiAdapter{}, KiloAdapter{}}
 }
 
 // Service is the application service behind the CLI and the Configuration

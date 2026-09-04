@@ -443,10 +443,10 @@ func TestPolicyVocabulary(t *testing.T) {
 }
 
 func TestOfficialSourcesAreTheOnesAdaptersShip(t *testing.T) {
-	// The four that ship. This list is exactly agentintegration.DefaultAdapters,
+	// The ones that ship. This list is exactly agentintegration.DefaultAdapters,
 	// and it is spelled out rather than derived so that adding a source here
 	// without adding the adapter that produces it fails.
-	for _, kind := range []string{"codex", "claude", "opencode", "pi"} {
+	for _, kind := range []string{"codex", "claude", "opencode", "pi", "kilo"} {
 		source := OfficialSourceFor(kind)
 		if source == "" {
 			t.Fatalf("no official source is recorded for %q", kind)

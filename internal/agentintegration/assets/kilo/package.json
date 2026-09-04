@@ -1,0 +1,6 @@
+{
+  "name": "sidecar-kilo-lifecycle",
+  "private": true,
+  "type": "module",
+  "//": "Present so `node` treats sidecar-lifecycle.js as ESM when the behavioral equivalence test drives it directly. Only sidecar-lifecycle.js is ever installed beside a user's Kilo; this file is a build-time detail of the repo and is not part of the asset. Kilo itself does not need it: its loader imports the file by a file:// URL and its own bundler treats a bare .js plugin as a module."
+}
