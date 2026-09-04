@@ -123,31 +123,39 @@ var (
 
 	// TerminalResourceProviders gates external terminal resource providers:
 	// the matchers they declare, the panes they open, and the describe pass
-	// that asks them what they are. Off by default until the whole journey is
-	// proven, and deliberately a flag rather than "is anything configured":
-	// a user should be able to write the configuration and turn it on
-	// separately, and turning it off should stop every provider process.
+	// that asks them what they are.
+	//
+	// On by default now that the journey is proven end to end. It costs a user
+	// who has configured nothing exactly nothing: describeResourceProvidersCmd
+	// returns nil when no provider is configured, so no goroutine, no
+	// subprocess, and no startup work happens on a default install.
+	//
+	// It stays a flag rather than "is anything configured" for the other
+	// direction: a user must be able to leave the configuration in place and
+	// turn it off, and turning it off must stop every provider process rather
+	// than only hide the surfaces.
 	TerminalResourceProviders = Feature{
 		Name:        "terminal_resource_providers",
-		Default:     false,
+		Default:     true,
 		Description: "Recognize and open resources from configured external terminal resource providers",
 	}
 
 	// PluginProtocol gates the plugin protocol host: the plugins.external
-	// configuration section, the sidecar.plugin/v1-draft envelope, and every
-	// `sidecar plugin` verb that talks to an external plugin process.
+	// configuration section, the protocol envelope, and every `sidecar plugin`
+	// verb that talks to an external plugin process.
 	//
-	// Off by default while the contract is a draft. Deliberately a flag rather
-	// than "is anything configured": a user must be able to write the
-	// configuration and turn it on separately, and turning it off must stop
-	// every plugin process rather than only hide the surfaces.
+	// On by default now that the contract is frozen. Like the resource flag it
+	// costs a default install nothing — nothing is configured, so nothing is
+	// described, started, or waited on — and it stays a flag so that a user can
+	// leave the configuration in place and turn the host off, which stops every
+	// plugin process rather than only hiding the surfaces.
 	//
 	// It does not gate terminal_resource_providers. A provider configured under
 	// terminalResources keeps being described and resolved on the frozen
 	// sidecar.terminal-resource/v1 identifier whatever this flag says.
 	PluginProtocol = Feature{
 		Name:        "plugin_protocol",
-		Default:     false,
+		Default:     true,
 		Description: "Host external plugins that speak the Sidecar plugin protocol",
 	}
 

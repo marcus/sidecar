@@ -2159,9 +2159,10 @@ terminalResources.providers entries speak the frozen
 sidecar.terminal-resource/v1, which has describe and resolve. The
 `sidecar terminal-links` verbs remain the surface for that older section.
 
-The draft protocol is behind the plugin_protocol feature flag. Turn it on
-with `sidecar --enable-feature=plugin_protocol`, or set
-features.flags.plugin_protocol.
+The plugin_protocol feature flag governs the host. It is on by default and
+costs an install with nothing configured nothing at all; turn it off with
+features.flags.plugin_protocol to stop every plugin process while leaving the
+configuration in place.
 
 Writing one: docs/guides/active/creating-plugins.md is the walkthrough, from
 choosing a class to a plugin that passes `plugin check`, with a complete

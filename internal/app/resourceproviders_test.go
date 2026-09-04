@@ -61,13 +61,41 @@ func TestDescribeResourceProvidersCmdIsAbsentWhenThereIsNothingToDo(t *testing.T
 
 // The feature flag is the master switch: with it off, no command exists even
 // when providers are configured, so no provider process can start.
+//
+// plugin_protocol is left at its default — on — deliberately. The gate is
+// per-section: a legacy provider whose own flag is off must not produce a
+// command just because the other section's flag is on and would have nothing
+// to describe.
 func TestDescribeResourceProvidersCmdIsGatedByTheFeatureFlag(t *testing.T) {
 	features.Init(config.Default())
 	features.SetOverride(features.TerminalResourceProviders.Name, false)
+	t.Cleanup(func() { features.Init(config.Default()) })
 
+	if !features.IsEnabled(features.PluginProtocol.Name) {
+		t.Fatal("plugin_protocol should default on")
+	}
 	cfg := providerConfig(t, "/bin/echo")
 	if cmd := describeResourceProvidersCmd(cfg); cmd != nil {
 		t.Fatal("the disabled feature still produced a describe command")
+	}
+}
+
+// Both flags default on, so a configured provider is described without the
+// user turning anything on first. The two defaults are the whole point of the
+// flip: an install with nothing configured still schedules nothing.
+func TestDescribeResourceProvidersCmdFollowsTheDefaults(t *testing.T) {
+	features.Init(config.Default())
+
+	for _, flag := range []string{features.TerminalResourceProviders.Name, features.PluginProtocol.Name} {
+		if !features.IsEnabled(flag) {
+			t.Fatalf("%s should default on", flag)
+		}
+	}
+	if cmd := describeResourceProvidersCmd(config.Default()); cmd != nil {
+		t.Fatal("a default install with nothing configured produced a describe command")
+	}
+	if cmd := describeResourceProvidersCmd(providerConfig(t, "/bin/echo")); cmd == nil {
+		t.Fatal("a configured provider produced no describe command under the defaults")
 	}
 }
 

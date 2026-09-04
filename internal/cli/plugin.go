@@ -569,9 +569,10 @@ func pluginCommand() *Command {
 			"terminalResources.providers entries speak the frozen\n" +
 			"sidecar.terminal-resource/v1, which has describe and resolve. The\n" +
 			"`sidecar terminal-links` verbs remain the surface for that older section.\n\n" +
-			"The draft protocol is behind the plugin_protocol feature flag. Turn it on\n" +
-			"with `sidecar --enable-feature=plugin_protocol`, or set\n" +
-			"features.flags.plugin_protocol.\n\n" +
+			"The plugin_protocol feature flag governs the host. It is on by default and\n" +
+			"costs an install with nothing configured nothing at all; turn it off with\n" +
+			"features.flags.plugin_protocol to stop every plugin process while leaving the\n" +
+			"configuration in place.\n\n" +
 			"Writing one: docs/guides/active/creating-plugins.md is the walkthrough, from\n" +
 			"choosing a class to a plugin that passes `plugin check`, with a complete\n" +
 			"example under docs/guides/examples/hello-plugin/. The contract itself is\n" +
