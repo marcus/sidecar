@@ -5,14 +5,19 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/marcus/sidecar/internal/agentlifecycle"
 )
 
 // The Claude Code adapter.
 //
-// Claude Code keeps hooks inside ~/.claude/settings.json — a shared, strictly
-// JSON, user-owned file that Sidecar adds exactly one SessionStart entry to.
+// Claude Code keeps hooks inside <config home>/settings.json — a shared,
+// strictly JSON, user-owned file that Sidecar adds exactly one SessionStart
+// entry to. The config home is CLAUDE_CONFIG_DIR when that names one and
+// ~/.claude otherwise, which is Claude's own resolution: an installer that read
+// only $HOME would report `not-installed` for a relocated Claude and then write
+// its entry into a directory that Claude never reads.
 // The entry is session-identity only: it reports WHICH conversation occupies
 // the pane, and screen/process detection remains the sole authority for
 // lifecycle state. Claude's configuration merges additively across five
@@ -120,9 +125,33 @@ func ClaudePaths(env Env) []string {
 }
 
 func claudePathsFor(env Env) claudePaths {
-	dir := filepath.Join(env.Home, ".claude")
+	dir := ClaudeConfigHome(env.Home, env.ClaudeConfigDir)
 	settings := filepath.Join(dir, "settings.json")
 	return claudePaths{Dir: dir, Settings: settings, Backup: settings + ClaudeBackupSuffix}
+}
+
+// ClaudeConfigHome resolves Claude Code's configuration home the way Claude
+// itself does: the raw CLAUDE_CONFIG_DIR value when it names one, and
+// <home>/.claude otherwise.
+//
+// Two readings are deliberate and both follow the provider rather than
+// Sidecar's taste. Claude's own resolver takes the variable verbatim and then
+// refuses the run when the result is not absolute, so a relative value names no
+// configuration home at all; treating it as an override would send an install
+// into a directory relative to whatever Sidecar's working directory happened to
+// be, which is the one place Claude will certainly not look. And a value that is
+// only whitespace is a variable somebody exported without a value rather than a
+// directory named " ", which is the same reading agentsession.PiAgentDir already
+// takes of PI_CODING_AGENT_DIR. In both cases the default stands, so the
+// installer keeps writing where an unconfigured Claude reads.
+//
+// No tilde expansion, because Claude does none: it requires an absolute path,
+// and "~/x" is not one.
+func ClaudeConfigHome(home, configDir string) string {
+	if dir := strings.TrimSpace(configDir); filepath.IsAbs(dir) {
+		return filepath.Clean(dir)
+	}
+	return filepath.Join(home, ".claude")
 }
 
 // claudeState is everything one inspection learned; both Inspect and Plan are
@@ -311,11 +340,11 @@ func (a ClaudeAdapter) planConverge(s claudeState, p Plan, act Action) (Plan, er
 		return p, nil
 	}
 
-	top, _, err := stripOwnedHookEntries(s.scan)
+	top, _, err := stripOwnedHookEntries(s.scan, s.spec)
 	if err != nil {
 		return Plan{}, refuse(RefuseUnreadable, s.paths.Settings, "%s: %v", s.paths.Settings, err)
 	}
-	top, err = appendCanonicalGroup(top, claudeCanonicalGroup())
+	top, err = appendCanonicalEntry(top, claudeCanonicalGroup(), s.spec)
 	if err != nil {
 		return Plan{}, refuse(RefuseUnreadable, s.paths.Settings, "%s: %v", s.paths.Settings, err)
 	}
@@ -342,7 +371,7 @@ func (a ClaudeAdapter) planUninstall(s claudeState, p Plan) (Plan, error) {
 		return Plan{}, err
 	}
 
-	top, changed, err := stripOwnedHookEntries(s.scan)
+	top, changed, err := stripOwnedHookEntries(s.scan, s.spec)
 	if err != nil {
 		return Plan{}, refuse(RefuseUnreadable, s.paths.Settings, "%s: %v", s.paths.Settings, err)
 	}

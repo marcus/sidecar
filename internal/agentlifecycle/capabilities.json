@@ -83,8 +83,8 @@
       "Stop means stopped generating, not ready for input, so turn completion cannot be taken from it without reconciliation against screen state.",
       "Both halves of Herdr's stated reason for removing its own full-lifecycle Claude hook set, missed permission results and escape interrupts, are independently reproduced here on the current release. That rollback is now explained rather than merely recorded.",
       "Hook configuration merges additively across five layers (enterprise, project, local, user, plugin), so Sidecar can own exactly its one entry in ~/.claude/settings.json and can never own the effective hook set; another layer can add, but not remove, hooks beside it.",
-      "The integration manages ~/.claude/settings.json only; a CLAUDE_CONFIG_DIR override relocates the provider's configuration where the installer does not look.",
-      "grok reads hooks from ~/.claude/settings.json by design -- its shipped documentation carries a 'Claude Code Compatibility' section for exactly that -- so Sidecar's installed Claude entry also fires inside grok sessions. Because --kind is a flag rather than something checked against the pane's actual occupant, a grok session can be bound as kind=claude carrying grok's session identifier. Tracked as td-11040b."
+      "The integration manages the settings.json under Claude's own configuration home, which is CLAUDE_CONFIG_DIR when that names an absolute directory and ~/.claude otherwise. That is Claude's own resolution, so a relocated Claude is found by status, install and uninstall alike. What Sidecar still cannot see is the rest of the merge: a hook another layer contributes is not in this file.",
+      "grok reads hooks from ~/.claude/settings.json by design -- its shipped documentation carries a 'Claude Code Compatibility' section for exactly that -- so Sidecar's installed Claude entry also fires inside grok sessions. That no longer binds anything: report-session resolves --kind through the catalog and then checks it against the pane's own occupant, so the Claude entry firing inside grok is refused with kind_mismatch rather than bound. Fixed and closed as td-11040b."
     ],
     "orderingGuaranteed": false,
     "sourceDoc": "https://code.claude.com/docs/en/hooks",
@@ -163,59 +163,83 @@
   {
     "schemaVersion": 1,
     "provider": "grok",
-    "source": "",
-    "assetVersion": "",
-    "tier": "screen-fallback",
-    "evidence": "none",
-    "minProviderVersion": "",
-    "testedProviderRange": "",
-    "covered": [],
+    "source": "sidecar.grok.hooks",
+    "assetVersion": "1",
+    "tier": "session-identity",
+    "evidence": "real-trace",
+    "minProviderVersion": "1.0.13",
+    "testedProviderRange": "1.0.13",
+    "covered": [
+      "session_identity"
+    ],
     "knownGaps": [
-      "No Sidecar integration is built, so nothing is claimed and screen detection remains the sole authority.",
-      "Not traced. Every statement here is read from the shipped binary's embedded documentation, so it selects a candidate rather than earning a tier.",
-      "grok also reads ~/.claude/settings.json and ~/.cursor/hooks.json by default, so hooks installed for those providers execute inside grok sessions. Any grok integration must expect cross-provider firing in both directions, and payload field naming differs."
+      "The shipped asset is a single SessionStart hook entry: session identity only, by design, and that is what the tier reflects. grok has the strongest hook contract in the catalog and this asset asks for none of it.",
+      "SessionStart does NOT fire at process start. A grok TUI launched and left untouched at its prompt for 45 seconds emitted no hook event at all; the event arrived on the first prompt, which is when grok creates the session. So a grok pane is bound one turn into its life rather than at startup, and an idle pane a user opened and walked away from carries no binding. Measured, not read: traces/grok/session-start-and-end.tsv carries the window.",
+      "Every payload carries BOTH spellings of every common field -- sessionId and session_id, hookEventName and hook_event_name, permissionMode and permission_mode, and on SessionEnd transcriptPath and transcript_path. grok's own documentation shows only the camelCase half. Sidecar's payload reader prefers the snake_case spelling, so it reads session_id; either would have worked, which is worth knowing rather than assuming.",
+      "grok loads hooks from ~/.claude/settings.json and ~/.cursor/hooks.json as well as its own <grok home>/hooks/*.json, so Sidecar's Claude and Cursor entries also fire inside grok sessions, each claiming its own --kind. Exactly one of the three binds: report-session canonicalises the kind through the catalog and then verifies it against the pane's own occupant, so the foreign claims are refused with kind_mismatch. That is td-11040b, and TestBothEntriesFireInAGrokSessionAndOnlyGroksBinds drives the Claude and grok entries against a grok-typed shell.",
+      "The reverse direction is safe by construction rather than by a check: Claude does not read <grok home>/hooks/, so Sidecar's grok entry can only ever fire inside grok.",
+      "GROK_SESSION_ID is exported into every hook process and is deliberately NOT read. Herdr's asset prefers it and falls back to the payload; --hook-stdin is one bounded reader serving every provider, and a per-provider environment read would be a second way for one provider to name a session, so the payload is used. Nothing observed disagrees with it.",
+      "Sidecar owns a dedicated file, <grok home>/hooks/sidecar.json, because grok merges every *.json in that directory. Ownership is still by entry rather than by file: a hook a user adds to that file is preserved, and the file is removed only when Sidecar's entry was all it held. Herdr deletes its equivalent file outright. Proved live: a capture hook of the user's in the same directory survived uninstall untouched.",
+      "GROK_HOME relocates the configuration home and is honoured; grok reads it, and the whole proof run's grok tree landed under it. Herdr also honours a GROK_CONFIG_DIR, and its own comment says the grok CLI does not read it, so Sidecar does not follow that one.",
+      "Only session identity is traced. The lifecycle events -- UserPromptSubmit, PreToolUse, PostToolUse, Stop, StopFailure, StopCancelled, PermissionDenied, Notification, SubagentStart/Stop, PreCompact/PostCompact -- were not captured, because the shipped asset subscribes to none of them. grok's contract would support `full` once traced: it is the only provider anywhere with a dedicated cancellation event, StopCancelled, carrying user_interrupt, permission_rejected, permission_cancelled, max_turns and no_progress. The ceiling is a target, not a claim.",
+      "Hooks are deduplicated across layers by identical handler, and grok's own Stop hook defaults to a 600 second timeout while other events default to 5. Sidecar's entry declares 10 explicitly on SessionStart."
     ],
     "orderingGuaranteed": false,
     "sourceDoc": "https://docs.x.ai/docs/grok-cli",
-    "sourceVersionNote": "grok 1.0.13. The strongest hook contract in the catalog and the only one with a dedicated cancellation event: StopCancelled carries reasons including user_interrupt, permission_rejected and permission_cancelled, alongside PermissionDenied, Notification{permission_prompt,idle_prompt}, SessionStart/SessionEnd and GROK_SESSION_ID. Verified in the shipped binary's embedded documentation, which documents StopCancelled where the vendor website does not. A full-tier candidate once traced."
+    "sourceVersionNote": "grok 1.0.13 on darwin/arm64, traced 2026-09-04 in a Sidecar-managed shell on a private tmux server with GROK_HOME, XDG_STATE_HOME and -config all under a scratch tree; the maintainer's real ~/.grok/hooks was never written. Sidecar's entry was installed by `sidecar agent integration install grok`, so the run proves the installer too. The binding it produced was corroborated by grok itself: /quit printed `grok --resume <id>` with the exact id Sidecar had recorded. The hook locations table, the event list, the JSON and TOML hook formats and the Claude and Cursor compatibility sources were read from the documentation the shipped binary embeds, which documents StopCancelled where the vendor website does not. Ported from Herdr's grok integration version 1."
   },
   {
     "schemaVersion": 1,
     "provider": "cursor",
-    "source": "",
-    "assetVersion": "",
-    "tier": "screen-fallback",
-    "evidence": "none",
+    "source": "sidecar.cursor.hooks",
+    "assetVersion": "1",
+    "tier": "session-identity",
+    "evidence": "docs-only",
     "minProviderVersion": "",
-    "testedProviderRange": "",
-    "covered": [],
+    "testedProviderRange": "2026.08.25",
+    "covered": [
+      "session_identity"
+    ],
     "knownGaps": [
-      "No Sidecar integration is built, so nothing is claimed and screen detection remains the sole authority.",
-      "Not traced. Read from the shipped bundle rather than observed.",
-      "There are user reports of events being omitted on particular versions, so tracing is mandatory rather than a formality before any tier is claimed."
+      "The shipped asset is a single sessionStart hook entry: session identity only, by design, and that is what the tier reflects. Cursor's own contract is far broader.",
+      "Not traced. The contract was read out of cursor-agent 2026.08.25's shipped bundle rather than observed, and there are user reports of events being omitted on particular versions, so tracing stays mandatory before any tier above this one.",
+      "The hooks file is ~/.cursor/hooks.json and no environment override moves it. cursor-agent HAS a configuration-directory resolver reading CURSOR_CONFIG_DIR then $XDG_CONFIG_HOME/cursor then ~/.cursor, but its hook loader does not use it: the user hooks path is built from homedir() and \".cursor\" directly in the same bundle. Herdr honours CURSOR_CONFIG_DIR, which would put an entry in a directory the loader never opens, so Sidecar does not.",
+      "Event names are camelCase (sessionStart, beforeSubmitPrompt, postToolUseFailure) while the payload's field names are snake_case (session_id, hook_event_name, transcript_path), which is Claude's spelling. Both halves of that crossing are Cursor's, not a transcription error.",
+      "The entry is the minimal documented shape, a lone `command` member, which is what Herdr writes. Cursor's own generator emits `{type, command}`, so both forms exist in the wild and the scan accepts a handler with no `type`.",
+      "cursor-agent also loads hooks from ~/.claude/settings.json and the project-local Claude settings, so Sidecar's Claude entry fires inside cursor sessions too. It is refused there rather than bound, because report-session verifies the claimed kind against the pane's own occupant.",
+      "The `version` member at the top of hooks.json is written only into a file Sidecar creates. 2026.08.25's hook loader never reads it, so adding it to a user's existing file would edit bytes outside Sidecar's entry for no effect. Herdr adds it unconditionally.",
+      "One case is undecidable and is resolved rather than hidden: a hooks.json that was already exactly `{\"version\": 1}` and nothing else ends, after an install, at bytes identical to the file Sidecar creates from nothing, so uninstall cannot tell the two apart and removes it. A file carrying anything of the user's still comes back byte for byte. TestCursorCannotTellItsOwnHeaderFromTheUsers pins both halves.",
+      "Sidecar's asset registers nothing else, so the full registry present in the bundle -- beforeSubmitPrompt, the tool events, stop carrying status \"aborted\", postToolUseFailure.is_interrupt, subagentStart/Stop and sessionEnd -- is a ceiling rather than a claim. A fuller asset could reach `full` on paper once traced."
     ],
     "orderingGuaranteed": false,
     "sourceDoc": "https://cursor.com/docs/agent/hooks",
-    "sourceVersionNote": "cursor-agent 2026.08.25. A full event registry is present in the shipped bundle: beforeSubmitPrompt, tool events, stop carrying status \"aborted\", postToolUseFailure.is_interrupt, subagentStart/Stop and sessionStart/End, configured through ~/.cursor/hooks.json. A full-tier candidate once traced."
+    "sourceVersionNote": "cursor-agent 2026.08.25 on darwin/arm64. The hooks file path, the flat handler array, the payload's field names and the absence of any version check were read out of the shipped bundle rather than from documentation. Ported from Herdr's cursor integration version 1."
   },
   {
     "schemaVersion": 1,
     "provider": "copilot",
-    "source": "",
-    "assetVersion": "",
-    "tier": "screen-fallback",
-    "evidence": "none",
+    "source": "sidecar.copilot.hooks",
+    "assetVersion": "1",
+    "tier": "session-identity",
+    "evidence": "docs-only",
     "minProviderVersion": "",
     "testedProviderRange": "",
-    "covered": [],
+    "covered": [
+      "session_identity"
+    ],
     "knownGaps": [
-      "No Sidecar integration is built, so nothing is claimed and screen detection remains the sole authority.",
-      "Not installed on any machine Sidecar has surveyed, so nothing here is verified even against a shipped artifact -- this is the weakest evidence in the registry.",
-      "Interrupt appears to be reported at session granularity rather than per turn, which would not distinguish a cancelled turn from a closed session."
+      "The shipped asset is a single SessionStart hook entry: session identity only, by design, and that is what the tier reflects.",
+      "This is the weakest evidence in the registry, and the reason is stated first rather than buried: GitHub Copilot CLI is not installed on any machine Sidecar has surveyed, so every fact in this entry comes from Herdr's installer and its vendored asset rather than from a released binary. Nothing here has been checked against the provider, including the file path, the entry shape and the field names.",
+      "The entry's shape is Herdr's, faithfully, and it is three departures from every other provider in this registry: `type` is `command`, the command lives under `bash` rather than `command`, and the timeout is `timeoutSec` rather than `timeout`.",
+      "`bash` is written unconditionally rather than switched to `powershell` on Windows the way Herdr does, because Sidecar does not run on Windows and the Windows spelling would be unreachable and untestable. The scan reads both spellings, so an entry written in the other form is still recognised as Sidecar's and can still be removed.",
+      "$COPILOT_HOME is honoured as the configuration-directory override, on Herdr's word alone. If a released Copilot turns out not to read it, honouring it sends an install where nothing reads, and the fix is to drop it the way Antigravity's Herdr-only seam was dropped.",
+      "Herdr's installer removes its own registrations from nine other events -- UserPromptSubmit, PreToolUse, PostToolUse, PostToolUseFailure, Stop, agentStop, SessionEnd, notification and sessionStart -- which is the rollback of a full-lifecycle hook set it used to ship. Sidecar never shipped those, so there is nothing to roll back; the ownership rule finds a Sidecar entry on any event regardless.",
+      "Interrupt appears to be reported at session granularity rather than per turn, which would not distinguish a cancelled turn from a closed session. That was the reading before this port and nothing since has tested it.",
+      "Not traced, and cannot be traced on this machine. A capture needs a released Copilot CLI and credentials the environment does not carry."
     ],
     "orderingGuaranteed": false,
     "sourceDoc": "https://docs.github.com/en/copilot",
-    "sourceVersionNote": "Not installed locally. A hooks feature reached general availability in 2026 offering permissionRequest, sessionEnd carrying an abort reason, and a sessionId on every event, including HTTP hooks. A full-tier candidate on paper only."
+    "sourceVersionNote": "Not installed locally, so no version was seen. Ported from Herdr's copilot integration version 3 at commit d08e44686d8b19bd9555cc99ec9068d9fde05f16: COPILOT_HOOK_EVENTS is the single event SessionStart, the entry is written into ~/.copilot/settings.json under hooks, and the vendored asset reads session_id falling back to sessionId after refusing any hook_event_name that does not normalise to sessionstart. A hooks feature reached general availability in 2026 offering permissionRequest, sessionEnd carrying an abort reason, and a sessionId on every event."
   },
   {
     "schemaVersion": 1,
@@ -240,22 +264,29 @@
   {
     "schemaVersion": 1,
     "provider": "antigravity",
-    "source": "",
-    "assetVersion": "",
-    "tier": "screen-fallback",
-    "evidence": "none",
-    "minProviderVersion": "",
-    "testedProviderRange": "",
-    "covered": [],
+    "source": "sidecar.antigravity.hooks",
+    "assetVersion": "1",
+    "tier": "session-identity",
+    "evidence": "docs-only",
+    "minProviderVersion": "1.1.0",
+    "testedProviderRange": "1.1.22",
+    "covered": [
+      "session_identity"
+    ],
     "knownGaps": [
-      "No Sidecar integration is built, so nothing is claimed and screen detection remains the sole authority.",
-      "Not traced; read from documentation embedded in the shipped binary.",
-      "No session start or end event, no blocking event and no cancellation event, so neither the blocked lane nor process exit could be authored from hooks.",
-      "The hooks configuration path has already moved between releases, so any integration would need a version-aware installer."
+      "The shipped asset is a single PreInvocation hook entry: session identity only, by design, and that is what the tier reflects.",
+      "Antigravity has no session start or end event at all. Its whole hook surface is five events -- PreToolUse, PostToolUse, PreInvocation, PostInvocation and Stop -- so there is no moment that means \"this session began\" and the conversation is named by whichever event fires first. PreInvocation is that event: it fires before the model is called, on every turn, where the tool events fire only for a turn that calls a tool.",
+      "There is no blocking event and no cancellation event, so neither the blocked lane nor process exit could be authored from these hooks even if the asset tried. Stop carries a terminationReason and a fullyIdle flag and is the only turn-end signal; PreToolUse can return a decision, but a hook deciding is not the same as a hook being told the user was asked.",
+      "The payload is camelCase, because Antigravity encodes it with protojson. The session id arrives as conversationId and the transcript as transcriptPath, neither of which is a field name any other provider in this registry uses.",
+      "A hook must write a JSON object to stdout, so Sidecar's entry appends `printf '{}\\n'` after the report command, which prints nothing on success. The suffix is also what makes the hook fail open, because the exit status Antigravity sees is printf's.",
+      "The hooks configuration path has already moved between releases: agy's own changelog records fixing its /hooks command writing to ~/.gemini/antigravity-cli/hooks.json instead of the shared ~/.gemini/config/hooks.json. The installer targets the shared one, which is where 1.1.22 reads.",
+      "Antigravity honours no environment override for that directory. Herdr honours ANTIGRAVITY_CLI_CONFIG_DIR, but the variable appears nowhere in the shipped binary, so it is Herdr's test seam rather than the provider's contract and Sidecar does not follow it. Relocating the provider for a test means moving HOME.",
+      "Not traced. Every statement here is read from agy 1.1.22's own embedded hooks documentation and from the vendored Herdr asset, so the tier rests on documentation rather than on a capture.",
+      "Hooks run synchronously and block the agent loop, and only type \"command\" is supported. A slow report would slow a turn, which is why the entry declares a ten second timeout."
     ],
     "orderingGuaranteed": false,
     "sourceDoc": "https://antigravity.google/docs",
-    "sourceVersionNote": "agy 1.1.22. The thinnest hook surface in the catalog: exactly five events -- PreToolUse, PostToolUse, PreInvocation, PostInvocation and Stop -- carrying a conversationId. An advisory candidate at best."
+    "sourceVersionNote": "agy 1.1.22 on darwin/arm64. The hook contract was read from the documentation the shipped binary embeds, which documents all five events, the camelCase protojson payload, the per-event input and output contracts and the flat-versus-grouped structure per event. Ported from Herdr's antigravity_cli integration version 3."
   },
   {
     "schemaVersion": 1,

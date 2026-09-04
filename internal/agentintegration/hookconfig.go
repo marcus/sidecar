@@ -255,15 +255,82 @@ func sameJSON(a, b json.RawMessage) bool {
 
 // hookEntrySpec describes what one provider's canonical Sidecar entry looks
 // like, which is everything the shared scan needs to tell "ours and current"
-// from "ours and damaged" from "not ours at all".
+// from "ours and damaged" from "not ours at all", and where in that provider's
+// configuration file it lives.
+//
+// The zero value describes the shape this scan was first written for and that
+// Codex still uses: a top-level `hooks` object, an entry under `SessionStart`,
+// wrapped in a matcher group, with the command in `command`. Every field below
+// is a departure some later provider actually ships, and each names that
+// provider, because a shape nobody ships is a shape nobody tests. The six
+// combinations in the tree today are Claude and grok (grouped, `hooks`,
+// SessionStart), Codex (the same without a matcher key), Copilot (flat, but
+// still `hooks`/SessionStart, command in `bash`), Cursor (flat, `sessionStart`)
+// and Antigravity (flat, `PreInvocation`, under a named block rather than
+// `hooks`).
 type hookEntrySpec struct {
-	// matcher is the canonical group matcher: nil means the group carries no
-	// matcher key at all (Codex), non-nil is the exact value (Claude's "*").
+	// namedBlocks reports that the file's top-level members are each a named
+	// hook block holding its own events object, rather than one shared `hooks`
+	// member. Antigravity CLI alone is this shape, and it is why the scan
+	// carries a block coordinate at all: without walking every block, an entry
+	// a user moved into a block of their own would be invisible to uninstall
+	// and would keep reporting beside a freshly installed copy.
+	namedBlocks bool
+	// block is the member the canonical entry belongs in. Empty means `hooks`,
+	// which is every provider but Antigravity, whose block is Sidecar's own
+	// named one.
+	block string
+	// event is the canonical event key. Empty means `SessionStart`. Cursor
+	// spells the same moment `sessionStart`, and Antigravity, which has no
+	// session event at all, carries its conversation id on `PreInvocation`.
+	event string
+	// flat reports that an event's array holds handler entries directly,
+	// without a matcher group wrapping them. Copilot, Cursor and Antigravity
+	// are flat; Claude, Codex and grok are grouped.
+	flat bool
+	// commandKey is the entry member carrying the command. Empty means
+	// `command`. GitHub Copilot CLI reads `bash` on Unix and `powershell` on
+	// Windows instead, and writes the timeout as `timeoutSec`.
+	commandKey string
+	// altCommandKeys are further members the same provider would read a
+	// command from, consulted only when commandKey is absent. They exist so a
+	// Sidecar entry written in a spelling this build does not produce is still
+	// found: Copilot's Windows `powershell` field is the case, and an entry the
+	// scan cannot see is one that keeps reporting while status says nothing is
+	// installed.
+	altCommandKeys []string
+	// matcher is the canonical group matcher, for the grouped shape only: nil
+	// means the group carries no matcher key at all (Codex, grok), non-nil is
+	// the exact value (Claude's "*").
 	matcher *string
 	// canonical maps every asset version Sidecar has ever shipped to the exact
 	// entry object it shipped, newest last. An installed entry equal to an
 	// older version is "outdated" rather than foreign or damaged.
 	canonical []versionedEntry
+}
+
+// blockKey is the top-level member the canonical entry lives under.
+func (s hookEntrySpec) blockKey() string {
+	if s.block != "" {
+		return s.block
+	}
+	return "hooks"
+}
+
+// eventKey is the event the canonical entry is registered on.
+func (s hookEntrySpec) eventKey() string {
+	if s.event != "" {
+		return s.event
+	}
+	return "SessionStart"
+}
+
+// cmdKey is the entry member the provider reads the command from.
+func (s hookEntrySpec) cmdKey() string {
+	if s.commandKey != "" {
+		return s.commandKey
+	}
+	return "command"
 }
 
 type versionedEntry struct {
@@ -277,18 +344,29 @@ func (s hookEntrySpec) current() versionedEntry {
 
 // ownedHookEntry is one Sidecar-owned entry found in the hooks tree.
 type ownedHookEntry struct {
+	// block is the top-level member the entry was found under: the shared
+	// `hooks` member for most providers, a named hook block for Antigravity.
+	block string
 	event string
+	// group is the index of the matcher group holding the entry, or
+	// flatEntryGroup when the event's array holds handlers directly.
 	group int
 	hook  int
 	raw   json.RawMessage
 	// version is the canonical asset version the entry matches, "" when the
 	// entry has been modified.
 	version string
-	// groupCanonical reports whether the entry sits under SessionStart in a
-	// group whose matcher is the canonical one — the conditions under which the
-	// hook actually fires the way Sidecar qualified it.
+	// groupCanonical reports whether the entry sits in the canonical block, on
+	// the canonical event, in a group whose matcher is the canonical one — the
+	// conditions under which the hook actually fires the way Sidecar qualified
+	// it.
 	groupCanonical bool
 }
+
+// flatEntryGroup is the group coordinate of an entry in a flat event array,
+// where there is no group to index. It is negative so it can never collide
+// with a real group index in the drop set.
+const flatEntryGroup = -1
 
 // hookTreeScan is one reading of a provider's hook configuration file.
 type hookTreeScan struct {
@@ -325,26 +403,65 @@ func scanHookTree(exists bool, b []byte, spec hookEntrySpec) hookTreeScan {
 		return s
 	}
 	s.top = top
-	hooksIdx, ok := lastMember(top, "hooks")
+
+	if spec.namedBlocks {
+		// Every top-level member is a named hook block, so every one of them is
+		// inside the strict region and all of them are walked. Scanning only
+		// Sidecar's own block would leave an entry a user moved elsewhere
+		// firing beside a freshly installed copy, with uninstall unable to see
+		// it.
+		for _, blk := range top {
+			events, err := parseJSONObject(blk.val)
+			if err != nil {
+				s.parseErr = fmt.Sprintf("%s is not a hook block object", blk.key)
+				return s
+			}
+			if !s.scanBlockEvents(blk.key, events, spec) {
+				return s
+			}
+		}
+		return s
+	}
+
+	hooksIdx, ok := lastMember(top, spec.blockKey())
 	if !ok {
 		return s
 	}
 	events, err := parseJSONObject(top[hooksIdx].val)
 	if err != nil {
-		s.parseErr = `the "hooks" value is not an object`
+		s.parseErr = `the "` + spec.blockKey() + `" value is not an object`
 		return s
 	}
+	s.scanBlockEvents(spec.blockKey(), events, spec)
+	return s
+}
+
+// scanBlockEvents walks one events object, recording every Sidecar-owned entry
+// under it. It reports false once it has set parseErr, so the caller stops.
+func (s *hookTreeScan) scanBlockEvents(block string, events []jsonMember, spec hookEntrySpec) bool {
 	for _, ev := range events {
-		groups, err := parseJSONArray(ev.val)
+		items, err := parseJSONArray(ev.val)
 		if err != nil {
-			s.parseErr = fmt.Sprintf("hooks.%s is not an array", ev.key)
-			return s
+			if spec.namedBlocks {
+				// A named block carries documented non-event members -- an
+				// `enabled` boolean is the one Antigravity ships -- so a member
+				// that is not an array is not an event and not damage.
+				continue
+			}
+			s.parseErr = fmt.Sprintf("%s.%s is not an array", block, ev.key)
+			return false
 		}
-		for g, groupRaw := range groups {
+		if spec.flat {
+			if !s.scanEntries(block, ev.key, flatEntryGroup, items, spec, true) {
+				return false
+			}
+			continue
+		}
+		for g, groupRaw := range items {
 			group, err := parseJSONObject(groupRaw)
 			if err != nil {
-				s.parseErr = fmt.Sprintf("hooks.%s[%d] is not an object", ev.key, g)
-				return s
+				s.parseErr = fmt.Sprintf("%s.%s[%d] is not an object", block, ev.key, g)
+				return false
 			}
 			entriesIdx, ok := lastMember(group, "hooks")
 			if !ok {
@@ -352,32 +469,74 @@ func scanHookTree(exists bool, b []byte, spec hookEntrySpec) hookTreeScan {
 			}
 			entries, err := parseJSONArray(group[entriesIdx].val)
 			if err != nil {
-				s.parseErr = fmt.Sprintf("hooks.%s[%d].hooks is not an array", ev.key, g)
-				return s
+				s.parseErr = fmt.Sprintf("%s.%s[%d].hooks is not an array", block, ev.key, g)
+				return false
 			}
-			for h, entryRaw := range entries {
-				entry, err := parseJSONObject(entryRaw)
-				if err != nil {
-					s.parseErr = fmt.Sprintf("hooks.%s[%d].hooks[%d] is not an object", ev.key, g, h)
-					return s
-				}
-				typ, _ := memberString(entry, "type")
-				command, ok := memberString(entry, "command")
-				if typ != "command" || !ok || !invokesReportSession(command) {
-					continue
-				}
-				owned := ownedHookEntry{event: ev.key, group: g, hook: h, raw: entryRaw}
-				for _, v := range spec.canonical {
-					if sameJSON(entryRaw, v.entry) {
-						owned.version = v.version
-					}
-				}
-				owned.groupCanonical = ev.key == "SessionStart" && groupMatcherCanonical(group, spec.matcher)
-				s.owned = append(s.owned, owned)
+			if !s.scanEntries(block, ev.key, g, entries, spec, groupMatcherCanonical(group, spec.matcher)) {
+				return false
 			}
 		}
 	}
-	return s
+	return true
+}
+
+// scanEntries records the Sidecar-owned handlers in one array of entries.
+func (s *hookTreeScan) scanEntries(block, event string, group int, entries []json.RawMessage, spec hookEntrySpec, groupOK bool) bool {
+	for h, entryRaw := range entries {
+		entry, err := parseJSONObject(entryRaw)
+		if err != nil {
+			s.parseErr = fmt.Sprintf("%s.%s holds a handler that is not an object", block, event)
+			return false
+		}
+		if !entryIsCommandHandler(entry) {
+			continue
+		}
+		command, ok := entryCommand(entry, spec)
+		if !ok || !invokesReportSession(command) {
+			continue
+		}
+		owned := ownedHookEntry{block: block, event: event, group: group, hook: h, raw: entryRaw}
+		for _, v := range spec.canonical {
+			if sameJSON(entryRaw, v.entry) {
+				owned.version = v.version
+			}
+		}
+		owned.groupCanonical = block == spec.blockKey() && event == spec.eventKey() && groupOK
+		s.owned = append(s.owned, owned)
+	}
+	return true
+}
+
+// entryIsCommandHandler reports whether a handler runs a shell command.
+//
+// An absent `type` counts, because it is the shape Cursor documents and the one
+// Sidecar writes there: `{"command": "..."}` with nothing else. Requiring the
+// key would have made Sidecar's own Cursor entry unrecognisable to the scan
+// that has to find it again at uninstall.
+func entryIsCommandHandler(entry []jsonMember) bool {
+	typ, present := memberString(entry, "type")
+	return !present || typ == "command"
+}
+
+// entryCommand reads a handler's command, from the key the provider is written
+// to and then from every other key the same provider would accept.
+//
+// The fallbacks are deliberate and their direction matters. Copilot reads
+// `bash` on Unix and `powershell` on Windows, and Sidecar writes only the Unix
+// spelling, because it does not run on Windows. An entry in the other
+// spelling -- a synced dotfile tree, a shared home directory, a Herdr install
+// on the same account -- would otherwise be invisible to the scan, and an
+// invisible Sidecar entry is one that keeps reporting while `integration
+// status` says nothing is installed and uninstall has nothing to remove.
+// Recognising every spelling costs nothing: ownership still turns on the
+// command being an invocation of report-session, which no user's hook is.
+func entryCommand(entry []jsonMember, spec hookEntrySpec) (string, bool) {
+	for _, key := range append([]string{spec.cmdKey()}, spec.altCommandKeys...) {
+		if command, ok := memberString(entry, key); ok {
+			return command, true
+		}
+	}
+	return "", false
 }
 
 // groupMatcherCanonical checks a group's matcher against the canonical one:
@@ -397,75 +556,53 @@ func groupMatcherCanonical(group []jsonMember, want *string) bool {
 // array, or hooks object left empty by the removal. Untouched nodes keep their
 // original bytes; a group Sidecar merely added an entry to keeps every other
 // entry and is not removed.
-func stripOwnedHookEntries(s hookTreeScan) ([]jsonMember, bool, error) {
+func stripOwnedHookEntries(s hookTreeScan, spec hookEntrySpec) ([]jsonMember, bool, error) {
 	if len(s.owned) == 0 {
 		return s.top, false, nil
 	}
 	drop := map[string]bool{}
 	for _, o := range s.owned {
-		drop[fmt.Sprintf("%s/%d/%d", o.event, o.group, o.hook)] = true
+		drop[fmt.Sprintf("%s/%s/%d/%d", o.block, o.event, o.group, o.hook)] = true
 	}
 	top := append([]jsonMember(nil), s.top...)
-	hooksIdx, ok := lastMember(top, "hooks")
+
+	if spec.namedBlocks {
+		var keptBlocks []jsonMember
+		for _, blk := range top {
+			events, err := parseJSONObject(blk.val)
+			if err != nil {
+				return nil, false, err
+			}
+			keptEvents, changed, err := stripBlockEvents(blk.key, events, drop, spec)
+			if err != nil {
+				return nil, false, err
+			}
+			switch {
+			case !changed:
+				keptBlocks = append(keptBlocks, blk)
+			case len(keptEvents) == 0:
+				// A block the removal emptied is one Sidecar's entry was the
+				// whole point of, so it goes with the entry. A block that still
+				// holds something of the user's -- another event, or the
+				// `enabled` flag -- is kept with everything but the entry.
+			default:
+				keptBlocks = append(keptBlocks, jsonMember{key: blk.key, val: marshalJSONObject(keptEvents)})
+			}
+		}
+		return keptBlocks, true, nil
+	}
+
+	hooksIdx, ok := lastMember(top, spec.blockKey())
 	if !ok {
-		return nil, false, fmt.Errorf("owned entries recorded but no hooks member")
+		return nil, false, fmt.Errorf("owned entries recorded but no %s member", spec.blockKey())
 	}
 	events, err := parseJSONObject(top[hooksIdx].val)
 	if err != nil {
 		return nil, false, err
 	}
-	var keptEvents []jsonMember
-	for _, ev := range events {
-		groups, err := parseJSONArray(ev.val)
-		if err != nil {
-			return nil, false, err
-		}
-		var keptGroups []json.RawMessage
-		eventChanged := false
-		for g, groupRaw := range groups {
-			group, err := parseJSONObject(groupRaw)
-			if err != nil {
-				return nil, false, err
-			}
-			entriesIdx, ok := lastMember(group, "hooks")
-			if !ok {
-				keptGroups = append(keptGroups, groupRaw)
-				continue
-			}
-			entries, err := parseJSONArray(group[entriesIdx].val)
-			if err != nil {
-				return nil, false, err
-			}
-			var keptEntries []json.RawMessage
-			groupChanged := false
-			for h, entryRaw := range entries {
-				if drop[fmt.Sprintf("%s/%d/%d", ev.key, g, h)] {
-					groupChanged = true
-					continue
-				}
-				keptEntries = append(keptEntries, entryRaw)
-			}
-			switch {
-			case !groupChanged:
-				keptGroups = append(keptGroups, groupRaw)
-			case len(keptEntries) == 0:
-				// The removal emptied the group, so the group goes with it: an
-				// empty group is one Sidecar's entry was the whole point of.
-				eventChanged = true
-			default:
-				group[entriesIdx].val = marshalJSONArray(keptEntries)
-				keptGroups = append(keptGroups, marshalJSONObject(group))
-				eventChanged = true
-			}
-		}
-		switch {
-		case !eventChanged:
-			keptEvents = append(keptEvents, ev)
-		case len(keptGroups) == 0:
-			// Drop the emptied event key entirely.
-		default:
-			keptEvents = append(keptEvents, jsonMember{key: ev.key, val: marshalJSONArray(keptGroups)})
-		}
+	keptEvents, _, err := stripBlockEvents(spec.blockKey(), events, drop, spec)
+	if err != nil {
+		return nil, false, err
 	}
 	if len(keptEvents) == 0 {
 		top = append(top[:hooksIdx], top[hooksIdx+1:]...)
@@ -475,28 +612,110 @@ func stripOwnedHookEntries(s hookTreeScan) ([]jsonMember, bool, error) {
 	return top, true, nil
 }
 
-// appendCanonicalGroup appends the bundled group to hooks.SessionStart,
-// creating the containers it needs and never reordering what exists.
-func appendCanonicalGroup(top []jsonMember, group json.RawMessage) ([]jsonMember, error) {
-	top = append([]jsonMember(nil), top...)
-	hooksIdx, ok := lastMember(top, "hooks")
-	if !ok {
-		events := marshalJSONObject([]jsonMember{{key: "SessionStart", val: marshalJSONArray([]json.RawMessage{group})}})
-		return append(top, jsonMember{key: "hooks", val: events}), nil
+// stripBlockEvents removes the dropped entries from one events object,
+// discarding any group or event array the removal emptied. Untouched nodes keep
+// their original bytes.
+func stripBlockEvents(block string, events []jsonMember, drop map[string]bool, spec hookEntrySpec) ([]jsonMember, bool, error) {
+	var keptEvents []jsonMember
+	blockChanged := false
+	for _, ev := range events {
+		items, err := parseJSONArray(ev.val)
+		if err != nil {
+			if spec.namedBlocks {
+				keptEvents = append(keptEvents, ev)
+				continue
+			}
+			return nil, false, err
+		}
+		var kept []json.RawMessage
+		eventChanged := false
+
+		if spec.flat {
+			for h, entryRaw := range items {
+				if drop[fmt.Sprintf("%s/%s/%d/%d", block, ev.key, flatEntryGroup, h)] {
+					eventChanged = true
+					continue
+				}
+				kept = append(kept, entryRaw)
+			}
+		} else {
+			for g, groupRaw := range items {
+				group, err := parseJSONObject(groupRaw)
+				if err != nil {
+					return nil, false, err
+				}
+				entriesIdx, ok := lastMember(group, "hooks")
+				if !ok {
+					kept = append(kept, groupRaw)
+					continue
+				}
+				entries, err := parseJSONArray(group[entriesIdx].val)
+				if err != nil {
+					return nil, false, err
+				}
+				var keptEntries []json.RawMessage
+				groupChanged := false
+				for h, entryRaw := range entries {
+					if drop[fmt.Sprintf("%s/%s/%d/%d", block, ev.key, g, h)] {
+						groupChanged = true
+						continue
+					}
+					keptEntries = append(keptEntries, entryRaw)
+				}
+				switch {
+				case !groupChanged:
+					kept = append(kept, groupRaw)
+				case len(keptEntries) == 0:
+					// The removal emptied the group, so the group goes with it:
+					// an empty group is one Sidecar's entry was the whole point
+					// of.
+					eventChanged = true
+				default:
+					group[entriesIdx].val = marshalJSONArray(keptEntries)
+					kept = append(kept, marshalJSONObject(group))
+					eventChanged = true
+				}
+			}
+		}
+
+		switch {
+		case !eventChanged:
+			keptEvents = append(keptEvents, ev)
+		case len(kept) == 0:
+			// Drop the emptied event key entirely.
+			blockChanged = true
+		default:
+			keptEvents = append(keptEvents, jsonMember{key: ev.key, val: marshalJSONArray(kept)})
+			blockChanged = true
+		}
 	}
-	events, err := parseJSONObject(top[hooksIdx].val)
+	return keptEvents, blockChanged, nil
+}
+
+// appendCanonicalEntry appends the bundled entry -- a matcher group for a
+// grouped provider, the handler itself for a flat one -- to the canonical
+// block's canonical event, creating the containers it needs and never
+// reordering what exists.
+func appendCanonicalEntry(top []jsonMember, item json.RawMessage, spec hookEntrySpec) ([]jsonMember, error) {
+	top = append([]jsonMember(nil), top...)
+	blockIdx, ok := lastMember(top, spec.blockKey())
+	if !ok {
+		events := marshalJSONObject([]jsonMember{{key: spec.eventKey(), val: marshalJSONArray([]json.RawMessage{item})}})
+		return append(top, jsonMember{key: spec.blockKey(), val: events}), nil
+	}
+	events, err := parseJSONObject(top[blockIdx].val)
 	if err != nil {
 		return nil, err
 	}
-	if evIdx, ok := lastMember(events, "SessionStart"); ok {
-		groups, err := parseJSONArray(events[evIdx].val)
+	if evIdx, ok := lastMember(events, spec.eventKey()); ok {
+		items, err := parseJSONArray(events[evIdx].val)
 		if err != nil {
 			return nil, err
 		}
-		events[evIdx].val = marshalJSONArray(append(groups, group))
+		events[evIdx].val = marshalJSONArray(append(items, item))
 	} else {
-		events = append(events, jsonMember{key: "SessionStart", val: marshalJSONArray([]json.RawMessage{group})})
+		events = append(events, jsonMember{key: spec.eventKey(), val: marshalJSONArray([]json.RawMessage{item})})
 	}
-	top[hooksIdx].val = marshalJSONObject(events)
+	top[blockIdx].val = marshalJSONObject(events)
 	return top, nil
 }

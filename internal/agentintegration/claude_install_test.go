@@ -543,3 +543,72 @@ func TestClaudeOfferedActionsAreExactlyTheOnesThatWouldNotRefuse(t *testing.T) {
 		}
 	}
 }
+
+// TestClaudeFollowsItsConfigDirOverride is the CLAUDE_CONFIG_DIR blind spot,
+// closed. Claude Code resolves its configuration home as the raw
+// CLAUDE_CONFIG_DIR value, falling back to $HOME/.claude, and this installer
+// used to read only $HOME. The consequence was not a cosmetic path difference:
+// status reported not-installed for a Claude whose settings.json was full of
+// hooks, install then wrote Sidecar's entry into a directory that Claude never
+// reads, and uninstall could not find its own entry to remove. All three verbs
+// are driven here, because a resolution used by one and not the others is the
+// same bug with a smaller blast radius.
+func TestClaudeFollowsItsConfigDirOverride(t *testing.T) {
+	relocated := t.TempDir()
+	svc, env, paths := claudeFixture(t, func(e *Env) { e.ClaudeConfigDir = relocated })
+
+	if paths.Settings != filepath.Join(relocated, "settings.json") {
+		t.Fatalf("the adapter targets %s, not the overridden configuration home", paths.Settings)
+	}
+
+	applyTo(t, svc, ClaudeProvider, ActionInstall)
+	if _, err := os.Lstat(paths.Settings); err != nil {
+		t.Fatalf("install wrote nothing to the overridden home: %v", err)
+	}
+	// The default location must be untouched, which is the half a test that
+	// only checked the new path would miss.
+	if _, err := os.Lstat(filepath.Join(env.Home, ".claude", "settings.json")); !os.IsNotExist(err) {
+		t.Fatal("install also wrote into ~/.claude, so the override moved nothing")
+	}
+
+	if st := claudeStatus(t, svc); st.Status != agentlifecycle.StatusCurrent {
+		t.Fatalf("status %s at the overridden home, want current", st.Status)
+	}
+	if p := applyTo(t, svc, ClaudeProvider, ActionUninstall); p.Unchanged {
+		t.Fatal("uninstall found nothing to remove at the overridden home")
+	}
+	if _, err := os.Lstat(paths.Settings); !os.IsNotExist(err) {
+		t.Fatal("uninstall left the entry behind at the overridden home")
+	}
+}
+
+// TestClaudeConfigHomeIgnoresAValueClaudeItselfWouldRefuse pins the two
+// readings that are not a plain "use the variable". Claude refuses to run at
+// all when the resolved home is not absolute, so a relative value names no
+// configuration home; honouring it would put an install somewhere relative to
+// Sidecar's working directory, which is the one place Claude is guaranteed not
+// to look. A whitespace-only value is a variable exported without a value
+// rather than a directory whose name is a space, which is the same reading
+// agentsession.PiAgentDir already takes of PI_CODING_AGENT_DIR.
+func TestClaudeConfigHomeIgnoresAValueClaudeItselfWouldRefuse(t *testing.T) {
+	home := "/home/someone"
+	def := filepath.Join(home, ".claude")
+	for _, tc := range []struct {
+		name  string
+		value string
+		want  string
+	}{
+		{"unset", "", def},
+		{"whitespace", "   ", def},
+		{"relative", "claude-config", def},
+		{"dot relative", "./claude-config", def},
+		{"absolute", "/opt/claude-home", "/opt/claude-home"},
+		{"absolute with slack", "  /opt/claude-home  ", "/opt/claude-home"},
+		{"absolute unnormalized", "/opt/claude-home/", "/opt/claude-home"},
+		{"tilde is not absolute", "~/claude-home", def},
+	} {
+		if got := ClaudeConfigHome(home, tc.value); got != tc.want {
+			t.Fatalf("%s: CLAUDE_CONFIG_DIR=%q resolved to %q, want %q", tc.name, tc.value, got, tc.want)
+		}
+	}
+}

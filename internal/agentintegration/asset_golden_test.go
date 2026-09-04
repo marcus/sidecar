@@ -67,6 +67,28 @@ var assetGoldens = []assetGolden{
 	// state outright; the distinct name is the second, structural half of the
 	// same answer. See OmpAssetName.
 	{provider: OmpProvider, name: "sidecar-omp-lifecycle.js", version: "1", checksum: "bfa72842e418fc1fb66a1e0bc77117cade1186e8c77dee2aa1e3a5ed788609ca"},
+	// Antigravity's asset is not a file either: it is the hooks.json Sidecar
+	// would write into an empty tree, so the checksum covers the block name,
+	// the event, the flat handler shape, the exact command including the
+	// printf the provider's stdout contract requires, and the timeout. Those
+	// are the whole of what the integration does.
+	{provider: AntigravityProvider, name: "hooks.json", version: "1", checksum: "389e513eddf2d16c14124205f6409b1000165021853b9211af764d14def4ac60"},
+	// Copilot's checksum is worth more than most, because it is the only
+	// record anywhere of an entry shape nobody has run: the `bash` command
+	// field and the `timeoutSec` timeout are Herdr's word rather than a
+	// released Copilot's, so a change to either is a change to an untested
+	// claim and should be noticed.
+	{provider: CopilotProvider, name: "settings.json", version: "1", checksum: "48174b6c5fbf7770da52242b8fb198e2383cfdd481498bc4b455f9e55acf5511"},
+	// Cursor's asset is the file Sidecar would create in an empty tree, so the
+	// checksum covers the `version` header as well as the entry. That header
+	// goes only into a file Sidecar creates, never into a user's own, so a
+	// change here is a change to what a fresh install looks like.
+	{provider: CursorProvider, name: "hooks.json", version: "1", checksum: "c5b43c13c5aa7b5bc368dd815c542b9060f2910c985f57b31376d3dab4296a72"},
+	// grok's file is one Sidecar writes alone, into a directory grok globs, so
+	// this checksum is the whole installed artifact rather than a fragment of a
+	// user's file: the matcher group with no matcher key, the SessionStart
+	// event, the command and the timeout.
+	{provider: GrokProvider, name: "sidecar.json", version: "1", checksum: "b228a059c0cb7ad1fec2cec8d9e3884f24231c1343915cfdbc0aa4442143f943"},
 }
 
 // bumpInstructions is the whole point of the guard: a failure here has to tell

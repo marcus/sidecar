@@ -293,11 +293,14 @@ func TestAnUnsupportedOrUnknownProviderIsRefusedNotCrashed(t *testing.T) {
 		provider string
 		want     agentintegration.RefusalCode
 	}{
-		// grok has a recorded capability but no bundled adapter, which is what
-		// keeps the "unsupported" branch honest now that codex, claude and pi
-		// ship adapters. codex covers the third refusal shape: an adapter
-		// exists, but the provider CLI is not on this fixture's PATH.
-		{"grok", agentintegration.RefuseUnsupported},
+		// amp has a recorded capability but no bundled adapter, which is what
+		// keeps the "unsupported" branch honest now that ten providers ship
+		// adapters. grok stood here until the session-identity ports gave it
+		// one; the branch needs a provider Sidecar has evaluated and
+		// deliberately not built for, and that set shrinks with every port.
+		// codex covers the third refusal shape: an adapter exists, but the
+		// provider CLI is not on this fixture's PATH.
+		{"amp", agentintegration.RefuseUnsupported},
 		{"codex", agentintegration.RefuseProviderMissing},
 		{"not-an-agent", agentintegration.RefuseUnknownProvider},
 	} {

@@ -206,6 +206,93 @@ var portedFrom = []PortedFrom{
 			"is not Sidecar's own would break the ownership rule outright. The extension-directory collision " +
 			"refusal in install_omp IS copied, with its reason restated in Sidecar's terms.",
 	},
+	{
+		Provider:    AntigravityProvider,
+		UpstreamID:  "agy",
+		UpstreamDir: "antigravity_cli",
+		Version:     "3",
+		Commit:      herdrVendoredCommit,
+		Evidence: "Ported from Herdr's antigravity_cli integration at that commit, where the vendored " +
+			"upstream/antigravity_cli/herdr-agent-state.sh carries HERDR_INTEGRATION_VERSION=3. The provider half is " +
+			"kept: the single PreInvocation registration from ANTIGRAVITY_CLI_HOOK_EVENTS in src/integration/mod.rs, " +
+			"the flat handler list rather than a matcher group, the ten second timeout, the camelCase conversationId " +
+			"field, and the empty JSON object every exit path writes to stdout. Every one of those was re-checked " +
+			"against agy 1.1.22's own embedded hooks documentation rather than taken on trust, and the two agree. " +
+			"Three deliberate differences, each with its reason in antigravity_install.go: the transport is Sidecar's, " +
+			"so the dropped shell script and its python3 dependency are gone and the config entry invokes the CLI " +
+			"directly, exactly as Sidecar's claude and codex adapters already do with the same upstream shape; " +
+			"ownership is by entry command rather than by Herdr's block name, so a Sidecar entry a user moved into " +
+			"another block is still found and removed; and ANTIGRAVITY_CLI_CONFIG_DIR is NOT honoured, because it is " +
+			"Herdr's own test seam and appears nowhere in the shipped agy binary, so following it would install into " +
+			"a directory the provider never opens.",
+	},
+	{
+		Provider:    CopilotProvider,
+		UpstreamID:  "copilot",
+		UpstreamDir: "copilot",
+		Version:     "3",
+		Commit:      herdrVendoredCommit,
+		Evidence: "Ported from Herdr's copilot integration at that commit, where the vendored " +
+			"upstream/copilot/herdr-agent-state.sh carries HERDR_INTEGRATION_VERSION=3. This is the ONLY port in " +
+			"this lane that could not be checked against a released binary: GitHub Copilot CLI is not installed on " +
+			"any machine Sidecar has surveyed, so the file (~/.copilot/settings.json), the hooks key, the single " +
+			"SessionStart registration from COPILOT_HOOK_EVENTS, the flat handler array, the `bash` command field " +
+			"and the `timeoutSec` timeout are all Herdr's word rather than the provider's, and the capability entry " +
+			"says so. The upstream asset's own session-id reading -- session_id falling back to sessionId, after " +
+			"refusing any hook_event_name that does not normalise to sessionstart -- is what report-session's " +
+			"payload parsing reproduces. Three deliberate differences, each with its reason in copilot_install.go: " +
+			"the transport is Sidecar's, so the dropped shell script and its python3 dependency are gone and the " +
+			"config entry invokes the CLI directly; the Windows `powershell` command field is not written, because " +
+			"Sidecar has no Windows support and it would be unreachable and untestable, though the scan reads it so " +
+			"an entry in that form is still removable; and Herdr's nine removed-lifecycle event names are not " +
+			"copied, because Sidecar never shipped them and the ownership rule finds a Sidecar entry on any event " +
+			"without a list that would go stale.",
+	},
+	{
+		Provider:    CursorProvider,
+		UpstreamID:  "cursor",
+		UpstreamDir: "cursor",
+		Version:     "1",
+		Commit:      herdrVendoredCommit,
+		Evidence: "Ported from Herdr's cursor integration at that commit, where the vendored " +
+			"upstream/cursor/herdr-agent-state.sh carries HERDR_INTEGRATION_VERSION=1. The provider half is kept: " +
+			"the single sessionStart registration, the flat handler array, and the minimal `{command: ...}` entry " +
+			"shape Herdr writes per Cursor's published hooks documentation. The upstream asset's own guard -- accept " +
+			"a payload whose hook_event_name is absent or sessionStart, then read session_id, sessionId, " +
+			"conversation_id or conversationId -- is structural here, because the entry is registered on one event " +
+			"and report-session reads those field spellings itself. Every fact was re-checked against cursor-agent " +
+			"2026.08.25's shipped bundle rather than taken on trust, and two of the checks changed the port. " +
+			"CURSOR_CONFIG_DIR is NOT honoured, although Herdr honours it: cursor-agent has a config-dir resolver " +
+			"that reads it, and its hook loader does not use that resolver, building the user hooks path from " +
+			"homedir() and \".cursor\" directly, so following the variable would install into a directory the " +
+			"loader never opens. And the top-level `version` member is written only into a file Sidecar creates, " +
+			"where Herdr adds it to any file lacking one: the loader never reads the key, so adding it to a user's " +
+			"file would edit bytes outside Sidecar's entry for no effect. One further difference: the transport is " +
+			"Sidecar's, so the dropped shell script and its python3 dependency are gone.",
+	},
+	{
+		Provider:    GrokProvider,
+		UpstreamID:  "grok",
+		UpstreamDir: "grok",
+		Version:     "1",
+		Commit:      herdrVendoredCommit,
+		Evidence: "Ported from Herdr's grok integration at that commit, where the vendored " +
+			"upstream/grok/herdr-agent-state.sh carries HERDR_INTEGRATION_VERSION=1. The provider half is kept: " +
+			"a dedicated hook file in grok's own hooks directory, which grok globs and merges; the SessionStart " +
+			"registration in a matcher group with no matcher key, which is grok's documented match-everything " +
+			"default; the ten second timeout; and the session-start-only guard, which is structural here because " +
+			"the entry is registered on one event rather than dispatched to by a script. Every fact was re-checked " +
+			"against the documentation grok 1.0.13 embeds in its own shipped binary rather than taken on trust. " +
+			"Three deliberate differences, each with its reason in grok_install.go: the transport is Sidecar's, so " +
+			"the dropped shell script and its python3 dependency are gone and the entry invokes the CLI directly; " +
+			"ownership is by entry rather than by file, where Herdr deletes its whole herdr.json at uninstall, so a " +
+			"hook a user added beside Sidecar's survives and the file is removed only when Sidecar's entry was all " +
+			"it held; and GROK_SESSION_ID is not read, because report-session's payload reader serves every " +
+			"provider and a per-provider environment read would be a second way for one provider to name a " +
+			"session, so the camelCase sessionId on the payload is used instead. NOT followed: Herdr's " +
+			"GROK_CONFIG_DIR, which its own comment records as a Herdr-level test seam the grok CLI does not read. " +
+			"GROK_HOME, which grok does read, is honoured.",
+	},
 }
 
 // PortedFromRecords returns the provenance of every Sidecar integration asset.

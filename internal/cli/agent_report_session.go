@@ -191,10 +191,25 @@ func parseReportSessionFlags(env Env, args []string, help string) (reportSession
 
 // hookPayload is the subset of a provider hook's stdin JSON that Sidecar reads.
 //
-// Codex and Claude Code both deliver these field names, which is why one shape
-// serves both. Everything else in the payload — prompt text, tool arguments,
-// model names — is deliberately not decoded: a field this struct does not name
-// is a field that cannot reach a Sidecar record.
+// Everything else in the payload — prompt text, tool arguments, model names —
+// is deliberately not decoded: a field this struct does not name is a field
+// that cannot reach a Sidecar record. What it does name is every spelling the
+// shipped integrations actually receive, and there are three of them, because
+// the providers disagree with each other rather than with Sidecar:
+//
+//   - snake_case `session_id` and `transcript_path`: Codex, Claude Code,
+//     Cursor Agent and GitHub Copilot CLI.
+//   - camelCase `sessionId`: grok, whose whole payload is camelCase
+//     (`hookEventName`, `cwd`, `workspaceRoot`, `promptId`), and Copilot, whose
+//     upstream asset reads it as a fallback.
+//   - `conversationId` and `transcriptPath`: Antigravity, which encodes its
+//     payload with protojson and therefore camelCases every key, and which
+//     calls a session a conversation.
+//
+// Adding a spelling is additive and safe: each is read only when the ones
+// before it are absent, so a provider that sends one cannot be affected by a
+// field it does not send. Fixtures for every spelling are in
+// TestAHookPayloadIsReadInEveryProviderSpelling.
 type hookPayload struct {
 	SessionID      string `json:"session_id"`
 	TranscriptPath string `json:"transcript_path"`
@@ -202,6 +217,47 @@ type hookPayload struct {
 	// AgentID is set when the event belongs to a sub-agent rather than the
 	// conversation occupying the pane.
 	AgentID string `json:"agent_id"`
+
+	// SessionIDCamel is grok's and Copilot's spelling of SessionID.
+	SessionIDCamel string `json:"sessionId"`
+	// ConversationID is Antigravity's name for the same thing, and Cursor's
+	// documented fallback when session_id is absent.
+	ConversationID string `json:"conversationId"`
+	// ConversationIDSnake is Cursor's snake_case spelling of the fallback.
+	ConversationIDSnake string `json:"conversation_id"`
+	// TranscriptPathCamel is Antigravity's spelling of TranscriptPath.
+	TranscriptPathCamel string `json:"transcriptPath"`
+	// AgentIDCamel is the camelCase spelling of AgentID, read for the same
+	// reason the others are: a sub-agent event must be recognised as one
+	// whatever the provider calls the field, because binding the pane to a
+	// nested conversation is the failure this check exists to prevent.
+	AgentIDCamel string `json:"agentId"`
+}
+
+// sessionID is the conversation identifier the payload names, in the order the
+// spellings are preferred: the provider's own primary field first, then the
+// camelCase and conversation spellings.
+func (p hookPayload) sessionID() string {
+	return firstNonBlank(p.SessionID, p.SessionIDCamel, p.ConversationID, p.ConversationIDSnake)
+}
+
+// transcriptPath is the transcript the payload names, in the same order.
+func (p hookPayload) transcriptPath() string {
+	return firstNonBlank(p.TranscriptPath, p.TranscriptPathCamel)
+}
+
+// subAgentID is the sub-agent the event belongs to, in either spelling.
+func (p hookPayload) subAgentID() string {
+	return firstNonBlank(p.AgentID, p.AgentIDCamel)
+}
+
+func firstNonBlank(values ...string) string {
+	for _, v := range values {
+		if trimmed := strings.TrimSpace(v); trimmed != "" {
+			return trimmed
+		}
+	}
+	return ""
 }
 
 // readHookPayload decodes a bounded provider payload from stdin.
@@ -321,7 +377,7 @@ func runAgentReportSession(env Env, args []string) int {
 		if err != nil {
 			return emitReportSessionError(env, f.json, "invalid_payload", err)
 		}
-		if strings.TrimSpace(payload.AgentID) != "" {
+		if payload.subAgentID() != "" {
 			// A sub-agent event describes a nested conversation, not the one
 			// occupying the pane. Binding the pane to it would make a restore
 			// resume the wrong side of the conversation.
@@ -332,11 +388,11 @@ func runAgentReportSession(env Env, args []string) int {
 				Note:          "the payload belongs to a sub-agent; the pane's own binding was left alone",
 			})
 		}
-		switch {
-		case strings.TrimSpace(payload.SessionID) != "":
-			refKind, value = agentsession.RefID, strings.TrimSpace(payload.SessionID)
-		case strings.TrimSpace(payload.TranscriptPath) != "":
-			refKind, value = agentsession.RefPath, strings.TrimSpace(payload.TranscriptPath)
+		switch id, path := payload.sessionID(), payload.transcriptPath(); {
+		case id != "":
+			refKind, value = agentsession.RefID, id
+		case path != "":
+			refKind, value = agentsession.RefPath, path
 		default:
 			return emitReportSessionResult(env, f.json, reportSessionResult{
 				SchemaVersion: reportSessionSchemaVersion,

@@ -44,6 +44,10 @@ func OfficialSources() []string {
 		"sidecar.kilo.plugin",
 		"sidecar.kimi.hooks",
 		"sidecar.omp.extension",
+		"sidecar.antigravity.hooks",
+		"sidecar.copilot.hooks",
+		"sidecar.cursor.hooks",
+		"sidecar.grok.hooks",
 	}
 }
 
@@ -76,6 +80,14 @@ func OfficialSourceFor(kind string) string {
 		return "sidecar.kimi.hooks"
 	case "omp":
 		return "sidecar.omp.extension"
+	case "antigravity":
+		return "sidecar.antigravity.hooks"
+	case "copilot":
+		return "sidecar.copilot.hooks"
+	case "cursor":
+		return "sidecar.cursor.hooks"
+	case "grok":
+		return "sidecar.grok.hooks"
 	default:
 		return ""
 	}

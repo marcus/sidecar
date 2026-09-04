@@ -446,7 +446,7 @@ func TestOfficialSourcesAreTheOnesAdaptersShip(t *testing.T) {
 	// The ones that ship. This list is exactly agentintegration.DefaultAdapters,
 	// and it is spelled out rather than derived so that adding a source here
 	// without adding the adapter that produces it fails.
-	for _, kind := range []string{"codex", "claude", "opencode", "pi", "kilo", "kimi"} {
+	for _, kind := range []string{"codex", "claude", "opencode", "pi", "kilo", "kimi", "antigravity", "copilot", "cursor", "grok"} {
 		source := OfficialSourceFor(kind)
 		if source == "" {
 			t.Fatalf("no official source is recorded for %q", kind)
@@ -455,15 +455,19 @@ func TestOfficialSourcesAreTheOnesAdaptersShip(t *testing.T) {
 			t.Fatalf("OfficialSourceFor(%q) returned %q, which Official() does not trust", kind, source)
 		}
 	}
-	// grok has no Sidecar integration and never had one, and it is the standing
-	// example of what this list refuses. pi is the cautionary one: it carried an
-	// official source and a capability entry ahead of any adapter, so nothing
-	// Sidecar installed could produce a report bearing it, and the only reference
-	// it could ever have marked resumable came from a hook Sidecar did not write.
-	// Both were retracted, and pi earned its source back only once PiAdapter and
+	// amp and muse are catalog agents Sidecar recognises and ships no
+	// integration for, and they are the standing example of what this list
+	// refuses. pi is the cautionary one: it carried an official source and a
+	// capability entry ahead of any adapter, so nothing Sidecar installed could
+	// produce a report bearing it, and the only reference it could ever have
+	// marked resumable came from a hook Sidecar did not write. Both were
+	// retracted, and pi earned its source back only once PiAdapter and
 	// assets/pi/sidecar-lifecycle.js shipped -- which is exactly the rule the
-	// loop above enforces.
-	for _, kind := range []string{"grok", "cursor", "amp"} {
+	// loop above enforces. cursor and grok were in this refusal list until the
+	// session-identity ports gave each one an adapter; they moved up rather
+	// than being deleted, because the rule is about what ships and not about
+	// which providers were once absent.
+	for _, kind := range []string{"amp", "muse"} {
 		if OfficialSourceFor(kind) != "" {
 			t.Fatalf("%q has no shipped integration but reported an official source", kind)
 		}

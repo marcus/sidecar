@@ -287,6 +287,88 @@ Answer open question 3 first. Then port in order of live use, confirming for eac
 
 **Exit gate:** every port has a fixture, a capability entry earned by traces, and a `ported-from` header the sync report can diff.
 
+#### Result for `antigravity`, 2026-09-04 (`td-73c4ff`)
+
+**Shipped at `session-identity` on `docs-only` evidence.** The port is one `PreInvocation` entry in `~/.gemini/config/hooks.json`, under a hook block named `sidecar`, invoking `sidecar agent report-session --kind antigravity --hook-stdin`. Everything about the contract was read from agy 1.1.22's own embedded hooks documentation and cross-checked against Herdr's `antigravity_cli` integration version 3; the two agree on every point.
+
+**The four session-identity ports share one adapter, and that is the shape rather than a shortcut.** Claude's installer was generalized into `sessionhook.go`, which is the whole lifecycle -- inspect, status, the four verbs, the ownership gate, the backup, the refusals -- driven by a descriptor. What a provider contributes is a file path, an event name, an entry shape and the key its command lives under. `hookconfig.go`'s scan grew the coordinates that made that possible: a block, an event, a flat-versus-grouped shape and a command key, whose zero values are exactly what Claude and Codex already had, so neither of those adapters changed behaviour and neither was rewritten onto the new one. Codex in particular stays where it is, because three owned mutations across two files in two formats would be a descriptor with a hole in it exactly where the hard part is.
+
+**Antigravity has no session event, so the earliest event is the session event.** Its whole surface is `PreToolUse`, `PostToolUse`, `PreInvocation`, `PostInvocation` and `Stop`, and the conversation id rides every payload. `PreInvocation` is the only one that fires before the model runs and on every turn, which is why Herdr subscribes to it and why this port does. The cost is real and is recorded rather than hidden: the binding lands one model call into the session, so a pane opened and left untouched is unbound until its first turn.
+
+**Three provider quirks are kept verbatim.** The payload is camelCase because Antigravity encodes it with protojson, so the id arrives as `conversationId`. A hook must write a JSON object to stdout, so the installed command ends `; printf '{}\n'` -- a fixed literal with nothing interpolated, under the `sh -c` Antigravity already uses, which also makes the hook fail open because the exit status the provider sees is printf's. And `hooks.json` is keyed by hook NAME rather than by event, so the scan walks every top-level block: an entry a user moved into a block of their own would otherwise keep firing while `integration status` reported nothing installed, and uninstall would never find it.
+
+**One deliberate divergence from Herdr, and it is the opposite call from the Claude fix in the same lane.** Herdr honours `ANTIGRAVITY_CLI_CONFIG_DIR`; that variable appears nowhere in agy's shipped binary, so it is Herdr's own test seam rather than the provider's contract, and honouring it would install into a directory the provider never opens. `CLAUDE_CONFIG_DIR` is honoured in the same lane for the mirror-image reason: Claude does read it. The rule is to follow the provider, not the upstream installer.
+
+**Ownership is stricter than upstream's.** Herdr's uninstall removes its whole block by name. Sidecar removes only entries whose command invokes `report-session`, keeps every other handler in the array in order, keeps a block that still holds something of the user's, and drops a block that held nothing else.
+
+#### Result for `copilot`, 2026-09-04 (`td-73c4ff`)
+
+**Shipped at `session-identity` on `docs-only` evidence, untraced, and it is the one port in this lane that could not be checked against a released binary.** GitHub Copilot CLI is not installed on any machine Sidecar has surveyed and installing it needs credentials the environment does not carry, so the file path, the hooks key, the single `SessionStart` registration, the flat handler array, the `bash` command field and the `timeoutSec` timeout are all Herdr's word rather than the provider's. The capability entry says exactly that as its second gap, before any of the details it qualifies.
+
+**Three fields differ from every other provider in the tree and none was invented here.** `type: "command"`, the command under `bash` rather than `command`, and `timeoutSec` rather than `timeout`, all from Herdr's `ensure_direct_command_hook`. A test pins all three, and the asset's golden checksum exists partly so a change to an unverified claim is noticed rather than absorbed.
+
+**The Windows spelling is read but not written.** Sidecar has no Windows support, so writing `powershell` would ship an unreachable, untestable branch, exactly as Slice 3 declined upstream's Windows argument walkers. The scan reads it anyway, because an entry in a spelling this build does not produce is still Sidecar's, and an entry the scan cannot see keeps reporting while `integration status` says nothing is installed. `hookEntrySpec` grew `altCommandKeys` for that, and `TestCopilotStillRecognisesTheWindowsSpelling` drives a file holding one.
+
+**`$COPILOT_HOME` is honoured where Antigravity's override was ignored, and the asymmetry is evidence rather than taste.** agy's binary can be searched and does not contain its variable, so that one is demonstrably Herdr's test seam. Copilot's binary cannot be searched at all, and a user who has set the variable has a Copilot reading there, so ignoring it would be the riskier guess. Both readings are asserted by tests so a later reader sees the asymmetry rather than inferring it.
+
+**Herdr's nine removed-lifecycle event names are not copied.** They are the residue of a full-lifecycle hook set upstream withdrew; Sidecar never shipped it, and the ownership rule already finds a Sidecar entry on any event without a list that goes stale.
+
+#### Result for `cursor`, 2026-09-04 (`td-73c4ff`)
+
+**Shipped at `session-identity` on `docs-only` evidence.** One `sessionStart` entry in `~/.cursor/hooks.json`, in the flat handler array Cursor's `hooks` object holds per event, as the minimal `{"command": ...}` shape Cursor documents and Herdr writes. Ported from Herdr's cursor integration version 1 and re-checked against cursor-agent 2026.08.25's shipped bundle, and two of those checks changed the port.
+
+**The first is an override that would have been wrong to honour.** cursor-agent has a configuration-directory resolver reading `CURSOR_CONFIG_DIR`, then `$XDG_CONFIG_HOME/cursor`, then `~/.cursor`. Its hook loader does not use it: in the same bundle the user hooks path is built from `homedir()` and `.cursor` directly. Herdr honours the variable; following it here would install into a directory that resolver describes and the loader never opens, which is a silently dead integration rather than a relocated one. That is now the lane's stated rule, and it cuts in both directions: Claude's `CLAUDE_CONFIG_DIR` is honoured in the same lane because Claude does read it, and Antigravity's is ignored because agy's binary does not contain the variable at all. Follow the code path that reads the file, not the variable name that looks like it should.
+
+**The second is the file header.** Cursor's own writer puts a `version` at the top of a hooks.json it generates, and Herdr adds one to any file lacking it. Sidecar writes it into a file it creates and never into one the user already has, because 2026.08.25's hook loader never reads the key -- the word appears in that module only in sync-conflict messages and in `cursor_version` on the payload. Adding it to a user's file would edit bytes outside Sidecar's entry to no effect, and it is what would stop uninstall giving that file back byte for byte, which a test now drives directly. `sessionHookIntegration` grew `newFileMembers` for this, and the member goes away with the entry when it is all that is left, so a file Sidecar created does not survive as a stub.
+
+**Cursor reads Claude's settings too**, alongside the project-local Claude settings and enterprise and team paths, so Sidecar's Claude entry fires inside cursor-agent sessions exactly as it does inside grok. It is refused there rather than bound by the same `report-session` gate.
+
+**The scan accepts a handler with no `type`.** Cursor documents the minimal `{"command": ...}` form and Herdr writes it, while Cursor's own generator emits `{"type": "command", "command": ...}`, so both exist in the wild and a Sidecar entry in either is Sidecar's.
+
+#### Result for `grok`, 2026-09-04 (`td-73c4ff`), and the two Claude-adjacent fixes
+
+**Shipped at `session-identity` on `docs-only` evidence.** One `SessionStart` entry in `~/.grok/hooks/sidecar.json`, in a matcher group with no matcher key, which is grok's documented match-everything default and Herdr's shape. Ported from Herdr's grok integration version 1 and re-checked against the documentation grok 1.0.13 embeds in its own binary.
+
+**Sidecar owns a dedicated file and still owns only the entry inside it.** grok merges every `<grok home>/hooks/*.json`, so Sidecar writes its own file rather than editing the user's. Herdr does the same and then deletes its file outright at uninstall; Sidecar keeps the entry rule, so a hook a user added beside Sidecar's inside a file named after Sidecar survives, and the file is removed only when Sidecar's entry was all it held. `GROK_HOME` is honoured, because grok reads it; Herdr's `GROK_CONFIG_DIR` is not, because Herdr's own comment says the grok CLI does not.
+
+**`GROK_SESSION_ID` is deliberately not read.** Herdr's asset prefers the environment variable over the payload. `--hook-stdin` is one bounded reader serving every provider, and a per-provider environment read would be a second way for one provider to name a session, so Sidecar takes the camelCase `sessionId` grok puts on the payload.
+
+**Three Sidecar integrations fire inside one grok session, and the gate that decides between them is now proved from the shipped bytes.** grok's documented hook locations include `~/.claude/settings.json` and `~/.cursor/hooks.json`, so a single grok session start runs Sidecar's grok, Claude and Cursor entries, all carrying grok's own session id. `TestBothEntriesFireInAGrokSessionAndOnlyGroksBinds` in `internal/cli` reads the grok and Claude kinds out of the two adapters' own canonical assets and drives both against a grok-typed shell: the Claude claim is refused with `kind_mismatch` and the grok claim binds as resumable, with the shell still recorded as grok. Hand-disabling the check in `shellstate` makes it fail with "the Claude entry bound a grok session", which is td-11040b in one sentence. The reverse direction needs no gate, because Claude does not read `~/.grok/hooks/`.
+
+#### The two Claude-adjacent fixes this slice also carried
+
+**`CLAUDE_CONFIG_DIR` is honoured by status, install and uninstall alike.** Claude Code resolves its configuration home as the raw variable, falling back to `$HOME/.claude`, and refuses to run when the result is not absolute. The installer read only `$HOME`, so a relocated Claude got `not-installed` for a settings.json full of hooks, an install that wrote where Claude never reads, and an uninstall that could not find its own entry. A relative or whitespace-only value keeps the default, because Claude itself will not start with a non-absolute home.
+
+**The capability entry's two Sidecar-scope gaps are corrected.** The `CLAUDE_CONFIG_DIR` blind spot is closed by the above, and the grok/Claude shared-settings binding was already fixed and closed as `td-11040b`; both texts said otherwise, in `capabilities.json` and in the capability matrix.
+
+#### The live proof, and what it could and could not reach
+
+**One of the four providers could be driven, and grok is it.** The run was a Sidecar-managed shell on a private tmux server with `XDG_STATE_HOME`, `XDG_CONFIG_HOME`, `-config` and `SIDECAR_ISOLATED_STATE=1` under a scratch tree, `SIDECAR_DIAG_PATHS` checked before anything was created, and `TMUX` and every `SIDECAR_*` variable scrubbed by the env file every command sources. `GROK_HOME` moved the whole grok tree into a scratch home and `XAI_API_KEY` was already exported, so grok authenticated without touching the maintainer's `~/.grok`.
+
+**grok is traced and promoted to `real-trace`, still at `session-identity`.** Sidecar's entry was installed by `sidecar agent integration install grok`, so the run proves the installer too. The pane bound to source `sidecar.grok.hooks`, marked resumable, and grok's own `/quit` then printed `grok --resume <that exact id>` -- the provider stating the same id from the other side, which is the strongest corroboration a session-identity port can get. Uninstall removed the entry and left a capture hook of the user's, in the same directory, untouched.
+
+**The traces corrected two things this port had written down.** `SessionStart` does NOT fire at process start: a TUI launched and left at its prompt for 45 seconds emitted nothing at all, and the event arrived on the first prompt, which is when grok creates the session. So a grok pane binds one turn into its life, and an idle pane a user walked away from carries no binding -- the same shape as Antigravity, which has no session event at all, and it means neither entry can honestly be described as binding "at startup". And every payload carries BOTH spellings of every common field (`sessionId` and `session_id`, and so on), where grok's published example shows only the camelCase half; Sidecar reads the snake_case one and either would have worked.
+
+**The other three ship untraced, and each for a reason that is a fact rather than an omission.** cursor-agent stops at "Press any key to log in" once `HOME` is moved, and its hook loader reads `$HOME/.cursor` with no override, so redirecting it and keeping its credentials are mutually exclusive; no `CURSOR_*` credential is exported here. agy refuses to run unauthenticated and opens a browser OAuth flow that times out after sixty seconds; `GEMINI_API_KEY` is exported and is not accepted for the CLI. copilot is not installed at all. Each capability entry says which case it is.
+
+**Ownership was still proved live for two of the three that could not be driven.** A capture hook of the "user's" was placed beside Sidecar's entry -- in the same `sessionStart` array for Cursor, in a named block of its own for Antigravity -- and `integration uninstall` removed exactly Sidecar's entry and left the other untouched in both files. A provider that will not start still exercises the installer, which is most of what an entry-in-config port can get wrong.
+
+**One harness note for the next lane.** Export the provider's own directory override before the first `integration status` call, not after: `detectProviderVersion` runs `<provider> --version`, and a provider that initialises its home on any invocation would write into the real tree from that first probe. Measured for grok, `grok --version` into an empty `GROK_HOME` creates nothing, so this run's probe was harmless -- but that is a property of grok rather than a rule.
+
+**The maintainer's tree was checked against a marker file created before the run.** `~/.grok/hooks/` holds only Herdr's own two files, dated 28 August: Sidecar's installer wrote nothing into it. `~/.cursor` and `~/.gemini` carry mtimes predating this run entirely. Files that did change under `~/.grok` are grok's own runtime artifacts for a session keyed to `/Users/marcus/code/comms`, a directory this run never opened. Only the tmux server this run created was killed, and its private socket directory was removed.
+
+#### One rule the four ports established between them
+
+**Follow the code path that reads the file, not the variable name that looks like it should.** Three of the four providers ship a configuration-directory override in Herdr's installer and the four answers differ, each on evidence:
+
+| Provider | Herdr honours | Sidecar honours | Why |
+| --- | --- | --- | --- |
+| Claude | `CLAUDE_CONFIG_DIR` | yes | the shipped binary resolves its config home from it |
+| grok | `GROK_HOME`, `GROK_CONFIG_DIR` | `GROK_HOME` only | the binary carries `GROK_HOME`; Herdr's own comment calls the other its test seam |
+| Cursor | `CURSOR_CONFIG_DIR` | no | cursor-agent has a resolver that reads it and a hook loader that does not use it |
+| Antigravity | `ANTIGRAVITY_CLI_CONFIG_DIR` | no | the variable appears nowhere in the shipped agy binary |
+| Copilot | `COPILOT_HOME` | yes | no binary to check; a plausible provider override beats none, and the entry says it is unverified |
+
 ### Slice 5 — The launch catalog moves to TOML and grows to every recognised agent (medium)
 
 Today `internal/agentcatalog` holds ten launchable families as a Go slice and ten detection-only families as a second slice. The knowledge in the first is small and flat: a command, an auto-approve flag, resume arguments, aliases, an adapter id. That is configuration, and it belongs in data a user or an agent can read and extend without a rebuild.

@@ -454,3 +454,149 @@ func TestTheListPathNeverRevealsAValueByDefault(t *testing.T) {
 		t.Fatal("agent list gained an own-shell exemption; only agent get has one")
 	}
 }
+
+// TestAHookPayloadIsReadInEveryProviderSpelling is the fixture set behind the
+// six shipped session-identity integrations.
+//
+// The providers disagree with each other rather than with Sidecar: Codex,
+// Claude Code, Cursor Agent and Copilot send snake_case `session_id`; grok's
+// whole payload is camelCase, so it sends `sessionId`; and Antigravity encodes
+// its payload with protojson and calls a session a conversation, so it sends
+// `conversationId` and `transcriptPath`. One bounded reader serves all of them,
+// and the only way that stays true is if every spelling has a fixture taken
+// from what the provider actually sends.
+//
+// Each case is a real payload shape, trimmed to the fields Sidecar decodes,
+// with the provider's own extra keys left in so the decoder is exercised
+// against a document rather than a two-field object.
+func TestAHookPayloadIsReadInEveryProviderSpelling(t *testing.T) {
+	for _, tc := range []struct {
+		provider string
+		body     string
+		wantID   string
+		wantPath string
+	}{
+		{
+			provider: "codex and claude",
+			body:     `{"session_id":"019f2c8a","transcript_path":"/home/u/.claude/projects/a.jsonl","hook_event_name":"SessionStart","source":"startup","cwd":"/repo"}`,
+			wantID:   "019f2c8a",
+			wantPath: "/home/u/.claude/projects/a.jsonl",
+		},
+		{
+			// Cursor's event names are camelCase and its payload's are
+			// snake_case, which is the crossing worth having a fixture for.
+			provider: "cursor",
+			body:     `{"session_id":"7b2f","hook_event_name":"sessionStart","transcript_path":"/home/u/.cursor/chats/a.jsonl","cursor_version":"2026.08.25","workspace_roots":["/repo"],"user_email":"someone@example.com"}`,
+			wantID:   "7b2f",
+			wantPath: "/home/u/.cursor/chats/a.jsonl",
+		},
+		{
+			// Cursor's documented fallback when no session_id is present.
+			provider: "cursor, conversation fallback",
+			body:     `{"conversation_id":"conv-7b2f","hook_event_name":"sessionStart"}`,
+			wantID:   "conv-7b2f",
+		},
+		{
+			// grok injects GROK_SESSION_ID as well; Sidecar reads the payload,
+			// so the payload's spelling is what has to work.
+			provider: "grok",
+			body:     `{"hookEventName":"session_start","sessionId":"grok-abc","cwd":"/repo","workspaceRoot":"/repo","permissionMode":"default","timestamp":"2026-04-14T12:00:00Z"}`,
+			wantID:   "grok-abc",
+		},
+		{
+			// Copilot's upstream asset reads session_id and falls back to
+			// sessionId, so both spellings reach this reader.
+			provider: "copilot, camelCase fallback",
+			body:     `{"hookEventName":"SessionStart","sessionId":"cop-123"}`,
+			wantID:   "cop-123",
+		},
+		{
+			// Antigravity: protojson, so every key is camelCase, and a session
+			// is a conversation. This is also the only provider that sends a
+			// transcript under a camelCase name.
+			provider: "antigravity",
+			body:     `{"conversationId":"ec33ebf9-0cba-4100-8142-c61503f6c587","workspacePaths":["/repo"],"transcriptPath":"/repo/.gemini/antigravity-cli/transcript.jsonl","artifactDirectoryPath":"/repo/.gemini/antigravity-cli/artifacts","modelName":"auto","invocationNum":1}`,
+			wantID:   "ec33ebf9-0cba-4100-8142-c61503f6c587",
+			wantPath: "/repo/.gemini/antigravity-cli/transcript.jsonl",
+		},
+		{
+			// Antigravity with no transcript, which every payload before the
+			// first write looks like. The id alone still binds.
+			provider: "antigravity, no transcript",
+			body:     `{"conversationId":"ec33ebf9","modelName":"auto"}`,
+			wantID:   "ec33ebf9",
+		},
+	} {
+		t.Run(tc.provider, func(t *testing.T) {
+			p, err := readHookPayload(strings.NewReader(tc.body))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := p.sessionID(); got != tc.wantID {
+				t.Fatalf("sessionID() = %q, want %q", got, tc.wantID)
+			}
+			if got := p.transcriptPath(); got != tc.wantPath {
+				t.Fatalf("transcriptPath() = %q, want %q", got, tc.wantPath)
+			}
+		})
+	}
+}
+
+// TestTheSnakeCaseSpellingWinsWhenAPayloadCarriesBoth pins the preference
+// order. It matters for a provider that sends both, and for a settings file
+// shared between providers: the primary field is the one the provider whose
+// hook is firing documents, so it decides.
+func TestTheSnakeCaseSpellingWinsWhenAPayloadCarriesBoth(t *testing.T) {
+	p, err := readHookPayload(strings.NewReader(
+		`{"session_id":"primary","sessionId":"camel","conversationId":"conversation","conversation_id":"snake_conversation"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := p.sessionID(); got != "primary" {
+		t.Fatalf("sessionID() = %q, want the session_id field to win", got)
+	}
+}
+
+// TestASubAgentEventIsRecognisedInEitherSpelling is the safety half of adding
+// spellings. Binding the pane to a nested conversation would make a restore
+// resume the wrong side of it, so the marker has to be recognised whatever the
+// provider calls the field -- a spelling this reader misses is a sub-agent
+// event treated as the pane's own.
+func TestASubAgentEventIsRecognisedInEitherSpelling(t *testing.T) {
+	for _, body := range []string{
+		`{"session_id":"x","agent_id":"sub-1"}`,
+		`{"sessionId":"x","agentId":"sub-1"}`,
+	} {
+		p, err := readHookPayload(strings.NewReader(body))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if p.subAgentID() == "" {
+			t.Fatalf("the sub-agent marker was not decoded from %s", body)
+		}
+	}
+}
+
+// TestAPayloadStillCannotCarryAFieldSidecarDoesNotName re-asserts the
+// containment rule against the widened struct. Adding spellings adds decoded
+// keys, and the promise is about what a record can contain rather than about
+// how many fields the struct happens to have.
+func TestAPayloadStillCannotCarryAFieldSidecarDoesNotName(t *testing.T) {
+	p, err := readHookPayload(strings.NewReader(
+		`{"conversationId":"x","prompt":"secret prompt text","toolCall":{"args":{"CommandLine":"hunter2"}},"workspacePaths":["/repo"],"user_email":"someone@example.com"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.sessionID() != "x" {
+		t.Fatalf("payload = %+v", p)
+	}
+	blob, err := json.Marshal(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, leaked := range []string{"secret prompt text", "hunter2", "/repo", "someone@example.com"} {
+		if strings.Contains(string(blob), leaked) {
+			t.Fatalf("the decoded payload carried %q: %s", leaked, blob)
+		}
+	}
+}
