@@ -1,0 +1,27 @@
+# ms	event	session	turn	tool	fields
+0	hook:plugin.init	-	-	-	-
+138	bus:session.created	session-1	-	-	info,sessionID,info.id=present,info.parentID=absent
+1879	bus:session.updated	session-1	-	-	info,sessionID,info.id=present,info.parentID=absent
+1897	hook:chat.message	session-1	-	-	sessionID
+1902	bus:session.updated	session-1	-	-	info,sessionID,info.id=present,info.parentID=absent
+1912	bus:session.status	session-1	-	-	sessionID,status,status=busy
+2374	bus:session.error	session-1	-	-	error,sessionID,error=UnknownError
+2375	bus:session.status	session-1	-	-	sessionID,status,status=idle
+2375	bus:session.idle	session-1	-	-	sessionID
+2389	bus:session.drained	session-1	-	-	sessionID,token
+# One turn against a model id that does not exist, so the provider failed.
+#
+# session.error carries a bounded error class name and upstream maps it to the
+# blocked lane, which the port keeps. The next two rows are why that is safe:
+# session.status idle arrives one millisecond later and closes the lane, and
+# session.idle follows. A blocked lane opened by an error is corrected by the
+# next state-shaped assertion rather than latching.
+#
+# This is also the concrete argument for the session.status field-shape fix.
+# With upstream's string-only read, nothing in this trace would ever assert a
+# lane through session.status, and the spurious blocked would stand until
+# session.idle.
+#
+# The error name is recorded because its vocabulary is closed by kilo's own
+# source, the same rule that let the OpenCode phase B traces record
+# MessageAbortedError. The error message, stack and payload were never read.

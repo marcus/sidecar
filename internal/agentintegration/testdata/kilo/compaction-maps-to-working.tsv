@@ -1,0 +1,4 @@
+# ms	event	session_id	status_type	status_string
+0	session.created	ses-1	-	-
+10	session.status	ses-1	idle	-
+20	session.compacted	ses-1	-	-

@@ -1,0 +1,7 @@
+# ms	event	session_id	status_type	status_string
+0	session.created	ses-1	-	-
+10	chat.message	ses-1	-	-
+20	session.status	ses-1	busy	-
+30	session.status	ses-1	busy	-
+40	session.status	ses-1	idle	-
+50	session.idle	ses-1	-	-

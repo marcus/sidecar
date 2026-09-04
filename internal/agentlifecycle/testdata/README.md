@@ -71,6 +71,10 @@ Captured 2026-08-30 on darwin/arm64.
 | `traces/pi/tool-turn.tsv` | pi | 0.84.3 | openrouter z-ai/glm-5.3-flash | success, one bash tool call | Slice 1 |
 | `traces/pi/cancelled-turn.tsv` | pi | 0.84.3 | openrouter z-ai/glm-5.3-flash | user cancellation | Slice 1 |
 | `traces/pi/error-turn-and-quit.tsv` | pi | 0.84.3 | openrouter stealth/ox-alpha | provider 404, then /quit | Slice 1 |
+| `traces/kilo/simple-turn.tsv` | kilo | 7.5.9 | openrouter z-ai/glm-5.3-flash | success | Slice 2 |
+| `traces/kilo/tool-turn.tsv` | kilo | 7.5.9 | openrouter z-ai/glm-5.3-flash | success, one bash tool call | Slice 2 |
+| `traces/kilo/blocked-turn.tsv` | kilo | 7.5.9 | openrouter z-ai/glm-5.3-flash | success, one permission ask and reply | Slice 2 |
+| `traces/kilo/error-turn.tsv` | kilo | 7.5.9 | openrouter (nonexistent model id) | provider error | Slice 2 |
 
 The Pi traces were captured 2026-09-02 on darwin/arm64; the four rows above are
 one Pi 0.84.3 process each for the first three and a second process for the
@@ -225,6 +229,33 @@ trace here held bare names, and would have let a future capture record
 `prompt=<the user's prompt>` without a single test noticing. Widening the
 allowlist is a deliberate act, and it means asserting that the key's values
 cannot carry user content.
+
+## Kilo
+
+Kilo's traces use the same six-column hook layout Pi's do, with one addition worth knowing before reading them: the `event` column carries a `bus:` or `hook:` prefix. Kilo is an OpenCode fork and its plugin surface has both shapes, and whether a name arrives on the event bus or as a plugin hook is exactly the distinction that decides whether two of the ported asset's branches can ever fire. `turn` is always `-`: kilo has no turn identifier on the events the asset reads.
+
+### How they were captured, and what was not touched
+
+`@kilocode/cli` 7.5.9 was installed into a scratch npm prefix under the run's directory and never onto the maintainer's `PATH`. Every run went through a wrapper that cleared the environment and pointed `HOME`, `XDG_CONFIG_HOME`, `XDG_DATA_HOME`, `XDG_STATE_HOME` and `XDG_CACHE_HOME` at a temporary tree, so the whole of kilo's config, data, state and cache moved with it and the maintainer's real `~/.config/kilo` was never read, written, copied or moved. The only variable passed through from the ambient environment was `OPENROUTER_API_KEY`, which kilo reads for provider credentials exactly as it normally would; nothing was written back to it.
+
+A tracer plugin was installed into the temporary `$XDG_CONFIG_HOME/kilo/plugin/`. `HERDR_ENV` was never set: with it set, Herdr's plugin and Sidecar's would both claim the pane.
+
+The provider was driven with `kilo run`, one short turn per trace, with a cheap model. The permission pair was produced by setting `"permission": {"bash": "ask"}` in the temporary `kilo.json` and asking for a single `echo`. **`kilo run` is non-interactive and answers its own prompt**, which is why the blocked trace shows one millisecond between `permission.asked` and `permission.replied` and why its comment says exactly what that does and does not prove.
+
+The error trace used a model id that does not exist, which is the cheapest way to reach `session.error` and is the path that shows a failed turn resolving rather than latching the pane on working.
+
+### Sanitization
+
+Sanitization is by construction, as everywhere else in this directory: the tracer recorded event names and payload field **names**, and never had prompt text, response text, tool arguments, tool results, file contents, or environment values. Session identifiers were mapped to `session-N` placeholders inside the tracer process, so no real identifier ever reached a file. The tracer also dropped the per-token `message.part.delta` and `message.part.updated` streams and the startup catalog chatter, which carry no lifecycle information and would bury the fixture.
+
+Four keys carry a value, under the same narrow rule the Pi section states, and each is asserted in `valueBearingTraceKeys`:
+
+| Key | Why a value is safe |
+| --- | --- |
+| `status` | Kilo's own `session.status` discriminator, closed by its shipped schema at `idle`, `busy`, `retry` and `offline` |
+| `error` | A bounded error class name, truncated to 64 bytes, never the message or the payload |
+| `info.id` | `present` only, never an identifier |
+| `info.parentID` | `present` or `absent` only, which is what records that no trace here contains a subagent |
 
 ## Re-capturing
 

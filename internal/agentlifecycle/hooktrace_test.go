@@ -90,6 +90,18 @@ func assertEvents(t *testing.T, got []string, want ...string) {
 // Widening this set is a deliberate act. Adding a key here means asserting that
 // its values cannot carry user content, and the review that finds otherwise has
 // to happen before the trace is checked in, not after.
+//
+// The four kilo entries are appended under the same rule and are worth their own
+// sentence each, because widening this set is the deliberate act the paragraph
+// above describes. `status` is kilo's session.status discriminator, whose
+// vocabulary its own schema closes at idle, busy, retry and offline; recording it
+// is what lets a fixture show that upstream reads the field's shape wrongly.
+// `error` is a bounded error class name, truncated in the tracer, which is
+// exactly the concession the OpenCode phase B traces already made for
+// MessageAbortedError and for the same reason: a class name is chosen by the
+// provider's source where a message is written by a model. `info.id` and
+// `info.parentID` record only `present` or `absent`, never an identifier, in the
+// same way `ctx.sessionFile` does.
 var valueBearingTraceKeys = map[string]bool{
 	"type":            true,
 	"reason":          true,
@@ -97,6 +109,10 @@ var valueBearingTraceKeys = map[string]bool{
 	"ctx.isIdle":      true,
 	"ctx.sessionFile": true,
 	"ctx.sessionId":   true,
+	"status":          true,
+	"error":           true,
+	"info.id":         true,
+	"info.parentID":   true,
 }
 
 // TestNoHookTraceCarriesAValue is the privacy gate over the fixtures
@@ -111,7 +127,7 @@ var valueBearingTraceKeys = map[string]bool{
 // every test in the tree. So the allowlist above is enforced here: a `=` on any
 // key outside it fails, whatever the value looks like.
 func TestNoHookTraceCarriesAValue(t *testing.T) {
-	for _, provider := range []string{"codex", "claude", "pi"} {
+	for _, provider := range []string{"codex", "claude", "pi", "kilo"} {
 		entries, err := os.ReadDir(filepath.Join("testdata", "traces", provider))
 		if err != nil {
 			t.Fatalf("%s has no traces but its capability entry claims real evidence: %v", provider, err)
@@ -533,4 +549,245 @@ func count(xs []string, want string) int {
 		}
 	}
 	return n
+}
+
+// The kilo traces, re-derived.
+//
+// Kilo is bus-shaped rather than hook-shaped, and its traces use the six-column
+// hook layout for the same reason Pi's do: the columns carry the same evidence
+// and a second reader would have bought nothing. The `event` column carries the
+// tracer's `bus:` or `hook:` prefix, because whether a name arrives on the bus or
+// as a plugin hook is precisely the distinction one of these tests exists to
+// pin.
+
+// kiloEvents returns a trace's events with the tracer's kind prefix stripped.
+func kiloEvents(t *testing.T, name string) []string {
+	t.Helper()
+	rows := readHookTrace(t, "kilo", name)
+	out := make([]string, 0, len(rows))
+	for _, r := range rows {
+		_, event, found := strings.Cut(r.event, ":")
+		if !found {
+			t.Fatalf("kilo/%s row %q has no bus:/hook: prefix, which the traces record deliberately", name, r.event)
+		}
+		out = append(out, event)
+	}
+	return out
+}
+
+// TestKiloTraceEarnsExactlyWhatTheEntryClaims is the promotion, asserted.
+//
+// It reads the registry entry and requires the traces to contain the events that
+// entry says it reports, and requires that they contain no event the entry does
+// not claim. A future edit that adds `tool_use` to `covered` without kilo
+// publishing the name fails here.
+func TestKiloTraceEarnsExactlyWhatTheEntryClaims(t *testing.T) {
+	cap, ok := CapabilityForSource("sidecar.kilo.plugin")
+	if !ok {
+		t.Fatal("no capability registered for sidecar.kilo.plugin")
+	}
+	if cap.Evidence != EvidenceRealTrace {
+		t.Fatalf("kilo evidence = %q; these traces exist to make it real-trace", cap.Evidence)
+	}
+	if tier, reason := cap.TierFor(StatusCurrent, true); tier != TierAdvisory {
+		t.Fatalf("kilo exercises %q (%s), want advisory: it is the ceiling this asset can reach", tier, reason)
+	}
+
+	simple := kiloEvents(t, "simple-turn.tsv")
+	blocked := kiloEvents(t, "blocked-turn.tsv")
+
+	for _, claim := range []struct {
+		transition Transition
+		event      string
+		events     []string
+	}{
+		{TransitionSessionIdentity, "session.created", simple},
+		{TransitionWorkStart, "chat.message", simple},
+		{TransitionTurnComplete, "session.idle", simple},
+		{TransitionBlockedOnRequest, "permission.asked", blocked},
+		{TransitionUnblocked, "permission.replied", blocked},
+	} {
+		if !cap.Covers(claim.transition) {
+			t.Fatalf("kilo no longer claims %s, which %s in the traces supports", claim.transition, claim.event)
+		}
+		if !contains(claim.events, claim.event) {
+			t.Fatalf("kilo claims %s but no %s appears in the trace that earned it", claim.transition, claim.event)
+		}
+	}
+	// And nothing else. tool_use is unreachable, cancelled is indistinguishable,
+	// process_exit is unclaimed by choice, and there is no subagent evidence.
+	for _, absent := range []Transition{
+		TransitionToolUse, TransitionCancelled, TransitionProcessExit, TransitionSubagent,
+	} {
+		if cap.Covers(absent) {
+			t.Fatalf("kilo claims %q, which no trace here supports", absent)
+		}
+	}
+	if cap.CoversFullLifecycle() {
+		t.Fatal("kilo claims full lifecycle coverage; the shipped asset can produce neither cancelled nor process_exit")
+	}
+}
+
+// TestKiloSessionStatusIsAnObjectNotAString is the upstream bug, measured.
+//
+// Herdr's kilo asset at integration version 4 accepts a session.status only when
+// it is a string. Kilo's event carries an object whose `type` is the
+// discriminator, so upstream's asset maps none of them on this release and falls
+// through to re-reporting the session instead. The trace records the value under
+// the key `status`, which the tracer read from `properties.status.type`, and
+// this is the assertion that keeps the port's one deliberate fix attached to the
+// measurement that justified it.
+func TestKiloSessionStatusIsAnObjectNotAString(t *testing.T) {
+	rows := readHookTrace(t, "kilo", "simple-turn.tsv")
+	var busy, idle int
+	for _, r := range rows {
+		if !strings.HasSuffix(r.event, ":session.status") {
+			continue
+		}
+		// The bare field name is present because properties.status exists; the
+		// key=value pair is present because the tracer read status.type. Both
+		// together are what say the field is an object.
+		if !contains(r.fields, "status") {
+			t.Fatalf("a session.status row no longer records the raw field name: %v", r.fields)
+		}
+		switch {
+		case contains(r.fields, "status=busy"):
+			busy++
+		case contains(r.fields, "status=idle"):
+			idle++
+		default:
+			t.Fatalf("a session.status row carries a discriminator this test does not know: %v", r.fields)
+		}
+	}
+	if busy < 2 {
+		t.Fatalf("simple-turn.tsv records %d busy assertions; the repeat is what the asset's suppression exists for", busy)
+	}
+	if idle != 1 {
+		t.Fatalf("simple-turn.tsv records %d idle assertions, want exactly one", idle)
+	}
+}
+
+// TestKiloToolEventsNeverReachThePluginEventStream is the absence that keeps
+// tool_use unclaimed.
+//
+// tool.execute.before and tool.execute.after are plugin hooks in kilo, not bus
+// events, so an `event` handler never sees them. The fixture is a turn in which a
+// bash tool really ran, and the absence is delimited by two rows a reader can see
+// rather than by a watch that ended, so no capture window is owed.
+func TestKiloToolEventsNeverReachThePluginEventStream(t *testing.T) {
+	events := kiloEvents(t, "tool-turn.tsv")
+	first, last := indexOf(events, "chat.message"), indexOf(events, "session.idle")
+	if first < 0 || last < 0 || last <= first {
+		t.Fatalf("tool-turn.tsv no longer brackets the tool call between chat.message and session.idle: %v", events)
+	}
+	for _, absent := range []string{"tool.execute.before", "tool.execute.after"} {
+		if contains(events[first:last], absent) {
+			t.Fatalf("%s now appears on the bus; the recorded gap is stale and the matrix must be updated", absent)
+		}
+	}
+	cap, ok := CapabilityForSource("sidecar.kilo.plugin")
+	if !ok {
+		t.Fatal("no capability registered for sidecar.kilo.plugin")
+	}
+	if cap.Covers(TransitionToolUse) {
+		t.Fatal("kilo claims tool_use; no tool event reaches the plugin event stream at all")
+	}
+}
+
+// TestKiloBlockingAndUnblockingBothCarryTheSession is what the blocked and
+// unblock claims rest on. Both events exist, in this order, and both name the
+// session, which is what lets the pane's lane move and stay attributed.
+func TestKiloBlockingAndUnblockingBothCarryTheSession(t *testing.T) {
+	rows := readHookTrace(t, "kilo", "blocked-turn.tsv")
+	var asked, replied *hookRow
+	for i := range rows {
+		switch {
+		case strings.HasSuffix(rows[i].event, ":permission.asked"):
+			asked = &rows[i]
+		case strings.HasSuffix(rows[i].event, ":permission.replied"):
+			replied = &rows[i]
+		}
+	}
+	if asked == nil || replied == nil {
+		t.Fatalf("blocked-turn.tsv no longer contains both halves of the permission pair: %v", kiloEvents(t, "blocked-turn.tsv"))
+	}
+	for _, r := range []*hookRow{asked, replied} {
+		if !strings.HasPrefix(r.session, "session-") {
+			t.Fatalf("%s does not carry a session, so a blocked pane could not be attributed", r.event)
+		}
+		if !contains(r.fields, "sessionID") {
+			t.Fatalf("%s no longer carries sessionID; fields are %v", r.event, r.fields)
+		}
+	}
+}
+
+// TestKiloSessionErrorIsClosedByTheNextStatus is why upstream's blocked mapping
+// for a session error is safe rather than merely tolerated, and it is the
+// concrete argument for reading session.status at all: with upstream's
+// string-only read nothing would assert a lane here, and the spurious blocked
+// would stand until session.idle.
+func TestKiloSessionErrorIsClosedByTheNextStatus(t *testing.T) {
+	rows := readHookTrace(t, "kilo", "error-turn.tsv")
+	errIdx := -1
+	for i, r := range rows {
+		if strings.HasSuffix(r.event, ":session.error") {
+			errIdx = i
+			break
+		}
+	}
+	if errIdx < 0 {
+		t.Fatal("error-turn.tsv records no session.error, so it proves nothing about a failed turn")
+	}
+	var errName string
+	for _, f := range rows[errIdx].fields {
+		if name, ok := strings.CutPrefix(f, "error="); ok {
+			errName = name
+		}
+	}
+	if errName == "" {
+		t.Fatal("session.error records no bounded error class name")
+	}
+
+	var sawIdleStatus bool
+	for _, r := range rows[errIdx+1:] {
+		if strings.HasSuffix(r.event, ":session.status") && contains(r.fields, "status=idle") {
+			sawIdleStatus = true
+			break
+		}
+	}
+	if !sawIdleStatus {
+		t.Fatal("no session.status idle follows the error, so the blocked lane upstream opens would latch")
+	}
+
+	cap, ok := CapabilityForSource("sidecar.kilo.plugin")
+	if !ok {
+		t.Fatal("no capability registered for sidecar.kilo.plugin")
+	}
+	if cap.Covers(TransitionCancelled) {
+		t.Fatalf("kilo claims cancelled; a session.error carrying %q is the same shape a user interrupt takes, "+
+			"and the shipped asset does not read the name", errName)
+	}
+}
+
+// TestNoKiloTraceRecordsASubagent keeps the recorded subagent gap attached to the
+// fixtures. Kilo publishes info.parentID on its session events and upstream's
+// kilo asset does not read it, so a child session's events would drive the pane's
+// lane. Nothing here measures that case, and saying so is the point.
+func TestNoKiloTraceRecordsASubagent(t *testing.T) {
+	for _, name := range []string{"simple-turn.tsv", "tool-turn.tsv", "blocked-turn.tsv", "error-turn.tsv"} {
+		for _, r := range readHookTrace(t, "kilo", name) {
+			if contains(r.fields, "info.parentID=present") {
+				t.Fatalf("kilo/%s records a child session; the subagent gap is no longer unmeasured", name)
+			}
+		}
+	}
+}
+
+func indexOf(xs []string, want string) int {
+	for i, x := range xs {
+		if x == want {
+			return i
+		}
+	}
+	return -1
 }

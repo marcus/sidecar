@@ -1,0 +1,32 @@
+# ms	event	session	turn	tool	fields
+1	hook:plugin.init	-	-	-	-
+571	bus:session.created	session-1	-	-	info,sessionID,info.id=present,info.parentID=absent
+3860	bus:session.updated	session-1	-	-	info,sessionID,info.id=present,info.parentID=absent
+3993	hook:chat.message	session-1	-	-	sessionID
+4006	bus:session.updated	session-1	-	-	info,sessionID,info.id=present,info.parentID=absent
+4045	bus:session.status	session-1	-	-	sessionID,status,status=busy
+5785	bus:session.updated	session-1	-	-	info,sessionID,info.id=present,info.parentID=absent
+5798	bus:session.diff	session-1	-	-	diff,sessionID
+5855	bus:session.status	session-1	-	-	sessionID,status,status=busy
+10612	bus:session.status	session-1	-	-	sessionID,status,status=busy
+10614	bus:session.status	session-1	-	-	sessionID,status,status=idle
+10615	bus:session.idle	session-1	-	-	sessionID
+10630	bus:session.drained	session-1	-	-	sessionID,token
+# One successful turn under `kilo run`, from process start.
+#
+# The lane comes from chat.message (work start), the state-shaped
+# session.status assertions, and session.idle (turn complete). session.created
+# carries the session id the pane is bound by.
+#
+# The two rows that decide the port are the session.status ones. `status` is
+# recorded here as `properties.status.type`, because that is where kilo puts the
+# discriminator: the shipped schema is a union of {type:"idle"}, {type:"busy"},
+# {type:"retry",...} and {type:"offline",...}. Herdr's kilo asset at integration
+# version 4 accepts a status only when `typeof status === "string"`, so on this
+# release it maps none of them and re-reports the session instead. Sidecar's
+# asset reads `status?.type`, which is what Herdr's own opencode asset at
+# version 10 already does.
+#
+# session.status busy also repeats three times inside the one turn, which is why
+# the asset suppresses an exact repeat of the lane it last reported: each report
+# is a subprocess, not a socket write.

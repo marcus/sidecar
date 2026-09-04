@@ -1,0 +1,6 @@
+# ms	event	session_id	status_type	status_string
+0	session.created	ses-1	-	-
+10	chat.message	ses-1	-	-
+20	permission.asked	ses-1	-	-
+30	permission.replied	ses-1	-	-
+40	session.idle	ses-1	-	-

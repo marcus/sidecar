@@ -1,0 +1,6 @@
+# ms	event	session_id	status_type	status_string
+0	session.created	ses-1	-	-
+10	question.asked	ses-1	-	-
+20	question.replied	ses-1	-	-
+30	question.asked	ses-1	-	-
+40	question.rejected	ses-1	-	-

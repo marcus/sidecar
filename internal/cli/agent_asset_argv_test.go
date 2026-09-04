@@ -50,6 +50,7 @@ func TestBundledAssetsSpawnArgvTheShippedCLIAccepts(t *testing.T) {
 	}{
 		{name: "pi", run: runPiOrderingHarness},
 		{name: "opencode", run: runOpenCodeOrderingHarness},
+		{name: "kilo", run: runKiloOrderingHarness},
 	} {
 		t.Run(provider.name, func(t *testing.T) {
 			argvs := provider.run(t, node, t.TempDir())
@@ -234,6 +235,28 @@ func runOpenCodeOrderingHarness(t *testing.T, node, dir string) [][]string {
 	argvs := make([][]string, 0, len(keys))
 	for _, k := range keys {
 		argvs = append(argvs, result.Argv[k])
+	}
+	return argvs
+}
+
+// runKiloOrderingHarness does the same for Kilo, whose harness keys its recorded
+// argv by content label exactly as Pi's does. Kilo, like Pi, sends no sequence at
+// all: its plugin is one long-lived process but the reports are subprocesses, and
+// the store's AppendNext assigns under the lock it already holds.
+func runKiloOrderingHarness(t *testing.T, node, dir string) [][]string {
+	t.Helper()
+	out := runAssetHarness(t, node, "kilo", dir,
+		filepath.Join(dir, "sidecar-stub"), filepath.Join(dir, "order.log"), filepath.Join(dir, "argv"))
+	var result struct {
+		Order []string            `json:"order"`
+		Argv  map[string][]string `json:"argv"`
+	}
+	if err := json.Unmarshal(out, &result); err != nil {
+		t.Fatalf("the kilo ordering harness output is not JSON: %q (%v)", out, err)
+	}
+	argvs := make([][]string, 0, len(result.Order))
+	for _, label := range result.Order {
+		argvs = append(argvs, result.Argv[label])
 	}
 	return argvs
 }

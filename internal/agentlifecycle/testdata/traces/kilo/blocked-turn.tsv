@@ -1,0 +1,29 @@
+# ms	event	session	turn	tool	fields
+0	hook:plugin.init	-	-	-	-
+129	bus:session.created	session-1	-	-	info,sessionID,info.id=present,info.parentID=absent
+1876	bus:session.updated	session-1	-	-	info,sessionID,info.id=present,info.parentID=absent
+1899	hook:chat.message	session-1	-	-	sessionID
+1905	bus:session.updated	session-1	-	-	info,sessionID,info.id=present,info.parentID=absent
+1915	bus:session.status	session-1	-	-	sessionID,status,status=busy
+2440	bus:session.updated	session-1	-	-	info,sessionID,info.id=present,info.parentID=absent
+2442	bus:session.diff	session-1	-	-	diff,sessionID
+2456	bus:session.status	session-1	-	-	sessionID,status,status=busy
+3806	bus:permission.asked	session-1	-	-	always,id,metadata,patterns,permission,sessionID,tool
+3807	bus:permission.replied	session-1	-	-	reply,requestID,sessionID
+3833	bus:session.status	session-1	-	-	sessionID,status,status=idle
+3833	bus:session.idle	session-1	-	-	sessionID
+3836	bus:session.drained	session-1	-	-	sessionID,token
+# One turn with `"permission": {"bash": "ask"}` in the temporary kilo.json, so
+# the bash tool had to ask. permission.asked is the blocked signal and
+# permission.replied is the unblock, and both carry the session id.
+#
+# READ THE ONE MILLISECOND BETWEEN THEM HONESTLY. This was captured under
+# `kilo run`, which is non-interactive: the runner answered its own prompt
+# rather than a human answering at a TUI. What the trace proves is that both
+# events exist, in this order, with these payload fields, which is exactly what
+# the asset's blocked and unblock branches read. It does not prove anything
+# about how long a real prompt waits, and the capability entry says so.
+#
+# permission.asked carries `tool` and `permission` field names, neither of which
+# the asset reads: nothing but lanes, bounded codes and the session id goes over
+# Sidecar's wire.
