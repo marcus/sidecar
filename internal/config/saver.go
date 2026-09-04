@@ -229,9 +229,17 @@ func managedPluginKeys() []string {
 // marshals away (an emptied plugins.external list) disappears rather than being
 // resurrected from the old file.
 //
+// The merge is one level deep, deliberately: an unknown *subsection* survives,
+// an unknown key inside a section Sidecar manages does not, because that section
+// is re-serialized from its struct as it always was. Carrying an unknown key
+// through a managed section would mean not re-serializing it at all — which is
+// exactly what terminalResources gets, and the reason it can be an alias.
+//
 // The result is always built from a map, whatever the file held, so the key
 // order Save writes does not depend on whether a plugins section was there to
-// merge into. Two consecutive saves must produce the same bytes.
+// merge into. Two consecutive saves produce the same bytes; the first save after
+// this change reorders an existing file's plugins subkeys into that map order
+// once, which is a diff and not a loss.
 func mergePluginsSection(existing json.RawMessage, managed savePluginsConfig) (json.RawMessage, error) {
 	encoded, err := json.Marshal(managed)
 	if err != nil {

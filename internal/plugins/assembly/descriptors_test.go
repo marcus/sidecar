@@ -196,3 +196,95 @@ func TestReservedPluginIDsCoverTheCatalog(t *testing.T) {
 		}
 	}
 }
+
+// The Flags page and the Panels page must report the same state for Notes and
+// Tasks, rendered from the real descriptor catalog rather than configui's
+// fixture. configui's own test binds its fixture descriptors straight to
+// internal/panelpref, so it proves the row mechanism but cannot prove that the
+// descriptors Sidecar ships answer the same way; this renders both pages with
+// what `Descriptors()` actually returns, in the two configurations where the
+// alias and the config key disagree — which is the disagreement td-a360ff
+// reported.
+func TestFlagsPageAgreesWithPanelsInTheRealCatalog(t *testing.T) {
+	on, off := true, false
+	for _, tc := range []struct {
+		name       string
+		flagsLabel string
+		panelLabel string
+		mutate     func(*config.Config)
+		want       string
+	}{
+		{
+			name:       "tasks on by config while the flag is off",
+			flagsLabel: "Tasks panel",
+			panelLabel: "Tasks",
+			mutate: func(cfg *config.Config) {
+				cfg.Features.Flags[features.TasksPlugin.Name] = false
+				cfg.Plugins.Tasks.Enabled = &on
+			},
+			want: "ON",
+		},
+		{
+			name:       "notes off by config while the flag is on",
+			flagsLabel: "Notes panel",
+			panelLabel: "Notes",
+			mutate: func(cfg *config.Config) {
+				cfg.Features.Flags[features.NotesPlugin.Name] = true
+				cfg.Plugins.Notes.Enabled = &off
+			},
+			want: "OFF",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			path := filepath.Join(dir, "config.json")
+			if err := os.WriteFile(path, []byte("{}"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			config.SetTestConfigPath(path)
+			t.Cleanup(config.ResetTestConfigPath)
+
+			cfg := config.Default()
+			tc.mutate(cfg)
+			features.Init(cfg)
+			t.Cleanup(func() { features.Init(config.Default()) })
+
+			flags := settingsRowState(t, cfg, configui.PageFlags, tc.flagsLabel)
+			panels := settingsRowState(t, cfg, configui.PagePanels, tc.panelLabel)
+			if flags != panels {
+				t.Fatalf("Feature Flags says %s and Panels says %s for %q", flags, panels, tc.panelLabel)
+			}
+			if flags != tc.want {
+				t.Fatalf("both pages say %s, want %s", flags, tc.want)
+			}
+		})
+	}
+}
+
+// settingsRowState renders one settings page from the real catalog and reports
+// the ON/OFF a labelled row shows. The rows are "<label> [BETA] ... ON", inside
+// the pane borders.
+func settingsRowState(t *testing.T, cfg *config.Config, page configui.PageID, label string) string {
+	t.Helper()
+	m := configui.New()
+	m.SetPluginDescriptors(Descriptors())
+	m.SetHostState(configui.HostState{Config: cfg})
+	m.Open(page)
+	view := ansi.Strip(m.View(160, 45))
+	for _, line := range strings.Split(view, "\n") {
+		fields := strings.Fields(strings.ReplaceAll(line, "│", " "))
+		if len(fields) == 0 {
+			continue
+		}
+		state := fields[len(fields)-1]
+		if state != "ON" && state != "OFF" {
+			continue
+		}
+		text := strings.TrimSpace(strings.TrimSuffix(strings.Join(fields[:len(fields)-1], " "), " BETA"))
+		if text == label {
+			return state
+		}
+	}
+	t.Fatalf("no %q row with a state on the page:\n%s", label, view)
+	return ""
+}
