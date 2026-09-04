@@ -323,7 +323,7 @@ Devin keeps hooks in `$XDG_CONFIG_HOME/devin/config.json`, defaulting to `~/.con
 
 ### Six events, and why that is not over-installing
 
-This is the only Sidecar integration installed under more than one event, and the reason is a property of Devin rather than a preference. Upstream maps all six of `SessionStart`, `UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `PermissionRequest` and `Stop` to the same `session` action, and its asset then does something no other Herdr asset does: when the payload names no session it runs `devin list --format json` and matches an entry by working directory — except on `UserPromptSubmit`, and except on `SessionStart` with `source=startup`, where that fallback is explicitly disallowed. Read together, those two facts say upstream does not trust any single Devin event to carry the identifier. An integration that fired only on `SessionStart` would therefore bind the pane when Devin happened to volunteer the id at startup and silently never otherwise, which is the exact failure a session-identity integration exists to prevent.
+This is the only Sidecar integration installed under more than one event, and the reason is a property of Devin rather than a preference. Upstream maps all six of `SessionStart`, `UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `PermissionRequest` and `Stop` to the same `session` action, and its asset then does something no other Herdr asset does: when the payload names no session it runs `devin list --format json` and matches an entry by working directory, except on `UserPromptSubmit`, and except on `SessionStart` with `source=startup`, where that fallback is explicitly disallowed. Read together, those two facts say upstream does not trust any single Devin event to carry the identifier. An integration that fired only on `SessionStart` would therefore bind the pane when Devin happened to volunteer the id at startup and silently never otherwise, which is the exact failure a session-identity integration exists to prevent.
 
 The cost is real and is recorded rather than hidden: six `sidecar agent report-session` processes per tool-calling turn rather than one per session. That is the price of matching upstream's coverage without guessing.
 
@@ -333,23 +333,23 @@ Sidecar's `report-session` reads the payload and nothing else. It never runs ano
 
 ### The camelCase spelling, and what it cost
 
-Devin is the first provider whose payload is not uniformly snake_case. Herdr's asset reads `session_id` and then `sessionId`, taking the first non-empty string, which is a statement that a released Devin has been seen writing the camelCase one. `internal/cli`'s `hookPayload` now reads both, snake_case winning when a payload carries both, so the two implementations resolve the same payload to the same conversation. Every other provider omits the second field, so nothing else changes. `internal/cli/testdata/devin/payloads.tsv` drives every branch — both spellings, both empty, neither present, transcript-path-only, a sub-agent payload, and one that cannot be decoded at all.
+Devin is the first provider whose payload is not uniformly snake_case. Herdr's asset reads `session_id` and then `sessionId`, taking the first non-empty string, which is a statement that a released Devin has been seen writing the camelCase one. `internal/cli`'s `hookPayload` now reads both, snake_case winning when a payload carries both, so the two implementations resolve the same payload to the same conversation. Every other provider omits the second field, so nothing else changes. `internal/cli/testdata/devin/payloads.tsv` drives every branch: both spellings, both empty, neither present, transcript-path-only, a sub-agent payload, and one that cannot be decoded at all.
 
 Which spelling a released Devin actually sends is untraced. Reading both is what makes that not matter.
 
 ### What promoting this entry needs
 
-One capture. A `SessionStart` — or any of the other five events — from a released Devin carrying a session id, sanitized into `internal/agentlifecycle/testdata/traces/devin/` with a provenance row, moves the entry from `screen-fallback`/`docs-only` to `session-identity`/`real-trace`. Nothing else about the port has to change; the tier is the only thing waiting on evidence.
+One capture. A `SessionStart`, or any of the other five events, from a released Devin carrying a session id, sanitized into `internal/agentlifecycle/testdata/traces/devin/` with a provenance row, moves the entry from `screen-fallback`/`docs-only` to `session-identity`/`real-trace`. Nothing else about the port has to change; the tier is the only thing waiting on evidence.
 
 ## Droid (Factory CLI)
 
 **Source:** Herdr's droid integration at `HERDR_INTEGRATION_VERSION=3`, then Factory's own hooks reference and settings reference for everything Herdr does not record. **Not traced.** Droid is not installed on this machine and Factory's installer requires an account, so the entry is `screen-fallback` on `docs-only` evidence.
 
-Droid keeps hooks in `~/.factory/settings.json` in the same nested group shape Claude Code uses, and Sidecar adds one session-identity entry under `SessionStart`. That is upstream's whole table: version 3 has exactly one row, and its nine lifecycle rows were *removed* at that version rather than kept, so a port carrying more would be reinstating something upstream withdrew. `timeout` is in seconds here — Factory documents a default of 60 — which is the same unit Claude and Codex use and not the unit Qwen uses.
+Droid keeps hooks in `~/.factory/settings.json` in the same nested group shape Claude Code uses, and Sidecar adds one session-identity entry under `SessionStart`. That is upstream's whole table: version 3 has exactly one row, and its nine lifecycle rows were *removed* at that version rather than kept, so a port carrying more would be reinstating something upstream withdrew. `timeout` is in seconds here, with a documented default of 60, which is the same unit Claude and Codex use and not the unit Qwen uses.
 
 ### `hooks.json` shadows the entry, and this is not in Herdr
 
-Factory's hooks reference is explicit: Droid reads hook declarations from `hooks.json` first, and falls back to the `hooks` key in the matching `settings.json` only when that file is **absent**. A user who has a `~/.factory/hooks.json` therefore gets an entry that is written correctly, reads as `current`, and never fires — the most expensive kind of wrong a status surface can be, because there is nothing on screen suggesting anything is off.
+Factory's hooks reference is explicit: Droid reads hook declarations from `hooks.json` first, and falls back to the `hooks` key in the matching `settings.json` only when that file is **absent**. A user who has a `~/.factory/hooks.json` therefore gets an entry that is written correctly, reads as `current`, and never fires, the most expensive kind of wrong a status surface can be, because there is nothing on screen suggesting anything is off.
 
 `sidecar agent integration status droid` inspects that file and says so in its message, naming the path and the consequence. It does not change the status: the installation is not damaged, so offering `repair` would offer a verb that cannot fix it. And it does not edit the file. That file is the user's, Sidecar has never written to it, and moving somebody's hooks between two files is not an integration's business. Herdr does reach into `hooks.json`, but only to delete *its own* stale entries from an older layout, and Sidecar has none there to delete.
 
@@ -363,7 +363,7 @@ Droid is the only provider in this group without one. Herdr's `droid_dir` is `ho
 
 Qoder keeps hooks in `~/.qoder/settings.json` in Claude Code's nested group shape, and Sidecar adds one session-identity entry under `SessionStart`. That is upstream's whole table: version 3 has one row, and its twelve lifecycle rows were removed at that version rather than kept.
 
-Two details differ from the Droid entry above, and both come from Qoder's reference rather than from Herdr. The group carries a matcher of `"*"`, because `install_qodercli` passes `Some("*")` where `install_devin` and `install_droid` pass `None`; `"*"` is the every-source spelling in Qoder's schema exactly as it is in Claude's. And `timeout` is in seconds, documented with a default of 600 — the same unit Claude, Codex and Droid use, and *not* the unit Qwen uses. One field name, two meanings across this group, which is why each adapter states its unit at the constant.
+Two details differ from the Droid entry above, and both come from Qoder's reference rather than from Herdr. The group carries a matcher of `"*"`, because `install_qodercli` passes `Some("*")` where `install_devin` and `install_droid` pass `None`; `"*"` is the every-source spelling in Qoder's schema exactly as it is in Claude's. And `timeout` is in seconds, documented with a default of 600, which is the same unit Claude, Codex and Droid use and *not* the unit Qwen uses. One field name, two meanings across this group, which is why each adapter states its unit at the constant.
 
 ### The id and the command are different words
 
@@ -393,7 +393,7 @@ During the proof Qwen added a `$version` key and a `ui.autoModeAcknowledged` key
 
 ### The timeout counts in milliseconds
 
-This is the one number in the four session-identity ports that is not what it looks like, and it is worth stating plainly because it is the kind of thing a port transcribes wrongly and nothing catches. Qwen's hooks reference documents `timeout` as **milliseconds** for a command hook — and seconds for an HTTP hook, in the same table — which is why Herdr writes `10_000` for Qwen and `10` for every other provider it installs a hook for. Ten seconds is the same slack every Sidecar entry gets. A `10` written here would be a ten-millisecond budget: the report process would be killed before it opened the store, and *silently*, because a hook surface fails open.
+This is the one number in the four session-identity ports that is not what it looks like, and it is worth stating plainly because it is the kind of thing a port transcribes wrongly and nothing catches. Qwen's hooks reference documents `timeout` as **milliseconds** for a command hook, and seconds for an HTTP hook in the same table, which is why Herdr writes `10_000` for Qwen and `10` for every other provider it installs a hook for. Ten seconds is the same slack every Sidecar entry gets. A `10` written here would be a ten-millisecond budget: the report process would be killed before it opened the store, and *silently*, because a hook surface fails open.
 
 `QwenHookTimeoutMillis` exists as its own constant so the unit change is visible at the point of use, `TestQwenCountsItsTimeoutInMilliseconds` asserts both that it is the seconds constant times a thousand and that the other three providers still count seconds, and the fixture records the value in a fourth column no other provider's fixture has.
 
