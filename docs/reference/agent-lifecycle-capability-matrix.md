@@ -36,7 +36,7 @@ This is enforced rather than documented. `Capability.TierFor` polices every tier
 | Antigravity | 1.1.22 | docs-only | `session-identity` | session only | shipped hook is one `PreInvocation` entry. The provider's ceiling is `advisory`: it has no blocking event and no cancellation event. |
 | GitHub Copilot CLI | not installed | docs-only | `session-identity` | session only | shipped hook is one `SessionStart` entry. Nothing here is verified against a released binary, which is the weakest evidence in the registry. |
 | Cursor Agent | 2026.08.25 | docs-only | `session-identity` | session only | shipped hook is one `sessionStart` entry. The provider's ceiling is `full` on paper, and tracing is mandatory before claiming it. |
-| grok | 1.0.13 | docs-only | `session-identity` | session only | shipped hook is one `SessionStart` entry. The provider's ceiling is `full` and it is the strongest contract in the catalog, so this is the largest gap between what is claimed and what is available. |
+| grok | 1.0.13 | real-trace | `session-identity` | session only | shipped hook is one `SessionStart` entry. The provider's ceiling is `full` and it is the strongest contract in the catalog, so this is the largest gap between what is claimed and what is available. |
 
 Pi's row went out of `capabilities.json` when nothing could produce a report for it, came back at `session-identity` when `PiAdapter` and `assets/pi/sidecar-lifecycle.js` shipped, and is now at `advisory` on `real-trace` evidence because a live Pi 0.84.3 session has been traced. It is the only row here that has reached its own ceiling: `advisory` is as high as Pi can ever go, because `full` needs `blocked_on_request` and `unblocked` and Pi ships no permission system to produce either. See "Why the Pi entry was retracted, and what brought it back".
 
@@ -409,7 +409,7 @@ The provider's ceiling is `full` on paper -- the bundle carries a full registry 
 
 ## grok
 
-**Source:** the documentation grok 1.0.13 embeds in its own shipped binary, cross-read against Herdr's `grok` integration at `HERDR_INTEGRATION_VERSION=1`. Not traced.
+**Source:** the documentation grok 1.0.13 embeds in its own shipped binary, cross-read against Herdr's `grok` integration at `HERDR_INTEGRATION_VERSION=1`, then traced against a live grok 1.0.13 session.
 
 grok has the strongest hook contract in the catalog and the shipped Sidecar asset asks for none of it. The port is one `SessionStart` entry in `~/.grok/hooks/sidecar.json`, in a matcher group with no matcher key, which is grok's documented match-everything default and Herdr's shape.
 
@@ -431,9 +431,21 @@ The reverse direction needs no gate: Claude does not read `~/.grok/hooks/`, so S
 
 grok's payload is camelCase -- `hookEventName`, `sessionId`, `cwd`, `workspaceRoot`, `promptId` -- and grok also exports `GROK_SESSION_ID` into every hook process. Herdr's asset prefers the variable and falls back to the payload. Sidecar reads the payload only: `--hook-stdin` is one bounded reader serving six providers, and a per-provider environment read would be a second way for one provider to name a session. Nothing observed so far disagrees.
 
+### What the traces measured, and the two corrections they made
+
+One capture is in `internal/agentlifecycle/testdata/traces/grok/`, taken 2026-09-04 from a live grok TUI in a Sidecar-managed shell on a private tmux server, with `GROK_HOME` redirecting the whole provider tree into a scratch home. Sidecar's entry was installed by `sidecar agent integration install grok`, so the run proves the installer too. Four tests in `hooktrace_test.go` re-derive each claim from the fixture that earned it.
+
+**The binding is corroborated by grok itself.** The pane bound to `01a06ce9-…` from source `sidecar.grok.hooks`, marked resumable, and `/quit` then printed `grok --resume 01a06ce9-…` with that exact id. A session-identity port's whole claim is that a cold restore would offer the right conversation, and that is the provider stating the same id from the other side.
+
+**Correction 1: `SessionStart` does not fire at process start.** The documentation says it fires when "a session starts", which reads as launch. A grok TUI was launched into the proof shell and left untouched at its prompt for **45 seconds**, and no hook event fired at all; the event arrived on the first prompt, which is when grok creates the session. So a grok pane is bound one turn into its life, and an idle pane a user opened and walked away from carries no binding. That is the same shape as Antigravity, which has no session event at all, and it means neither entry can honestly be described as binding "at startup".
+
+**Correction 2: every payload carries both spellings of every common field.** `sessionId` and `session_id`, `hookEventName` and `hook_event_name`, `permissionMode` and `permission_mode`, and on `SessionEnd` both `transcriptPath` and `transcript_path`. grok's published example shows only the camelCase half, and this document said so before the capture. Sidecar's payload reader prefers the snake_case spelling, so it reads `session_id`; either would have worked, which is worth recording rather than leaving a future reader to conclude that Herdr's camelCase preference was load-bearing.
+
+**`SessionEnd` fires and is not subscribed to.** It carries a `reason` and a transcript path and would support `process_exit`. The shipped asset does not register it, so the gap and the covered list move together if a future version does.
+
 ### Why `session-identity` is what is claimed
 
-grok is the only provider anywhere with a **dedicated cancellation event**: `StopCancelled` fires instead of `Stop` when a turn ends without completing, carrying a classified `reason` (`user_interrupt`, `permission_rejected`, `permission_cancelled`, `max_turns`, `no_progress`) and a derived `cancelledBy`. Beside it are `StopFailure` for API errors, `PermissionDenied`, `Notification{permission_prompt, idle_prompt}`, `SubagentStart`/`SubagentStop`, `PreCompact`/`PostCompact` and `SessionEnd`. That is `full` on paper, and it is the largest gap in this document between a provider's ceiling and what Sidecar's asset asks for. It is not claimed, because nothing here is traced.
+grok is the only provider anywhere with a **dedicated cancellation event**: `StopCancelled` fires instead of `Stop` when a turn ends without completing, carrying a classified `reason` (`user_interrupt`, `permission_rejected`, `permission_cancelled`, `max_turns`, `no_progress`) and a derived `cancelledBy`. Beside it are `StopFailure` for API errors, `PermissionDenied`, `Notification{permission_prompt, idle_prompt}`, `SubagentStart`/`SubagentStop`, `PreCompact`/`PostCompact` and `SessionEnd`. That is `full` on paper, and it is the largest gap in this document between a provider's ceiling and what Sidecar's asset asks for. It is not claimed, because none of those events is traced: the capture covers `SessionStart` and `SessionEnd` and nothing else, which is exactly what the shipped asset could have subscribed to.
 
 ## Catalog agents evaluated but not built
 

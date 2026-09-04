@@ -78,6 +78,7 @@ Captured 2026-08-30 on darwin/arm64.
 | `traces/kimi/tool-turn-with-permission.tsv` | kimi-code | 0.40.1 | openrouter openai/gpt-4.1-mini | success, one Bash call, approved | Slice 2 |
 | `traces/kimi/cancelled-turn.tsv` | kimi-code | 0.40.1 | openrouter openai/gpt-4.1-mini | user cancellation | Slice 2 |
 | `traces/kimi/session-end.tsv` | kimi-code | 0.40.1 | openrouter openai/gpt-4.1-mini | /quit | Slice 2 |
+| `traces/grok/session-start-and-end.tsv` | grok | 1.0.13 | grok-4.20-0309-non-reasoning | one prompt, then /quit | Slice 4 |
 | `traces/kimi/exec-turn-auto-approves.tsv` | kimi-code | 0.40.1 | openrouter openai/gpt-4.1-mini | success under `kimi -p`, no permission pair | Slice 2 |
 
 The Pi traces were captured 2026-09-02 on darwin/arm64; the four rows above are
@@ -325,3 +326,40 @@ provider, and regenerating one should be a deliberate act with a recorded
 version, not a side effect of running the suite. To add a provider or refresh a
 version, repeat the procedure above and update both the table here and
 `capabilities.json`.
+
+## The Slice 4 session-identity proof run, 2026-09-04
+
+Four session-identity ports shipped (`antigravity`, `copilot`, `cursor`, `grok`)
+and **only grok could be driven**, so only grok has traces. The three that could
+not are recorded here rather than left as an absence of files, because "not
+traced" and "not traceable on this machine" are different claims and only the
+second is an argument.
+
+- **grok**: traced. `GROK_HOME` redirected the whole provider tree into a scratch
+  home, `XAI_API_KEY` was already exported, and grok authenticated with it.
+- **cursor-agent**: stops at "Press any key to log in" with `HOME` moved, and its
+  hook loader reads `$HOME/.cursor` with no override, so redirecting it means
+  moving `HOME` and moving `HOME` means losing its credentials. No session is
+  created, so no hook fires. No `CURSOR_*` credential is exported in this
+  environment.
+- **agy** (Antigravity): refuses to run unauthenticated and opens a browser OAuth
+  flow, timing out after 60 seconds. `GEMINI_API_KEY` is exported and is not
+  accepted for the CLI.
+- **copilot**: not installed on this machine at all.
+
+### Two harness facts worth carrying forward
+
+**Export the provider's own directory override before the first `integration
+status` call, not after.** `detectProviderVersion` runs `<provider> --version`,
+and a provider that initialises its home directory on any invocation would write
+into the real tree from that first probe. Measured for grok specifically:
+`grok --version` into an empty `GROK_HOME` creates nothing, so this run's probe
+was harmless — but that is a property of grok rather than a rule, and the order
+costs nothing to get right.
+
+**Ownership was proved live for two providers that could not be driven.** A
+capture hook of the "user's" was placed beside Sidecar's entry — in the same
+`sessionStart` array for Cursor, in a named block of its own for Antigravity —
+and `integration uninstall` removed exactly Sidecar's entry and left the other
+untouched in both files. A provider that will not start still exercises the
+installer, which is most of what an entry-in-config port can get wrong.

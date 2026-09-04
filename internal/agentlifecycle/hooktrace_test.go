@@ -136,7 +136,7 @@ var valueBearingTraceKeys = map[string]bool{
 // every test in the tree. So the allowlist above is enforced here: a `=` on any
 // key outside it fails, whatever the value looks like.
 func TestNoHookTraceCarriesAValue(t *testing.T) {
-	for _, provider := range []string{"codex", "claude", "pi", "kilo", "kimi"} {
+	for _, provider := range []string{"codex", "claude", "pi", "kilo", "kimi", "grok"} {
 		entries, err := os.ReadDir(filepath.Join("testdata", "traces", provider))
 		if err != nil {
 			t.Fatalf("%s has no traces but its capability entry claims real evidence: %v", provider, err)
@@ -936,5 +936,120 @@ func TestKimiNonInteractiveRunsSkipThePermissionPair(t *testing.T) {
 		if e == "PermissionRequest" || e == "PermissionResult" {
 			t.Fatalf("the non-interactive trace now contains %s; the recorded finding is that it contains neither", e)
 		}
+	}
+}
+
+// TestGrokBindsOnlyOnceASessionExists is the finding that decides what grok's
+// session-identity port is actually worth, and it is a measurement rather than
+// a reading of the documentation.
+//
+// grok's documentation says SessionStart fires when "a session starts", which
+// reads as process start. It does not. A grok TUI was launched into a
+// Sidecar-managed shell and left untouched at its prompt for the window this
+// trace records, and no hook event fired at all; the event arrived on the first
+// prompt, which is when grok creates the session. So a grok pane is bound one
+// turn into its life, and an idle pane a user opened and walked away from
+// carries no binding at all.
+//
+// That is the same shape as Antigravity, which has no session event and binds
+// on its first PreInvocation, and it is why neither entry can be described as
+// binding "at startup".
+func TestGrokBindsOnlyOnceASessionExists(t *testing.T) {
+	rows := readHookTrace(t, "grok", "session-start-and-end.tsv")
+	assertEvents(t, eventsOf(rows), "session_start", "session_end")
+
+	window := captureWindow(t, "grok", "session-start-and-end.tsv")
+	if window == "" {
+		t.Fatal("the trace records an absence -- nothing fired before the first prompt -- and carries no capture window, " +
+			"so a reader cannot tell whether that was measured over a second or a minute")
+	}
+	d, err := time.ParseDuration(window)
+	if err != nil || d < 30*time.Second {
+		t.Fatalf("the capture window is %q; an idle TUI has to be watched long enough for a slow startup to be excluded", window)
+	}
+}
+
+// TestGrokSendsBothSpellingsOfEverySessionField pins the correction the trace
+// made to this port's own documentation.
+//
+// grok's published payload example is entirely camelCase, and the capability
+// entry said so before the capture. Every real payload carries both spellings
+// of every common field. Sidecar's reader prefers the snake_case one, so it
+// reads session_id here; recording that both are present is what stops a future
+// reader concluding that the camelCase preference in Herdr's asset was
+// load-bearing, or that dropping one spelling would be safe.
+func TestGrokSendsBothSpellingsOfEverySessionField(t *testing.T) {
+	rows := readHookTrace(t, "grok", "session-start-and-end.tsv")
+	for _, r := range rows {
+		have := map[string]bool{}
+		for _, f := range r.fields {
+			have[f] = true
+		}
+		for _, pair := range [][2]string{
+			{"sessionId", "session_id"},
+			{"hookEventName", "hook_event_name"},
+			{"permissionMode", "permission_mode"},
+		} {
+			if !have[pair[0]] || !have[pair[1]] {
+				t.Fatalf("%s carries %q=%v and %q=%v; the recorded finding is that grok sends both",
+					r.event, pair[0], have[pair[0]], pair[1], have[pair[1]])
+			}
+		}
+	}
+}
+
+// TestGrokNamesASessionOnEveryEventSidecarSubscribesTo is the tier's own
+// evidence: the entry claims session_identity and nothing else, so the one
+// thing that has to be true is that the event it is registered on names a
+// session.
+func TestGrokNamesASessionOnEveryEventSidecarSubscribesTo(t *testing.T) {
+	for _, r := range readHookTrace(t, "grok", "session-start-and-end.tsv") {
+		named := false
+		for _, f := range r.fields {
+			if f == "session_id" || f == "sessionId" {
+				named = true
+			}
+		}
+		if !named {
+			t.Fatalf("%s carries no session identifier, so nothing could be bound from it: %v", r.event, r.fields)
+		}
+	}
+}
+
+// TestGrokSessionEndCarriesAReasonSidecarDoesNotSubscribeTo records a gap the
+// capability entry states rather than one it hides. SessionEnd fires, carries a
+// reason and a transcript path, and would support the process_exit transition;
+// the shipped asset does not subscribe to it, so the gap and the covered list
+// move together if a future asset version does.
+func TestGrokSessionEndCarriesAReasonSidecarDoesNotSubscribeTo(t *testing.T) {
+	rows := readHookTrace(t, "grok", "session-start-and-end.tsv")
+	var end *hookRow
+	for i := range rows {
+		if rows[i].event == "session_end" {
+			end = &rows[i]
+		}
+	}
+	if end == nil {
+		t.Fatal("the trace has no session_end row")
+	}
+	have := map[string]bool{}
+	for _, f := range end.fields {
+		have[f] = true
+	}
+	for _, want := range []string{"reason", "transcript_path", "transcriptPath"} {
+		if !have[want] {
+			t.Fatalf("session_end does not carry %q: %v", want, end.fields)
+		}
+	}
+
+	cap, ok := CapabilityForSource("sidecar.grok.hooks")
+	if !ok {
+		t.Fatal("no capability entry for the grok source")
+	}
+	if cap.Covers(TransitionProcessExit) {
+		t.Fatal("the entry claims process_exit, which the shipped asset does not subscribe to")
+	}
+	if !cap.Covers(TransitionSessionIdentity) {
+		t.Fatal("the entry does not claim session_identity, which is the whole of what it ships")
 	}
 }

@@ -1,0 +1,23 @@
+# ms	event	session	turn	tool	fields
+0	session_start	session-1	-	-	cwd,hookEventName,hook_event_name,permissionMode,permission_mode,sessionId,session_id,source,timestamp,workspaceRoot
+14269	session_end	session-1	-	-	cwd,hookEventName,hook_event_name,permissionMode,permission_mode,reason,sessionId,session_id,timestamp,transcriptPath,transcript_path,workspaceRoot
+# capture-window: 45s
+# grok 1.0.13, captured 2026-09-04 in a Sidecar-managed shell on a private tmux
+# server, with GROK_HOME redirected into a scratch tree. One prompt, then /quit.
+#
+# TWO FINDINGS, and the window above belongs to the second.
+#
+# 1. Every payload carries BOTH spellings of every common field: sessionId AND
+# session_id, hookEventName AND hook_event_name, permissionMode AND
+# permission_mode, and on session_end transcriptPath AND transcript_path.
+# grok's own documentation shows only the camelCase half. Sidecar's payload
+# reader prefers the snake_case spelling, so it reads session_id here; either
+# would have worked, and that is worth knowing rather than assuming.
+#
+# 2. session_start does NOT fire at process start. In a separate run the TUI was
+# launched and left untouched at its prompt for 45 seconds -- the window above --
+# and no hook event fired at all. The event arrived on the first prompt, which is
+# when grok creates the session. So a grok pane is bound one turn into its life,
+# not at startup, and an idle pane a user opened and walked away from carries no
+# binding. The trace ends where it does because the session ended, not because
+# capture stopped.
