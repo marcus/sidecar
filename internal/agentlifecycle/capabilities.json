@@ -201,21 +201,28 @@
   {
     "schemaVersion": 1,
     "provider": "copilot",
-    "source": "",
-    "assetVersion": "",
-    "tier": "screen-fallback",
-    "evidence": "none",
+    "source": "sidecar.copilot.hooks",
+    "assetVersion": "1",
+    "tier": "session-identity",
+    "evidence": "docs-only",
     "minProviderVersion": "",
     "testedProviderRange": "",
-    "covered": [],
+    "covered": [
+      "session_identity"
+    ],
     "knownGaps": [
-      "No Sidecar integration is built, so nothing is claimed and screen detection remains the sole authority.",
-      "Not installed on any machine Sidecar has surveyed, so nothing here is verified even against a shipped artifact -- this is the weakest evidence in the registry.",
-      "Interrupt appears to be reported at session granularity rather than per turn, which would not distinguish a cancelled turn from a closed session."
+      "The shipped asset is a single SessionStart hook entry: session identity only, by design, and that is what the tier reflects.",
+      "This is the weakest evidence in the registry, and the reason is stated first rather than buried: GitHub Copilot CLI is not installed on any machine Sidecar has surveyed, so every fact in this entry comes from Herdr's installer and its vendored asset rather than from a released binary. Nothing here has been checked against the provider, including the file path, the entry shape and the field names.",
+      "The entry's shape is Herdr's, faithfully, and it is three departures from every other provider in this registry: `type` is `command`, the command lives under `bash` rather than `command`, and the timeout is `timeoutSec` rather than `timeout`.",
+      "`bash` is written unconditionally rather than switched to `powershell` on Windows the way Herdr does, because Sidecar does not run on Windows and the Windows spelling would be unreachable and untestable. The scan reads both spellings, so an entry written in the other form is still recognised as Sidecar's and can still be removed.",
+      "$COPILOT_HOME is honoured as the configuration-directory override, on Herdr's word alone. If a released Copilot turns out not to read it, honouring it sends an install where nothing reads, and the fix is to drop it the way Antigravity's Herdr-only seam was dropped.",
+      "Herdr's installer removes its own registrations from nine other events -- UserPromptSubmit, PreToolUse, PostToolUse, PostToolUseFailure, Stop, agentStop, SessionEnd, notification and sessionStart -- which is the rollback of a full-lifecycle hook set it used to ship. Sidecar never shipped those, so there is nothing to roll back; the ownership rule finds a Sidecar entry on any event regardless.",
+      "Interrupt appears to be reported at session granularity rather than per turn, which would not distinguish a cancelled turn from a closed session. That was the reading before this port and nothing since has tested it.",
+      "Not traced, and cannot be traced on this machine. A capture needs a released Copilot CLI and credentials the environment does not carry."
     ],
     "orderingGuaranteed": false,
     "sourceDoc": "https://docs.github.com/en/copilot",
-    "sourceVersionNote": "Not installed locally. A hooks feature reached general availability in 2026 offering permissionRequest, sessionEnd carrying an abort reason, and a sessionId on every event, including HTTP hooks. A full-tier candidate on paper only."
+    "sourceVersionNote": "Not installed locally, so no version was seen. Ported from Herdr's copilot integration version 3 at commit d08e44686d8b19bd9555cc99ec9068d9fde05f16: COPILOT_HOOK_EVENTS is the single event SessionStart, the entry is written into ~/.copilot/settings.json under hooks, and the vendored asset reads session_id falling back to sessionId after refusing any hook_event_name that does not normalise to sessionstart. A hooks feature reached general availability in 2026 offering permissionRequest, sessionEnd carrying an abort reason, and a sessionId on every event."
   },
   {
     "schemaVersion": 1,

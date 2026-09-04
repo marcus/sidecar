@@ -191,6 +191,28 @@ var portedFrom = []PortedFrom{
 			"Herdr's own test seam and appears nowhere in the shipped agy binary, so following it would install into " +
 			"a directory the provider never opens.",
 	},
+	{
+		Provider:    CopilotProvider,
+		UpstreamID:  "copilot",
+		UpstreamDir: "copilot",
+		Version:     "3",
+		Commit:      herdrVendoredCommit,
+		Evidence: "Ported from Herdr's copilot integration at that commit, where the vendored " +
+			"upstream/copilot/herdr-agent-state.sh carries HERDR_INTEGRATION_VERSION=3. This is the ONLY port in " +
+			"this lane that could not be checked against a released binary: GitHub Copilot CLI is not installed on " +
+			"any machine Sidecar has surveyed, so the file (~/.copilot/settings.json), the hooks key, the single " +
+			"SessionStart registration from COPILOT_HOOK_EVENTS, the flat handler array, the `bash` command field " +
+			"and the `timeoutSec` timeout are all Herdr's word rather than the provider's, and the capability entry " +
+			"says so. The upstream asset's own session-id reading -- session_id falling back to sessionId, after " +
+			"refusing any hook_event_name that does not normalise to sessionstart -- is what report-session's " +
+			"payload parsing reproduces. Three deliberate differences, each with its reason in copilot_install.go: " +
+			"the transport is Sidecar's, so the dropped shell script and its python3 dependency are gone and the " +
+			"config entry invokes the CLI directly; the Windows `powershell` command field is not written, because " +
+			"Sidecar has no Windows support and it would be unreachable and untestable, though the scan reads it so " +
+			"an entry in that form is still removable; and Herdr's nine removed-lifecycle event names are not " +
+			"copied, because Sidecar never shipped them and the ownership rule finds a Sidecar entry on any event " +
+			"without a list that would go stale.",
+	},
 }
 
 // PortedFromRecords returns the provenance of every Sidecar integration asset.

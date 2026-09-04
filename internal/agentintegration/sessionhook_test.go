@@ -34,6 +34,8 @@ func sessionHookAdapters(t *testing.T) []sessionHookAdapter {
 		switch v := a.(type) {
 		case AntigravityAdapter:
 			out = append(out, v.sessionHookAdapter)
+		case CopilotAdapter:
+			out = append(out, v.sessionHookAdapter)
 		}
 	}
 	if len(out) == 0 {

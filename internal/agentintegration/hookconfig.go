@@ -292,6 +292,13 @@ type hookEntrySpec struct {
 	// `command`. GitHub Copilot CLI reads `bash` on Unix and `powershell` on
 	// Windows instead, and writes the timeout as `timeoutSec`.
 	commandKey string
+	// altCommandKeys are further members the same provider would read a
+	// command from, consulted only when commandKey is absent. They exist so a
+	// Sidecar entry written in a spelling this build does not produce is still
+	// found: Copilot's Windows `powershell` field is the case, and an entry the
+	// scan cannot see is one that keeps reporting while status says nothing is
+	// installed.
+	altCommandKeys []string
 	// matcher is the canonical group matcher, for the grouped shape only: nil
 	// means the group carries no matcher key at all (Codex, grok), non-nil is
 	// the exact value (Claude's "*").
@@ -511,24 +518,25 @@ func entryIsCommandHandler(entry []jsonMember) bool {
 	return !present || typ == "command"
 }
 
-// entryCommand reads a handler's command, from the provider's own key and then
-// from the ordinary `command`.
+// entryCommand reads a handler's command, from the key the provider is written
+// to and then from every other key the same provider would accept.
 //
-// The fallback is deliberate and its direction matters. Copilot reads `bash` on
-// Unix and `powershell` on Windows, so a Sidecar entry installed on one machine
-// and read on the other -- a synced dotfile tree, a shared home directory --
-// would otherwise be invisible to the scan, and an invisible Sidecar entry is
-// one that keeps reporting while `integration status` says nothing is
-// installed. Recognising both spellings costs nothing: ownership still turns on
-// the command being an invocation of report-session, which no user's hook is.
+// The fallbacks are deliberate and their direction matters. Copilot reads
+// `bash` on Unix and `powershell` on Windows, and Sidecar writes only the Unix
+// spelling, because it does not run on Windows. An entry in the other
+// spelling -- a synced dotfile tree, a shared home directory, a Herdr install
+// on the same account -- would otherwise be invisible to the scan, and an
+// invisible Sidecar entry is one that keeps reporting while `integration
+// status` says nothing is installed and uninstall has nothing to remove.
+// Recognising every spelling costs nothing: ownership still turns on the
+// command being an invocation of report-session, which no user's hook is.
 func entryCommand(entry []jsonMember, spec hookEntrySpec) (string, bool) {
-	if command, ok := memberString(entry, spec.cmdKey()); ok {
-		return command, true
+	for _, key := range append([]string{spec.cmdKey()}, spec.altCommandKeys...) {
+		if command, ok := memberString(entry, key); ok {
+			return command, true
+		}
 	}
-	if spec.cmdKey() == "command" {
-		return "", false
-	}
-	return memberString(entry, "command")
+	return "", false
 }
 
 // groupMatcherCanonical checks a group's matcher against the canonical one:

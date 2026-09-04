@@ -66,6 +66,12 @@ var assetGoldens = []assetGolden{
 	// printf the provider's stdout contract requires, and the timeout. Those
 	// are the whole of what the integration does.
 	{provider: AntigravityProvider, name: "hooks.json", version: "1", checksum: "389e513eddf2d16c14124205f6409b1000165021853b9211af764d14def4ac60"},
+	// Copilot's checksum is worth more than most, because it is the only
+	// record anywhere of an entry shape nobody has run: the `bash` command
+	// field and the `timeoutSec` timeout are Herdr's word rather than a
+	// released Copilot's, so a change to either is a change to an untested
+	// claim and should be noticed.
+	{provider: CopilotProvider, name: "settings.json", version: "1", checksum: "48174b6c5fbf7770da52242b8fb198e2383cfdd481498bc4b455f9e55acf5511"},
 }
 
 // bumpInstructions is the whole point of the guard: a failure here has to tell

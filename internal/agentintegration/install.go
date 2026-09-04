@@ -367,6 +367,12 @@ type Env struct {
 	// honouring it is what lets a relocated Kimi be found — and what lets a
 	// proof run redirect the provider away from the user's real ~/.kimi-code.
 	KimiCodeHome string
+	// CopilotHome is $COPILOT_HOME when set, and empty otherwise. It is the
+	// override Herdr reads for GitHub Copilot CLI's configuration directory.
+	// Unlike every other override in this struct it has NOT been checked
+	// against a released provider binary, because Copilot is not installed on
+	// any machine Sidecar has surveyed; the capability entry records that.
+	CopilotHome string
 	// ClaudeConfigDir is $CLAUDE_CONFIG_DIR when set, and empty otherwise. It
 	// is Claude Code's own override for its whole configuration home: the
 	// binary resolves that home as the variable's value, falling back to
@@ -394,6 +400,7 @@ func OSEnv() Env {
 		PiAgentDir:      os.Getenv("PI_CODING_AGENT_DIR"),
 		KiloConfigDir:   os.Getenv("KILO_CONFIG_DIR"),
 		KimiCodeHome:    os.Getenv("KIMI_CODE_HOME"),
+		CopilotHome:     os.Getenv("COPILOT_HOME"),
 		ClaudeConfigDir: os.Getenv("CLAUDE_CONFIG_DIR"),
 		LookPath:        exec.LookPath,
 		ProviderVersion: detectProviderVersion,
@@ -530,7 +537,7 @@ type Adapter interface {
 
 // DefaultAdapters returns the adapters this build ships.
 func DefaultAdapters() []Adapter {
-	return []Adapter{OpenCodeAdapter{}, CodexAdapter{}, ClaudeAdapter{}, PiAdapter{}, KiloAdapter{}, KimiAdapter{}, NewAntigravityAdapter()}
+	return []Adapter{OpenCodeAdapter{}, CodexAdapter{}, ClaudeAdapter{}, PiAdapter{}, KiloAdapter{}, KimiAdapter{}, NewAntigravityAdapter(), NewCopilotAdapter()}
 }
 
 // Service is the application service behind the CLI and the Configuration

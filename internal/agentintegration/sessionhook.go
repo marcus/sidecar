@@ -367,6 +367,8 @@ func sessionHookIntegrationOf(a Adapter) (sessionHookIntegration, bool) {
 	switch v := a.(type) {
 	case AntigravityAdapter:
 		return v.integration, true
+	case CopilotAdapter:
+		return v.integration, true
 	}
 	return sessionHookIntegration{}, false
 }

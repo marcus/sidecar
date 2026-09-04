@@ -34,6 +34,7 @@ This is enforced rather than documented. `Capability.TierFor` polices every tier
 | Kilo Code | 7.5.9 | real-trace | `advisory` | lifecycle authority | cancellation is indistinguishable and the shipped asset releases nothing on exit, so `advisory` is the ceiling and is reached |
 | Kimi Code | 0.40.1 | real-trace | `advisory` | lifecycle authority | session identity is refused by Sidecar's own catalog, and process exit is unclaimed by choice; `full` needs both |
 | Antigravity | 1.1.22 | docs-only | `session-identity` | session only | shipped hook is one `PreInvocation` entry. The provider's ceiling is `advisory`: it has no blocking event and no cancellation event. |
+| GitHub Copilot CLI | not installed | docs-only | `session-identity` | session only | shipped hook is one `SessionStart` entry. Nothing here is verified against a released binary, which is the weakest evidence in the registry. |
 
 Pi's row went out of `capabilities.json` when nothing could produce a report for it, came back at `session-identity` when `PiAdapter` and `assets/pi/sidecar-lifecycle.js` shipped, and is now at `advisory` on `real-trace` evidence because a live Pi 0.84.3 session has been traced. It is the only row here that has reached its own ceiling: `advisory` is as high as Pi can ever go, because `full` needs `blocked_on_request` and `unblocked` and Pi ships no permission system to produce either. See "Why the Pi entry was retracted, and what brought it back".
 
@@ -61,17 +62,19 @@ Claude Code's `unblocked` and `turn complete` are marked PARTIAL *after* tracing
 
 The **session-identity ports** are a second table, because a column each in the one above would say `NO` or "not hooked" nine times per provider and hide the one row that matters. For all of them the shipped Sidecar asset registers exactly one entry and claims exactly `session_identity`; state keeps coming from the screen lane. What the table records is the provider's own ceiling, so a later lane can see what a fuller asset would be able to reach.
 
-| Transition | Antigravity |
-| --- | --- |
-| work start | YES (`PreInvocation`), not hooked |
-| tool use | YES (`PreToolUse`/`PostToolUse`), not hooked |
-| blocked on request | NO |
-| unblocked | NO |
-| turn complete | YES (`Stop`), not hooked |
-| cancellation | NO |
-| session identity | YES (`conversationId` on every payload) |
-| subagent | NO |
-| process exit | NO |
+| Transition | Antigravity | GitHub Copilot CLI |
+| --- | --- | --- |
+| work start | YES (`PreInvocation`), not hooked | YES (`UserPromptSubmit`), not hooked |
+| tool use | YES (`PreToolUse`/`PostToolUse`), not hooked | YES (`PreToolUse`/`PostToolUse`), not hooked |
+| blocked on request | NO | YES (`permissionRequest`), unverified |
+| unblocked | NO | unknown |
+| turn complete | YES (`Stop`), not hooked | YES (`Stop`), not hooked |
+| cancellation | NO | PARTIAL (`sessionEnd` abort reason, session-granular) |
+| session identity | YES (`conversationId` on every payload) | YES (`session_id` on `SessionStart`) |
+| subagent | NO | unknown |
+| process exit | NO | YES (`SessionEnd`), not hooked |
+
+Copilot's column is the only one in this document with `unknown` in it, and that is the honest word: it is read from Herdr's event lists and a documentation page rather than from a shipped artifact, because the CLI is not installed on any machine Sidecar has surveyed.
 
 ## OpenCode
 
@@ -356,6 +359,26 @@ Herdr honours an `ANTIGRAVITY_CLI_CONFIG_DIR` override here. **Sidecar does not*
 
 `full` needs `blocked_on_request`, `unblocked` and `cancelled`, and Antigravity emits no event for any of them. `PreToolUse` can *return* a decision, but a hook deciding is not the same as a hook being told the user was asked, so there is nothing to report. `Stop` carries a `terminationReason` and a `fullyIdle` flag and is the only turn-end signal. A fuller asset could reach `advisory` by hooking `PreInvocation` for work start and `Stop` for turn completion; this one does not, because state comes from the screen lane and the port buys exact session binding.
 
+## GitHub Copilot CLI
+
+**Source:** Herdr's `copilot` integration at `HERDR_INTEGRATION_VERSION=3` and its vendored asset. **Nothing here has been checked against a released binary**, because GitHub Copilot CLI is not installed on any machine Sidecar has surveyed. That is stated first because it qualifies every sentence after it.
+
+The port is one `SessionStart` entry in `~/.copilot/settings.json`, under `hooks`, as a flat handler array with no matcher group. Upstream's asset reads `session_id` from the payload, falling back to `sessionId`, after refusing any `hook_event_name` that does not normalise to `sessionstart`; Sidecar's entry is registered on `SessionStart` alone, so that guard is structural here rather than a check, and `report-session --hook-stdin` reads both field spellings.
+
+### Three fields that are Herdr's word rather than the provider's
+
+The entry writes `type: "command"`, puts the command under **`bash`** rather than `command`, and spells the timeout **`timeoutSec`** rather than `timeout`. All three come from Herdr's `ensure_direct_command_hook` and its `direct_command_field`, none was invented here, and none has been observed working. `TestCopilotWritesHerdrsEntryShapeExactly` pins all three, and the asset's golden checksum exists partly so that a change to an unverified claim is noticed.
+
+The Windows spelling of that field, `powershell`, is **not written**. Sidecar has no Windows support -- it has no Windows process-identity adapter, and Slice 3 of the parity plan left upstream's Windows argument walkers unported for the same reason -- so writing it would ship a branch nobody can reach or test. The scan **reads** it, though, along with the plain `command`: an entry in a spelling this build does not produce is still Sidecar's, and an entry the scan cannot see is one that keeps reporting while `integration status` says nothing is installed and uninstall has nothing to remove. `TestCopilotStillRecognisesTheWindowsSpelling` drives exactly that file.
+
+### The override, and why it is trusted here and not for Antigravity
+
+`$COPILOT_HOME` relocates the configuration directory, on Herdr's word. It is honoured, where Antigravity's `ANTIGRAVITY_CLI_CONFIG_DIR` is ignored, and the difference is evidence rather than taste: agy's shipped binary can be searched and does not contain its variable, so that one is demonstrably Herdr's own seam. Copilot's binary cannot be searched at all, and a plausible provider override is a better guess than none, because a user who has set it has a Copilot reading there. If a released Copilot turns out not to read it, the fix is to drop it the same way.
+
+### What Herdr rolls back and Sidecar has nothing to roll back
+
+Herdr's installer removes its own registrations from nine further events -- `UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `PostToolUseFailure`, `Stop`, `agentStop`, `SessionEnd`, `notification` and `sessionStart` -- which is the residue of a full-lifecycle hook set it used to ship and withdrew. Sidecar never shipped those, so the list is not copied. The ownership rule covers the same ground without going stale: a Sidecar entry is recognised and removed wherever in the file it sits, on any event.
+
 ## Catalog agents evaluated but not built
 
 These are recorded rather than omitted so that "evaluated, and deliberately not built" is distinguishable from "never looked at". All are `screen-fallback` with `evidence: none`: **none is trace-backed**, so each selects a candidate rather than earning a tier, and `TierFor` would refuse them anything else regardless.
@@ -364,7 +387,6 @@ These are recorded rather than omitted so that "evaluated, and deliberately not 
 | --- | --- | --- | --- | --- |
 | grok | 1.0.13 | strongest in the catalog | `full` | Untraced. The only provider anywhere with a dedicated cancellation event: `StopCancelled` carrying `user_interrupt`, `permission_rejected` and `permission_cancelled`, alongside `PermissionDenied` and `Notification{permission_prompt, idle_prompt}`. |
 | cursor | 2026.08.25 | full registry in the shipped bundle | `full` | Untraced, and there are user reports of events being omitted on particular versions, so tracing is mandatory rather than a formality. |
-| copilot | not installed | GA hooks incl. `permissionRequest` | `full` | Not installed on any surveyed machine, so nothing is verified even against a shipped artifact — the weakest evidence here. Interrupt also appears to be session-granular rather than per turn. |
 | amp | not installed | TypeScript plugin process | `advisory` | Not installed and not traced. No permission event and no reliable process-exit signal, so two lanes would stay with screen detection anyway. |
 
 Two findings from this sweep are worth more than the table.

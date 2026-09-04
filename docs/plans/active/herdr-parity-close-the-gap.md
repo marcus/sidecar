@@ -275,6 +275,18 @@ Answer open question 3 first. Then port in order of live use, confirming for eac
 
 **Ownership is stricter than upstream's.** Herdr's uninstall removes its whole block by name. Sidecar removes only entries whose command invokes `report-session`, keeps every other handler in the array in order, keeps a block that still holds something of the user's, and drops a block that held nothing else.
 
+#### Result for `copilot`, 2026-09-04 (`td-73c4ff`)
+
+**Shipped at `session-identity` on `docs-only` evidence, untraced, and it is the one port in this lane that could not be checked against a released binary.** GitHub Copilot CLI is not installed on any machine Sidecar has surveyed and installing it needs credentials the environment does not carry, so the file path, the hooks key, the single `SessionStart` registration, the flat handler array, the `bash` command field and the `timeoutSec` timeout are all Herdr's word rather than the provider's. The capability entry says exactly that as its second gap, before any of the details it qualifies.
+
+**Three fields differ from every other provider in the tree and none was invented here.** `type: "command"`, the command under `bash` rather than `command`, and `timeoutSec` rather than `timeout`, all from Herdr's `ensure_direct_command_hook`. A test pins all three, and the asset's golden checksum exists partly so a change to an unverified claim is noticed rather than absorbed.
+
+**The Windows spelling is read but not written.** Sidecar has no Windows support, so writing `powershell` would ship an unreachable, untestable branch, exactly as Slice 3 declined upstream's Windows argument walkers. The scan reads it anyway, because an entry in a spelling this build does not produce is still Sidecar's, and an entry the scan cannot see keeps reporting while `integration status` says nothing is installed. `hookEntrySpec` grew `altCommandKeys` for that, and `TestCopilotStillRecognisesTheWindowsSpelling` drives a file holding one.
+
+**`$COPILOT_HOME` is honoured where Antigravity's override was ignored, and the asymmetry is evidence rather than taste.** agy's binary can be searched and does not contain its variable, so that one is demonstrably Herdr's test seam. Copilot's binary cannot be searched at all, and a user who has set the variable has a Copilot reading there, so ignoring it would be the riskier guess. Both readings are asserted by tests so a later reader sees the asymmetry rather than inferring it.
+
+**Herdr's nine removed-lifecycle event names are not copied.** They are the residue of a full-lifecycle hook set upstream withdrew; Sidecar never shipped it, and the ownership rule already finds a Sidecar entry on any event without a list that goes stale.
+
 ### Slice 5 — The launch catalog moves to TOML and grows to every recognised agent (medium)
 
 Today `internal/agentcatalog` holds ten launchable families as a Go slice and ten detection-only families as a second slice. The knowledge in the first is small and flat: a command, an auto-approve flag, resume arguments, aliases, an adapter id. That is configuration, and it belongs in data a user or an agent can read and extend without a rebuild.
