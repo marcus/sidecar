@@ -111,8 +111,9 @@ func TestOverlayOverridesOnlyTheFieldsItStates(t *testing.T) {
 		family.SkipPermissionsArg != "--dangerously-skip-permissions" {
 		t.Errorf("an override restated nothing and lost something: %+v", family)
 	}
-	// Order is not a Family field, so an override cannot move a family in the
-	// picker. Claude stays first.
+	// An override that states no order leaves the family where it was. Stating
+	// one moves it, which TestAnOverrideCanReorderAndRetireABundledFamily pins;
+	// this file states only a command, so Claude stays first.
 	if got := Families()[0].ID; got != "claude" {
 		t.Errorf("picker now starts with %q", got)
 	}
@@ -354,5 +355,48 @@ func TestPrimeInstalledAgreesWithLookPath(t *testing.T) {
 		if err != nil && !errors.Is(err, exec.ErrNotFound) {
 			t.Logf("LookPath(%s): %v", family.Command, err)
 		}
+	}
+}
+
+// An overlay file is written by hand, so it can omit what every bundled file
+// states. A family with no name must still render: an empty picker row is a
+// choice the user cannot make, and it is worse than one reading its own id.
+func TestAnOverlayFamilyWithNoNameStillRenders(t *testing.T) {
+	t.Cleanup(resetForTest)
+	dir := t.TempDir()
+	writeOverlay(t, dir, "housecat.toml", "command = \"housecat\"\n")
+	if problems := LoadOverlay(dir); len(problems) != 0 {
+		t.Fatalf("LoadOverlay reported %v", problems)
+	}
+	if got := Label("housecat"); got != "housecat" {
+		t.Errorf("Label(housecat) = %q, want the id back", got)
+	}
+	if got := ShortLabel("housecat"); got != "housecat" {
+		t.Errorf("ShortLabel(housecat) = %q, want the id back", got)
+	}
+}
+
+// `order` and `legacy` are honoured on an override, not only on a new family.
+// The overlay is one mechanism and it cannot usefully be two: `order` has to
+// work for an added family, and the decoder that reads it cannot tell which
+// kind of file it is in. Pinned because docs/reference/agent-catalog.md
+// describes this behaviour to users.
+func TestAnOverrideCanReorderAndRetireABundledFamily(t *testing.T) {
+	t.Cleanup(resetForTest)
+	dir := t.TempDir()
+	writeOverlay(t, dir, "claude.toml", "order = 999999\n")
+	writeOverlay(t, dir, "codex.toml", "legacy = true\n")
+	if problems := LoadOverlay(dir); len(problems) != 0 {
+		t.Fatalf("LoadOverlay reported %v", problems)
+	}
+	families := Families()
+	if last := families[len(families)-1]; last.ID != "claude" {
+		t.Errorf("last family is %q, want claude moved to the end by its order", last.ID)
+	}
+	if Known("codex") {
+		t.Error("codex is still offered as a choice after legacy = true")
+	}
+	if _, ok := FindLaunch("codex"); !ok {
+		t.Error("codex is no longer launchable at all; legacy must keep a persisted setting working")
 	}
 }

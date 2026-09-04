@@ -24,7 +24,7 @@ The directory does not exist until you create it. It is read once, at startup, b
 command = "claude-next"
 ```
 
-Claude keeps its name, its aliases, its conversation adapter, its resume arguments and its position in the picker; only the command changes. An override cannot move a family in the picker or make one legacy, because `order` and `legacy` are catalog bookkeeping rather than facts about a provider.
+Claude keeps its name, its aliases, its conversation adapter, its resume arguments and its position in the picker; only the command changes. `order` and `legacy` work on an override too: `order = 999` moves a bundled family to the end of the picker, and `legacy = true` takes one out of every picker while leaving it launchable for a setting you already have. Use `plugins.workspace.agents` to choose what you are offered; these two are for when you want the catalog itself to read differently.
 
 **A new family needs a name, a short label and a command:**
 

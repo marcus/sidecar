@@ -471,12 +471,16 @@ func Label(id string) string {
 	case "shell":
 		return "Project Shell"
 	}
-	if family, ok := Find(id); ok {
+	if family, ok := Find(id); ok && family.Name != "" {
 		return family.Name
 	}
-	if family, ok := FindDetection(id); ok {
+	if family, ok := FindDetection(id); ok && family.Name != "" {
 		return family.Name
 	}
+	// A family whose file states no name falls through to its id, the way
+	// ShortLabel already does. Every bundled file has one, but an overlay file
+	// is written by hand, and a picker row rendering as an empty string is a
+	// choice the user cannot make -- worse than one reading `housecat`.
 	return id
 }
 
