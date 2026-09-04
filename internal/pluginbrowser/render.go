@@ -39,8 +39,11 @@ const (
 	// cursorGutter is the two columns every row keeps for the cursor, so text
 	// never shifts as the cursor moves.
 	cursorGutter = 2
-	// statusColumnMax bounds the reserved, unlabelled status column.
-	statusColumnMax = 24
+	// statusColumnMax bounds the reserved, unlabelled status column. It is the
+	// protocol's own render bound on status.label, stated in the reference's
+	// Limits table, so the width a plugin author is told to fit is the width
+	// this column actually is.
+	statusColumnMax = pluginhost.StatusLabelRenderChars
 	// scrollbarCols is the single column each scrolling box keeps for its bar.
 	// It is reserved whether or not a thumb is in it, which is the shared
 	// renderer's own convention and what keeps content from reflowing the

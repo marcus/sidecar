@@ -397,6 +397,7 @@ Everything in [resource v1's limits](terminal-resource-provider-protocol.md#limi
 | Items per page, and the `limit` clamp | 500 |
 | Cell length | 512 chars |
 | Notices per page / notice length | 4 / 200 chars |
+| `status.label` render width | 24 chars |
 | Filters per collection / choices per filter | 8 / 64 |
 | Filter and choice ID / label and title / text value | 32 / 32 / 64 chars |
 | `coverage[]` rows per page / reason length / source name | 64 / 200 chars / 64 chars |
@@ -407,6 +408,8 @@ Everything in [resource v1's limits](terminal-resource-provider-protocol.md#limi
 | `refresh.watch` paths per plugin | 8, each absolute and under the user's home directory but not the home directory itself |
 | `refresh.everySeconds` | clamped to [15, 900] |
 | `list` / `get` / `act` timeout | 10 s, configurable per instance and clamped to 60 s |
+
+**`status.label` has two bounds and they are different things.** The wire bound is resource v1's frozen 64 characters and is unchanged: a longer label is truncated to it, and that is the only place a label is cut on the way in. The 24 above is this protocol's own **render** bound — the reserved status column never grows past it, so anything longer is truncated in the pane on every surface. Choose a label that reads at 24, and put the rest in a field on the document.
 
 Over-limit content in a `list`, `get`, `resolve`, or `act` response is truncated and marked, as in resource v1: a slightly-too-long page still shows the user their rows, where refusing it shows them an error for a page that was almost entirely fine. Only stdout size and the structural violations under [Invocation model](#invocation-model) refuse a response outright.
 

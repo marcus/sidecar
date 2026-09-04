@@ -584,3 +584,27 @@ func TestPaneOpenRowHandsOnTheAppliedFilters(t *testing.T) {
 		t.Fatalf("the row was handed %v, want the list's applied scope", handed)
 	}
 }
+
+// The reserved status column never grows past the protocol's stated render
+// bound, whatever a plugin sends. The wire bound is resource v1's frozen 64;
+// this is the width the reference tells an author to fit.
+func TestStatusColumnHoldsTheProtocolsRenderBound(t *testing.T) {
+	if statusColumnMax != pluginhost.StatusLabelRenderChars {
+		t.Fatalf("statusColumnMax = %d; it is the protocol's own bound, not a second opinion", statusColumnMax)
+	}
+	host := &fakeHost{page: testPage(2)}
+	m := newTestModel(t, host)
+	s := m.activeState()
+	s.setQuery("dex")
+	run(t, m, m.list(m.desc.Collections[0], s, false))
+	long := strings.Repeat("W", resource.MaxStatusLabelChars)
+	s.items[0].Status = &resource.Status{Label: long, Tone: resource.ToneSuccess}
+
+	if got := statusWidth(s); got != pluginhost.StatusLabelRenderChars {
+		t.Fatalf("status column = %d cells, want the render bound %d", got, pluginhost.StatusLabelRenderChars)
+	}
+	view := strip(m.View())
+	if strings.Contains(view, strings.Repeat("W", pluginhost.StatusLabelRenderChars+1)) {
+		t.Fatalf("a label longer than the render bound was drawn whole:\n%s", view)
+	}
+}
