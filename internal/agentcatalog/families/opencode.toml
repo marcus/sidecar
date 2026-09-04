@@ -1,0 +1,11 @@
+# OpenCode. Unchanged from the Go literal. The resume is the flag-pair shape,
+# `opencode --continue -s <id>`, which is Sidecar's own and differs from
+# Herdr's `opencode --session <id>`; it is what Sidecar has shipped and proved.
+id = "opencode"
+order = 60
+name = "OpenCode"
+short = "OpenCode"
+command = "opencode"
+skip_permissions_arg = "--auto"
+resume_args = ["--continue", "-s"]
+resume_kinds = ["id"]

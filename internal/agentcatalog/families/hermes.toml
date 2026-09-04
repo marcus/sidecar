@@ -1,0 +1,15 @@
+# Hermes Agent (Nous Research).
+#
+# Sources, read 2026-09-03: `hermes --help` from the copy installed on the
+# maintainer's machine, which prints `--resume SESSION, -r SESSION  Resume a
+# previous session by ID or title` and `--yolo  Bypass all dangerous command
+# approval prompts`. Herdr's agent_resume.rs agrees on the resume shape.
+id = "hermes"
+order = 140
+name = "Hermes Agent"
+short = "Hermes"
+command = "hermes"
+skip_permissions_arg = "--yolo"
+aliases = ["hermes-agent"]
+resume_args = ["--resume"]
+resume_kinds = ["id"]

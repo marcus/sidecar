@@ -1,16 +1,24 @@
 // Package agentcatalog is the single description of the agent families Sidecar
-// can start: their order in a creation picker, what to call them, and the
-// command each one launches by default.
+// knows: their order in a creation picker, what to call them, the command each
+// one launches, and how each one resumes.
 //
 // It is a leaf package on purpose. The workspace plugin builds its creation
 // pickers from it, and Configuration lists the same families without importing
 // the plugin (the plugin imports the app, and the app imports Configuration).
-// One table, two readers, no drift.
+// One table, two readers, no drift. Being a leaf is also why it cannot resolve
+// the Sidecar config directory itself: LoadOverlay takes the path from whoever
+// starts the process.
+//
+// The families themselves are data, not code. They live one to a file under
+// families/, embedded in the binary, and a user can override one or add another
+// by dropping a file in the overlay directory beside their config. families/README.md
+// is the schema and the reasoning; read it before adding a family.
 package agentcatalog
 
 import (
 	"fmt"
 	"regexp"
+	"sort"
 	"strings"
 )
 
@@ -25,6 +33,15 @@ type Family struct {
 	Short string
 	// Command is the executable Sidecar launches when no override is configured.
 	Command string
+	// LaunchArgs are the argv entries between Command and everything else: the
+	// subcommand that starts an interactive session, for the providers whose
+	// bare command is not one.
+	//
+	// It exists because `kiro-cli` on its own prints help and its agent is
+	// `kiro-cli chat`, and because every flag such a provider takes is scoped to
+	// that subcommand. It is empty for every provider whose command is already
+	// the agent, which is all but one of them.
+	LaunchArgs []string
 	// SkipPermissionsArg is appended as one argv entry when the caller
 	// explicitly requests the provider's unsafe/auto-approve mode.
 	SkipPermissionsArg string
@@ -63,97 +80,46 @@ func (f Family) ConversationAdapterID() string {
 	return f.ID
 }
 
-// families is the ordered list a creation picker offers. Order is the picker's
-// order; adding a family here adds it everywhere.
-var families = []Family{
-	{ID: "claude", Name: "Claude Code", Short: "Claude", Command: "claude", SkipPermissionsArg: "--dangerously-skip-permissions",
-		Aliases: []string{"claude-code"}, AdapterID: "claude-code", ResumeArgs: []string{"--resume"}, ResumeKinds: []string{"id"}},
-	{ID: "codex", Name: "Codex CLI", Short: "Codex", Command: "codex", SkipPermissionsArg: "--dangerously-bypass-approvals-and-sandbox",
-		ResumeArgs: []string{"resume"}, ResumeKinds: []string{"id"}},
-	{ID: "copilot", Name: "GitHub Copilot CLI", Short: "Copilot", Command: "copilot"},
-	{ID: "antigravity", Name: "Antigravity", Short: "Antigravity", Command: "agy", SkipPermissionsArg: "--dangerously-skip-permissions",
-		Aliases: []string{"agy"}, ResumeArgs: []string{"--conversation"}, ResumeKinds: []string{"id"}},
-	{ID: "cursor", Name: "Cursor Agent", Short: "Cursor", Command: "cursor-agent", SkipPermissionsArg: "-f",
-		Aliases: []string{"cursor-cli"}, AdapterID: "cursor-cli", ResumeArgs: []string{"--resume"}, ResumeKinds: []string{"id"}},
-	{ID: "opencode", Name: "OpenCode", Short: "OpenCode", Command: "opencode", SkipPermissionsArg: "--auto",
-		ResumeArgs: []string{"--continue", "-s"}, ResumeKinds: []string{"id"}},
-	{ID: "pi", Name: "Pi Agent", Short: "Pi", Command: "pi",
-		Aliases: []string{"pi-agent"}, AdapterID: "pi-agent", ResumeArgs: []string{"--session"}, ResumeKinds: []string{"id"}},
-	{ID: "amp", Name: "Amp", Short: "Amp", Command: "amp", SkipPermissionsArg: "--dangerously-allow-all",
-		ResumeArgs: []string{"threads", "continue"}, ResumeKinds: []string{"id"}},
-	{ID: "grok", Name: "Grok", Short: "Grok", Command: "grok", SkipPermissionsArg: "--always-approve",
-		ResumeArgs: []string{"--resume"}, ResumeKinds: []string{"id"}},
-	{ID: "muse", Name: "Muse Spark", Short: "Muse", Command: "muse", SkipPermissionsArg: "--yolo",
-		ResumeArgs: []string{"resume"}, ResumeKinds: []string{"id"}},
+// Families returns every selectable family in picker order.
+func Families() []Family {
+	c := current()
+	out := make([]Family, len(c.launch))
+	copy(out, c.launch)
+	return out
 }
 
-// detectionFamilies are the agent families Sidecar can recognise in a pane but
-// never offers to start. Herdr publishes a screen-detection manifest for each,
-// Sidecar already vendors all of them, and the engine executes them, so the only
-// things a state badge still needs are an id, the process spellings that name
-// the program, and something to call it.
+// DetectionFamilies returns every family Sidecar can recognise in a pane but
+// never offers to start, in id order.
 //
-// They are a second list rather than a DetectionOnly flag on families above, and
-// the reason is what everything else does with families. Families() is read as
-// "everything Sidecar can launch" by the creation pickers, both configuration
-// pages, workspaceops, and TestAgentPickersFollowCatalog in another package. A
-// flag would put the burden of filtering on every one of those readers, and a
-// reader that forgot would show an agent in a creation picker that cannot be
-// launched. A separate list cannot leak: nothing that offers a choice reads it.
-// Find, FindLaunch, BuildLaunch, Lookup, Resolve, ResolvePicker and Families are
-// all unchanged, and all of them still mean the launchable ten.
-//
-// A detection-only family has no Command, no resume, no conversation adapter and
-// no curated theme colour, deliberately: that presentation work is the expensive
-// half of a full family and none of it is needed to render a state badge
-// (styles.AgentColor answers TextMuted for a provider no theme registers, and
-// styles.AgentLabel falls back to the bare name). Promoting one to a full family
-// is the seven-step guide in docs/guides/active/adding-new-agent-clis.md and is
-// independent work.
-//
-// IDs are Herdr's own agent labels so that the vendored manifest file, the key
-// into aliases.upstream.json and `sidecar agent explain --agent` all agree with
-// no mapping. That is why Qoder is spelled `qodercli` here: it is the id
-// upstream writes everywhere, and a prettier Sidecar-only spelling would buy a
-// third entry in agentactivity.ManifestAgentID and HerdrAgentLabel.
-//
-// Aliases carry Herdr's lookup_agent spellings for the family, minus the id
-// itself. They are recorded as data so the alias table and this catalog can be
-// asserted against each other; agentactivity.identifyProcessName is what
-// actually resolves a pane's process name, and
-// TestDetectionOnlyAliasesMatchTheUpstreamTable keeps the two honest.
-//
-// Gemini is deliberately absent even though its manifest is vendored: Decision 4
-// of docs/plans/active/herdr-detection-parity.md records that Antigravity
-// replaced it and `agy` is already a full family. OMP is absent because upstream
-// ships it hooks-only, with no screen manifest to execute.
-var detectionFamilies = []Family{
-	{ID: "cline", Name: "Cline", Short: "Cline"},
-	{ID: "devin", Name: "Devin CLI", Short: "Devin", Aliases: []string{"devin cli", "devin-cli"}},
-	{ID: "droid", Name: "Droid", Short: "Droid"},
-	{ID: "hermes", Name: "Hermes Agent", Short: "Hermes", Aliases: []string{"hermes-agent"}},
-	{ID: "kilo", Name: "Kilo Code CLI", Short: "Kilo", Aliases: []string{"kilo code", "kilo-code"}},
-	{ID: "kimi", Name: "Kimi Code CLI", Short: "Kimi", Aliases: []string{"kimi code", "kimi-code"}},
-	{ID: "kiro", Name: "Kiro CLI", Short: "Kiro", Aliases: []string{"kiro-cli"}},
-	{ID: "maki", Name: "Maki", Short: "Maki"},
-	{ID: "qodercli", Name: "Qoder CLI", Short: "Qoder", Aliases: []string{"qoder", "qoderclicn", "qodercn"}},
-	{ID: "qwen", Name: "Qwen Code", Short: "Qwen", Aliases: []string{"qwen code", "qwen-code"}},
-}
-
-// DetectionFamilies returns every detection-only family, in id order.
+// A family is here when its file states no command, which is the whole of the
+// definition: there is no flag, and no second list. Herdr publishes a
+// screen-detection manifest for such an agent, Sidecar vendors it, and the
+// engine executes it, so an id, the process spellings that name the program and
+// something to call it are all a state badge needs.
 //
 // It is deliberately not folded into Families: a caller that wants "what can be
-// started" must not be handed a family with no Command, and a caller that wants
-// "what can appear in a pane" wants both lists.
+// started" must not be handed a family with no command, and a caller that wants
+// "what can appear in a pane" wants both lists. Families() is read as
+// "everything Sidecar can launch" by the creation pickers, both configuration
+// pages, workspaceops, and TestAgentPickersFollowCatalog in another package, so
+// a family that cannot be launched must not be able to reach it.
+//
+// This list is empty as Sidecar ships today, because every agent Herdr
+// publishes a manifest for now has a launch command of its own. That is the
+// point of the split rather than a reason to remove it: the next agent Herdr
+// adds is detection-only from the moment its manifest is vendored until
+// somebody establishes its command, and the bucket is what lets that land
+// without a picker offering a program nobody can start.
 func DetectionFamilies() []Family {
-	out := make([]Family, len(detectionFamilies))
-	copy(out, detectionFamilies)
+	c := current()
+	out := make([]Family, len(c.detection))
+	copy(out, c.detection)
 	return out
 }
 
 // FindDetection returns the detection-only family with an ID.
 func FindDetection(id string) (Family, bool) {
-	for _, family := range detectionFamilies {
+	for _, family := range current().detection {
 		if family.ID == id {
 			return family, true
 		}
@@ -169,12 +135,29 @@ func DetectionOnly(id string) bool {
 	return ok
 }
 
-// legacyLaunchFamilies remain launchable for persisted/configured creation
-// settings but are deliberately absent from Families and every new picker.
-// Aider is the sole compatibility case; unknown ids never fall back to it or
-// Claude.
-var legacyLaunchFamilies = map[string]Family{
-	"aider": {ID: "aider", Name: "Aider", Short: "Aider", Command: "aider", SkipPermissionsArg: "--yes"},
+// LegacyFamilies returns the compatibility launch families, in id order.
+//
+// A family is here when its file says `legacy = true`. They remain launchable
+// for a persisted or configured creation setting and are deliberately absent
+// from Families and from every picker; unknown ids never fall back to one, or
+// to Claude. Aider is the sole case.
+//
+// It is the third bucket, and it is separate from the other two for the same
+// reason they are separate from each other: nothing that offers a user a choice
+// may reach it, and nothing that lists what Sidecar can recognise wants it. Only
+// an execution boundary honouring an older persisted setting does.
+func LegacyFamilies() []Family {
+	c := current()
+	ids := make([]string, 0, len(c.legacy))
+	for id := range c.legacy {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	out := make([]Family, 0, len(ids))
+	for _, id := range ids {
+		out = append(out, c.legacy[id])
+	}
+	return out
 }
 
 // LaunchArgv builds the provider launch as structured arguments. Shell quoting
@@ -185,6 +168,7 @@ func (f Family) LaunchArgv(extra []string, skipPermissions bool) ([]string, erro
 		return nil, fmt.Errorf("provider has no launch capability")
 	}
 	argv := []string{f.Command}
+	argv = append(argv, f.LaunchArgs...)
 	if skipPermissions && f.SkipPermissionsArg != "" {
 		argv = append(argv, f.SkipPermissionsArg)
 	}
@@ -332,7 +316,7 @@ func Lookup(id string) (Family, bool) {
 	if family, ok := FindLaunch(id); ok {
 		return family, true
 	}
-	for _, family := range families {
+	for _, family := range current().launch {
 		for _, alias := range family.Aliases {
 			if alias == id {
 				return family, true
@@ -358,7 +342,7 @@ func FindLaunch(id string) (Family, bool) {
 	if family, ok := Find(id); ok {
 		return family, true
 	}
-	family, ok := legacyLaunchFamilies[strings.TrimSpace(id)]
+	family, ok := current().legacy[strings.TrimSpace(id)]
 	return family, ok
 }
 
@@ -373,16 +357,9 @@ func OpaqueLaunchArgv(command string) ([]string, error) {
 	return []string{"sh", "-lc", command}, nil
 }
 
-// Families returns every selectable family in picker order.
-func Families() []Family {
-	out := make([]Family, len(families))
-	copy(out, families)
-	return out
-}
-
 // Find returns the family with an ID, if it is one Sidecar knows.
 func Find(id string) (Family, bool) {
-	for _, family := range families {
+	for _, family := range current().launch {
 		if family.ID == id {
 			return family, true
 		}
@@ -426,12 +403,44 @@ func Resolve(allowlist []string) []Family {
 	return out
 }
 
-// ResolvePicker is the creation-picker list: Resolve's allowlist, then None
-// (empty string) placed first for shells and last for worktrees.
+// ResolveInstalled is Resolve with the picker's installation rule applied.
 //
-// Empty and unrecognized allowlists follow Resolve: every catalog family.
-func ResolvePicker(allowlist []string, shellMode bool) []string {
+// A family is offered when the user has named it in plugins.workspace.agents,
+// or -- when they have named nothing -- when its command resolves on PATH.
+// Naming a family is the stronger signal and is honoured whether or not the
+// command is there: a user who wrote the setting is telling Sidecar what they
+// want offered, and a machine they have not installed it on yet is their
+// business.
+//
+// Filtering only happens once PrimeInstalled has run and only when it found
+// something. Before that, and on a machine where no catalog command resolves at
+// all, every family is offered: an empty picker is a dead end, and offering an
+// agent the user does not have costs them a "command not found" while hiding
+// one they do have costs them the feature.
+func ResolveInstalled(allowlist []string) []Family {
 	families := Resolve(allowlist)
+	if len(allowlist) != 0 || !InstalledKnown() {
+		return families
+	}
+	out := make([]Family, 0, len(families))
+	for _, family := range families {
+		if Installed(family.ID) {
+			out = append(out, family)
+		}
+	}
+	if len(out) == 0 {
+		return families
+	}
+	return out
+}
+
+// ResolvePicker is the creation-picker list: ResolveInstalled's allowlist, then
+// None (empty string) placed first for shells and last for worktrees.
+//
+// Empty and unrecognized allowlists follow Resolve: every catalog family, minus
+// the ones whose command is not installed.
+func ResolvePicker(allowlist []string, shellMode bool) []string {
+	families := ResolveInstalled(allowlist)
 	out := make([]string, 0, len(families)+1)
 	if shellMode {
 		out = append(out, "")
@@ -462,12 +471,16 @@ func Label(id string) string {
 	case "shell":
 		return "Project Shell"
 	}
-	if family, ok := Find(id); ok {
+	if family, ok := Find(id); ok && family.Name != "" {
 		return family.Name
 	}
-	if family, ok := FindDetection(id); ok {
+	if family, ok := FindDetection(id); ok && family.Name != "" {
 		return family.Name
 	}
+	// A family whose file states no name falls through to its id, the way
+	// ShortLabel already does. Every bundled file has one, but an overlay file
+	// is written by hand, and a picker row rendering as an empty string is a
+	// choice the user cannot make -- worse than one reading `housecat`.
 	return id
 }
 

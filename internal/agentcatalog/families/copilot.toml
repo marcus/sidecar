@@ -1,0 +1,12 @@
+# GitHub Copilot CLI. Unchanged from the Go literal.
+#
+# No resume, deliberately. Herdr resumes Copilot as `copilot --resume=<id>`, a
+# joined form this catalog's resume shape cannot express: resume_args are the
+# argv entries before the session value, and every family Sidecar ships passes
+# that value as its own argv word. Recording `--resume` with a separate value
+# would ship a command line nothing has run.
+id = "copilot"
+order = 30
+name = "GitHub Copilot CLI"
+short = "Copilot"
+command = "copilot"

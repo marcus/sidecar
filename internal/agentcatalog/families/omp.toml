@@ -1,0 +1,28 @@
+# OMP (oh-my-pi), a rebranded fork of the Pi coding agent.
+#
+# Sources, read 2026-09-03:
+#   command, install  https://github.com/can1357/oh-my-pi
+#   flags             https://github.com/can1357/oh-my-pi/blob/main/docs/approval-mode.md
+#   resume            https://github.com/can1357/oh-my-pi/blob/main/docs/cli-reference.md
+#                     and packages/coding-agent/src/cli/flag-tables.ts, where
+#                     --resume, -r and --session are all one setter
+#
+# This is OMP's first identity in Sidecar. Herdr ships it hooks-only, with no
+# screen manifest, so nothing here inherits detection rules; a later lane adds
+# the hooks adapter that gives it state.
+#
+# Herdr's agent_resume.rs resumes OMP as `omp --resume=<value>` and comments that
+# it has no --session flag. Both halves are out of date: the flag table above has
+# --session as an alias, and the argument parser splices `--flag=value` into two
+# tokens and then consumes the next token whenever it does not start with a dash,
+# so the space-separated form this catalog builds is the same invocation. The
+# value may be a session-id prefix or a .jsonl path, which is why both resume
+# kinds are recorded.
+id = "omp"
+order = 210
+name = "OMP"
+short = "OMP"
+command = "omp"
+skip_permissions_arg = "--yolo"
+resume_args = ["--resume"]
+resume_kinds = ["id", "path"]

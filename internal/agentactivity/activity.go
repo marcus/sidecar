@@ -258,16 +258,21 @@ func identifyProcessName(command string) string {
 	// the prefix is a Sidecar superset that already covers all four.
 	case name == "muse" || strings.HasPrefix(name, "muse-"):
 		return "muse"
-	// The ten detection-only families (Phase 4 of
-	// docs/plans/active/herdr-detection-parity.md). Sidecar cannot launch any of
-	// them, so the whole of their Sidecar-specific code is this alias case: the
-	// vendored manifest supplies every rule and the engine executes it. The
-	// spellings are Herdr's `lookup_agent` table verbatim, including the ones
-	// carrying a space, which upstream has because it lowercases display names.
-	// agentcatalog.DetectionFamilies is the other half of the pair and
+	// The twelve families whose whole Sidecar detection code is this alias case:
+	// the vendored manifest supplies every rule and the engine executes it, and
+	// none of them has a hand-written process gate. Ten arrived detection-only
+	// in Phase 4 of docs/plans/active/herdr-detection-parity.md and became
+	// launchable when the catalog moved to TOML; `omp` and `mastracode` have no
+	// screen manifest upstream at all, so they are named here only so a pane
+	// running one has an identity for VerifyReportedKind to check a hook report
+	// against.
+	//
+	// The spellings are Herdr's `lookup_agent` table verbatim, including the
+	// ones carrying a space, which upstream has because it lowercases display
+	// names. agentcatalog is the other half of the pair and
 	// TestTheProcessNameVocabularyMatchesTheAgentCatalog keeps the two in step.
 	//
-	// None of the ten needs the versioned-binary prefix rule: `muse` is the only
+	// None of them needs the versioned-binary prefix rule: `muse` is the only
 	// entry in the extracted versioned_binary_prefixes table.
 	case name == "cline":
 		return "cline"
@@ -291,6 +296,10 @@ func identifyProcessName(command string) string {
 		return "qodercli"
 	case oneOf(name, "qwen", "qwen code", "qwen-code"):
 		return "qwen"
+	case name == "omp":
+		return "omp"
+	case oneOf(name, "mastracode", "mastra code", "mastra-code"):
+		return "mastracode"
 	// Deliberately narrower than Herdr's `is_generic_runtime_or_shell`, which
 	// also lists tmux, node, bun, cmd, powershell and python[3[.N]]. That
 	// predicate scores process-tree candidates; this one gates a launch
@@ -369,27 +378,40 @@ func Detect(ob Observation) Result { return DetectManifestResult(ob) }
 
 // Supports reports whether Sidecar has provider-owned activity evidence rules.
 //
-// Since Phase 4 it answers true for twenty agents, not ten: the launchable ten,
-// and the ten detection-only families below. What the second group has is
-// exactly what the first group has for detection purposes — a vendored Herdr
-// manifest and a process gate — and nothing else, which is the point. Supports
-// is a statement about the screen lane, not about launch, resume, or a
-// conversation adapter; agentcatalog.Families and agentcatalog.DetectionOnly are
-// what answer those.
+// It answers true for twenty agents: the ten with a hand-written process gate,
+// and the ten below that reach the engine through the alias table alone. Both
+// groups have the same two things for detection purposes, a vendored Herdr
+// manifest and a gate, which is the point. Supports is a statement about the
+// screen lane, not about launch, resume, or a conversation adapter;
+// agentcatalog.Families and agentcatalog.DetectionOnly are what answer those.
+//
+// `omp` and `mastracode` are deliberately absent. They are launchable catalog
+// families and identifyProcessName names them, but upstream ships them
+// hooks-only with no screen manifest, so there is nothing for this lane to
+// execute and claiming otherwise would put a provider chip on a row whose state
+// could only ever be unknown.
 func Supports(agent string) bool {
 	switch agent {
 	case "codex", "claude", "grok", "antigravity", "pi", "copilot", "cursor", "opencode", "amp", "muse":
 		return true
 	default:
-		return detectionOnly(agent)
+		return aliasGatedFamily(agent)
 	}
 }
 
-// detectionOnly names the ten families Sidecar detects and cannot launch. It is
-// spelled here rather than read from agentcatalog so this package stays free of
-// that import on its hot path; TestDetectionOnlySetMatchesTheCatalog is what
-// stops the two lists drifting.
-func detectionOnly(agent string) bool {
+// aliasGatedFamily names the ten families whose process gate is the alias table
+// rather than a hand-written predicate.
+//
+// It used to be called detectionOnly, and the rename is the whole of what
+// changed when those ten gained launch commands: they were never gated this way
+// *because* they could not be launched, but because nobody had captured the
+// runtime allowances a hand-written gate encodes. That is still true, and the
+// stricter gate is still the right answer for them (see commandGate).
+//
+// It is spelled here rather than read from agentcatalog so this package stays
+// free of that import on its hot path; TestAliasGatedSetMatchesTheCatalog is
+// what stops the two lists drifting.
+func aliasGatedFamily(agent string) bool {
 	switch agent {
 	case "cline", "devin", "droid", "hermes", "kilo", "kimi", "kiro", "maki", "qodercli", "qwen":
 		return true

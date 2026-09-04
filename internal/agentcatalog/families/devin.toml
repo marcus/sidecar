@@ -1,0 +1,21 @@
+# Devin CLI.
+#
+# Sources, read 2026-09-03:
+#   command, install  https://docs.devin.ai/cli
+#   flags, resume     https://docs.devin.ai/cli/reference/commands
+#   resume            also Herdr agent_resume.rs, `devin --resume <id>`
+#
+# No auto-approve flag recorded, and this one is a limitation rather than an
+# absence. Devin's bypass is `--permission-mode dangerous` (aliases `yolo` and
+# `bypass`), two argv entries; the joined `--permission-mode=dangerous` spelling
+# would fit the single-entry field but has not been run against a released Devin
+# CLI, and this catalog does not guess a command line. A future lane that can
+# run the binary should either confirm the joined form or widen the field.
+id = "devin"
+order = 120
+name = "Devin CLI"
+short = "Devin"
+command = "devin"
+aliases = ["devin cli", "devin-cli"]
+resume_args = ["--resume"]
+resume_kinds = ["id"]

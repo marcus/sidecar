@@ -136,6 +136,17 @@ func TestIdentifyAgentInJobNamesAgentsBehindGenericRuntimes(t *testing.T) {
 			want: "qwen",
 		},
 		{
+			// mastracode's package entry point. It resolved to nothing until the
+			// catalog gained a mastracode family, and this is the assertion that
+			// records the change: the package path names the program, the alias
+			// table can now place that name, and the process is identified.
+			name:  "mastracode's package entry point names mastracode",
+			group: 123,
+			processes: []foregroundProcess{job(123, "node.exe", "node.exe",
+				`C:\Users\herdr\AppData\Roaming\npm\node_modules\mastracode\dist\cli.js`)},
+			want: "mastracode",
+		},
+		{
 			// Upstream: identify_agent_in_job_prefers_wrapped_codex.
 			name:  "wrapped codex beats a plain shell member",
 			group: 123,
@@ -307,16 +318,6 @@ func TestIdentifyAgentInJobRefusesRatherThanGuesses(t *testing.T) {
 			processes: []foregroundProcess{job(123, "node.exe",
 				`C:\Users\user\AppData\Local\cursor-agent\versions\2026.08.11-e8db854\node.exe`,
 				`C:\Users\user\AppData\Local\cursor-agent\versions\2026.08.11-e8db854\scripts\postinstall.js`)},
-		},
-		{
-			// mastracode is not a registered Sidecar family (Slice 2's work), so
-			// the package path resolves to a name the alias table cannot place
-			// and the process goes unidentified. Deliberate; see
-			// agentNameFromKnownPackagePath.
-			name:  "mastracode's package entry point resolves to nothing yet",
-			group: 123,
-			processes: []foregroundProcess{job(123, "node.exe", "node.exe",
-				`C:\Users\herdr\AppData\Roaming\npm\node_modules\mastracode\dist\cli.js`)},
 		},
 		{
 			// Upstream: cmdline_argv0_agent_name_requires_exact_agent_basename.

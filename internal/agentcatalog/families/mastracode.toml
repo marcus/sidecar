@@ -1,0 +1,31 @@
+# Mastra Code.
+#
+# Sources, read 2026-09-03:
+#   command, install  https://code.mastra.ai/ and https://registry.npmjs.org/mastracode/latest
+#   flags             https://code.mastra.ai/headless and https://code.mastra.ai/modes
+#   resume            Herdr agent_resume.rs records `mastracode --thread <id>`
+#
+# This is Mastra Code's first identity in Sidecar. Herdr ships it hooks-only,
+# with no screen manifest, so nothing here inherits detection rules; a later lane
+# adds the hooks adapter that gives it state.
+#
+# No auto-approve flag, and this is an absence rather than a limitation. Mastra
+# Code's YOLO is an in-app `/settings` toggle, on by default, presettable only
+# through the MASTRACODE_YOLO environment variable. The two flag spellings that
+# exist are for other modes: `--permission-mode auto` is the headless default,
+# and `--dangerous-auto-approve` is valid only alongside `--acp`. There is no
+# command-line flag that changes the interactive session Sidecar starts.
+#
+# No resume, and this is the same kind of fact. `--thread <id>` is real but
+# headless-only: the CLI routes to headless only when argv carries a prompt, and
+# the interactive TUI parses no flags beyond `plugin`, `--acp` and `--help`. So
+# `mastracode --thread <id>` with no prompt opens a fresh TUI and silently
+# ignores the id, which is worse than having no resume at all. Threads resume
+# automatically per project in the TUI. Herdr's entry is for its own headless
+# invocation, not for starting an interactive agent.
+id = "mastracode"
+order = 220
+name = "Mastra Code"
+short = "Mastracode"
+command = "mastracode"
+aliases = ["mastra code", "mastra-code"]

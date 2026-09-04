@@ -233,3 +233,60 @@ func TestHealthyRepairRouteSurvivesRecheck(t *testing.T) {
 		t.Fatalf("a resolved repair returned to %q", m2.Page())
 	}
 }
+
+// The page lists every launchable family, installed or not, and says which is
+// which. That annotation is the whole reason this page and the creation picker
+// can disagree without reading as a contradiction: the picker answers "what can
+// I start right now" and hides what is missing, and this page answers "what
+// exists" and marks it.
+//
+// The rule is asserted rather than a fixed list of families, because which
+// commands are on PATH is a property of the machine running the test. What must
+// hold everywhere is that a row is annotated exactly when the catalog says its
+// command is absent, and that nothing is annotated before the PATH probe has
+// run, since "not asked" and "not installed" are the same zero value.
+func TestAgentsPageMarksTheFamiliesThatAreNotInstalled(t *testing.T) {
+	m := workspaceFixture(t, nil)
+	m.Open(PageAgents)
+	if agentcatalog.InstalledKnown() {
+		t.Skip("another test in this package has already primed the PATH probe")
+	}
+	if view := ansi.Strip(m.View(200, 60)); strings.Contains(view, "not installed") {
+		t.Fatalf("a family was called not installed before the PATH probe ran:\n%s", view)
+	}
+
+	agentcatalog.PrimeInstalled()
+	view := ansi.Strip(m.View(200, 60))
+	marked := 0
+	for _, family := range agentcatalog.Families() {
+		row := agentRowLine(t, view, family.Short)
+		annotated := strings.Contains(row, "not installed")
+		if want := !agentcatalog.Installed(family.ID); annotated != want {
+			t.Errorf("row for %s reads %q; annotated=%v, want %v", family.ID, row, annotated, want)
+		}
+		if annotated {
+			marked++
+		}
+	}
+	if marked == 0 {
+		t.Skip("every catalog command is installed on this machine, so the annotation has nothing to mark")
+	}
+}
+
+// agentRowLine returns the content pane's rendered line for one family's row.
+// The page paints a nav pane and a content pane side by side, so the row is
+// what follows the divider between them.
+func agentRowLine(t *testing.T, view, short string) string {
+	t.Helper()
+	for _, line := range strings.Split(view, "\n") {
+		_, content, split := strings.Cut(line, "││")
+		if !split {
+			continue
+		}
+		if strings.HasPrefix(strings.TrimSpace(content), short+" ") {
+			return strings.TrimSpace(content)
+		}
+	}
+	t.Fatalf("no row labelled %q in:\n%s", short, view)
+	return ""
+}

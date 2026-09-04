@@ -1,0 +1,10 @@
+# Codex CLI. Unchanged from the Go literal; the resume shape matches Herdr's
+# agent_resume.rs (`codex resume <id>`).
+id = "codex"
+order = 20
+name = "Codex CLI"
+short = "Codex"
+command = "codex"
+skip_permissions_arg = "--dangerously-bypass-approvals-and-sandbox"
+resume_args = ["resume"]
+resume_kinds = ["id"]

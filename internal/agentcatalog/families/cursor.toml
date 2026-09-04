@@ -1,0 +1,11 @@
+# Cursor Agent. Unchanged from the Go literal.
+id = "cursor"
+order = 50
+name = "Cursor Agent"
+short = "Cursor"
+command = "cursor-agent"
+skip_permissions_arg = "-f"
+aliases = ["cursor-cli"]
+adapter_id = "cursor-cli"
+resume_args = ["--resume"]
+resume_kinds = ["id"]

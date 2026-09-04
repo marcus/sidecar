@@ -1,0 +1,13 @@
+# Claude Code. Command, auto-approve flag and resume verified against the
+# installed CLI on the maintainer's machine and unchanged since the catalog was
+# a Go literal; the resume shape matches Herdr's agent_resume.rs.
+id = "claude"
+order = 10
+name = "Claude Code"
+short = "Claude"
+command = "claude"
+skip_permissions_arg = "--dangerously-skip-permissions"
+aliases = ["claude-code"]
+adapter_id = "claude-code"
+resume_args = ["--resume"]
+resume_kinds = ["id"]

@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/marcus/sidecar/internal/agentcatalog"
 	"github.com/marcus/sidecar/internal/tty"
 	"github.com/marcus/sidecar/internal/workspacelist"
 )
@@ -246,5 +247,24 @@ func TestIsDefaultShellName(t *testing.T) {
 				t.Errorf("isDefaultShellName(%q) = %v, want %v", tt.name, got, tt.expected)
 			}
 		})
+	}
+}
+
+// The auto-approve checkbox reads this map, and the launch path reads it again
+// to append the flag. A family the map has never heard of is a checkbox that is
+// offered, ticked, and silently does nothing, so the map answers for every
+// family Sidecar can start rather than for a list somebody remembered to
+// extend.
+func TestSkipPermissionsFlagsAnswerForEveryLaunchableFamily(t *testing.T) {
+	families := append(agentcatalog.Families(), agentcatalog.LegacyFamilies()...) //nolint:gocritic // one pass over both launchable buckets
+	for _, family := range families {
+		flag, ok := SkipPermissionsFlags[AgentType(family.ID)]
+		if !ok {
+			t.Errorf("SkipPermissionsFlags has no entry for %q; its auto-approve checkbox would do nothing", family.ID)
+			continue
+		}
+		if flag != family.SkipPermissionsArg {
+			t.Errorf("SkipPermissionsFlags[%q] = %q, want %q from the catalog", family.ID, flag, family.SkipPermissionsArg)
+		}
 	}
 }
