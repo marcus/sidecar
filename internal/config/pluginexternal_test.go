@@ -78,6 +78,21 @@ func TestExternalPluginValidationRefusals(t *testing.T) {
 			want: "configured more than once",
 		},
 		{
+			name:    "collides with an embedded plugin",
+			entries: []PluginInstanceConfig{{ID: "notes", Command: []string{"sidecar-notes"}}},
+			want:    `plugin id "notes" is already the id of Sidecar's built-in Notes surface`,
+		},
+		{
+			name:    "collides with a global plugin",
+			entries: []PluginInstanceConfig{{ID: "tasks", Command: []string{"sidecar-tasks"}}},
+			want:    `plugin id "tasks" is already the id of Sidecar's built-in Tasks surface`,
+		},
+		{
+			name:    "collides with an app-owned global tab",
+			entries: []PluginInstanceConfig{{ID: " sessions ", Command: []string{"sidecar-sessions"}}},
+			want:    `is already the id of Sidecar's built-in Sessions surface`,
+		},
+		{
 			name:    "inline secret in passEnv",
 			entries: []PluginInstanceConfig{{ID: "dex", Command: []string{"dex"}, PassEnv: []string{"TOKEN=hunter2"}}},
 			want:    "looks like an inline value",

@@ -171,3 +171,28 @@ func TestPanelsPageListsEverySurfaceInTheRealCatalog(t *testing.T) {
 		}
 	}
 }
+
+// internal/config restates the IDs Sidecar's own surfaces answer to, because
+// it is a leaf package and cannot read the descriptor catalog. This is the
+// test that keeps the restatement true: a plugin added to the catalog, or a
+// global tab added to the app shell, without being named there would let an
+// external plugin take its id and paint two tabs with one identity.
+func TestReservedPluginIDsCoverTheCatalog(t *testing.T) {
+	for _, d := range Descriptors() {
+		name, ok := config.ReservedPluginID(d.ID)
+		if !ok {
+			t.Errorf("descriptor %q is not in config's reserved id list; an external plugin could take its id", d.ID)
+			continue
+		}
+		if name != d.Name {
+			t.Errorf("reserved id %q is called %q in config and %q in the catalog", d.ID, name, d.Name)
+		}
+	}
+	// The two app-owned global tabs have no descriptor and are just as
+	// unavailable as an id.
+	for _, id := range []string{app.GlobalSessions, app.GlobalActivity} {
+		if _, ok := config.ReservedPluginID(id); !ok {
+			t.Errorf("app-owned global surface %q is not in config's reserved id list", id)
+		}
+	}
+}

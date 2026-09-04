@@ -492,6 +492,42 @@ func TestPluginAddPrintsThePlanAndStartsNothing(t *testing.T) {
 	}
 }
 
+// An id that Sidecar's own surfaces already answer to is refused before
+// anything is written. The id is the config key, the CLI name and the persisted
+// tab id, so a second "notes" is not a duplicate row: the header paints two
+// tabs, every lookup answers with the first, and the plugin's tab is reachable
+// only by click.
+func TestPluginAddRefusesAnIDThatCollidesWithABuiltInSurface(t *testing.T) {
+	script := filepath.Join(t.TempDir(), "plugin.sh")
+	if err := os.WriteFile(script, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct{ id, surface string }{
+		{"notes", "Notes"},
+		{"tasks", "Tasks"},
+		{"td-monitor", "td"},
+		{"sessions", "Sessions"},
+	} {
+		t.Run(tc.id, func(t *testing.T) {
+			env, _, errOut := pluginProtocolEnv(t, `{}`)
+			code := runPluginAdd(env, []string{tc.id, "--yes", "--json", "--command", script})
+			if code != pluginExitUsage {
+				t.Fatalf("exit %d, want %d", code, pluginExitUsage)
+			}
+			if !strings.Contains(errOut.String(), tc.surface) || !strings.Contains(errOut.String(), tc.id) {
+				t.Fatalf("the refusal does not name the collision: %s", errOut.String())
+			}
+			cfg, err := config.Load()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(cfg.Plugins.External) != 0 {
+				t.Fatalf("a refused add still wrote an entry: %+v", cfg.Plugins.External)
+			}
+		})
+	}
+}
+
 func TestPluginAddEnableDisableRemove(t *testing.T) {
 	script := filepath.Join(t.TempDir(), "plugin.sh")
 	if err := os.WriteFile(script, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {

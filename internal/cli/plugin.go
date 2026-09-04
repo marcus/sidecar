@@ -722,6 +722,23 @@ func writePluginListText(env Env, items []pluginJSONItem) {
 	}
 }
 
+// reservedPluginID reports whether id already names one of Sidecar's own
+// surfaces, and what that surface is called.
+//
+// It reads the descriptor catalog, which the CLI can see and internal/config
+// cannot, and falls back to the list config restates for the app-owned global
+// tabs that have no descriptor. Validation refuses the same collision on the
+// next load; refusing here means the file never gets the entry that would be
+// refused, and the message names the surface rather than the section.
+func reservedPluginID(id string) (string, bool) {
+	for _, d := range assembly.Descriptors() {
+		if d.ID == id {
+			return d.Name, true
+		}
+	}
+	return config.ReservedPluginID(id)
+}
+
 // pluginItems projects the descriptor catalog onto the reported rows. It is a
 // pure function of the catalog and the configuration, so the CLI's answer and
 // the settings page's cannot disagree about what is enabled.
@@ -1827,6 +1844,11 @@ func runPluginAdd(env Env, args []string) int {
 	}
 	if !requireProtocolFlag(env, nil) {
 		return pluginExitRefused
+	}
+	if name, reserved := reservedPluginID(entry.ID); reserved {
+		cliErrf(env.Stderr, "%q is the id of Sidecar's built-in %s surface; the id is the config key, the CLI name and the persisted tab id, so choose another one\n",
+			entry.ID, name)
+		return pluginExitUsage
 	}
 	if existing, found := cfg.PluginInstance(entry.ID); found {
 		cliErrf(env.Stderr, "a plugin named %q is already configured in %s\n", entry.ID, existing.Source)
