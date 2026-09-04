@@ -260,10 +260,43 @@ type hookEntrySpec struct {
 	// matcher is the canonical group matcher: nil means the group carries no
 	// matcher key at all (Codex), non-nil is the exact value (Claude's "*").
 	matcher *string
+	// events are the hook events the canonical entry is installed under, in the
+	// order the installer writes them. Empty means the single event
+	// SessionStart, which is what every entry integration wrote before Devin.
+	//
+	// Devin is why this is a list. Its provider half does not trust any one
+	// event to carry the session id -- upstream registers the same session
+	// action on six of them and falls back to listing sessions when the payload
+	// is silent -- so an integration that fired only on SessionStart would bind
+	// the pane only when Devin happened to volunteer the id at startup.
+	events []string
 	// canonical maps every asset version Sidecar has ever shipped to the exact
 	// entry object it shipped, newest last. An installed entry equal to an
 	// older version is "outdated" rather than foreign or damaged.
 	canonical []versionedEntry
+}
+
+// defaultHookEvent is the event an entry integration installs under when its
+// spec names none. It is SessionStart for every provider whose session identity
+// is knowable the moment a conversation opens.
+const defaultHookEvent = "SessionStart"
+
+// eventNames is the ordered event set the spec installs under.
+func (s hookEntrySpec) eventNames() []string {
+	if len(s.events) == 0 {
+		return []string{defaultHookEvent}
+	}
+	return s.events
+}
+
+// hasEvent reports whether an event name is one this spec installs under.
+func (s hookEntrySpec) hasEvent(name string) bool {
+	for _, want := range s.eventNames() {
+		if want == name {
+			return true
+		}
+	}
+	return false
 }
 
 type versionedEntry struct {
@@ -284,9 +317,9 @@ type ownedHookEntry struct {
 	// version is the canonical asset version the entry matches, "" when the
 	// entry has been modified.
 	version string
-	// groupCanonical reports whether the entry sits under SessionStart in a
-	// group whose matcher is the canonical one — the conditions under which the
-	// hook actually fires the way Sidecar qualified it.
+	// groupCanonical reports whether the entry sits under one of the spec's own
+	// events in a group whose matcher is the canonical one — the conditions
+	// under which the hook actually fires the way Sidecar qualified it.
 	groupCanonical bool
 }
 
@@ -301,11 +334,29 @@ type hookTreeScan struct {
 }
 
 // converged reports whether the tree already holds exactly the bundled
-// integration: one owned entry, byte-equivalent to the current canonical one,
-// in a canonical group under SessionStart.
+// integration: one owned entry per event the spec names, each byte-equivalent
+// to the current canonical entry and each in a canonical group.
 func (s hookTreeScan) converged(spec hookEntrySpec) bool {
-	return s.parseErr == "" && len(s.owned) == 1 &&
-		s.owned[0].version == spec.current().version && s.owned[0].groupCanonical
+	if s.parseErr != "" {
+		return false
+	}
+	events := spec.eventNames()
+	if len(s.owned) != len(events) {
+		return false
+	}
+	count := map[string]int{}
+	for _, o := range s.owned {
+		if o.version != spec.current().version || !o.groupCanonical {
+			return false
+		}
+		count[o.event]++
+	}
+	for _, event := range events {
+		if count[event] != 1 {
+			return false
+		}
+	}
+	return true
 }
 
 // scanHookTree reads the hooks tree out of a configuration file.
@@ -372,7 +423,7 @@ func scanHookTree(exists bool, b []byte, spec hookEntrySpec) hookTreeScan {
 						owned.version = v.version
 					}
 				}
-				owned.groupCanonical = ev.key == "SessionStart" && groupMatcherCanonical(group, spec.matcher)
+				owned.groupCanonical = spec.hasEvent(ev.key) && groupMatcherCanonical(group, spec.matcher)
 				s.owned = append(s.owned, owned)
 			}
 		}
@@ -478,24 +529,35 @@ func stripOwnedHookEntries(s hookTreeScan) ([]jsonMember, bool, error) {
 // appendCanonicalGroup appends the bundled group to hooks.SessionStart,
 // creating the containers it needs and never reordering what exists.
 func appendCanonicalGroup(top []jsonMember, group json.RawMessage) ([]jsonMember, error) {
+	return appendCanonicalGroups(top, []string{defaultHookEvent}, group)
+}
+
+// appendCanonicalGroups appends the bundled group under each named event, in
+// order, creating the containers it needs and never reordering what exists.
+func appendCanonicalGroups(top []jsonMember, eventNames []string, group json.RawMessage) ([]jsonMember, error) {
 	top = append([]jsonMember(nil), top...)
 	hooksIdx, ok := lastMember(top, "hooks")
 	if !ok {
-		events := marshalJSONObject([]jsonMember{{key: "SessionStart", val: marshalJSONArray([]json.RawMessage{group})}})
-		return append(top, jsonMember{key: "hooks", val: events}), nil
+		var events []jsonMember
+		for _, name := range eventNames {
+			events = append(events, jsonMember{key: name, val: marshalJSONArray([]json.RawMessage{group})})
+		}
+		return append(top, jsonMember{key: "hooks", val: marshalJSONObject(events)}), nil
 	}
 	events, err := parseJSONObject(top[hooksIdx].val)
 	if err != nil {
 		return nil, err
 	}
-	if evIdx, ok := lastMember(events, "SessionStart"); ok {
-		groups, err := parseJSONArray(events[evIdx].val)
-		if err != nil {
-			return nil, err
+	for _, name := range eventNames {
+		if evIdx, ok := lastMember(events, name); ok {
+			groups, err := parseJSONArray(events[evIdx].val)
+			if err != nil {
+				return nil, err
+			}
+			events[evIdx].val = marshalJSONArray(append(groups, group))
+			continue
 		}
-		events[evIdx].val = marshalJSONArray(append(groups, group))
-	} else {
-		events = append(events, jsonMember{key: "SessionStart", val: marshalJSONArray([]json.RawMessage{group})})
+		events = append(events, jsonMember{key: name, val: marshalJSONArray([]json.RawMessage{group})})
 	}
 	top[hooksIdx].val = marshalJSONObject(events)
 	return top, nil

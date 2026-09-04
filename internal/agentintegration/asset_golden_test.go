@@ -60,6 +60,12 @@ var assetGoldens = []assetGolden{
 	// does. A change to any of them lands here, which is the intent: the
 	// event-to-lane mapping is the part a tier is granted against.
 	{provider: KimiProvider, name: "config.toml", version: "1", checksum: "438867d8dc4b6406dd28bb2829438221f0c96e5b57c7d840819e7a729196bd39"},
+	// Devin's asset is not a file either: it is the six hook entries the
+	// installer writes into the user's config.json. So this checksum covers the
+	// six event names, the absence of a matcher, the exact CLI command each
+	// entry spawns, and the timeout -- which is the whole of what the
+	// integration does, and which is the part a tier is granted against.
+	{provider: DevinProvider, name: "config.json", version: "1", checksum: "3ab2713ba5c12fc3071a1b83d230d0fb16ef2f399c347d554f94e06d407f50a7"},
 }
 
 // bumpInstructions is the whole point of the guard: a failure here has to tell
@@ -69,7 +75,7 @@ const bumpInstructions = `
 An asset's bytes changed. Before updating the golden below, do this in order:
 
   1. Bump the asset's version constant (OpenCodeAssetVersion, CodexAssetVersion,
-     ClaudeAssetVersion, PiAssetVersion, KiloAssetVersion, or KimiAssetVersion) if it has not already moved. An installed copy is
+     ClaudeAssetVersion, PiAssetVersion, KiloAssetVersion, KimiAssetVersion, or DevinAssetVersion) if it has not already moved. An installed copy is
      recognised as outdated by its version, so without this every existing
      install keeps reporting itself current while running different code.
   2. Update the matching AssetVersion in internal/agentlifecycle/capabilities.json,

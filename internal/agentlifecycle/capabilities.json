@@ -312,5 +312,28 @@
     "orderingGuaranteed": false,
     "sourceDoc": "https://moonshotai.github.io/kimi-code/en/customization/hooks",
     "sourceVersionNote": "kimi-code 0.40.1 on darwin/arm64, traced 2026-09-03 against openrouter openai/gpt-4.1-mini. The contract was first read from Kimi Code CLI's own published hooks reference (twenty events; a four-field [[hooks]] schema of event, matcher, command and timeout, where any extra field makes the whole config fail to load; a stdin payload carrying hook_event_name, session_id, session_title, client_type and cwd; fail-open exit-code semantics) and its configuration reference ($KIMI_CODE_HOME, ~/.kimi-code/config.toml); every load-bearing claim is now backed by a capture. Kimi 0.40.1 was installed into a scratch prefix with KIMI_INSTALL_DIR and KIMI_NO_MODIFY_PATH=1, its data directory redirected with KIMI_CODE_HOME, and driven in a real TUI inside a Sidecar-managed shell on a private tmux server with XDG_STATE_HOME, -config and SIDECAR_ISOLATED_STATE=1 under a scratch tree; the user's real ~/.kimi-code was never created. Sidecar's own block was installed by `sidecar agent integration install kimi` rather than by hand, so the run proves the installer too, and `kimi doctor` reported the resulting config.toml valid. The hooks lane was proved end to end: the store recorded working(turn_start), working(tool_use), blocked(permission_request), working(permission_resolved), idle(turn_complete) and idle(cancelled) from source sidecar.kimi.hooks with store-assigned sequences 1..8 and no gaps. The event-to-lane mapping is ported row for row from Herdr's kimi integration at HERDR_INTEGRATION_VERSION=7, whose minimum supported Kimi Code is 0.14.0; see internal/agentintegration/portedfrom.go."
+  },
+  {
+    "schemaVersion": 1,
+    "provider": "devin",
+    "source": "sidecar.devin.hooks",
+    "assetVersion": "1",
+    "tier": "screen-fallback",
+    "evidence": "docs-only",
+    "minProviderVersion": "",
+    "testedProviderRange": "",
+    "covered": [],
+    "knownGaps": [
+      "NOT TRACED, and that is why the tier is screen-fallback rather than session-identity. The Devin CLI is not installed on the machine this port was written on and its published installer requires a Devin account, so no released version fired the hook here. session-identity is the tier this asset is built to hold and the only thing between it and holding it is a capture: one SessionStart (or any of the other five events) carrying a session id, sanitized into testdata/traces/devin, promotes this entry and nothing else has to change.",
+      "The shipped asset is a session-identity hook entry and nothing else, by design. State comes from the screen lane in Sidecar and in Herdr alike, which is why Herdr's own authority table records devin as session_identity rather than hooks.",
+      "The entry is installed under SIX events -- SessionStart, UserPromptSubmit, PreToolUse, PostToolUse, PermissionRequest and Stop -- because upstream does not trust any one of them to carry the session id. Herdr's asset falls back to `devin list --format json` when a payload is silent, and disallows even that fallback on UserPromptSubmit and on SessionStart with source=startup. The cost is one `sidecar agent report-session` process per event rather than one per session, which on a tool-heavy turn is six times the process count of the claude and codex entries. That is the price of matching upstream's coverage with no guessing, and it is why this is the only Sidecar integration installed under more than one event.",
+      "Upstream's session-list fallback is deliberately not copied. It runs `devin list --format json` and matches an entry by working directory, which is a guess about which of several conversations a pane holds; a wrong session binding is acted on by a cold restore, so Sidecar records nothing instead and waits for an event that names the session outright.",
+      "Devin's payload spells the identifier `sessionId` as well as `session_id`. Upstream reads both, so `sidecar agent report-session --hook-stdin` now does too. Which spelling a released Devin actually sends is untraced; reading both is what makes that not matter.",
+      "The integration manages one file, $XDG_CONFIG_HOME/devin/config.json or ~/.config/devin/config.json. Devin merges its configuration from more than that file is not something this port established either way, so the honest statement is that Sidecar owns its own entries in the user-level file and can never own the effective hook set.",
+      "Ownership is by the report-session command and nothing else, so an entry of the user's that WRAPS that command in a script of their own is never adopted, overwritten or deleted -- and is also invisible to `integration status`, which would let it report alongside Sidecar's own. That fails in the documented direction and is the same limitation every entry integration has."
+    ],
+    "orderingGuaranteed": false,
+    "sourceDoc": "https://docs.devin.ai/cli",
+    "sourceVersionNote": "Not run. The contract is read from Herdr's devin integration at HERDR_INTEGRATION_VERSION=2 (src/integration/mod.rs DEVIN_HOOK_EVENTS, src/integration/targets.rs install_devin, and the vendored upstream/devin/herdr-agent-state.sh, which is the only Herdr asset that reads a hook payload under two spellings and the only one with a session-list fallback) and from the Devin CLI documentation the catalog entry cites. No released Devin version was executed for this port and no trace backs any claim in it; see internal/agentintegration/portedfrom.go."
   }
 ]

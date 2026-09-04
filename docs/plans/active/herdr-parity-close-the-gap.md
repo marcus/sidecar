@@ -261,6 +261,18 @@ Answer open question 3 first. Then port in order of live use, confirming for eac
 
 **Exit gate:** every port has a fixture, a capability entry earned by traces, and a `ported-from` header the sync report can diff.
 
+#### Result for `devin`, 2026-09-04 (`td-73c4ff`)
+
+**Shipped untraced, at `screen-fallback` on `docs-only` evidence, and the tier is the only thing waiting on evidence.** Devin is not installed on this machine and its published installer requires a Devin account, so no released version fired the hook here. Everything else the exit gate names is in place: a fixture for the event table, a fixture for every branch of the payload extraction, a `portedFrom` row at `HERDR_INTEGRATION_VERSION=2` against the vendored commit, and a capability entry whose first known gap says in its own words what a capture would change and that nothing else would have to.
+
+**This is the first Sidecar integration installed under more than one hook event, and that is a property of Devin rather than a preference.** Upstream maps all six of `SessionStart`, `UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `PermissionRequest` and `Stop` to the same session action, and its asset then falls back to `devin list --format json` when a payload names no session, disallowing even that on `UserPromptSubmit` and on `SessionStart` with `source=startup`. Read together those two facts say upstream does not trust any single Devin event to carry the identifier, so an entry under `SessionStart` alone would bind the pane when Devin volunteered the id at startup and silently never otherwise. `hookEntrySpec` therefore grew an ordered event list; every existing integration passes none and gets `SessionStart`, so Claude, Codex and Kimi are byte-identical across the change.
+
+**The session-list fallback is deliberately not copied, and that is the one place this port is narrower than Herdr.** It guesses which of several conversations a working directory belongs to, and a wrong session binding is acted on by a cold restore, so the pane would offer to resume the wrong conversation. Sidecar records nothing when a payload is silent and lets the next event that names the session bind the pane.
+
+**One CLI change, with a fixture per branch.** Devin is the first provider whose payload is not uniformly snake_case: Herdr reads `session_id` then `sessionId` and takes the first non-empty string. `hookPayload` now reads both, snake_case winning, so the two implementations resolve one payload to one conversation. `internal/cli/testdata/devin/payloads.tsv` drives both spellings, both empty, neither present, transcript-path-only, a sub-agent payload, and one that cannot be decoded at all, and a guard fails if any documented outcome stops appearing in the file.
+
+**A structural note for the lanes that follow.** The four session-identity ports in this lane are instances of one `sessionEntryAdapter` in `internal/agentintegration/sessionentry.go` rather than four copies of `claude_install.go`. The per-provider file is data: where the settings file is, what relocates it, which events, what matcher, what timeout. Claude and Codex keep their own adapters untouched, because Codex edits a second TOML file and neither was written against this shape.
+
 ### Slice 5 — The launch catalog moves to TOML and grows to every recognised agent (medium)
 
 Today `internal/agentcatalog` holds ten launchable families as a Go slice and ten detection-only families as a second slice. The knowledge in the first is small and flat: a command, an auto-approve flag, resume arguments, aliases, an adapter id. That is configuration, and it belongs in data a user or an agent can read and extend without a rebuild.

@@ -171,6 +171,27 @@ var portedFrom = []PortedFrom{
 			"same upstream shape; no --seq is sent, because Sidecar's store assigns; and each row carries a " +
 			"bounded Sidecar reason code, which Herdr's wire has no vocabulary for.",
 	},
+	{
+		Provider:    DevinProvider,
+		UpstreamID:  "devin",
+		UpstreamDir: "devin",
+		Version:     "2",
+		Commit:      herdrVendoredCommit,
+		Evidence: "Ported from Herdr's devin integration at that commit, where the vendored " +
+			"upstream/devin/herdr-agent-state.sh carries HERDR_INTEGRATION_VERSION=2. The provider half is the six " +
+			"(event, action) rows of DEVIN_HOOK_EVENTS in src/integration/mod.rs -- SessionStart, UserPromptSubmit, " +
+			"PreToolUse, PostToolUse, PermissionRequest and Stop, every one of them mapped to `session` -- plus the " +
+			"file the entries go in (config.json, not settings.json) and the absence of a matcher, which is what " +
+			"install_devin's ensure_command_hook(.., None) writes. All of that is kept verbatim. Three deliberate " +
+			"differences, each with its reason in devin_install.go: the transport is Sidecar's, so the dropped shell " +
+			"script and its python3 dependency are gone and the six config entries invoke the CLI directly, exactly " +
+			"as the claude and codex adapters already do with the same upstream shape; no --seq is sent, because " +
+			"Sidecar's store assigns; and upstream's `devin list --format json` fallback is NOT copied, because it " +
+			"guesses which conversation a working directory belongs to and a wrong session binding is acted on by a " +
+			"cold restore. The payload's camelCase spelling IS carried: upstream reads both session_id and sessionId, " +
+			"so internal/cli's hookPayload now reads both, with a fixture for each. NOT traced: no capture of a live " +
+			"Devin session backs any of it, which is why the capability entry is docs-only at screen-fallback.",
+	},
 }
 
 // PortedFromRecords returns the provenance of every Sidecar integration asset.

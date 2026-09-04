@@ -1,0 +1,22 @@
+# The events Sidecar's Devin session-identity entry is installed under, in the
+# order the installer writes them.
+#
+# This is a translation of DEVIN_HOOK_EVENTS in Herdr's src/integration/mod.rs at
+# HERDR_INTEGRATION_VERSION=2, and it is a fixture rather than a table read out
+# of the Go code so a reviewer can diff it against upstream directly on the next
+# sync. Every upstream row's action is `session`, which Sidecar spells as the
+# report-session verb; upstream has no other action for Devin, because its
+# lifecycle rows were removed at version 2 (DEVIN_REMOVED_LIFECYCLE_HOOK_EVENTS
+# is the list of what went away, and Sidecar does not reinstate any of it).
+#
+# `matcher` is `-` for every row because install_devin calls ensure_command_hook
+# with matcher None, unlike the qodercli and qwen installers beside it. A matcher
+# key is therefore absent from the written group, not present and empty.
+#
+# event	matcher	verb
+SessionStart	-	report-session
+UserPromptSubmit	-	report-session
+PreToolUse	-	report-session
+PostToolUse	-	report-session
+PermissionRequest	-	report-session
+Stop	-	report-session

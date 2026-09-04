@@ -33,6 +33,7 @@ This is enforced rather than documented. `Capability.TierFor` polices every tier
 | Pi | 0.84.3 | real-trace | `advisory` | lifecycle authority | blocking is structurally impossible; `advisory` is the ceiling and is reached |
 | Kilo Code | 7.5.9 | real-trace | `advisory` | lifecycle authority | cancellation is indistinguishable and the shipped asset releases nothing on exit, so `advisory` is the ceiling and is reached |
 | Kimi Code | 0.40.1 | real-trace | `advisory` | lifecycle authority | session identity is refused by Sidecar's own catalog, and process exit is unclaimed by choice; `full` needs both |
+| Devin CLI | not run | docs-only | `screen-fallback` | session only | not traced; one capture carrying a session id promotes it to `session-identity` and nothing else has to change |
 
 Pi's row went out of `capabilities.json` when nothing could produce a report for it, came back at `session-identity` when `PiAdapter` and `assets/pi/sidecar-lifecycle.js` shipped, and is now at `advisory` on `real-trace` evidence because a live Pi 0.84.3 session has been traced. It is the only row here that has reached its own ceiling: `advisory` is as high as Pi can ever go, because `full` needs `blocked_on_request` and `unblocked` and Pi ships no permission system to produce either. See "Why the Pi entry was retracted, and what brought it back".
 
@@ -311,6 +312,32 @@ The installer owns one region of `config.toml`, delimited by two marker comments
 
 One hole in the ownership rule is worth recording because it is a real limit rather than a bug. Ownership reads the first word of a hook's command, so a copy of Sidecar's own command placed outside the managed block is detected and every mutation refuses. A hook that *wraps* that command in a script of the user's is not: a wrapper is not the `sidecar` binary. That fails in the documented direction — their entry is never adopted or deleted — but such a duplicate reports alongside Sidecar's own and is invisible to `integration status`. It was observed during the proof run, where a debug wrapper produced a second `idle` report for one `Stop`.
 
+## Devin CLI
+
+**Source:** Herdr's devin integration at `HERDR_INTEGRATION_VERSION=2` (`DEVIN_HOOK_EVENTS` in `src/integration/mod.rs`, `install_devin` in `src/integration/targets.rs`, and the vendored `upstream/devin/herdr-agent-state.sh`), plus the Devin CLI documentation the catalog entry cites. **Not traced.** No released Devin was executed for this port, so the entry is `screen-fallback` on `docs-only` evidence and claims nothing.
+
+Devin keeps hooks in `$XDG_CONFIG_HOME/devin/config.json`, defaulting to `~/.config/devin/config.json`. The schema is Claude Code's nested group shape: `hooks` → event → `[{matcher?, hooks: [{type, command, timeout}]}]`. Sidecar adds one session-identity entry and owns nothing else in the file. The integration is session identity only, which is also what Herdr's own authority table records for Devin, so state comes from the screen lane in both projects.
+
+### Six events, and why that is not over-installing
+
+This is the only Sidecar integration installed under more than one event, and the reason is a property of Devin rather than a preference. Upstream maps all six of `SessionStart`, `UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `PermissionRequest` and `Stop` to the same `session` action, and its asset then does something no other Herdr asset does: when the payload names no session it runs `devin list --format json` and matches an entry by working directory — except on `UserPromptSubmit`, and except on `SessionStart` with `source=startup`, where that fallback is explicitly disallowed. Read together, those two facts say upstream does not trust any single Devin event to carry the identifier. An integration that fired only on `SessionStart` would therefore bind the pane when Devin happened to volunteer the id at startup and silently never otherwise, which is the exact failure a session-identity integration exists to prevent.
+
+The cost is real and is recorded rather than hidden: six `sidecar agent report-session` processes per tool-calling turn rather than one per session. That is the price of matching upstream's coverage without guessing.
+
+### The fallback that is deliberately not copied
+
+Sidecar's `report-session` reads the payload and nothing else. It never runs another provider's CLI, never parses its output, and never decides which of several conversations a working directory belongs to. A wrong session binding is acted on by a cold restore, so a guess here is worse than no binding at all: the pane would offer to resume the wrong conversation. When the payload is silent Sidecar records nothing, says so, and the next event that does carry the id binds the pane.
+
+### The camelCase spelling, and what it cost
+
+Devin is the first provider whose payload is not uniformly snake_case. Herdr's asset reads `session_id` and then `sessionId`, taking the first non-empty string, which is a statement that a released Devin has been seen writing the camelCase one. `internal/cli`'s `hookPayload` now reads both, snake_case winning when a payload carries both, so the two implementations resolve the same payload to the same conversation. Every other provider omits the second field, so nothing else changes. `internal/cli/testdata/devin/payloads.tsv` drives every branch — both spellings, both empty, neither present, transcript-path-only, a sub-agent payload, and one that cannot be decoded at all.
+
+Which spelling a released Devin actually sends is untraced. Reading both is what makes that not matter.
+
+### What promoting this entry needs
+
+One capture. A `SessionStart` — or any of the other five events — from a released Devin carrying a session id, sanitized into `internal/agentlifecycle/testdata/traces/devin/` with a provenance row, moves the entry from `screen-fallback`/`docs-only` to `session-identity`/`real-trace`. Nothing else about the port has to change; the tier is the only thing waiting on evidence.
+
 ## Catalog agents evaluated but not built
 
 These are recorded rather than omitted so that "evaluated, and deliberately not built" is distinguishable from "never looked at". All are `screen-fallback` with `evidence: none`: **none is trace-backed**, so each selects a candidate rather than earning a tier, and `TierFor` would refuse them anything else regardless.
@@ -361,7 +388,7 @@ The third is the dangerous one, because nothing in a Sidecar release notices it.
 
 ### When Sidecar changes an asset
 
-1. Bump the asset version constant (`OpenCodeAssetVersion`, `CodexAssetVersion`, `ClaudeAssetVersion`, `PiAssetVersion`, `KimiAssetVersion`).
+1. Bump the asset version constant (`OpenCodeAssetVersion`, `CodexAssetVersion`, `ClaudeAssetVersion`, `PiAssetVersion`, `KimiAssetVersion`, `DevinAssetVersion`).
 2. Append the superseded entry to that adapter's canonical history, so an installed copy of the old version reads as `outdated` rather than as damage.
 3. Move `assetVersion` in `capabilities.json` to match.
 4. Requalify against the traces — a new asset consuming the same events still needs to be shown to consume them correctly.

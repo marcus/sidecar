@@ -196,12 +196,32 @@ func parseReportSessionFlags(env Env, args []string, help string) (reportSession
 // model names — is deliberately not decoded: a field this struct does not name
 // is a field that cannot reach a Sidecar record.
 type hookPayload struct {
-	SessionID      string `json:"session_id"`
+	SessionID string `json:"session_id"`
+	// SessionIDCamel is the same field under the spelling Devin also uses.
+	//
+	// Devin is the first provider whose payload is not uniformly snake_case:
+	// Herdr's own devin asset reads "session_id" and "sessionId" in that order
+	// and takes whichever is a non-empty string, which is a statement that a
+	// released Devin has been seen writing the camelCase one. Reading only
+	// snake_case would leave the pane unbound on exactly those payloads, and
+	// silently, because a hook that finds no session records nothing by design.
+	// Every other provider omits it, so the second spelling costs nothing.
+	SessionIDCamel string `json:"sessionId"`
 	TranscriptPath string `json:"transcript_path"`
 	HookEventName  string `json:"hook_event_name"`
 	// AgentID is set when the event belongs to a sub-agent rather than the
 	// conversation occupying the pane.
 	AgentID string `json:"agent_id"`
+}
+
+// sessionID is the conversation identifier the payload names, under either
+// spelling. Snake_case wins when a payload carries both, which is the order
+// upstream reads them in.
+func (p hookPayload) sessionID() string {
+	if id := strings.TrimSpace(p.SessionID); id != "" {
+		return id
+	}
+	return strings.TrimSpace(p.SessionIDCamel)
 }
 
 // readHookPayload decodes a bounded provider payload from stdin.
@@ -333,8 +353,8 @@ func runAgentReportSession(env Env, args []string) int {
 			})
 		}
 		switch {
-		case strings.TrimSpace(payload.SessionID) != "":
-			refKind, value = agentsession.RefID, strings.TrimSpace(payload.SessionID)
+		case payload.sessionID() != "":
+			refKind, value = agentsession.RefID, payload.sessionID()
 		case strings.TrimSpace(payload.TranscriptPath) != "":
 			refKind, value = agentsession.RefPath, strings.TrimSpace(payload.TranscriptPath)
 		default:

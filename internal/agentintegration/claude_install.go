@@ -5,6 +5,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strconv"
 
 	"github.com/marcus/sidecar/internal/agentlifecycle"
 )
@@ -199,6 +200,9 @@ func scanEntryFile(file FileState, spec hookEntrySpec) ([]byte, hookTreeScan) {
 // bytes are compared with the bundled entry, so a hand-edited or duplicated
 // entry reads as needs-repair rather than current.
 func entryAssetStatus(dir, file FileState, scan hookTreeScan, spec hookEntrySpec, name string) (agentlifecycle.IntegrationStatus, string, string) {
+	// wanted is how many owned entries a converged file holds: one per event
+	// the spec installs under, which is one for every integration except Devin.
+	wanted := len(spec.eventNames())
 	switch {
 	case dir.Exists && dir.Unsafe != "":
 		return agentlifecycle.StatusNeedsRepair, dir.UnsafeDetail + " (" + dir.Path + ")", ""
@@ -208,16 +212,37 @@ func entryAssetStatus(dir, file FileState, scan hookTreeScan, spec hookEntrySpec
 		return agentlifecycle.StatusNeedsRepair, name + " could not be interpreted (" + scan.parseErr + "), so the integration state is unknown; Sidecar will not modify the file", ""
 	case len(scan.owned) == 0:
 		return agentlifecycle.StatusNotInstalled, "", ""
-	case len(scan.owned) > 1:
+	case len(scan.owned) > wanted:
 		return agentlifecycle.StatusNeedsRepair, "more than one Sidecar report-session entry is installed in " + name + ", so every session would be reported twice; repair converges on exactly one", versionOf(scan)
-	case scan.owned[0].version == "":
+	case len(scan.owned) < wanted:
+		// Only a multi-event integration can reach this, and it is the shape a
+		// half-finished hand edit leaves: some of the provider's events carry
+		// Sidecar's entry and the rest do not, so a session binds on some turns
+		// and silently not on others.
+		return agentlifecycle.StatusNeedsRepair, "Sidecar's session-identity entry is installed under " +
+			strconv.Itoa(len(scan.owned)) + " of the " + strconv.Itoa(wanted) + " hook events it belongs under in " + name +
+			", so a session would be bound only some of the time; repair restores every one", versionOf(scan)
+	case anyOwnedEntry(scan, func(o ownedHookEntry) bool { return o.version == "" }):
 		return agentlifecycle.StatusNeedsRepair, "the installed entry in " + name + " invokes Sidecar's report-session command but no longer matches what Sidecar ships", ""
-	case !scan.owned[0].groupCanonical:
+	case anyOwnedEntry(scan, func(o ownedHookEntry) bool { return !o.groupCanonical }):
 		return agentlifecycle.StatusNeedsRepair, "the installed entry in " + name + " sits under a changed event or matcher, so it no longer fires the way Sidecar qualified it", scan.owned[0].version
-	case scan.owned[0].version != spec.current().version:
+	case anyOwnedEntry(scan, func(o ownedHookEntry) bool { return o.version != spec.current().version }):
 		return agentlifecycle.StatusOutdated, "version " + scan.owned[0].version + " is installed; this build ships version " + spec.current().version, scan.owned[0].version
 	}
 	return agentlifecycle.StatusCurrent, "", scan.owned[0].version
+}
+
+// anyOwnedEntry reports whether any Sidecar-owned entry in the scan satisfies
+// the predicate. For a single-event integration it is exactly a test on
+// scan.owned[0]; for a multi-event one it is what stops a fault in the fifth
+// entry from reading as a healthy install because the first entry is fine.
+func anyOwnedEntry(scan hookTreeScan, pred func(ownedHookEntry) bool) bool {
+	for _, o := range scan.owned {
+		if pred(o) {
+			return true
+		}
+	}
+	return false
 }
 
 func versionOf(scan hookTreeScan) string {
