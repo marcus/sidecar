@@ -111,3 +111,24 @@ func TestRequiredSearchNextCollectionIsNotListed(t *testing.T) {
 		t.Fatal("the box does not name the next collection at all")
 	}
 }
+
+// A collection whose rows have no document behind them keeps that fact: the
+// next-collection box says so rather than promising an Enter that does nothing.
+func TestNextCollectionBoxSaysWhenRowsHaveNoDocument(t *testing.T) {
+	host := &fakeHost{page: sourcesPage()}
+	m := newTestModel(t, host)
+	host.desc = testDescription()
+	host.desc.Collections[0].Detail = false
+	run(t, m, m.Refresh())
+
+	view := strip(m.View())
+	if !strings.Contains(view, "Fixture · Sources") {
+		t.Fatalf("the box does not name the next collection:\n%s", view)
+	}
+	if strings.Contains(view, "Enter on a row opens it here.") {
+		t.Fatalf("the box promised an Enter this collection cannot answer:\n%s", view)
+	}
+	if !strings.Contains(view, "The list beside this has no documents behind its rows.") {
+		t.Fatalf("the box does not say the rows have no document:\n%s", view)
+	}
+}

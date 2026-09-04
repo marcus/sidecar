@@ -169,8 +169,16 @@ func (m *Model) nextCollectionLines(c pluginhost.Collection, width int) []string
 		lines = append(lines, m.nextCollectionRowLines(c, s, width)...)
 	}
 
-	return append(lines, "", styles.Subtle.Render(ansi.Truncate(
-		"This plugin's next collection. Enter on a row opens it here.", width, "…")))
+	// The closing line says what this box is, and what the box would hold if
+	// the reader opened something. A collection whose rows have no document
+	// behind them says that instead of promising an Enter that does nothing.
+	closing := "Enter on a row opens it here."
+	if active, ok := m.ActiveCollection(); ok && !active.Detail {
+		closing = "The list beside this has no documents behind its rows."
+	}
+	return append(lines, "",
+		styles.Subtle.Render(ansi.Truncate("This plugin's next collection.", width, "…")),
+		styles.Subtle.Render(ansi.Truncate(closing, width, "…")))
 }
 
 // nextCollectionRowLines is the preview's rows: the primary cell, with the
