@@ -193,6 +193,33 @@ func clearTabView(t *testing.T, instance, collection string) {
 	}
 }
 
+// listsFor counts the list calls made for one collection. A Tab placement also
+// reads the plugin's NEXT collection once, to fill the empty detail box, so a
+// test about what the collection on screen asked for has to say which
+// collection it means.
+func listsFor(host *fakeHost, collection string) int {
+	n := 0
+	for _, call := range host.lists {
+		if call.Params.Collection == collection {
+			n++
+		}
+	}
+	return n
+}
+
+// lastListFor is the newest list call for one collection, which is what a test
+// about the collection on screen means when it says "the list".
+func lastListFor(t *testing.T, host *fakeHost, collection string) ListCall {
+	t.Helper()
+	for i := len(host.lists) - 1; i >= 0; i-- {
+		if host.lists[i].Params.Collection == collection {
+			return host.lists[i]
+		}
+	}
+	t.Fatalf("no list was ever run for %q", collection)
+	return ListCall{}
+}
+
 // run executes a command and feeds whatever it produced back into the model,
 // following batches, which is what the Bubble Tea runtime does.
 func run(t *testing.T, m *Model, cmd tea.Cmd) {
@@ -308,8 +335,8 @@ func TestDescribeFailureRendersTheSetupCard(t *testing.T) {
 func TestRequiredSearchWithNoQueryStartsNoProcess(t *testing.T) {
 	host := &fakeHost{page: testPage(3)}
 	m := newTestModel(t, host)
-	if len(host.lists) != 0 {
-		t.Fatalf("an empty required query started %d list calls", len(host.lists))
+	if n := listsFor(host, "results"); n != 0 {
+		t.Fatalf("an empty required query started %d list calls", n)
 	}
 	view := strip(m.View())
 	if !strings.Contains(view, "This collection needs a query.") {
@@ -336,8 +363,8 @@ func TestQueryDebounceRunsOnlyTheNewestKeystroke(t *testing.T) {
 			t.Fatalf("typing %q scheduled no debounce", key)
 		}
 	}
-	if len(host.lists) != 0 {
-		t.Fatalf("typing listed %d times before the debounce elapsed", len(host.lists))
+	if n := listsFor(host, "results"); n != 0 {
+		t.Fatalf("typing listed %d times before the debounce elapsed", n)
 	}
 	s := m.activeState()
 	if s.queryText() != "dex" {
@@ -345,17 +372,18 @@ func TestQueryDebounceRunsOnlyTheNewestKeystroke(t *testing.T) {
 	}
 	// The two superseded ticks do nothing at all.
 	run(t, m, m.Update(QueryDebouncedMsg{Instance: "fixture", Collection: "results", Sequence: s.debounce - 1}))
-	if len(host.lists) != 0 {
-		t.Fatalf("a superseded debounce listed %d times", len(host.lists))
+	if n := listsFor(host, "results"); n != 0 {
+		t.Fatalf("a superseded debounce listed %d times", n)
 	}
 	run(t, m, m.Update(QueryDebouncedMsg{Instance: "fixture", Collection: "results", Sequence: s.debounce}))
-	if len(host.lists) != 1 {
-		t.Fatalf("the newest debounce listed %d times, want 1", len(host.lists))
+	if n := listsFor(host, "results"); n != 1 {
+		t.Fatalf("the newest debounce listed %d times, want 1", n)
 	}
-	if host.lists[0].Params.Query != "dex" {
-		t.Fatalf("listed query = %q, want dex", host.lists[0].Params.Query)
+	listed := lastListFor(t, host, "results")
+	if listed.Params.Query != "dex" {
+		t.Fatalf("listed query = %q, want dex", listed.Params.Query)
 	}
-	if host.lists[0].PaneKey == "" {
+	if listed.PaneKey == "" {
 		t.Fatal("a list with no pane key can never be superseded")
 	}
 	if host.lists[0].Context == nil || host.lists[0].Context.Project == nil {
@@ -441,20 +469,21 @@ func TestPagingHappensOnDemand(t *testing.T) {
 	s := m.activeState()
 	s.setQuery("dex")
 	run(t, m, m.list(m.desc.Collections[0], s, false))
-	if len(host.lists) != 1 {
-		t.Fatalf("lists = %d, want the first page only", len(host.lists))
+	if n := listsFor(host, "results"); n != 1 {
+		t.Fatalf("lists = %d, want the first page only", n)
 	}
 	press(t, m, "j")
 	press(t, m, "j")
-	if len(host.lists) != 1 {
-		t.Fatalf("paging happened before the cursor reached the end: lists = %d", len(host.lists))
+	if n := listsFor(host, "results"); n != 1 {
+		t.Fatalf("paging happened before the cursor reached the end: lists = %d", n)
 	}
 	press(t, m, "j")
-	if len(host.lists) != 2 {
-		t.Fatalf("reaching past the last row did not page: lists = %d", len(host.lists))
+	if n := listsFor(host, "results"); n != 2 {
+		t.Fatalf("reaching past the last row did not page: lists = %d", n)
 	}
-	if !host.lists[1].Append || host.lists[1].Params.Cursor != "page-2" {
-		t.Fatalf("the paging call was %+v", host.lists[1].Params)
+	paged := lastListFor(t, host, "results")
+	if !paged.Append || paged.Params.Cursor != "page-2" {
+		t.Fatalf("the paging call was %+v", paged.Params)
 	}
 }
 

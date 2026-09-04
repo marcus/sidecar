@@ -6,6 +6,8 @@ All notable changes to sidecar are documented here.
 
 ### Features
 
+- **An empty plugin detail box shows the plugin's next collection.** In a Tab placement, where the box stands beside the list, a plugin with a second collection gets that collection drawn there — its title, what it currently says, and its first rows — instead of a card of help text. A plugin's next collection is usually the ledger that explains the list, so "no matches" and "why" are on screen together and an `abstained` page can be checked where it is read. It is listed once, without a query, and never when its search is required; a plugin with one collection keeps the help line, and a pane, which shows one shape at a time, is unchanged. (td-6c49c5)
+
 - **A narrow plugin list keeps its rank beside the name.** Below the table floor a row still reflows onto two lines, but the columns declared before the primary — a rank, an index — now stay with the primary on line one, and the remaining short columns, the status label and the secondary text fold into line two indented under the name. A list of ranked results reads down its names with the numbers still attached, which is what the M0 mockup drew. (td-6c49c5)
 
 - **`status.label` has a stated render bound.** The reserved status column never grows past 24 characters, and the plugin protocol reference now says so in its Limits table as the protocol's own bound, beside the frozen 64-character wire bound it does not replace. A plugin author can pick a label that reads rather than discovering the truncation in a pane. (td-6c49c5)

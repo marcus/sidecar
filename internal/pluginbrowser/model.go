@@ -593,11 +593,38 @@ func (m *Model) ensureListed() tea.Cmd {
 	if !ok {
 		return nil
 	}
+	var cmds []tea.Cmd
 	s := m.state(c)
+	if !s.loaded && !s.loading {
+		cmds = append(cmds, m.list(c, s, false))
+	}
+	if cmd := m.ensureNextCollectionListed(); cmd != nil {
+		cmds = append(cmds, cmd)
+	}
+	return tea.Batch(cmds...)
+}
+
+// ensureNextCollectionListed reads the collection the empty detail box is
+// showing, once.
+//
+// It runs only while that box is empty, so a reader who went straight to a
+// document never pays for it, and never for a `search: required` collection,
+// which has nothing to say without a query and would spend a process being told
+// so. Everything after the first read is the collection state's own: opening
+// its tab finds it already listed.
+func (m *Model) ensureNextCollectionListed() tea.Cmd {
+	if m.detail.loaded || m.detail.loading {
+		return nil
+	}
+	next, ok := m.nextCollection()
+	if !ok || next.Search == pluginhost.SearchRequired {
+		return nil
+	}
+	s := m.state(next)
 	if s.loaded || s.loading {
 		return nil
 	}
-	return m.list(c, s, false)
+	return m.list(next, s, false)
 }
 
 // list asks for a page. append extends the current items with the next cursor;
