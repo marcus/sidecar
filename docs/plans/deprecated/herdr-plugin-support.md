@@ -1,6 +1,6 @@
 # Hosting Herdr plugins in Sidecar
 
-Status: **deprecated**, 2026-09-02. Superseded by [Plugin ecosystem: protocol plugins, embedded plugins, one host](../active/plugin-ecosystem/README.md), which takes the opposite bet: a Sidecar-native contract grown from the frozen terminal resource protocol, with no manifest format and no PTY pane host. A Herdr-manifest adapter could be written against that plan's seams later; nothing below is scheduled. Kept for the Herdr source analysis and the noun-mapping table.
+Status: **deprecated**, 2026-09-02. Superseded by [Plugin ecosystem: protocol plugins, embedded plugins, one host](../implemented/plugin-ecosystem/README.md), which takes the opposite bet: a Sidecar-native contract grown from the frozen terminal resource protocol, with no manifest format and no PTY pane host. A Herdr-manifest adapter could be written against that plan's seams later; nothing below is scheduled. Kept for the Herdr source analysis and the noun-mapping table.
 
 Related: [Herdr as Sidecar's remote host runtime](herdr-remote-hosts.md) — independent axis; that plan makes Sidecar a *client* of a remote Herdr, this one makes Sidecar a *host* for Herdr's plugin ecosystem locally. They share nothing but the upstream relationship and the habit of verifying claims against Herdr source.
 Herdr source inspected: [`herdrdev/herdr`](https://github.com/herdrdev/herdr) at `c2637dc1` (local checkout `~/code/herdr`); authoring contract in `docs/next/website/src/content/docs/plugins.mdx` and `socket-api.mdx`.

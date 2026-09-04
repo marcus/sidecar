@@ -2,13 +2,13 @@
 
 **Status:** frozen
 **Protocol identifier:** `sidecar.plugin/v1`
-**Related:** [Terminal resource provider protocol](terminal-resource-provider-protocol.md) is the frozen v1 this grows from · [Creating a Sidecar plugin](../guides/active/creating-plugins.md) is the authoring guide · [the plan set](../plans/active/plugin-ecosystem/README.md) holds the design rationale
+**Related:** [Terminal resource provider protocol](terminal-resource-provider-protocol.md) is the frozen v1 this grows from · [Creating a Sidecar plugin](../guides/active/creating-plugins.md) is the authoring guide · [the plan set](../plans/implemented/plugin-ecosystem/README.md) holds the design rationale
 
 A Sidecar plugin is an explicitly configured local executable that gives Sidecar content to render and typed actions to offer. Sidecar owns rendering, keys, focus, tabs, persistence, theme, and safety. The plugin owns its data, its rules, its credentials, and its network access.
 
 This document is the contract, and it is the only authority for it. It is language-agnostic: any executable that can read one JSON object from stdin and write one JSON object to stdout can be a plugin.
 
-The plugin never sends a user interface. It sends content in a small declarative vocabulary Sidecar knows how to draw well: collections of rows, documents with fields and sections, search results with excerpts, and actions with a few typed inputs. The vocabulary is deliberately domain-shaped rather than a generic widget tree; the reasoning is in the plan's [Why not a generic UI catalog](../plans/active/plugin-ecosystem/protocol.md#why-not-a-generic-ui-catalog).
+The plugin never sends a user interface. It sends content in a small declarative vocabulary Sidecar knows how to draw well: collections of rows, documents with fields and sections, search results with excerpts, and actions with a few typed inputs. The vocabulary is deliberately domain-shaped rather than a generic widget tree; the reasoning is in the plan's [Why not a generic UI catalog](../plans/implemented/plugin-ecosystem/protocol.md#why-not-a-generic-ui-catalog).
 
 Every response is data. Plugin text never becomes ANSI, never binds a key, never chooses a colour, and never opens a URL except through the separately validated `sourceUrl`.
 
@@ -490,4 +490,4 @@ The smallest complete plugin, in Python and checked in, is `docs/guides/examples
 
 - 2026-09-03: frozen as `sidecar.plugin/v1`. The identifier the host sends and validates changed from `sidecar.plugin/v1-draft`, with no alias: tolerance lives on the plugin side, so a plugin that accepts either identifier on a request and answers with whichever it was asked works with a Sidecar from before the freeze and with every one after it. Four revisions landed with the freeze: `params.filters{}` on `get`, the 24-character render bound on `status.label`, the narrow reflow rule stated fully, and the rule that an empty detail box in a `Tab` placement shows the plugin's next collection. Two closed as decisions rather than changes: the excerpt kind is a v2 note, because it changes the cell type rather than adding a field, and `asOf` is out of scope for v1, because a plugin that needs it declares a text filter.
 - 2026-09-03: M4b applied four revisions: `filters[]` on a collection, `list.params.filters`, `page.omitted`, `page.coverage[]`, and the `failed` outcome; and stated the rule that `outcome` describes only the row set. The rest of the plan README's pending table was settled at the freeze.
-- 2026-09-03: published as the single authority for the contract that was drafted in `docs/plans/active/plugin-ecosystem/protocol.md` and implemented in M2a and M2b. It was a draft then, under the identifier `sidecar.plugin/v1-draft`.
+- 2026-09-03: published as the single authority for the contract that was drafted in `docs/plans/implemented/plugin-ecosystem/protocol.md` and implemented in M2a and M2b. It was a draft then, under the identifier `sidecar.plugin/v1-draft`.

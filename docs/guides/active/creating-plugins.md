@@ -252,7 +252,7 @@ Then restart Sidecar. Enablement and configuration are read at startup.
 
 ## What the host draws for what you declared
 
-Read [the M0 mockups](../../plans/active/plugin-ecosystem/mockups/README.md) once; they are rendered from the same components the real app paints with, so they are an accurate picture of what your declarations become.
+Read [the M0 mockups](../../plans/implemented/plugin-ecosystem/mockups/README.md) once; they are rendered from the same components the real app paints with, so they are an accurate picture of what your declarations become.
 
 - **A `tab` placement** is a navbar surface: your collection's table on the left, the detail card on the right, a query line above the table when `search` is not `none`, the notices and a summary row below it, and a View control on the title row.
 - **A `panes` placement** puts one collection, or one document, in a Resource leaf beside a terminal — one shape at a time, because a pane is usually too small for both, and because that is what makes a collection and a row two *tabs* of one leaf.
@@ -379,5 +379,5 @@ Your own suite needs three things and not much more: that each method emits exac
 - [docs/reference/plugin-protocol.md](../../reference/plugin-protocol.md) — the contract: every field, every bound, every rule.
 - [docs/reference/cli.md](../../reference/cli.md#sidecar-plugin) — the `sidecar plugin` verbs in full, with exit codes.
 - [docs/reference/terminal-resource-provider-protocol.md](../../reference/terminal-resource-provider-protocol.md) — the frozen subset, if all you want is to recognise a key in terminal output.
-- [The plugin ecosystem plan](../../plans/active/plugin-ecosystem/README.md) — what is settled, what is pending, and why the vocabulary is shaped the way it is.
+- [The plugin ecosystem plan](../../plans/implemented/plugin-ecosystem/README.md) — what is settled, what is pending, and why the vocabulary is shaped the way it is.
 - [`.claude/skills/create-plugin/SKILL.md`](../../../.claude/skills/create-plugin/SKILL.md) — the embedded class, if you decided you need a screen of your own.

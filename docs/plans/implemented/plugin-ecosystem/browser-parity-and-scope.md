@@ -1,6 +1,6 @@
 # Browser parity, scope, and plugin authoring (M4a–M4c)
 
-**Status:** M4a implemented 2026-09-03 (td-62b81c); M4c implemented 2026-09-03 (td-40eb97); M4b's sidecar half implemented 2026-09-03 (td-9ca6a7), its recall half implemented and merged in the recall repository (td-786e42); M4d proposed 2026-09-03, its M4d-a lane implemented 2026-09-03 (td-e8cceb), its M4d-b lane implemented 2026-09-03 (td-21aafa, sizing and focus fix td-c6904c), its M4d-c lane implemented 2026-09-03 (td-2b8f79) and its M4d-d lane implemented 2026-09-03 (td-45898b), so M4d is implemented in full. Its decisions are settled under [Decisions](#decisions). Controlling document for milestones M4a through M4d of [README.md](README.md); M4e (freeze, migrate, flag flip, site docs) stays in the README. **Tracking:** td-f9f007 (epic); per-milestone issues are listed with each milestone.
+**Status:** implemented — see [README.md](README.md); this document is kept as the record of what was built and why.
 
 **Reading order:** [README.md](README.md) for the settled decisions and the milestone map, this file for the work, [host.md](host.md#the-shared-browser) for how the browser is built today, and [mockups/README.md](mockups/README.md) for the screens M4b implements. The design rules this work adds to Sidecar as a whole live in [docs/reference/design-language.md](../../../reference/design-language.md) under *Pointer parity* and *The footer*, not here.
 

@@ -1,6 +1,6 @@
 # Why the plugin protocol has the shape it has
 
-**Status:** design rationale for `sidecar.plugin/v1`, opened 2026-09-02, frozen 2026-09-03. **The contract itself is [docs/reference/plugin-protocol.md](../../../reference/plugin-protocol.md)** — one authority, as the frozen [terminal resource provider protocol](../../../reference/terminal-resource-provider-protocol.md) already is for resource v1. This file keeps only the arguments behind that contract, so a rule and its reason cannot drift apart in two places. **Controlling document:** [README.md](README.md). **Host architecture:** [host.md](host.md). **Authoring guide:** [docs/guides/active/creating-plugins.md](../../../guides/active/creating-plugins.md).
+**Status:** implemented — see [README.md](README.md); this document is kept as the record of what was built and why.
 
 The revisions the M0 mockups and recall's implementation surfaced are [settled in README.md](README.md#protocol-revisions-from-the-m0-recall-mockup--all-settled). M4b applied four — `filters[]`, `page.omitted`, the `failed` outcome and `page.coverage[]` — and M4e-a settled the rest at the freeze: `get.params.filters` and the `status.label` render bound applied, two host rendering rules applied with no wire change, and the excerpt kind and `asOf` closed as decisions. All of it lives in [the reference](../../../reference/plugin-protocol.md).
 

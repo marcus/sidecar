@@ -39,7 +39,7 @@ Two rows are spent on separation rather than on content, and both are cheap in a
 - One blank row sits between the title row and the first content row. A leaf whose header row is a tab strip rather than a title counts that strip as the title row and takes the same blank under it.
 - A surface that takes a query draws the query bar on a row of its own, and one blank row of padding separates it from whatever comes next — a table, a list, a filter line. The blank row is the separator; a horizontal rule in that position is saying the same thing louder.
 
-These two are the one part of this section that is specified rather than transcribed: they were decided against the plugin-ecosystem mockups, not read out of a function, so no Go names them yet and the usual rule — the code wins — has nothing to point at. `docs/plans/active/plugin-ecosystem/mockups/recall-studio.tui.yaml` is the reference for what they look like, and any surface built to them should keep matching it.
+These two are the one part of this section that is specified rather than transcribed: they were decided against the plugin-ecosystem mockups, not read out of a function, so no Go names them yet and the usual rule — the code wins — has nothing to point at. `docs/plans/implemented/plugin-ecosystem/mockups/recall-studio.tui.yaml` is the reference for what they look like, and any surface built to them should keep matching it.
 
 ### A query bar shows its focus
 
@@ -138,7 +138,7 @@ Every action a key performs is reachable by the pointer, and both routes call th
 - **Regions are registered in paint order through `mouse.HitMap`, with the rail last**, because `HitMap.Test` scans in reverse and the smallest, most specific target must win.
 - **Text in a content pane is selectable by dragging over it**, and the same press still focuses the pane and still activates whatever it activated before. Click activates, drag selects; the chords are the configured copy key (`alt+c` by default), the platform copy chord, and `ctrl+a` for select-all. See *Text is selectable* below.
 
-This section is specified, like the blank-row rule above: it was decided against the plugin browser's parity work (`docs/plans/active/plugin-ecosystem/browser-parity-and-scope.md`) rather than transcribed from one function, and the functions it names are the ones a new surface composes rather than a single one it calls.
+This section is specified, like the blank-row rule above: it was decided against the plugin browser's parity work (`docs/plans/implemented/plugin-ecosystem/browser-parity-and-scope.md`) rather than transcribed from one function, and the functions it names are the ones a new surface composes rather than a single one it calls.
 
 ### Text is selectable
 
