@@ -6,6 +6,8 @@ All notable changes to sidecar are documented here.
 
 ### Features
 
+- **A narrow plugin list keeps its rank beside the name.** Below the table floor a row still reflows onto two lines, but the columns declared before the primary — a rank, an index — now stay with the primary on line one, and the remaining short columns, the status label and the secondary text fold into line two indented under the name. A list of ranked results reads down its names with the numbers still attached, which is what the M0 mockup drew. (td-6c49c5)
+
 - **`status.label` has a stated render bound.** The reserved status column never grows past 24 characters, and the plugin protocol reference now says so in its Limits table as the protocol's own bound, beside the frozen 64-character wire bound it does not replace. A plugin author can pick a label that reads rather than discovering the truncation in a pane. (td-6c49c5)
 
 - **A plugin row now expands under the scope it was found in.** `get` carries `params.filters` — the applied filter set of the list that produced the row, sent exactly as that `list` sent it, narrowed against the collection's declaration at the same process boundary. Enter on a row hands the scope to the tab that opens, a restored row tab carries the scope it recorded, `sidecar open --plugin ID --collection C ROW --filter id=value` and a layout spec row carry theirs, and `sidecar plugin check --get` and `plugin call get` take `--filter` too. The host's get cache is keyed by the applied set, so the same row under two scopes is two questions rather than one cached answer. Without this a row found under a raised-sensitivity profile expanded under the plugin's default profile, which could be a different document or a refusal. (td-6c49c5)

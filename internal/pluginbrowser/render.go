@@ -911,9 +911,19 @@ func headerRule(cols []column, width int) string {
 }
 
 // itemRows renders one row: one line at a table width, two when the box is too
-// narrow for a table. The reflow rule is the protocol's, stated fully: the
-// primary cell takes line one, and the remaining short columns and the
-// secondary cell fold into a dimmed line two.
+// narrow for a table.
+//
+// The reflow rule is the protocol's, stated fully: **the columns declared
+// BEFORE the primary — a rank, an index, a number the row is read by — stay
+// with the primary cell on line one, and everything else folds into a dimmed
+// line two**: the remaining short columns, then the status label, then the
+// secondary cell. Line two is indented to sit under the primary, so a list
+// reads down its names with the rank still beside them.
+//
+// "Declared before the primary" rather than "the rank column" is deliberate:
+// the host has no idea what a plugin calls its rank, and the plugin already
+// said which column names the row. What comes before that is what a reader
+// numbers by. See mockups/recall-studio.narrow-pane.txt in the plan set.
 func (m *Model) itemRows(c pluginhost.Collection, cols []column, s *collectionState, index, width int, narrow bool) []string {
 	item := s.items[index]
 	selected := index == s.cursor
@@ -935,17 +945,41 @@ func (m *Model) itemRows(c pluginhost.Collection, cols []column, s *collectionSt
 	if col, ok := c.PrimaryColumn(); ok {
 		primary = item.Cells[col.ID]
 	}
-	lead := ""
+
+	// Line one: everything declared ahead of the primary, in its own column
+	// width so a column of ranks stays a column, then the primary name.
+	head := gutter
+	headWidth := cursorGutter
 	for _, col := range cols {
-		if col.Primary || col.ID == statusColumnID || col.Secondary {
+		if col.Primary {
+			break
+		}
+		if col.ID == statusColumnID || col.Secondary {
+			continue
+		}
+		head += m.cell(item, col) + strings.Repeat(" ", columnGap)
+		headWidth += col.width + columnGap
+	}
+
+	// Line two: the columns after the primary, then the status label, then the
+	// secondary text. Order is the mockup's — what the row IS, then how sure
+	// the plugin is, then what it says.
+	fold := ""
+	afterPrimary := false
+	for _, col := range cols {
+		if col.Primary {
+			afterPrimary = true
+			continue
+		}
+		if !afterPrimary || col.ID == statusColumnID || col.Secondary {
 			continue
 		}
 		if v := strings.TrimSpace(item.Cells[col.ID]); v != "" {
-			lead += v + " · "
+			fold += v + " · "
 		}
 	}
 	if item.Status != nil && item.Status.Label != "" {
-		lead += item.Status.Label + " · "
+		fold += ansi.Truncate(item.Status.Label, statusColumnMax, "…") + " · "
 	}
 	secondary := ""
 	for _, col := range c.Columns {
@@ -953,9 +987,17 @@ func (m *Model) itemRows(c pluginhost.Collection, cols []column, s *collectionSt
 			secondary = item.Cells[col.ID]
 		}
 	}
-	first := gutter + styles.Body.Render(ansi.Truncate(primary, max0(width-cursorGutter), "…"))
-	second := strings.Repeat(" ", cursorGutter+2) +
-		styles.Subtle.Render(ansi.Truncate(lead+secondary, max0(width-cursorGutter-2), "…"))
+
+	// The fold is indented to sit under the primary. With nothing ahead of the
+	// primary there is no such column, so it keeps the plain hanging indent
+	// rather than starting under the cursor gutter.
+	indent := headWidth
+	if indent == cursorGutter {
+		indent = cursorGutter + 2
+	}
+	first := head + styles.Body.Render(ansi.Truncate(primary, max0(width-headWidth), "…"))
+	second := strings.Repeat(" ", indent) +
+		styles.Subtle.Render(ansi.Truncate(fold+secondary, max0(width-indent), "…"))
 	return []string{m.paint(first, width, selected), m.paint(second, width, selected)}
 }
 
