@@ -1,0 +1,18 @@
+# The events Sidecar's Qwen Code session-identity entry is installed under.
+#
+# This is a translation of QWEN_HOOK_EVENTS in Herdr's src/integration/mod.rs at
+# HERDR_INTEGRATION_VERSION=1, and one row is all upstream has ever had: version
+# 1 is the first release, no lifecycle rows were ever added and there is no
+# QWEN_REMOVED_LIFECYCLE_HOOK_EVENTS list to correspond to. Upstream even names
+# the asset herdr-agent-session.sh rather than herdr-agent-state.sh.
+#
+# `matcher` is `*`: install_qwen calls ensure_command_hook with Some("*"), as
+# install_qodercli does and unlike install_devin and install_droid.
+#
+# `timeout_ms` is the fourth column, and it exists only in this file. Qwen counts
+# a command hook's timeout in MILLISECONDS where every other provider in this
+# group counts seconds, so the value is recorded here in its own unit rather
+# than left to a reader to infer from a bare 10000.
+#
+# event	matcher	verb	timeout_ms
+SessionStart	*	report-session	10000

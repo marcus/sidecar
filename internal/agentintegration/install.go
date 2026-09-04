@@ -374,6 +374,13 @@ type Env struct {
 	// so. Empty means "no override", which is also what a test that never sets
 	// it gets.
 	QoderConfigDir string
+	// QwenHome is $QWEN_HOME when set, and empty otherwise. It is Qwen Code's
+	// own documented override for its whole global directory -- Storage's
+	// getGlobalQwenDir resolves it in place of ~/.qwen -- so honouring it is
+	// what finds a relocated Qwen and what lets a proof run redirect the
+	// provider. Empty means "no override", which is also what a test that never
+	// sets it gets.
+	QwenHome string
 	// LookPath finds a provider executable. Defaults to exec.LookPath.
 	LookPath func(file string) (string, error)
 	// ProviderVersion reports an installed provider's version string.
@@ -396,6 +403,7 @@ func OSEnv() Env {
 		KiloConfigDir:   os.Getenv("KILO_CONFIG_DIR"),
 		KimiCodeHome:    os.Getenv("KIMI_CODE_HOME"),
 		QoderConfigDir:  os.Getenv("QODER_CONFIG_DIR"),
+		QwenHome:        os.Getenv("QWEN_HOME"),
 		LookPath:        exec.LookPath,
 		ProviderVersion: detectProviderVersion,
 		UID:             os.Getuid(),
@@ -531,7 +539,7 @@ type Adapter interface {
 
 // DefaultAdapters returns the adapters this build ships.
 func DefaultAdapters() []Adapter {
-	return []Adapter{OpenCodeAdapter{}, CodexAdapter{}, ClaudeAdapter{}, PiAdapter{}, KiloAdapter{}, KimiAdapter{}, NewDevinAdapter(), NewDroidAdapter(), NewQoderCLIAdapter()}
+	return []Adapter{OpenCodeAdapter{}, CodexAdapter{}, ClaudeAdapter{}, PiAdapter{}, KiloAdapter{}, KimiAdapter{}, NewDevinAdapter(), NewDroidAdapter(), NewQoderCLIAdapter(), NewQwenAdapter()}
 }
 
 // Service is the application service behind the CLI and the Configuration

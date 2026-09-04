@@ -291,6 +291,16 @@ Answer open question 3 first. Then port in order of live use, confirming for eac
 
 **`QODER_CONFIG_DIR` is honoured on Herdr's word.** Qoder's reference names three settings files and no variable that relocates them. Honouring the override is what finds a relocated install and what lets a proof run redirect the provider, and the capability entry records that it is Herdr's reading rather than a published contract.
 
+#### Result for `qwen`, 2026-09-04 (`td-73c4ff`)
+
+**Shipped untraced, at `screen-fallback` on `docs-only` evidence.** One `SessionStart` entry with the `"*"` matcher in `$QWEN_HOME/settings.json` or `~/.qwen/settings.json`, which is upstream's whole table and always has been: version 1 is the first release, no lifecycle rows were ever added, and upstream names its asset `herdr-agent-session.sh` rather than `herdr-agent-state.sh`.
+
+**The timeout counts in milliseconds, and that is the finding this port turns on.** Herdr writes `10_000` for Qwen and `10` for every other provider it installs a hook for, and Qwen's own hooks reference says why: `timeout` is milliseconds for a command hook and seconds for an HTTP hook, in the same table. A `10` transcribed here would be a ten-millisecond budget that killed the report process before it opened the store, and silently, because a hook surface fails open. `QwenHookTimeoutMillis` is its own constant so the unit is visible at the point of use, a test asserts both that it is the seconds constant times a thousand and that the other three providers still count seconds, and the fixture records it in a fourth column no other provider's fixture has.
+
+**`QWEN_HOME` was verified rather than inherited.** `Storage.getGlobalQwenDir` in qwen-code's own `packages/core/src/config/storage.ts` resolves it in place of `~/.qwen`, which is the semantics Herdr assumes and the semantics this adapter implements. A test also drives all four adapters against one `Env` carrying two overrides at once, because four adapters reading one struct is exactly where a misrouted write would come from.
+
+**Upstream's `--session-start-source` pass-through is not copied.** `report-session` has no such flag and wants none: a session id names the same conversation whether it arrived at startup, on resume, or after a compact.
+
 ### Slice 5 — The launch catalog moves to TOML and grows to every recognised agent (medium)
 
 Today `internal/agentcatalog` holds ten launchable families as a Go slice and ten detection-only families as a second slice. The knowledge in the first is small and flat: a command, an auto-approve flag, resume arguments, aliases, an adapter id. That is configuration, and it belongs in data a user or an agent can read and extend without a rebuild.

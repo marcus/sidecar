@@ -70,6 +70,11 @@ var assetGoldens = []assetGolden{
 	{provider: DroidProvider, name: "settings.json", version: "1", checksum: "6e16a3fb39c4468cf3f7605f1f2e35d9d1287cfd9166dd90e5b67a51a2297b36"},
 	// Qoder, same shape again, with the "*" matcher install_qodercli writes.
 	{provider: QoderCLIProvider, name: "settings.json", version: "1", checksum: "dcbbca106ce9ce65d8a024dd1a0760d19534406721a1a7093b25d06fdc9448f6"},
+	// Qwen, and the checksum covers the one number in this group that is not
+	// what it looks like: its timeout is 10000, because Qwen counts a command
+	// hook's timeout in milliseconds where every other provider here counts
+	// seconds. Writing 10 would be a ten-millisecond budget.
+	{provider: QwenProvider, name: "settings.json", version: "1", checksum: "5173d78422441cb47488768f5f8b508d339cce35bd3abe9b1c1cfb95546bed8a"},
 }
 
 // bumpInstructions is the whole point of the guard: a failure here has to tell
@@ -79,7 +84,7 @@ const bumpInstructions = `
 An asset's bytes changed. Before updating the golden below, do this in order:
 
   1. Bump the asset's version constant (OpenCodeAssetVersion, CodexAssetVersion,
-     ClaudeAssetVersion, PiAssetVersion, KiloAssetVersion, KimiAssetVersion, DevinAssetVersion, DroidAssetVersion, or QoderCLIAssetVersion) if it has not already moved. An installed copy is
+     ClaudeAssetVersion, PiAssetVersion, KiloAssetVersion, KimiAssetVersion, DevinAssetVersion, DroidAssetVersion, QoderCLIAssetVersion, or QwenAssetVersion) if it has not already moved. An installed copy is
      recognised as outdated by its version, so without this every existing
      install keeps reporting itself current while running different code.
   2. Update the matching AssetVersion in internal/agentlifecycle/capabilities.json,

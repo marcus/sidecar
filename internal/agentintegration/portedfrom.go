@@ -236,6 +236,32 @@ var portedFrom = []PortedFrom{
 			"assigns. NOT traced: no capture of a live Qoder session backs any of it, which is why the capability " +
 			"entry is docs-only at screen-fallback.",
 	},
+	{
+		Provider:    QwenProvider,
+		UpstreamID:  "qwen",
+		UpstreamDir: "qwen",
+		Version:     "1",
+		Commit:      herdrVendoredCommit,
+		Evidence: "Ported from Herdr's qwen integration at that commit, where the vendored " +
+			"upstream/qwen/herdr-agent-session.sh carries HERDR_INTEGRATION_VERSION=1. The asset is named " +
+			"herdr-agent-SESSION rather than herdr-agent-state, which is upstream saying what the integration is: " +
+			"QWEN_HOOK_EVENTS in src/integration/mod.rs is [(\"SessionStart\", \"session\")], the first and only " +
+			"release, with no lifecycle rows ever added and none removed. The file the entry goes in " +
+			"($QWEN_HOME/settings.json, or ~/.qwen/settings.json), the \"*\" matcher that install_qwen's " +
+			"ensure_command_hook(.., Some(\"*\")) writes, and the timeout of 10_000 are kept verbatim. That last " +
+			"one is the load-bearing detail and it was verified rather than copied: Qwen's own hooks reference " +
+			"documents timeout as MILLISECONDS for a command hook and seconds for an HTTP hook, so Herdr's 10_000 " +
+			"is ten seconds and the 10 every other provider gets would have been ten milliseconds here. QWEN_HOME " +
+			"was verified the same way, in qwen-code's own packages/core/src/config/storage.ts, where " +
+			"getGlobalQwenDir resolves it in place of ~/.qwen. Three deliberate differences, each with its reason " +
+			"in qwen_install.go: the transport is Sidecar's, so the dropped shell script and its python3 " +
+			"dependency are gone; no --seq is sent, because Sidecar's store assigns; and upstream's " +
+			"--session-start-source pass-through is NOT copied, because report-session has no such flag and the " +
+			"payload's source field answers no question Sidecar's binding asks -- a session id is the same " +
+			"conversation whether it arrived at startup, on resume, or after a compact. NOT traced: no capture of " +
+			"a live Qwen session backs any of it, which is why the capability entry is docs-only at " +
+			"screen-fallback.",
+	},
 }
 
 // PortedFromRecords returns the provenance of every Sidecar integration asset.

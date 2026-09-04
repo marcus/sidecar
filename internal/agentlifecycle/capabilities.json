@@ -379,5 +379,28 @@
     "orderingGuaranteed": false,
     "sourceDoc": "https://docs.qoder.com/cli/hooks",
     "sourceVersionNote": "Not run. The contract is read from Herdr's qodercli integration at HERDR_INTEGRATION_VERSION=3 (QODERCLI_HOOK_EVENTS and install_qodercli in src/integration, plus the vendored upstream/qodercli/herdr-agent-state.sh, whose python3 half reads session_id from the stdin payload) and from Qoder's own published hooks reference, which gives the settings.json schema, the twenty-event table, the timeout unit (seconds, defaulting to 600) and the SessionStart payload's session_id and hook_event_name fields. No released Qoder CLI was executed for this port and no trace backs any claim in it; see internal/agentintegration/portedfrom.go."
+  },
+  {
+    "schemaVersion": 1,
+    "provider": "qwen",
+    "source": "sidecar.qwen.hooks",
+    "assetVersion": "1",
+    "tier": "screen-fallback",
+    "evidence": "docs-only",
+    "minProviderVersion": "",
+    "testedProviderRange": "",
+    "covered": [],
+    "knownGaps": [
+      "NOT TRACED, and that is why the tier is screen-fallback rather than session-identity. No released Qwen Code fired this hook on the machine the port was written on. session-identity is the tier this asset is built to hold: one SessionStart carrying a session id, sanitized into testdata/traces/qwen, promotes this entry and nothing else has to change.",
+      "The shipped asset is a session-identity hook entry and nothing else, which is upstream's whole table and always has been. Herdr's qwen integration is at version 1, the first release, with one row and no lifecycle rows ever added; its asset is even named herdr-agent-session rather than herdr-agent-state. State comes from the screen lane in Sidecar and in Herdr alike.",
+      "The entry's timeout is 10000 MILLISECONDS, and this is the one number in the group of four session-identity ports that is not what it looks like. Qwen's hooks reference documents timeout as milliseconds for a command hook and seconds for an HTTP hook, which is why Herdr writes 10_000 here and 10 everywhere else. Ten seconds is the same slack every other Sidecar entry gets; a 10 written here would be a ten-millisecond budget that killed the report process before it opened the store, and silently, because a hook surface fails open.",
+      "Qwen merges settings across system, user (~/.qwen/settings.json or $QWEN_HOME/settings.json) and project (.qwen/settings.json) scopes. Sidecar installs into the user-level file only, because a per-project copy would follow a checkout into other people's clones and report from panes Sidecar never set up. So Sidecar owns its own entry and can never own the effective hook set.",
+      "Upstream's --session-start-source pass-through is deliberately not copied. Herdr's asset forwards the payload's source field (startup, resume, clear, compact, branch) as a flag on its own report command; `sidecar agent report-session` has no such flag, and the field answers no question the binding asks, because a session id names the same conversation whether it arrived at startup, on resume, or after a compact.",
+      "Qwen runs hooks matching an event in parallel unless the group sets sequential:true. That is harmless for this integration, which installs exactly one entry under one event, and it is recorded because a second entry added later without that flag would be two report processes racing.",
+      "Ownership is by the report-session command and nothing else, so an entry of the user's that WRAPS that command in a script of their own is never adopted, overwritten or deleted -- and is also invisible to `integration status`. That fails in the documented direction and is the same limitation every entry integration has."
+    ],
+    "orderingGuaranteed": false,
+    "sourceDoc": "https://qwenlm.github.io/qwen-code-docs/en/users/features/hooks/",
+    "sourceVersionNote": "Not run. The contract is read from Herdr's qwen integration at HERDR_INTEGRATION_VERSION=1 (QWEN_HOOK_EVENTS and install_qwen in src/integration, plus the vendored upstream/qwen/herdr-agent-session.sh, whose python3 half reads session_id and source from the stdin payload) and from Qwen Code's own published hooks reference, which gives the eighteen-event table, the settings.json entry schema, the timeout unit (milliseconds for a command hook, seconds for an HTTP one) and the SessionStart payload's session_id, transcript_path, cwd, hook_event_name and source fields. QWEN_HOME was verified in qwen-code's own packages/core/src/config/storage.ts, where getGlobalQwenDir resolves it in place of ~/.qwen. No released Qwen Code was executed for this port and no trace backs any claim in it; see internal/agentintegration/portedfrom.go."
   }
 ]

@@ -36,6 +36,7 @@ This is enforced rather than documented. `Capability.TierFor` polices every tier
 | Devin CLI | not run | docs-only | `screen-fallback` | session only | not traced; one capture carrying a session id promotes it to `session-identity` and nothing else has to change |
 | Droid | not run | docs-only | `screen-fallback` | session only | not traced; and a `~/.factory/hooks.json`, if you have one, shadows the entry entirely |
 | Qoder CLI | not run | docs-only | `screen-fallback` | session only | not traced; `QODER_CONFIG_DIR` is honoured on Herdr's word rather than a published contract |
+| Qwen Code | not run | docs-only | `screen-fallback` | session only | not traced; its hook timeout counts in milliseconds, which is the one unit difference in this group |
 
 Pi's row went out of `capabilities.json` when nothing could produce a report for it, came back at `session-identity` when `PiAdapter` and `assets/pi/sidecar-lifecycle.js` shipped, and is now at `advisory` on `real-trace` evidence because a live Pi 0.84.3 session has been traced. It is the only row here that has reached its own ceiling: `advisory` is as high as Pi can ever go, because `full` needs `blocked_on_request` and `unblocked` and Pi ships no permission system to produce either. See "Why the Pi entry was retracted, and what brought it back".
 
@@ -374,6 +375,24 @@ Qoder's published reference names `~/.qoder/settings.json`, a project-level `.qo
 
 Sidecar installs into the user-level file only. A per-project copy would follow a checkout into other people's clones and report from panes Sidecar never set up, which is the same rule the Kimi port applies to `.kimi-code/local.toml`.
 
+## Qwen Code
+
+**Source:** Herdr's qwen integration at `HERDR_INTEGRATION_VERSION=1`, then Qwen Code's own published hooks reference and its `packages/core/src/config/storage.ts`. **Not traced.** No released Qwen Code fired this hook here, so the entry is `screen-fallback` on `docs-only` evidence.
+
+Qwen keeps hooks in `~/.qwen/settings.json`, or `$QWEN_HOME/settings.json` when that variable is set, in Claude Code's nested group shape. Sidecar adds one session-identity entry under `SessionStart` with the `"*"` matcher `install_qwen` writes. That is upstream's whole table and always has been: version 1 is the first release, no lifecycle rows were ever added, and upstream even names its asset `herdr-agent-session.sh` rather than `herdr-agent-state.sh`.
+
+### The timeout counts in milliseconds
+
+This is the one number in the four session-identity ports that is not what it looks like, and it is worth stating plainly because it is the kind of thing a port transcribes wrongly and nothing catches. Qwen's hooks reference documents `timeout` as **milliseconds** for a command hook — and seconds for an HTTP hook, in the same table — which is why Herdr writes `10_000` for Qwen and `10` for every other provider it installs a hook for. Ten seconds is the same slack every Sidecar entry gets. A `10` written here would be a ten-millisecond budget: the report process would be killed before it opened the store, and *silently*, because a hook surface fails open.
+
+`QwenHookTimeoutMillis` exists as its own constant so the unit change is visible at the point of use, `TestQwenCountsItsTimeoutInMilliseconds` asserts both that it is the seconds constant times a thousand and that the other three providers still count seconds, and the fixture records the value in a fourth column no other provider's fixture has.
+
+### What is deliberately not copied
+
+Upstream forwards the `SessionStart` payload's `source` field (`startup`, `resume`, `clear`, `compact`, `branch`) to its own report command as `--session-start-source`. `sidecar agent report-session` has no such flag and does not want one: a session id names the same conversation whether it arrived at startup, on resume, or after a compact, so the field answers no question the binding asks.
+
+`QWEN_HOME` was verified rather than taken from Herdr. `Storage.getGlobalQwenDir` in qwen-code's own `packages/core/src/config/storage.ts` resolves it in place of `~/.qwen`, which is exactly the semantics Herdr assumes and the semantics this adapter implements.
+
 ## Catalog agents evaluated but not built
 
 These are recorded rather than omitted so that "evaluated, and deliberately not built" is distinguishable from "never looked at". All are `screen-fallback` with `evidence: none`: **none is trace-backed**, so each selects a candidate rather than earning a tier, and `TierFor` would refuse them anything else regardless.
@@ -424,7 +443,7 @@ The third is the dangerous one, because nothing in a Sidecar release notices it.
 
 ### When Sidecar changes an asset
 
-1. Bump the asset version constant (`OpenCodeAssetVersion`, `CodexAssetVersion`, `ClaudeAssetVersion`, `PiAssetVersion`, `KimiAssetVersion`, `DevinAssetVersion`, `DroidAssetVersion`, `QoderCLIAssetVersion`).
+1. Bump the asset version constant (`OpenCodeAssetVersion`, `CodexAssetVersion`, `ClaudeAssetVersion`, `PiAssetVersion`, `KimiAssetVersion`, `DevinAssetVersion`, `DroidAssetVersion`, `QoderCLIAssetVersion`, `QwenAssetVersion`).
 2. Append the superseded entry to that adapter's canonical history, so an installed copy of the old version reads as `outdated` rather than as damage.
 3. Move `assetVersion` in `capabilities.json` to match.
 4. Requalify against the traces — a new asset consuming the same events still needs to be shown to consume them correctly.
