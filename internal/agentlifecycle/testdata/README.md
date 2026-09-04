@@ -79,6 +79,9 @@ Captured 2026-08-30 on darwin/arm64.
 | `traces/kimi/cancelled-turn.tsv` | kimi-code | 0.40.1 | openrouter openai/gpt-4.1-mini | user cancellation | Slice 2 |
 | `traces/kimi/session-end.tsv` | kimi-code | 0.40.1 | openrouter openai/gpt-4.1-mini | /quit | Slice 2 |
 | `traces/kimi/exec-turn-auto-approves.tsv` | kimi-code | 0.40.1 | openrouter openai/gpt-4.1-mini | success under `kimi -p`, no permission pair | Slice 2 |
+| `traces/omp/simple-turn.tsv` | omp | 18.1.8 | openai/gpt-4.1-mini | success, no tool | Slice 2 |
+| `traces/omp/tool-turn-with-approval.tsv` | omp | 18.1.8 | openai/gpt-4.1-mini | success, one bash call, approved | Slice 2 |
+| `traces/omp/denied-tool-and-quit.tsv` | omp | 18.1.8 | openai/gpt-4.1-mini | one bash call denied, then /quit | Slice 2 |
 
 The Pi traces were captured 2026-09-02 on darwin/arm64; the four rows above are
 one Pi 0.84.3 process each for the first three and a second process for the
@@ -317,6 +320,86 @@ A second, smaller one: a macOS login shell re-runs `path_helper`, which puts
 first in the harness's `PATH` therefore lost to the Homebrew-installed `sidecar`
 inside the created pane. Export the `PATH` again *in the pane* before starting
 the provider, and check `command -v sidecar` before trusting a run.
+
+## OMP (oh-my-pi)
+
+OMP's traces use the same six-column hook layout Pi's do, because OMP is a
+rebranded fork of Pi's codebase and its extension API is Pi's. All three rows
+come from one OMP 18.1.8 process, so their `session` column is `session-1`
+throughout; `turn` is always `-`, because `turn_start` carries a `turnIndex`,
+which is a position rather than an identifier, and it is recorded as a field name
+only.
+
+### How they were captured, and what was not touched
+
+The CLI is `@oh-my-pi/pi-coding-agent`, installed into a **scratch npm prefix**
+under the run's own directory and reached only through a `PATH` set inside the
+proof process. It was never on the maintainer's `PATH` and no global npm install
+happened.
+
+OMP runs on **Bun** and requires `>= 1.3.14`. The machine's own Bun was 1.3.9 and
+could not parse the shipped bundle at all — it fails with a `SyntaxError` on
+`using` rather than with a version message, which is worth knowing because the
+error names nothing useful. A newer Bun went into the same scratch prefix as the
+CLI; the maintainer's `~/.bun` was read to run nothing and was never written.
+
+Isolation was by `HOME` rather than by the provider's own override, deliberately.
+OMP's directory rules are three-layered — `PI_CONFIG_DIR` names the config
+directory under `$HOME`, an `OMP_PROFILE`/`PI_PROFILE` profile inserts a segment
+and suppresses the agent-dir override entirely, and `PI_CODING_AGENT_DIR` is
+`path.resolve`d rather than tilde-expanded — so moving `$HOME` moves every layer
+at once and cannot be defeated by a rule that was missed. All four XDG
+directories moved with it, because on darwin and linux OMP redirects its data,
+state and cache trees under `$XDG_*_HOME/omp` when those exist. Sidecar's own
+state was held off the real tree by `XDG_STATE_HOME`, `-config` and
+`SIDECAR_ISOLATED_STATE=1`, and everything interactive ran on a **private tmux
+socket**, never the machine's default server. The maintainer's `~/.omp` was never
+created; their `~/.pi/agent/extensions` was neither read into nor written.
+
+`HERDR_ENV` was never set: with it set, Herdr's OMP extension and Sidecar's would
+both claim the pane.
+
+Both hazards the Kimi section records fired again in this run and were handled
+the recorded way, so neither is new and both are real. `path_helper` put the
+Homebrew `sidecar` ahead of the `-config` shim inside the created pane, and
+`SIDECAR_BIN` arrived as the resolved real binary rather than the shim; `PATH`
+and `SIDECAR_BIN` were both re-exported *in the pane*, and `command -v sidecar`
+was checked, before anything was driven.
+
+Sidecar's own asset was installed with `sidecar agent integration install omp`,
+not by hand, so the run also proves the installer, its refusals and its
+mode-inheriting mkdir. The tracer was a separate extension dropped beside it,
+which is also what proved that uninstall removes only Sidecar's file and leaves a
+neighbour and its directory alone.
+
+### Sanitization
+
+By construction, as everywhere else here: the tracer recorded event names, `ctx`
+discriminators and payload field **names**, and never held prompt text, response
+text, tool arguments, tool results, file contents or environment values. Session
+identifiers were mapped to `session-N` placeholders inside the tracer process, so
+no real identifier reached a file.
+
+OMP's traces widen `valueBearingTraceKeys` by four keys, under the same rule as
+every earlier widening — a value is recorded only where the vocabulary is closed
+and chosen by the provider's own source:
+
+| Key | Why a value is safe |
+| --- | --- |
+| `ctx.hasUI` | A boolean, and the gate this asset checks where Pi's checks `ctx.mode`. Recording it is what lets a fixture show the gate was satisfied. |
+| `willContinue` | `AgentEndEvent`'s own boolean, recorded as `true`, `false` or `absent`. The difference between absent and false is exactly why the asset compares against an explicit `true`. |
+| `stopReason` | OMP's own closed `StopReason` vocabulary — `stop`, `aborted`, `error` and the rest — chosen by its source rather than written by a model. The same concession `error` already makes for kilo. |
+| `approved` | `ToolApprovalResolvedEvent`'s boolean, and the whole of what makes a denial distinguishable from an approval on this provider. |
+
+### One capture fact worth keeping
+
+The cancelled turn in `denied-tool-and-quit.tsv` was produced by pressing Escape
+at an approval prompt, which OMP treats as a **denial** rather than as an
+interrupt: `tool_approval_resolved` with `approved=false`, then an `agent_end`
+whose last assistant message carries `stopReason=aborted`. Both facts landed in
+one capture, which is why there is no separate cancellation trace. A recapture
+that wanted a mid-stream interrupt instead would have to interrupt a turn with no
+pending approval.
 
 ## Re-capturing
 

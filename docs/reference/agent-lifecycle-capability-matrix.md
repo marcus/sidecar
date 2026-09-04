@@ -33,6 +33,7 @@ This is enforced rather than documented. `Capability.TierFor` polices every tier
 | Pi | 0.84.3 | real-trace | `advisory` | lifecycle authority | blocking is structurally impossible; `advisory` is the ceiling and is reached |
 | Kilo Code | 7.5.9 | real-trace | `advisory` | lifecycle authority | cancellation is indistinguishable and the shipped asset releases nothing on exit, so `advisory` is the ceiling and is reached |
 | Kimi Code | 0.40.1 | real-trace | `advisory` | lifecycle authority | session identity is refused by Sidecar's own catalog, and process exit is unclaimed by choice; `full` needs both |
+| OMP (oh-my-pi) | 18.1.8 | real-trace | `advisory` | lifecycle authority | cancellation is observable and deliberately not read, and process exit is unclaimABLE; `full` needs both |
 
 Pi's row went out of `capabilities.json` when nothing could produce a report for it, came back at `session-identity` when `PiAdapter` and `assets/pi/sidecar-lifecycle.js` shipped, and is now at `advisory` on `real-trace` evidence because a live Pi 0.84.3 session has been traced. It is the only row here that has reached its own ceiling: `advisory` is as high as Pi can ever go, because `full` needs `blocked_on_request` and `unblocked` and Pi ships no permission system to produce either. See "Why the Pi entry was retracted, and what brought it back".
 
@@ -44,17 +45,17 @@ Two columns are doing different jobs here and it is worth being explicit about w
 
 `YES` means an official event exists and, where marked traced, was observed. `PARTIAL` means it must be inferred. `NO` means no event exists.
 
-| Transition | OpenCode | Codex | Claude Code | Pi | Kilo Code | Kimi Code |
-| --- | --- | --- | --- | --- | --- | --- |
-| work start | YES (traced) | YES (traced) | YES (traced) | YES | YES (traced) | YES (traced) |
-| tool use | YES (traced) | YES (traced) | YES (traced) | YES | NO (on the plugin event stream) | YES (traced) |
-| blocked on request | YES (traced) | YES (traced) | YES (traced) | NO | YES (traced) | YES (traced) |
-| unblocked | YES (traced) | YES (traced) | PARTIAL (traced) | NO | YES (traced) | YES (traced) |
-| turn complete | YES (traced) | YES (traced) | PARTIAL (traced) | YES | YES (traced) | YES (traced) |
-| cancellation | YES (traced) | YES (traced) | NO (confirmed) | PARTIAL | PARTIAL | YES (traced) |
-| session identity | YES (traced) | YES (traced) | YES (traced) | YES | YES (traced) | YES, provider side (traced); refused by Sidecar |
-| subagent | PARTIAL | YES | YES | NO | PARTIAL | PARTIAL |
-| process exit | YES (traced) | YES (traced) | YES (traced) | YES | YES (not consumed) | YES (traced), not hooked |
+| Transition | OpenCode | Codex | Claude Code | Pi | Kilo Code | Kimi Code | OMP |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| work start | YES (traced) | YES (traced) | YES (traced) | YES | YES (traced) | YES (traced) | YES (traced) |
+| tool use | YES (traced) | YES (traced) | YES (traced) | YES | NO (on the plugin event stream) | YES (traced) | YES (traced), not consumed |
+| blocked on request | YES (traced) | YES (traced) | YES (traced) | NO | YES (traced) | YES (traced) | YES (traced) |
+| unblocked | YES (traced) | YES (traced) | PARTIAL (traced) | NO | YES (traced) | YES (traced) | YES (traced) |
+| turn complete | YES (traced) | YES (traced) | PARTIAL (traced) | YES | YES (traced) | YES (traced) | YES (traced) |
+| cancellation | YES (traced) | YES (traced) | NO (confirmed) | PARTIAL | PARTIAL | YES (traced) | YES (traced), not consumed |
+| session identity | YES (traced) | YES (traced) | YES (traced) | YES | YES (traced) | YES, provider side (traced); refused by Sidecar | YES (traced) |
+| subagent | PARTIAL | YES | YES | NO | PARTIAL | PARTIAL | NO |
+| process exit | YES (traced) | YES (traced) | YES (traced) | YES | YES (not consumed) | YES (traced), not hooked | NO (payload is empty) |
 
 Claude Code's `unblocked` and `turn complete` are marked PARTIAL *after* tracing rather than before: both events exist and both fire on the ordinary path, and both go missing on exactly the paths where they would matter most. See the Claude Code section.
 
@@ -311,6 +312,67 @@ The installer owns one region of `config.toml`, delimited by two marker comments
 
 One hole in the ownership rule is worth recording because it is a real limit rather than a bug. Ownership reads the first word of a hook's command, so a copy of Sidecar's own command placed outside the managed block is detected and every mutation refuses. A hook that *wraps* that command in a script of the user's is not: a wrapper is not the `sidecar` binary. That fails in the documented direction — their entry is never adopted or deleted — but such a duplicate reports alongside Sidecar's own and is invisible to `integration status`. It was observed during the proof run, where a debug wrapper produced a second `idle` report for one `Stop`.
 
+## OMP (oh-my-pi)
+
+**Source:** OMP 18.1.8's own shipped TypeScript, read from the installed package rather than from documentation, then traced against that version. The event-to-lane mapping is ported from Herdr's omp integration at `HERDR_INTEGRATION_VERSION=9`.
+
+OMP is a rebranded fork of Pi's codebase and its extension API is Pi's: a bare `.ts` or `.js` file in `<agent dir>/extensions`, a default export that is a factory taking the host object, a typed `on(event, handler)` registry and an untyped `events` bus beside it. Sidecar's asset is a `.js` file for the same reason Pi's is: the harness that keeps the shipped JavaScript and its Go mirror from drifting runs the asset under `node`, and `node` cannot import a `.ts` module. OMP itself runs on Bun and loads either.
+
+The family resemblance is where the usefulness of this section ends. **Four differences decide the port, and each was measured rather than assumed.**
+
+### OMP has no `agent_settled`, and Pi's guard is actively wrong here
+
+Pi closes a turn on `agent_settled` and discards a settlement seen while `isIdle()` is not true. OMP's registry has no such event: a run ends on `agent_end` and the distinction Pi carries in a second event is carried in fields instead. Porting Pi's rule across would fail twice over, and the traces show both halves: `ctx.isIdle` is **false** on the `agent_end` of a turn that completed normally, and **true** on the `agent_end` of a cancelled one. So the guard would refuse every real settlement and accept every cancelled one.
+
+What replaces it is upstream's three guards, kept verbatim. An `agent_end` arriving while the handler already believes the run inactive is ignored, because OMP emits duplicate and late end events while auto-retry is holding the pane. An `agent_end` carrying `willContinue === true` is ignored, because a continuation is already scheduled — the comparison is against an explicit `true` rather than key presence, and the traces show why: the key is on every payload and its value is *absent* on an ordinary end. And the idle that survives both guards is published only after a **250ms debounce**, so a run immediately followed by another does not flicker the pane through idle.
+
+That debounce is the only clock in any Sidecar asset, and it is why this asset's pure mapping emits `schedule` and `cancel` actions instead of calling `setTimeout` itself. A timer that fires re-enters the mapping as an ordinary event, which is what lets one fixture drive the debounce through both the shipped JavaScript and the Go mirror and compare them action for action.
+
+### The blocked lane is first-class, and a denial is the same event as an approval
+
+This is the sharpest reversal from Pi, whose blocked lane is structurally unreachable because Pi ships no permission system at all. OMP has `tool_approval_requested` and `tool_approval_resolved`, typed events carrying a `toolName` and an `approvalMode`, and `tool_approval_resolved` fires on **approval and denial alike**, carrying the outcome in an `approved` boolean.
+
+That is the contrast this matrix exists for. Claude Code caps below `full` because a denied permission emits nothing and a hook-driven pane latches on blocked forever; Codex escapes the same trap only because denial takes a *different* event from approval. OMP needs neither workaround, so upstream's single unblocking row clears the lane either way, and `unblocked` is claimed on evidence from both directions.
+
+There is a second blocked path: the `ask` tool. `tool_execution_start` for `toolName === "ask"` means the model is asking the human something, so it blocks, and `tool_execution_end` on the same tool unblocks. Sidecar records that as `question` rather than `permission_request`, because the frozen reason vocabulary distinguishes them. **It is not traced**: no turn in the capture run called that tool, so the branch is driven by fixtures only.
+
+One ordering fact decides why every other tool is ignored. `tool_execution_start` fires **before** `tool_approval_requested`, in the same millisecond. An asset that treated it as work would publish `working` one event before the pane actually blocked.
+
+### OMP retries provider errors by itself, so a failure is held at `working` first
+
+A failed run whose last assistant message carries `stopReason: "error"` is classified against a fixed pattern of retryable provider strings — overload, rate limit, 5xx, socket and timeout shapes. A match holds the pane at `working` for a **2500ms grace** and arms a timer; only a failure still outstanding when that timer fires is published as `blocked` with reason `provider_error`. The pattern is kept character for character, because it is a record of which errors OMP's own retry path recovers from and narrowing it would make Sidecar announce a block OMP is about to clear. Go's RE2 accepts it unchanged, so the Go mirror runs the same expression rather than an approximation of it. **This lane is not traced**: no captured turn hit a retryable error.
+
+`auto_retry_start` and `auto_retry_end` exist and look like a cleaner source for the same signal. They are deliberately not used, because the provider half is upstream's and upstream does not use them. That is the obvious next version of this asset, recorded rather than guessed at.
+
+### The gate is `ctx.hasUI`, and here that is correct
+
+Sidecar's Pi asset gates on `ctx.mode` and says so at length, because an RPC Pi session reports `hasUI` true while being headless. OMP computes `hasUI` as `isInteractive || mode === "rpc-ui"` (`src/main.ts:1830`), so print, json and plain rpc are already false and the reason for preferring `mode` does not apply. Upstream's OMP asset uses `hasUI`; this port keeps it. The gate is re-checked on every handler that can adopt a session, so a headless invocation can never latch.
+
+### Why `advisory` is the ceiling, and how the two gaps differ from Pi's
+
+Five of the seven transitions `FullLifecycleTransitions()` names are covered: work start, blocked on request, unblocked, turn complete, and session identity. The two that are not are each interesting for a different reason.
+
+- **`cancelled` is observable and is deliberately not read.** The last assistant message on a cancelled `agent_end` carries `stopReason=aborted` where a completed one carries `stopReason=stop`. Pi's cancelled and completed turns are byte-identical, so `cancelled` is *unknowable* there; here the discriminator exists and upstream's mapping simply does not consult it, reading `stopReason` only to classify a retryable error. The port keeps the provider half verbatim, so the transition stays unclaimed — a concrete next-version item rather than an unknown.
+- **`process_exit` is unclaimABLE.** OMP's `SessionShutdownEvent` is `{type}` and nothing else, confirmed from the type and from the capture. Pi's carries a reason with five values, three of which are a session swap rather than an exit, so a future Pi asset could subscribe and release only on `quit`; nothing in OMP's payload distinguishes a quit from a swap, so no future version of this asset can claim it from this event alone. The asset subscribes only to cancel its pending timers.
+
+Two smaller absences. `tool_use` is unclaimed by choice: both tool events fire for every tool and carry a `toolName`, and tool use is a refinement of `work_start` rather than a separate lane. There are no subagent events at all.
+
+### Where OMP reads extensions, and the collision that has its own refusal
+
+The user-level directory is `<agent dir>/extensions`, and the agent directory is where OMP differs from Pi in three ways that each produce a wrong install if missed. `PI_CONFIG_DIR` overrides the **name** of the config directory under `$HOME`, defaulting to `.omp` — it is not a path, and it is not a Pi variable at all. A named profile (`OMP_PROFILE`, or `PI_PROFILE` when `OMP_PROFILE` is unset) inserts `/profiles/<name>` **and makes OMP ignore `PI_CODING_AGENT_DIR` entirely**. And `PI_CODING_AGENT_DIR` is `path.resolve`d rather than tilde-expanded, so a relative or `~`-prefixed value binds to whatever directory OMP was launched from; Sidecar cannot know that directory and refuses with that reason rather than guessing at one. Herdr's `omp_extension_dir` tilde-expands the override and knows nothing about profiles.
+
+`PI_CODING_AGENT_DIR` is the collision. It is Pi's variable and OMP reads it too, so with it set the two agents resolve to **one** extensions directory and every extension in it is loaded by both binaries. Sidecar would then be reporting one provider's lane from the other's pane, and `agent report` verifies `--provider` against the pane's occupant, so one of the two would be refused on every single event. Sidecar refuses to install into that state with a reason naming both sides, which is the refusal Herdr's `install_omp` makes, and its asset carries a distinct filename (`sidecar-omp-lifecycle.js`) so the two were never going to occupy one path. The residual is one-sided and is stated rather than hidden: installing OMP into a directory Pi already shares is refused, but setting the variable *after* installing OMP and then installing Pi is not, because that check would live in the Pi adapter. `sidecar agent integration status omp` reports the collision from either direction.
+
+Herdr's `remove_legacy_pi_extension_from_omp_dir` is deliberately not copied. It deletes a file out of the OMP directory on the strength of a marker declaring `HERDR_INTEGRATION_ID=pi` — Herdr cleaning up a mistake of its own making. Sidecar has never installed a Pi asset into an OMP directory, and removing a file on the strength of a marker that is not Sidecar's own would break the ownership rule outright.
+
+### What the live proof showed
+
+Three captures are in `internal/agentlifecycle/testdata/traces/omp/`, taken 2026-09-04 from a live OMP TUI in a Sidecar-managed shell on a private tmux server, with `HOME`, every XDG directory, `-config` and `SIDECAR_ISOLATED_STATE=1` under a scratch tree; the CLI was installed into a scratch npm prefix and never onto the maintainer's `PATH`, and no `~/.omp` was created in their home. Eight tests in `hooktrace_test.go` re-derive each claim from the fixture that earned it.
+
+Sidecar's asset was installed by `sidecar agent integration install omp` rather than by hand, so the run proves the installer. The store recorded, from source `sidecar.omp.extension` with store-assigned sequences 1 through 11 and no gaps: `idle(session_start)` → `working(turn_start)` → `idle(turn_complete)`, then a tool turn `working(turn_start)` → `blocked(permission_request)` → `working(permission_resolved)` → `idle(turn_complete)`, then the same block-and-unblock again on a **denial**. `agent explain --shell` read `state=working authority=lifecycle tier=advisory` while a turn ran and `state=idle` after it, with `screen=unknown` throughout: the verdict was authored by hooks and by nothing else. The session binding landed in `shells.json` by **path**, `reported: true`, which is what proves the approved store root for this provider is the directory the installer actually writes beside.
+
+Uninstall removed only Sidecar's own file. A neighbouring extension in the same directory was left byte-identical and the directory itself was kept, because Sidecar did not empty it. Uninstalling alone did **not** flip the lane — stored reports keep authority while the run is alive, which is Slice 1's finding reproduced rather than assumed — and uninstalling *and* ending the run gave `authority=screen`, `fallbackReason=process_generation_mismatch`.
+
 ## Catalog agents evaluated but not built
 
 These are recorded rather than omitted so that "evaluated, and deliberately not built" is distinguishable from "never looked at". All are `screen-fallback` with `evidence: none`: **none is trace-backed**, so each selects a candidate rather than earning a tier, and `TierFor` would refuse them anything else regardless.
@@ -361,7 +423,7 @@ The third is the dangerous one, because nothing in a Sidecar release notices it.
 
 ### When Sidecar changes an asset
 
-1. Bump the asset version constant (`OpenCodeAssetVersion`, `CodexAssetVersion`, `ClaudeAssetVersion`, `PiAssetVersion`, `KimiAssetVersion`).
+1. Bump the asset version constant (`OpenCodeAssetVersion`, `CodexAssetVersion`, `ClaudeAssetVersion`, `PiAssetVersion`, `KiloAssetVersion`, `KimiAssetVersion`, `OmpAssetVersion`).
 2. Append the superseded entry to that adapter's canonical history, so an installed copy of the old version reads as `outdated` rather than as damage.
 3. Move `assetVersion` in `capabilities.json` to match.
 4. Requalify against the traces — a new asset consuming the same events still needs to be shown to consume them correctly.

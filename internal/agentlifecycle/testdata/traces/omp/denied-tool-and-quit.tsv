@@ -1,0 +1,42 @@
+# ms	event	session	turn	tool	fields
+0	agent_start	session-1	-	-	type=agent_start,ctx.hasUI=true,ctx.isIdle=false,ctx.sessionFile=present,ctx.sessionId=present
+23	turn_start	session-1	-	-	timestamp,turnIndex,type=turn_start,ctx.hasUI=true,ctx.isIdle=false,ctx.sessionFile=present,ctx.sessionId=present
+2244	tool_execution_start	session-1	-	bash	args,intent,toolCallId,toolName,type=tool_execution_start,ctx.hasUI=true,ctx.isIdle=false,ctx.sessionFile=present,ctx.sessionId=present
+2245	tool_approval_requested	session-1	-	bash	approvalMode,sessionId,toolCallId,toolName,type=tool_approval_requested,ctx.hasUI=true,ctx.isIdle=false,ctx.sessionFile=present,ctx.sessionId=present
+6060	tool_approval_resolved	session-1	-	bash	approved,reason,sessionId,toolCallId,toolName,approved=false,type=tool_approval_resolved,ctx.hasUI=true,ctx.isIdle=false,ctx.sessionFile=present,ctx.sessionId=present
+6061	tool_execution_end	session-1	-	bash	isError,result,toolCallId,toolName,type=tool_execution_end,ctx.hasUI=true,ctx.isIdle=false,ctx.sessionFile=present,ctx.sessionId=present
+6083	turn_end	session-1	-	-	message,toolResults,turnIndex,type=turn_end,ctx.hasUI=true,ctx.isIdle=false,ctx.sessionFile=present,ctx.sessionId=present
+6084	turn_start	session-1	-	-	timestamp,turnIndex,type=turn_start,ctx.hasUI=true,ctx.isIdle=false,ctx.sessionFile=present,ctx.sessionId=present
+7082	turn_end	session-1	-	-	message,toolResults,turnIndex,type=turn_end,ctx.hasUI=true,ctx.isIdle=false,ctx.sessionFile=present,ctx.sessionId=present
+7083	agent_end	session-1	-	-	messages,willContinue,willContinue=absent,stopReason=aborted,type=agent_end,ctx.hasUI=true,ctx.isIdle=true,ctx.sessionFile=present,ctx.sessionId=present
+42052	session_shutdown	session-1	-	-	type=session_shutdown,ctx.hasUI=true,ctx.isIdle=true,ctx.sessionFile=present,ctx.sessionId=present
+# One turn whose tool call was DENIED, followed by /quit.
+#
+# A DENIAL IS THE SAME EVENT AS AN APPROVAL, carrying the outcome in a boolean:
+# tool_approval_resolved with approved=false, plus a reason key. That is the
+# contrast the capability matrix exists for. Claude Code caps below full because
+# a denial emits nothing at all and the pane latches; Codex escapes that only
+# because denial takes a different event from approval. OMP needs neither
+# workaround, so upstream's single unblocking row is sufficient and the unblocked
+# transition is claimed on evidence. Measured live: the store went
+# blocked(permission_request) -> working(permission_resolved) -> idle(turn_complete)
+# on the denial, sequences 9 through 11.
+#
+# CANCELLATION IS OBSERVABLE AND IS STILL NOT CLAIMED. The last assistant message
+# on this agent_end carries stopReason=aborted, where both completed turns carry
+# stopReason=stop. So the discriminator exists, unlike Pi's, where a cancelled and
+# a completed turn are byte-identical. Upstream's mapping does not read it -- it
+# reads stopReason only to classify a retryable provider error -- and this port
+# keeps the provider half verbatim, so cancelled stays unclaimed. It is a
+# concrete next-version item rather than an unknown, and the capability entry says
+# so.
+#
+# ctx.isIdle is TRUE on this agent_end and FALSE on both of the completed ones, so
+# it is not a discriminator in either direction. That is the second half of why
+# the asset does not use it.
+#
+# session_shutdown CARRIES NOTHING. OMP's SessionShutdownEvent is {type} with no
+# reason field, which is a real difference from Pi's, where five reasons are
+# readable and three of them are not an exit. So process_exit is unclaimable here
+# rather than unclaimed by choice: nothing in the payload distinguishes a quit from
+# a session swap. The asset subscribes only to cancel its pending timers.

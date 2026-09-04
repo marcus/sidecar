@@ -1,0 +1,30 @@
+# ms	event	session	turn	tool	fields
+0	session_start	session-1	-	-	type=session_start,ctx.hasUI=true,ctx.isIdle=true,ctx.sessionFile=present,ctx.sessionId=present
+70285	agent_start	session-1	-	-	type=agent_start,ctx.hasUI=true,ctx.isIdle=false,ctx.sessionFile=present,ctx.sessionId=present
+70310	turn_start	session-1	-	-	timestamp,turnIndex,type=turn_start,ctx.hasUI=true,ctx.isIdle=false,ctx.sessionFile=present,ctx.sessionId=present
+72402	turn_end	session-1	-	-	message,toolResults,turnIndex,type=turn_end,ctx.hasUI=true,ctx.isIdle=false,ctx.sessionFile=present,ctx.sessionId=present
+72417	agent_end	session-1	-	-	messages,willContinue,willContinue=absent,stopReason=stop,type=agent_end,ctx.hasUI=true,ctx.isIdle=false,ctx.sessionFile=present,ctx.sessionId=present
+# One session start and one successful turn with no tool, from process start.
+#
+# session_start carries ctx.hasUI=true, which is the gate this asset checks
+# instead of Pi's ctx.mode. OMP sets hasUI from isInteractive || mode ===
+# "rpc-ui" (src/main.ts:1830), so print, json and plain rpc are already false
+# and the Pi asset's reason for preferring mode does not apply here. It carries
+# no reason field at all: OMP's SessionStartEvent is {type} and nothing else,
+# where Pi's has a reason. ctx.sessionFile and ctx.sessionId are both present, so
+# the pane is bound to its transcript by path.
+#
+# THE LANE COMES FROM agent_start AND FROM THE DEBOUNCED IDLE agent_end ARMS.
+# There is no agent_settled row and there never will be: OMP has no such event.
+# What replaces Pi's isIdle guard is visible right here -- agent_end reports
+# ctx.isIdle=FALSE on a turn that completed normally, so an asset that closed a
+# turn the way Pi's does would never settle at all. The three guards this asset
+# uses instead are agentActive, willContinue, and the 250ms debounce.
+#
+# willContinue is a payload key on every agent_end and its value is absent here:
+# the field exists on the type and is only set when a continuation was scheduled,
+# which is why the asset compares against an explicit true rather than testing
+# for the key.
+#
+# turn_start and turn_end fire once each on a turn with no tool. See
+# tool-turn-with-approval.tsv for the same pair firing twice inside one run.

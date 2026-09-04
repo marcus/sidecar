@@ -122,6 +122,21 @@ var valueBearingTraceKeys = map[string]bool{
 	// widen this set for nothing.
 	"client_type": true,
 	"source":      true,
+	// OMP's four, appended under the same rule and each worth its own sentence.
+	// `ctx.hasUI` is a boolean, and it is the gate this provider's asset checks
+	// where Pi's checks `ctx.mode`; recording it is what lets a fixture show the
+	// gate was satisfied. `willContinue` is AgentEndEvent's own boolean flag,
+	// recorded as true, false or absent, and the difference between "absent" and
+	// "false" is exactly why the asset compares against an explicit true.
+	// `stopReason` is OMP's own closed StopReason vocabulary -- stop, aborted,
+	// error and the rest -- chosen by its source rather than written by a model,
+	// which is the same concession `error` already makes for kilo. `approved` is
+	// ToolApprovalResolvedEvent's boolean, and it is the whole of what makes a
+	// denial distinguishable from an approval on this provider.
+	"ctx.hasUI":    true,
+	"willContinue": true,
+	"stopReason":   true,
+	"approved":     true,
 }
 
 // TestNoHookTraceCarriesAValue is the privacy gate over the fixtures
@@ -136,7 +151,7 @@ var valueBearingTraceKeys = map[string]bool{
 // every test in the tree. So the allowlist above is enforced here: a `=` on any
 // key outside it fails, whatever the value looks like.
 func TestNoHookTraceCarriesAValue(t *testing.T) {
-	for _, provider := range []string{"codex", "claude", "pi", "kilo", "kimi"} {
+	for _, provider := range []string{"codex", "claude", "pi", "kilo", "kimi", "omp"} {
 		entries, err := os.ReadDir(filepath.Join("testdata", "traces", provider))
 		if err != nil {
 			t.Fatalf("%s has no traces but its capability entry claims real evidence: %v", provider, err)
@@ -937,4 +952,259 @@ func TestKimiNonInteractiveRunsSkipThePermissionPair(t *testing.T) {
 			t.Fatalf("the non-interactive trace now contains %s; the recorded finding is that it contains neither", e)
 		}
 	}
+}
+
+// The OMP traces.
+//
+// OMP is a rebranded fork of Pi's codebase, so its traces use the same six-column
+// hook layout and the two providers look alike at a glance. The tests below are
+// the places where they are not alike, and each one exists because the Pi port's
+// answer does not transfer.
+
+// TestOmpTraceEarnsExactlyWhatTheAssetReports is the promotion, asserted.
+//
+// It reads the registry entry and requires the traces to contain the events that
+// entry says it reports -- and requires that they contain no event the entry does
+// not claim. A future edit that adds a transition to `covered` without a capture
+// behind it fails here.
+func TestOmpTraceEarnsExactlyWhatTheAssetReports(t *testing.T) {
+	cap, ok := CapabilityForSource("sidecar.omp.extension")
+	if !ok {
+		t.Fatal("no capability registered for sidecar.omp.extension")
+	}
+	if cap.Evidence != EvidenceRealTrace {
+		t.Fatalf("omp evidence = %q; these traces exist to make it real-trace", cap.Evidence)
+	}
+	if tier, reason := cap.TierFor(StatusCurrent, true); tier != TierAdvisory {
+		t.Fatalf("omp exercises %q (%s), want advisory: it is the traced ceiling", tier, reason)
+	}
+
+	// Each claimed transition maps to an event that is actually in a trace.
+	for _, claim := range []struct {
+		transition Transition
+		trace      string
+		event      string
+	}{
+		{TransitionSessionIdentity, "simple-turn.tsv", "session_start"},
+		{TransitionWorkStart, "simple-turn.tsv", "agent_start"},
+		{TransitionTurnComplete, "simple-turn.tsv", "agent_end"},
+		{TransitionBlockedOnRequest, "tool-turn-with-approval.tsv", "tool_approval_requested"},
+		{TransitionUnblocked, "tool-turn-with-approval.tsv", "tool_approval_resolved"},
+	} {
+		if !cap.Covers(claim.transition) {
+			t.Fatalf("omp no longer claims %s, which %s in %s supports", claim.transition, claim.event, claim.trace)
+		}
+		if !contains(eventsOf(readHookTrace(t, "omp", claim.trace)), claim.event) {
+			t.Fatalf("omp claims %s but no %s appears in %s", claim.transition, claim.event, claim.trace)
+		}
+	}
+	// And nothing else is claimed. cancelled is observable and unclaimed by
+	// choice; process_exit is unclaimable; tool_use is unclaimed by choice; there
+	// are no subagent events. See the tests below for each.
+	for _, absent := range []Transition{
+		TransitionToolUse, TransitionProcessExit, TransitionCancelled, TransitionSubagent,
+	} {
+		if cap.Covers(absent) {
+			t.Fatalf("omp claims %q, which no trace here supports", absent)
+		}
+	}
+	if cap.CoversFullLifecycle() {
+		t.Fatal("omp claims full lifecycle coverage; cancelled and process_exit are not reported")
+	}
+}
+
+// TestOmpHasNoSettledEventAndIsIdleIsNoDiscriminator is the trap, measured, and
+// it is the one place Pi's answer is actively wrong for this provider.
+//
+// Pi closes a turn on agent_settled and discards a settlement seen while
+// isIdle() is not true. OMP has no agent_settled at all, and the trace shows that
+// the guard would not work if it did: ctx.isIdle is FALSE on the agent_end of a
+// turn that completed normally and TRUE on the agent_end of a cancelled one. So
+// an asset that ported Pi's rule across would never settle a completed turn and
+// would settle a cancelled one.
+func TestOmpHasNoSettledEventAndIsIdleIsNoDiscriminator(t *testing.T) {
+	completed := readHookTrace(t, "omp", "simple-turn.tsv")
+	assertEvents(t, eventsOf(completed),
+		"session_start", "agent_start", "turn_start", "turn_end", "agent_end")
+	for _, r := range completed {
+		if r.event == "agent_settled" {
+			t.Fatal("an agent_settled row appeared in an OMP trace; OMP's event registry has no such event")
+		}
+	}
+	end := findHookRow(t, completed, "agent_end")
+	if !contains(end.fields, "ctx.isIdle=false") {
+		t.Fatalf("agent_end on a completed turn no longer reports isIdle false; fields are %v", end.fields)
+	}
+	if !contains(end.fields, "stopReason=stop") {
+		t.Fatalf("agent_end on a completed turn no longer reports stopReason=stop; fields are %v", end.fields)
+	}
+
+	cancelled := findHookRow(t, readHookTrace(t, "omp", "denied-tool-and-quit.tsv"), "agent_end")
+	if !contains(cancelled.fields, "ctx.isIdle=true") {
+		t.Fatalf("agent_end on a cancelled turn no longer reports isIdle true; fields are %v", cancelled.fields)
+	}
+	// Both directions in one sentence: the field's value is inverted from what a
+	// Pi-shaped guard would need on both kinds of end.
+	if contains(end.fields, "ctx.isIdle=true") || contains(cancelled.fields, "ctx.isIdle=false") {
+		t.Fatal("isIdle is no longer inverted across the two ends, which is the whole comparison")
+	}
+}
+
+// TestOmpWillContinueIsAbsentRatherThanFalse is why the asset compares against an
+// explicit true. The key is on every agent_end payload and its value is absent on
+// an ordinary end, so a truthiness test would behave the same but a
+// key-presence test would settle nothing.
+func TestOmpWillContinueIsAbsentRatherThanFalse(t *testing.T) {
+	for _, trace := range []string{"simple-turn.tsv", "tool-turn-with-approval.tsv", "denied-tool-and-quit.tsv"} {
+		end := findHookRow(t, readHookTrace(t, "omp", trace), "agent_end")
+		if !contains(end.fields, "willContinue") {
+			t.Fatalf("%s: agent_end no longer carries a willContinue key at all: %v", trace, end.fields)
+		}
+		if !contains(end.fields, "willContinue=absent") {
+			t.Fatalf("%s: agent_end's willContinue is no longer absent: %v", trace, end.fields)
+		}
+	}
+}
+
+// TestOmpDenialIsTheSameEventAsAnApproval is the contrast this matrix exists for.
+//
+// Claude Code caps below full because a denial emits nothing at all and the pane
+// latches; Codex escapes that only because denial takes a different event from
+// approval. OMP needs neither workaround: one event carries the outcome in a
+// boolean, so upstream's single unblocking row clears the lane either way and
+// `unblocked` is claimed on evidence.
+func TestOmpDenialIsTheSameEventAsAnApproval(t *testing.T) {
+	approved := findHookRow(t, readHookTrace(t, "omp", "tool-turn-with-approval.tsv"), "tool_approval_resolved")
+	denied := findHookRow(t, readHookTrace(t, "omp", "denied-tool-and-quit.tsv"), "tool_approval_resolved")
+	if !contains(approved.fields, "approved=true") {
+		t.Fatalf("the approved trace no longer records approved=true: %v", approved.fields)
+	}
+	if !contains(denied.fields, "approved=false") {
+		t.Fatalf("the denied trace no longer records approved=false: %v", denied.fields)
+	}
+	if approved.event != denied.event {
+		t.Fatalf("approval and denial now take different events (%s and %s), which would change the port",
+			approved.event, denied.event)
+	}
+	cap, _ := CapabilityForSource("sidecar.omp.extension")
+	if !cap.Covers(TransitionUnblocked) {
+		t.Fatal("omp does not claim unblocked, which both halves of this comparison support")
+	}
+}
+
+// TestOmpApprovalIsRequestedAfterToolExecutionStarts pins the ordering that
+// decides why the asset ignores tool_execution_start for every tool but `ask`.
+//
+// The tool's execution start fires first, in the same millisecond as the approval
+// request. An asset that treated it as work would publish `working` one event
+// before the pane actually blocked.
+func TestOmpApprovalIsRequestedAfterToolExecutionStarts(t *testing.T) {
+	events := eventsOf(readHookTrace(t, "omp", "tool-turn-with-approval.tsv"))
+	start, request := indexOfHookEvent(events, "tool_execution_start"), indexOfHookEvent(events, "tool_approval_requested")
+	if start < 0 || request < 0 {
+		t.Fatalf("the trace no longer contains both events: %v", events)
+	}
+	if start > request {
+		t.Fatalf("tool_execution_start now follows the approval request, which would change which event opens the block: %v", events)
+	}
+	// And the turn pair fires twice inside this one agent run, which is why
+	// neither is subscribed: a turn here is a provider round trip.
+	var turns int
+	for _, e := range events {
+		if e == "turn_start" {
+			turns++
+		}
+	}
+	if turns != 2 {
+		t.Fatalf("turn_start fired %d times in one tool turn, want 2; a turn is a provider round trip here", turns)
+	}
+}
+
+// TestOmpCancellationIsObservableAndStillUnclaimed is the difference from Pi
+// stated as a test.
+//
+// Pi's cancelled and completed turns are byte-identical, so `cancelled` is
+// unknowable there. Here the discriminator exists -- stopReason=aborted against
+// stopReason=stop -- and the transition is still unclaimed, because upstream's
+// mapping does not read it and this port keeps the provider half verbatim. If a
+// future asset version reads it, this test is what says the evidence was already
+// on file.
+func TestOmpCancellationIsObservableAndStillUnclaimed(t *testing.T) {
+	completed := findHookRow(t, readHookTrace(t, "omp", "simple-turn.tsv"), "agent_end")
+	cancelled := findHookRow(t, readHookTrace(t, "omp", "denied-tool-and-quit.tsv"), "agent_end")
+	if !contains(completed.fields, "stopReason=stop") || !contains(cancelled.fields, "stopReason=aborted") {
+		t.Fatalf("the two ends no longer differ by stop reason:\ncompleted %v\ncancelled %v",
+			completed.fields, cancelled.fields)
+	}
+	cap, _ := CapabilityForSource("sidecar.omp.extension")
+	if cap.Covers(TransitionCancelled) {
+		t.Fatal("omp claims cancelled; the shipped asset never reads the stop reason that would distinguish it")
+	}
+}
+
+// TestOmpSessionShutdownCarriesNothing is why process_exit is unclaimABLE here
+// rather than unclaimed by choice.
+//
+// Pi's session_shutdown carries a reason, and three of its five values are a
+// session swap rather than an exit, so a future Pi asset could subscribe and
+// release only on `quit`. OMP's event is `{type}` and nothing else, so nothing in
+// the payload distinguishes a quit from a swap and no future version of this
+// asset can claim the transition from this event alone.
+func TestOmpSessionShutdownCarriesNothing(t *testing.T) {
+	shutdown := findHookRow(t, readHookTrace(t, "omp", "denied-tool-and-quit.tsv"), "session_shutdown")
+	for _, field := range shutdown.fields {
+		key, _, hasValue := strings.Cut(field, "=")
+		if !hasValue && key != "" {
+			t.Fatalf("session_shutdown now carries a payload key %q; process_exit may be claimable after all", key)
+		}
+		if key == "reason" {
+			t.Fatal("session_shutdown now carries a reason, which is Pi's shape and not OMP's")
+		}
+	}
+	cap, _ := CapabilityForSource("sidecar.omp.extension")
+	if cap.Covers(TransitionProcessExit) {
+		t.Fatal("omp claims process_exit; its session_shutdown says nothing that would support it")
+	}
+}
+
+// TestOmpSessionStartCarriesATranscriptAndNoReason pins the two facts the
+// session-identity claim rests on, and the one field Pi has that OMP does not.
+func TestOmpSessionStartCarriesATranscriptAndNoReason(t *testing.T) {
+	rows := readHookTrace(t, "omp", "simple-turn.tsv")
+	if rows[0].event != "session_start" {
+		t.Fatalf("simple-turn.tsv no longer opens on session_start (%s)", rows[0].event)
+	}
+	for _, want := range []string{"ctx.hasUI=true", "ctx.sessionFile=present", "ctx.sessionId=present"} {
+		if !contains(rows[0].fields, want) {
+			t.Fatalf("session_start no longer records %s; fields are %v", want, rows[0].fields)
+		}
+	}
+	for _, field := range rows[0].fields {
+		if key, _, _ := strings.Cut(field, "="); key == "reason" {
+			t.Fatal("session_start now carries a reason; OMP's SessionStartEvent has none, which is why the " +
+				"asset's forced report always uses session_start and session_switch's uses session_change")
+		}
+	}
+}
+
+// findHookRow returns the last row with the given event, which is the one the
+// assertions above mean whenever an event repeats inside a trace.
+func findHookRow(t *testing.T, rows []hookRow, event string) hookRow {
+	t.Helper()
+	for i := len(rows) - 1; i >= 0; i-- {
+		if rows[i].event == event {
+			return rows[i]
+		}
+	}
+	t.Fatalf("no %s row in the trace", event)
+	return hookRow{}
+}
+
+func indexOfHookEvent(events []string, want string) int {
+	for i, e := range events {
+		if e == want {
+			return i
+		}
+	}
+	return -1
 }

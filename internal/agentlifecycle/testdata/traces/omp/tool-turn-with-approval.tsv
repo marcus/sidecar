@@ -1,0 +1,31 @@
+# ms	event	session	turn	tool	fields
+0	agent_start	session-1	-	-	type=agent_start,ctx.hasUI=true,ctx.isIdle=false,ctx.sessionFile=present,ctx.sessionId=present
+23	turn_start	session-1	-	-	timestamp,turnIndex,type=turn_start,ctx.hasUI=true,ctx.isIdle=false,ctx.sessionFile=present,ctx.sessionId=present
+3235	tool_execution_start	session-1	-	bash	args,intent,toolCallId,toolName,type=tool_execution_start,ctx.hasUI=true,ctx.isIdle=false,ctx.sessionFile=present,ctx.sessionId=present
+3235	tool_approval_requested	session-1	-	bash	approvalMode,sessionId,toolCallId,toolName,type=tool_approval_requested,ctx.hasUI=true,ctx.isIdle=false,ctx.sessionFile=present,ctx.sessionId=present
+27373	tool_approval_resolved	session-1	-	bash	approved,sessionId,toolCallId,toolName,approved=true,type=tool_approval_resolved,ctx.hasUI=true,ctx.isIdle=false,ctx.sessionFile=present,ctx.sessionId=present
+27413	tool_execution_end	session-1	-	bash	isError,result,toolCallId,toolName,type=tool_execution_end,ctx.hasUI=true,ctx.isIdle=false,ctx.sessionFile=present,ctx.sessionId=present
+27435	turn_end	session-1	-	-	message,toolResults,turnIndex,type=turn_end,ctx.hasUI=true,ctx.isIdle=false,ctx.sessionFile=present,ctx.sessionId=present
+27436	turn_start	session-1	-	-	timestamp,turnIndex,type=turn_start,ctx.hasUI=true,ctx.isIdle=false,ctx.sessionFile=present,ctx.sessionId=present
+28976	turn_end	session-1	-	-	message,toolResults,turnIndex,type=turn_end,ctx.hasUI=true,ctx.isIdle=false,ctx.sessionFile=present,ctx.sessionId=present
+28977	agent_end	session-1	-	-	messages,willContinue,willContinue=absent,stopReason=stop,type=agent_end,ctx.hasUI=true,ctx.isIdle=false,ctx.sessionFile=present,ctx.sessionId=present
+# One turn that ran a bash tool through the approval prompt and was approved.
+#
+# THIS IS THE LANE PI CANNOT REACH. tool_approval_requested and
+# tool_approval_resolved are typed, first-class OMP events carrying a toolName
+# and an approvalMode; Pi ships no permission system at all, so its blocked lane
+# is structurally unreachable and this one is the ordinary case.
+#
+# The ordering is worth reading: tool_execution_start fires BEFORE the approval
+# is requested, in the same millisecond. The asset ignores it, because it acts on
+# tool_execution_start only for the ask tool; the block comes from the approval
+# event. An asset that treated every tool_execution_start as work would be
+# publishing working one event before the pane actually blocked.
+#
+# turn_start and turn_end fire TWICE inside this one agent run -- once around the
+# tool call, once around the reply -- so a turn in this codebase's vocabulary is
+# a provider round trip, exactly as Pi's traces measured. Neither is subscribed.
+#
+# The store recorded, from this turn: working(turn_start), blocked(permission_request),
+# working(permission_resolved), idle(turn_complete), with store-assigned sequences
+# 4 through 7 and no gaps.
