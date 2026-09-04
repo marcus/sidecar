@@ -634,6 +634,38 @@ func TestKimiRefusesAConfigItCannotInterpret(t *testing.T) {
 	}
 }
 
+// TestKimiSaysWhyItCannotInstallIntoAFileItCannotAppendTo is the sibling of the
+// data-directory message, for the other way install can be absent from Offered
+// on a file that otherwise reads as a plain not-installed.
+//
+// Kimi's schema wants `[[hooks]]`, an array of tables. A user who wrote
+// `[hooks]` instead has a file Sidecar cannot append its block to at all: the
+// composed image is not valid TOML, so the oracle refuses. The refusal itself
+// was already exact. What was missing was the status, which showed
+// "not installed", no message, and no install action, which is how a correct
+// refusal reads as a broken surface.
+func TestKimiSaysWhyItCannotInstallIntoAFileItCannotAppendTo(t *testing.T) {
+	svc, _, paths := kimiFixture(t)
+	kimiSetUp(t, paths)
+	writeFileForTest(t, paths.Config, "[hooks]\nenabled = true\n")
+
+	st := kimiStatus(t, svc)
+	if st.Status != agentlifecycle.StatusNotInstalled {
+		t.Fatalf("status = %q, want not-installed (%s)", st.Status, st.Message)
+	}
+	if st.Message == "" {
+		t.Fatal("the status offers no install and says nothing about why")
+	}
+	for _, act := range st.Offered {
+		if act == ActionInstall {
+			t.Fatal("install was offered against a file the oracle refuses")
+		}
+	}
+	if _, err := svc.Plan(KimiProvider, ActionInstall); err == nil {
+		t.Fatal("install was planned against a file the composed image cannot parse as")
+	}
+}
+
 // TestKimiRefusesWhenTheDataDirectoryIsMissing keeps Herdr's own precondition:
 // ~/.kimi-code is created by Kimi, so its absence means Kimi has never run here,
 // and Sidecar does not invent a provider's private state tree.

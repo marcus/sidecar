@@ -517,6 +517,18 @@ func kimiAssetStatus(s kimiState) (agentlifecycle.IntegrationStatus, string) {
 			// saying why the one action that would fix it is not offered.
 			return agentlifecycle.StatusNotInstalled, kimiNeverSetUp(s.paths.Dir)
 		}
+		// The same rule one branch up, for the other reason install can be
+		// absent from Offered on a file that reads as plain not-installed: the
+		// block Sidecar would append does not survive the oracle. A `[hooks]`
+		// table where Kimi's schema wants an array of tables is the case that
+		// found this, and appending `[[hooks]]` under it is not valid TOML at all,
+		// so planConverge refuses with an exact reason while the status stayed
+		// silent and simply showed no install action.
+		if why := kimiConvergeBlocked(s.scan); why != "" {
+			return agentlifecycle.StatusNotInstalled,
+				"Sidecar cannot add its hooks to " + KimiConfigName + " as that file is written (" + why +
+					"); fix or move it yourself and run this again"
+		}
 		return agentlifecycle.StatusNotInstalled, ""
 	case s.scan.text == kimiBlock():
 		return agentlifecycle.StatusCurrent, ""
@@ -526,6 +538,27 @@ func kimiAssetStatus(s kimiState) (agentlifecycle.IntegrationStatus, string) {
 	}
 	return agentlifecycle.StatusNeedsRepair,
 		"the installed block claims version " + s.scan.version + " but its contents do not match the block this build ships"
+}
+
+// kimiConvergeBlocked reports why appending Sidecar's block to this file would
+// be refused, or empty when it would be accepted.
+//
+// It asks the same two functions planConverge asks, in the same order, so the
+// status and the refusal can never disagree about whether install is possible.
+// A file that does not exist yet composes to the block alone and always
+// verifies, so there is nothing to say about one.
+func kimiConvergeBlocked(scan kimiConfigScan) string {
+	if !scan.exists || scan.parseErr != "" {
+		return ""
+	}
+	content, err := kimiCompose(scan, kimiBlock())
+	if err != nil {
+		return err.Error()
+	}
+	if err := kimiOracleConverged(scan.raw, content); err != nil {
+		return err.Error()
+	}
+	return ""
 }
 
 // Inspect implements [Adapter].

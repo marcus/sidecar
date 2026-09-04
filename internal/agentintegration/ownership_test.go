@@ -267,6 +267,47 @@ func TestAPreviewsAfterStateMatchesWhatTheOpActuallyDoes(t *testing.T) {
 			t.Fatalf("uninstall predicted a Sidecar version %q on the user's config.toml", after.Version)
 		}
 	})
+
+	// Kimi is the third OwnsEntry adapter and the first whose entry is a fenced
+	// region of a TOML file rather than a key in a document, so the preview it
+	// renders is the one place that shape could describe itself wrongly. The
+	// user's own hook is here so uninstall leaves a file to write rather than
+	// removing one: an OpRemove has no after-state to get wrong, and the case
+	// this test exists for is the write that ends with Sidecar's block gone.
+	t.Run("kimi config.toml", func(t *testing.T) {
+		svc, _, paths := kimiFixture(t)
+		kimiSetUp(t, paths)
+		writeFileForTest(t, paths.Config,
+			"default_model = \"moonshot\"\n\n[[hooks]]\nevent = \"Notification\"\ncommand = \"echo keep\"\ntimeout = 3\n")
+
+		install, err := svc.Plan(KimiProvider, ActionInstall)
+		if err != nil {
+			t.Fatal(err)
+		}
+		after, ok := afterFor(t, install, paths.Config)
+		if !ok {
+			t.Fatal("install planned no write to config.toml")
+		}
+		if !after.Owned || after.Ownership != OwnsEntry || after.Version != KimiAssetVersion {
+			t.Fatalf("install predicted %+v; wanted an owned entry at version %s", after, KimiAssetVersion)
+		}
+
+		applyTo(t, svc, KimiProvider, ActionInstall)
+		uninstall, err := svc.Plan(KimiProvider, ActionUninstall)
+		if err != nil {
+			t.Fatal(err)
+		}
+		after, ok = afterFor(t, uninstall, paths.Config)
+		if !ok {
+			t.Fatal("uninstall planned no write to config.toml")
+		}
+		if after.Owned || after.Ownership == OwnsEntry {
+			t.Fatalf("uninstall predicted %+v for config.toml; it removes Sidecar's block, so what it leaves is the user's file", after)
+		}
+		if after.Version != "" {
+			t.Fatalf("uninstall predicted a Sidecar version %q on the user's config.toml", after.Version)
+		}
+	})
 }
 
 func testEnv(t *testing.T) Env {
