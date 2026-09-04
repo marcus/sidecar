@@ -153,14 +153,17 @@ const (
 // one the creation forms use; agents without a known flag resolve to "".
 var SkipPermissionsFlags = buildSkipPermissionsFlags()
 
+// The families are read from the catalog rather than listed, because a listed
+// set answers "" for anything it forgot and "" is also the honest answer for a
+// provider with no such flag. A family missing here is an auto-approve checkbox
+// that is offered, ticked, and then does nothing -- the one failure this map
+// must not have. Aider is added by hand for the same reason it is launchable at
+// all: it is the legacy bucket, which Families() deliberately does not reach.
 func buildSkipPermissionsFlags() map[AgentType]string {
-	agents := []AgentType{
-		AgentClaude, AgentCodex, AgentCopilot, AgentAider, AgentAntigravity,
-		AgentCursor, AgentOpenCode, AgentPi, AgentAmp, AgentGrok, AgentMuse,
-	}
-	flags := make(map[AgentType]string, len(agents))
-	for _, agent := range agents {
-		flags[agent] = workspaceops.AgentSkipFlag(string(agent))
+	families := append(agentcatalog.Families(), agentcatalog.LegacyFamilies()...) //nolint:gocritic // one pass over both launchable buckets
+	flags := make(map[AgentType]string, len(families))
+	for _, family := range families {
+		flags[AgentType(family.ID)] = workspaceops.AgentSkipFlag(family.ID)
 	}
 	return flags
 }

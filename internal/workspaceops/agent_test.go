@@ -8,6 +8,8 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/marcus/sidecar/internal/agentcatalog"
 )
 
 type fakeTmuxRunner struct {
@@ -240,4 +242,52 @@ func TestResolveAgentCommandOpenCode(t *testing.T) {
 			t.Fatalf("resolved command = %q", got)
 		}
 	})
+}
+
+// A family whose bare command is not its agent carries the subcommand that is,
+// and every resolution has to keep it. ResolveAgentLaunchArgv builds argv from
+// the catalog and gets LaunchArgs for free; the string form is a second path,
+// and it is the one the workspace plugin and every remote create-shell use.
+//
+// Kiro is why this exists and is deliberately not named here: `kiro-cli` alone
+// prints help and exits, and `kiro-cli --trust-all-tools` is rejected as an
+// unexpected argument, so dropping `chat` turns a launch into a pane that
+// closes. Reading the rule off the catalog means the next such family is
+// covered on the day its file lands.
+func TestStringLaunchKeepsTheSubcommandThatStartsTheAgent(t *testing.T) {
+	found := 0
+	for _, family := range agentcatalog.Families() {
+		if len(family.LaunchArgs) == 0 {
+			continue
+		}
+		found++
+		want := family.Command + " " + strings.Join(family.LaunchArgs, " ")
+		if got := ResolveAgentCommandFromConfig(family.ID, nil, false); got != want {
+			t.Errorf("ResolveAgentCommandFromConfig(%q) = %q, want %q", family.ID, got, want)
+		}
+		wantSkip := want
+		if family.SkipPermissionsArg != "" {
+			wantSkip = want + " " + family.SkipPermissionsArg
+		}
+		if got := ResolveAgentCommandFromConfig(family.ID, nil, true); got != wantSkip {
+			t.Errorf("ResolveAgentCommandFromConfig(%q, skip) = %q, want %q", family.ID, got, wantSkip)
+		}
+	}
+	if found == 0 {
+		t.Skip("no catalog family states launch_args")
+	}
+}
+
+// A configured launch command replaces the catalog's, subcommand included: the
+// user wrote the whole line and Sidecar must not splice a subcommand into it.
+func TestAConfiguredCommandIsNotGivenTheCatalogSubcommand(t *testing.T) {
+	for _, family := range agentcatalog.Families() {
+		if len(family.LaunchArgs) == 0 {
+			continue
+		}
+		configured := map[string]string{family.ID: "my-wrapper"}
+		if got := ResolveAgentCommandFromConfig(family.ID, configured, false); got != "my-wrapper" {
+			t.Errorf("ResolveAgentCommandFromConfig(%q, configured) = %q, want %q", family.ID, got, "my-wrapper")
+		}
+	}
 }
