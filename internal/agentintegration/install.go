@@ -406,6 +406,20 @@ type Env struct {
 	// $HOME/.claude, so an installer that reads only $HOME writes into a
 	// directory a relocated Claude never reads.
 	ClaudeConfigDir string
+	// QoderConfigDir is $QODER_CONFIG_DIR when set, and empty otherwise. It is
+	// the variable Herdr's qodercli_dir consults, and Qoder's own published
+	// hooks reference does not name it, so honouring it is a courtesy to a
+	// relocated install rather than a proved lever. The capability entry says
+	// so. Empty means "no override", which is also what a test that never sets
+	// it gets.
+	QoderConfigDir string
+	// QwenHome is $QWEN_HOME when set, and empty otherwise. It is Qwen Code's
+	// own documented override for its whole global directory -- Storage's
+	// getGlobalQwenDir resolves it in place of ~/.qwen -- so honouring it is
+	// what finds a relocated Qwen and what lets a proof run redirect the
+	// provider. Empty means "no override", which is also what a test that never
+	// sets it gets.
+	QwenHome string
 	// LookPath finds a provider executable. Defaults to exec.LookPath.
 	LookPath func(file string) (string, error)
 	// ProviderVersion reports an installed provider's version string.
@@ -435,6 +449,8 @@ func OSEnv() Env {
 		CopilotHome:     os.Getenv("COPILOT_HOME"),
 		GrokHome:        os.Getenv("GROK_HOME"),
 		ClaudeConfigDir: os.Getenv("CLAUDE_CONFIG_DIR"),
+		QoderConfigDir:  os.Getenv("QODER_CONFIG_DIR"),
+		QwenHome:        os.Getenv("QWEN_HOME"),
 		LookPath:        exec.LookPath,
 		ProviderVersion: detectProviderVersion,
 		UID:             os.Getuid(),
@@ -570,7 +586,11 @@ type Adapter interface {
 
 // DefaultAdapters returns the adapters this build ships.
 func DefaultAdapters() []Adapter {
-	return []Adapter{OpenCodeAdapter{}, CodexAdapter{}, ClaudeAdapter{}, PiAdapter{}, KiloAdapter{}, KimiAdapter{}, OmpAdapter{}, NewAntigravityAdapter(), NewCopilotAdapter(), NewCursorAdapter(), NewGrokAdapter()}
+	return []Adapter{
+		OpenCodeAdapter{}, CodexAdapter{}, ClaudeAdapter{}, PiAdapter{}, KiloAdapter{}, KimiAdapter{}, OmpAdapter{},
+		NewAntigravityAdapter(), NewCopilotAdapter(), NewCursorAdapter(), NewGrokAdapter(),
+		NewDevinAdapter(), NewDroidAdapter(), NewQoderCLIAdapter(), NewQwenAdapter(),
+	}
 }
 
 // Service is the application service behind the CLI and the Configuration

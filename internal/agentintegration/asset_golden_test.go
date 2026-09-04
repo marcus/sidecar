@@ -89,6 +89,21 @@ var assetGoldens = []assetGolden{
 	// user's file: the matcher group with no matcher key, the SessionStart
 	// event, the command and the timeout.
 	{provider: GrokProvider, name: "sidecar.json", version: "1", checksum: "b228a059c0cb7ad1fec2cec8d9e3884f24231c1343915cfdbc0aa4442143f943"},
+	// Devin's asset is not a file either: it is the six hook entries the
+	// installer writes into the user's config.json. So this checksum covers the
+	// six event names, the absence of a matcher, the exact CLI command each
+	// entry spawns, and the timeout -- which is the whole of what the
+	// integration does, and which is the part a tier is granted against.
+	{provider: DevinProvider, name: "config.json", version: "1", checksum: "3ab2713ba5c12fc3071a1b83d230d0fb16ef2f399c347d554f94e06d407f50a7"},
+	// Droid, same shape as Devin with one event rather than six.
+	{provider: DroidProvider, name: "settings.json", version: "1", checksum: "6e16a3fb39c4468cf3f7605f1f2e35d9d1287cfd9166dd90e5b67a51a2297b36"},
+	// Qoder, same shape again, with the "*" matcher install_qodercli writes.
+	{provider: QoderCLIProvider, name: "settings.json", version: "1", checksum: "dcbbca106ce9ce65d8a024dd1a0760d19534406721a1a7093b25d06fdc9448f6"},
+	// Qwen, and the checksum covers the one number in this group that is not
+	// what it looks like: its timeout is 10000, because Qwen counts a command
+	// hook's timeout in milliseconds where every other provider here counts
+	// seconds. Writing 10 would be a ten-millisecond budget.
+	{provider: QwenProvider, name: "settings.json", version: "1", checksum: "5173d78422441cb47488768f5f8b508d339cce35bd3abe9b1c1cfb95546bed8a"},
 }
 
 // bumpInstructions is the whole point of the guard: a failure here has to tell
@@ -98,7 +113,10 @@ const bumpInstructions = `
 An asset's bytes changed. Before updating the golden below, do this in order:
 
   1. Bump the asset's version constant (OpenCodeAssetVersion, CodexAssetVersion,
-     ClaudeAssetVersion, PiAssetVersion, KiloAssetVersion, KimiAssetVersion, or OmpAssetVersion) if it has not already moved. An installed copy is
+     ClaudeAssetVersion, PiAssetVersion, KiloAssetVersion, KimiAssetVersion,
+     OmpAssetVersion, AntigravityAssetVersion, CopilotAssetVersion,
+     CursorAssetVersion, GrokAssetVersion, DevinAssetVersion, DroidAssetVersion,
+     QoderCLIAssetVersion, or QwenAssetVersion) if it has not already moved. An installed copy is
      recognised as outdated by its version, so without this every existing
      install keeps reporting itself current while running different code.
   2. Update the matching AssetVersion in internal/agentlifecycle/capabilities.json,

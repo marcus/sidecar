@@ -200,8 +200,11 @@ func parseReportSessionFlags(env Env, args []string, help string) (reportSession
 //   - snake_case `session_id` and `transcript_path`: Codex, Claude Code,
 //     Cursor Agent and GitHub Copilot CLI.
 //   - camelCase `sessionId`: grok, whose whole payload is camelCase
-//     (`hookEventName`, `cwd`, `workspaceRoot`, `promptId`), and Copilot, whose
-//     upstream asset reads it as a fallback.
+//     (`hookEventName`, `cwd`, `workspaceRoot`, `promptId`), Copilot, whose
+//     upstream asset reads it as a fallback, and Devin, whose upstream asset
+//     reads `session_id` then `sessionId` and takes whichever is non-empty --
+//     which is upstream saying a released Devin has been seen writing the
+//     camelCase one.
 //   - `conversationId` and `transcriptPath`: Antigravity, which encodes its
 //     payload with protojson and therefore camelCases every key, and which
 //     calls a session a conversation.
@@ -218,7 +221,7 @@ type hookPayload struct {
 	// conversation occupying the pane.
 	AgentID string `json:"agent_id"`
 
-	// SessionIDCamel is grok's and Copilot's spelling of SessionID.
+	// SessionIDCamel is grok's, Copilot's and Devin's spelling of SessionID.
 	SessionIDCamel string `json:"sessionId"`
 	// ConversationID is Antigravity's name for the same thing, and Cursor's
 	// documented fallback when session_id is absent.

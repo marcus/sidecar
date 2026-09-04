@@ -1,0 +1,29 @@
+# ms	event	session	turn	tool	fields
+0	SessionStart	session-1	-	-	cwd,hook_event_name,model,permission_mode,session_id,source=startup,timestamp,transcript_path
+#
+# Qwen Code 0.23.0 starting in a Sidecar-managed shell on a private tmux server.
+# One row is the whole integration: upstream's table has one event and this port
+# keeps it, so the trace that earns the tier is the trace that shows that event
+# firing from a released build and carrying a session id.
+#
+# THE EVENT FIRES BEFORE AUTHENTICATION, and that is the finding that made this
+# tier reachable at all. The pane was sitting on Qwen's "Connect a Provider"
+# picker with no auth type selected and no credentials configured for it; the
+# hook had already run and Sidecar had already bound the pane. A model turn is
+# not needed to prove session identity for this provider, which is worth knowing
+# for every future requalification: a capture costs one process start.
+#
+# The same payload arrives under `qwen -p`, where the run then refuses with "No
+# auth type is selected" -- so the event belongs to session creation rather than
+# to the interactive UI.
+#
+# `source` carries a value because it is SessionStart's own discriminator and
+# Qwen's hooks reference closes its vocabulary at startup, resume, clear and
+# compact. Every other field is a bare name: `transcript_path` and `cwd` are
+# paths, `session_id` is an identifier, and none of them may be recorded here.
+#
+# What this capture does NOT establish: `qwen --resume <id>` on the id above
+# produced no second SessionStart in roughly 25 seconds of watching, but the
+# resume's own success was never established, so that is an unexplained
+# observation rather than an absence. The "*" matcher is therefore proved to
+# catch source=startup and nothing more.

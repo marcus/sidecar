@@ -82,7 +82,7 @@ func copilotCanonicalEntry() json.RawMessage {
 
 func copilotEntrySpec() hookEntrySpec {
 	return hookEntrySpec{
-		event:      "SessionStart",
+		events:     []string{defaultHookEvent},
 		flat:       true,
 		commandKey: CopilotCommandKey,
 		// The two spellings Sidecar does not write but must still recognise:
@@ -111,21 +111,6 @@ func CopilotConfigHome(home, copilotHome string) string {
 		return expandTildePath(home, dir)
 	}
 	return filepath.Join(home, ".copilot")
-}
-
-// expandTildePath resolves a leading ~ against the given home, which is what
-// Herdr's own directory resolution does for every provider override it reads.
-// A path that does not start with a tilde is returned unchanged, including a
-// relative one: guessing at what a relative override means is worse than
-// passing it through to fail visibly.
-func expandTildePath(home, path string) string {
-	switch {
-	case path == "~":
-		return home
-	case strings.HasPrefix(path, "~/"):
-		return filepath.Join(home, path[2:])
-	}
-	return path
 }
 
 // CopilotAdapter installs Sidecar's Copilot session-identity hook.

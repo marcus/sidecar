@@ -262,12 +262,13 @@ func sameJSON(a, b json.RawMessage) bool {
 // Codex still uses: a top-level `hooks` object, an entry under `SessionStart`,
 // wrapped in a matcher group, with the command in `command`. Every field below
 // is a departure some later provider actually ships, and each names that
-// provider, because a shape nobody ships is a shape nobody tests. The six
-// combinations in the tree today are Claude and grok (grouped, `hooks`,
-// SessionStart), Codex (the same without a matcher key), Copilot (flat, but
-// still `hooks`/SessionStart, command in `bash`), Cursor (flat, `sessionStart`)
-// and Antigravity (flat, `PreInvocation`, under a named block rather than
-// `hooks`).
+// provider, because a shape nobody ships is a shape nobody tests. The
+// combinations in the tree today are Claude, grok, Droid and Qoder (grouped,
+// `hooks`, SessionStart), Codex and Devin (the same without a matcher key,
+// Devin across six events), Qwen (grouped, SessionStart, with a millisecond
+// timeout in its entry), Copilot (flat, but still `hooks`/SessionStart, command
+// in `bash`), Cursor (flat, `sessionStart`) and Antigravity (flat,
+// `PreInvocation`, under a named block rather than `hooks`).
 type hookEntrySpec struct {
 	// namedBlocks reports that the file's top-level members are each a named
 	// hook block holding its own events object, rather than one shared `hooks`
@@ -280,10 +281,6 @@ type hookEntrySpec struct {
 	// which is every provider but Antigravity, whose block is Sidecar's own
 	// named one.
 	block string
-	// event is the canonical event key. Empty means `SessionStart`. Cursor
-	// spells the same moment `sessionStart`, and Antigravity, which has no
-	// session event at all, carries its conversation id on `PreInvocation`.
-	event string
 	// flat reports that an event's array holds handler entries directly,
 	// without a matcher group wrapping them. Copilot, Cursor and Antigravity
 	// are flat; Claude, Codex and grok are grouped.
@@ -303,6 +300,18 @@ type hookEntrySpec struct {
 	// means the group carries no matcher key at all (Codex, grok), non-nil is
 	// the exact value (Claude's "*").
 	matcher *string
+	// events are the hook events the canonical entry is installed under, in the
+	// order the installer writes them. Empty means the single event
+	// SessionStart, which is what every entry integration wrote before Devin.
+	// Cursor spells the same moment `sessionStart`, and Antigravity, which has
+	// no session event at all, carries its conversation id on `PreInvocation`.
+	//
+	// Devin is why this is a list. Its provider half does not trust any one
+	// event to carry the session id -- upstream registers the same session
+	// action on six of them and falls back to listing sessions when the payload
+	// is silent -- so an integration that fired only on SessionStart would bind
+	// the pane only when Devin happened to volunteer the id at startup.
+	events []string
 	// canonical maps every asset version Sidecar has ever shipped to the exact
 	// entry object it shipped, newest last. An installed entry equal to an
 	// older version is "outdated" rather than foreign or damaged.
@@ -317,12 +326,27 @@ func (s hookEntrySpec) blockKey() string {
 	return "hooks"
 }
 
-// eventKey is the event the canonical entry is registered on.
-func (s hookEntrySpec) eventKey() string {
-	if s.event != "" {
-		return s.event
+// defaultHookEvent is the event an entry integration installs under when its
+// spec names none. It is SessionStart for every provider whose session identity
+// is knowable the moment a conversation opens.
+const defaultHookEvent = "SessionStart"
+
+// eventNames is the ordered event set the spec installs under.
+func (s hookEntrySpec) eventNames() []string {
+	if len(s.events) == 0 {
+		return []string{defaultHookEvent}
 	}
-	return "SessionStart"
+	return s.events
+}
+
+// hasEvent reports whether an event name is one this spec installs under.
+func (s hookEntrySpec) hasEvent(name string) bool {
+	for _, want := range s.eventNames() {
+		if want == name {
+			return true
+		}
+	}
+	return false
 }
 
 // cmdKey is the entry member the provider reads the command from.
@@ -356,10 +380,10 @@ type ownedHookEntry struct {
 	// version is the canonical asset version the entry matches, "" when the
 	// entry has been modified.
 	version string
-	// groupCanonical reports whether the entry sits in the canonical block, on
-	// the canonical event, in a group whose matcher is the canonical one — the
-	// conditions under which the hook actually fires the way Sidecar qualified
-	// it.
+	// groupCanonical reports whether the entry sits in the canonical block,
+	// under one of the spec's own events, in a group whose matcher is the
+	// canonical one — the conditions under which the hook actually fires the
+	// way Sidecar qualified it.
 	groupCanonical bool
 }
 
@@ -379,11 +403,29 @@ type hookTreeScan struct {
 }
 
 // converged reports whether the tree already holds exactly the bundled
-// integration: one owned entry, byte-equivalent to the current canonical one,
-// in a canonical group under SessionStart.
+// integration: one owned entry per event the spec names, each byte-equivalent
+// to the current canonical entry and each in a canonical group.
 func (s hookTreeScan) converged(spec hookEntrySpec) bool {
-	return s.parseErr == "" && len(s.owned) == 1 &&
-		s.owned[0].version == spec.current().version && s.owned[0].groupCanonical
+	if s.parseErr != "" {
+		return false
+	}
+	events := spec.eventNames()
+	if len(s.owned) != len(events) {
+		return false
+	}
+	count := map[string]int{}
+	for _, o := range s.owned {
+		if o.version != spec.current().version || !o.groupCanonical {
+			return false
+		}
+		count[o.event]++
+	}
+	for _, event := range events {
+		if count[event] != 1 {
+			return false
+		}
+	}
+	return true
 }
 
 // scanHookTree reads the hooks tree out of a configuration file.
@@ -501,7 +543,7 @@ func (s *hookTreeScan) scanEntries(block, event string, group int, entries []jso
 				owned.version = v.version
 			}
 		}
-		owned.groupCanonical = block == spec.blockKey() && event == spec.eventKey() && groupOK
+		owned.groupCanonical = block == spec.blockKey() && spec.hasEvent(event) && groupOK
 		s.owned = append(s.owned, owned)
 	}
 	return true
@@ -694,27 +736,32 @@ func stripBlockEvents(block string, events []jsonMember, drop map[string]bool, s
 
 // appendCanonicalEntry appends the bundled entry -- a matcher group for a
 // grouped provider, the handler itself for a flat one -- to the canonical
-// block's canonical event, creating the containers it needs and never
-// reordering what exists.
+// block, under every event the spec names, creating the containers it needs and
+// never reordering what exists.
 func appendCanonicalEntry(top []jsonMember, item json.RawMessage, spec hookEntrySpec) ([]jsonMember, error) {
 	top = append([]jsonMember(nil), top...)
 	blockIdx, ok := lastMember(top, spec.blockKey())
 	if !ok {
-		events := marshalJSONObject([]jsonMember{{key: spec.eventKey(), val: marshalJSONArray([]json.RawMessage{item})}})
-		return append(top, jsonMember{key: spec.blockKey(), val: events}), nil
+		var events []jsonMember
+		for _, name := range spec.eventNames() {
+			events = append(events, jsonMember{key: name, val: marshalJSONArray([]json.RawMessage{item})})
+		}
+		return append(top, jsonMember{key: spec.blockKey(), val: marshalJSONObject(events)}), nil
 	}
 	events, err := parseJSONObject(top[blockIdx].val)
 	if err != nil {
 		return nil, err
 	}
-	if evIdx, ok := lastMember(events, spec.eventKey()); ok {
-		items, err := parseJSONArray(events[evIdx].val)
-		if err != nil {
-			return nil, err
+	for _, name := range spec.eventNames() {
+		if evIdx, ok := lastMember(events, name); ok {
+			items, err := parseJSONArray(events[evIdx].val)
+			if err != nil {
+				return nil, err
+			}
+			events[evIdx].val = marshalJSONArray(append(items, item))
+			continue
 		}
-		events[evIdx].val = marshalJSONArray(append(items, item))
-	} else {
-		events = append(events, jsonMember{key: spec.eventKey(), val: marshalJSONArray([]json.RawMessage{item})})
+		events = append(events, jsonMember{key: name, val: marshalJSONArray([]json.RawMessage{item})})
 	}
 	top[blockIdx].val = marshalJSONObject(events)
 	return top, nil

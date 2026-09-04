@@ -10,18 +10,20 @@ import (
 
 // The shared session-identity adapter.
 //
-// Four providers -- Antigravity, GitHub Copilot CLI, Cursor Agent and grok --
-// each want exactly what Claude and Codex already have: one hook entry in a
-// JSON configuration file, invoking `sidecar agent report-session`, so the pane
-// is bound to the provider's own conversation. Lifecycle state keeps coming
-// from the screen lane for all four, which is what makes them one shape rather
-// than four ports: the knowledge each one carries is a file path, an event
-// name, an entry shape and the field the session id arrives in, and nothing
+// Eight providers -- Antigravity, GitHub Copilot CLI, Cursor Agent, grok, the
+// Devin CLI, Droid, the Qoder CLI and Qwen Code -- each want exactly what
+// Claude and Codex already have: one hook entry in a JSON configuration file,
+// invoking `sidecar agent report-session`, so the pane is bound to the
+// provider's own conversation. Lifecycle state keeps coming from the screen
+// lane for all of them, which is what makes them one shape rather than eight
+// ports: the knowledge each one carries is a file path, an event name or list
+// of them, an entry shape and the field the session id arrives in, and nothing
 // else.
 //
 // So the lifecycle logic lives here once. What differs per provider is a
 // descriptor, and the descriptors are in antigravity_install.go,
-// copilot_install.go, cursor_install.go and grok_install.go beside the evidence
+// copilot_install.go, cursor_install.go, grok_install.go, devin_install.go,
+// droid_install.go, qodercli_install.go and qwen_install.go beside the evidence
 // for each field. Claude and Codex are deliberately NOT rewritten onto this:
 // Claude's adapter is the one this was generalized from and has its own suite,
 // and Codex needs three owned mutations across two files in two formats, so
@@ -72,6 +74,73 @@ type sessionHookIntegration struct {
 	// does not survive as a stub nobody wrote on purpose, and a value the user
 	// changed is a value the user keeps.
 	newFileMembers []jsonMember
+	// setupHint is the sentence a user gets when the configuration directory is
+	// not there, and setting it is also what makes a missing directory a
+	// refusal rather than something the install creates.
+	//
+	// Claude's own installer creates ~/.claude when it is absent, which is safe
+	// because the CLI was found on PATH and reads that exact path, and
+	// Antigravity, Copilot, Cursor and grok are the same: their directory is
+	// fixed or comes from a variable the provider itself reads. Devin, Droid,
+	// Qoder and Qwen all resolve a directory that an override may point
+	// anywhere, and three of the four create it themselves on first run, so a
+	// Sidecar that created it would happily write a settings file into a typo
+	// and report the integration as current forever. Empty means the older
+	// behaviour: create the directory as part of the install.
+	setupHint string
+	// shadowedBy names a sibling file inside the same directory whose mere
+	// presence makes the entry in fileName inert.
+	//
+	// Droid is the one provider that has one, and it is exactly the failure a
+	// status surface exists to catch: Droid reads hook declarations from
+	// ~/.factory/hooks.json first and falls back to settings.json's hooks key
+	// only when that file is absent. An entry Sidecar wrote into settings.json
+	// while hooks.json existed would be correct, would read as current, and
+	// would never fire. Sidecar does not edit the shadow file -- it is the
+	// user's, Sidecar has never written to it, and moving somebody's hooks
+	// between two files is not an integration's business -- so the honest
+	// response is to inspect it and say so.
+	shadowedBy string
+	// shadowNote renders the sentence a status carries while the shadow file
+	// exists. It takes the path so the user can act on it.
+	shadowNote func(shadow string) string
+}
+
+// expandTildePath resolves a leading ~ against the given home, which is what
+// Herdr's own directory resolution does for every provider override it reads.
+// A path that does not start with a tilde is returned unchanged, including a
+// relative one: guessing at what a relative override means is worse than
+// passing it through to fail visibly.
+func expandTildePath(home, path string) string {
+	switch {
+	case path == "~":
+		return home
+	case strings.HasPrefix(path, "~/"):
+		return filepath.Join(home, path[2:])
+	}
+	return path
+}
+
+// overrideDir reads a provider's own configuration-directory override the way
+// the provider reads it, and returns "" when none applies so the caller falls
+// back to the documented default.
+//
+// Two readings are shared by every provider that has such a variable. A value
+// that is only whitespace is a variable somebody exported without a value
+// rather than a directory named " ", which is the reading
+// agentsession.PiAgentDir already takes of PI_CODING_AGENT_DIR. And a leading
+// "~" is expanded, because a Sidecar that did not expand would read and write a
+// literal directory named "~" while the provider used somewhere else entirely.
+//
+// [ClaudeConfigHome] deliberately does neither of these to a tilde: Claude
+// refuses a configuration home that is not absolute, so "~/x" names no
+// configuration home at all there. That is a difference in what the providers
+// do, not a difference in taste, which is why it stays in its own function.
+func overrideDir(home, value string) string {
+	if trimmed := strings.TrimSpace(value); trimmed != "" {
+		return expandTildePath(home, trimmed)
+	}
+	return ""
 }
 
 // sessionHookAdapter is the Adapter every session-identity provider shares.
@@ -155,12 +224,26 @@ type sessionHookPaths struct {
 	Dir    string
 	File   string
 	Backup string
+	// Shadow is the file that would make File's entry inert, for a provider
+	// that has one. Sidecar reads it and never writes it.
+	Shadow string
 }
 
 func (i sessionHookIntegration) pathsFor(env Env) sessionHookPaths {
 	dir := i.dir(env)
+	if dir == "" {
+		// Nothing resolved a directory, so there is no file to name. Joining
+		// the base name onto an empty directory would produce a relative path,
+		// which is a path in whatever directory Sidecar happened to be started
+		// from.
+		return sessionHookPaths{}
+	}
 	file := filepath.Join(dir, i.fileName)
-	return sessionHookPaths{Dir: dir, File: file, Backup: file + sessionHookBackupSuffix}
+	p := sessionHookPaths{Dir: dir, File: file, Backup: file + sessionHookBackupSuffix}
+	if i.shadowedBy != "" {
+		p.Shadow = filepath.Join(dir, i.shadowedBy)
+	}
+	return p
 }
 
 // sessionHookBackupSuffix names the recoverable copy kept beside a provider's
@@ -182,6 +265,10 @@ type sessionHookState struct {
 
 	providerPath    string
 	providerVersion string
+
+	// shadow is the state of the file that would make the installed entry
+	// inert, for a provider that has one. It is inspected, never written.
+	shadow FileState
 
 	assetStatus agentlifecycle.IntegrationStatus
 	status      agentlifecycle.IntegrationStatus
@@ -209,6 +296,19 @@ func (a sessionHookAdapter) inspect(env Env) sessionHookState {
 		ownEntry(&s.file, s.scan.owned[len(s.scan.owned)-1].version)
 	}
 	s.assetStatus, s.message, s.installed = entryAssetStatus(s.dir, s.file, s.scan, s.spec, i.fileName)
+
+	// The shadow file is a fact about whether an installation FIRES, not about
+	// whether it is installed, so it changes the message and never the status.
+	// A user whose hooks live in the shadow file has a perfectly healthy
+	// installation that does nothing, and calling that needs-repair would offer
+	// them a repair verb that cannot fix it.
+	if i.shadowedBy != "" {
+		s.shadow = FileState{Path: p.Shadow, Exists: fileExists(p.Shadow)}
+		if s.shadow.Exists && i.shadowNote != nil {
+			note := i.shadowNote(p.Shadow)
+			s.message = note + orEmpty("; "+s.message, s.message != "")
+		}
+	}
 
 	s.status = s.assetStatus
 	if s.providerPath == "" {
@@ -246,6 +346,12 @@ func (a sessionHookAdapter) statusOf(s sessionHookState) Status {
 	}}
 	st.ProviderPath = s.providerPath
 	st.Files = []FileState{s.dir, s.file, s.backup}
+	if i.shadowedBy != "" {
+		// Reported among the files this adapter inspected, and deliberately not
+		// among TargetPaths: TargetPaths are the files an install or uninstall
+		// would touch, and Sidecar never writes this one.
+		st.Files = append(st.Files, s.shadow)
+	}
 	for _, act := range Actions() {
 		if _, err := a.plan(s, act); err == nil {
 			st.Offered = append(st.Offered, act)
@@ -279,13 +385,18 @@ func (a sessionHookAdapter) plan(s sessionHookState, act Action) (Plan, error) {
 }
 
 // planConverge builds the plan that ends with exactly one canonical Sidecar
-// entry on the canonical event and everything else in the file untouched.
+// entry under each of the spec's events and everything else in the file
+// untouched. A provider carrying a setupHint refuses rather than creating its
+// configuration directory; see the field for why the two halves differ.
 func (a sessionHookAdapter) planConverge(s sessionHookState, p Plan, act Action) (Plan, error) {
 	i := a.integration
 	if s.providerPath == "" {
 		return Plan{}, refuse(RefuseProviderMissing, "",
 			"the %s CLI was not found on PATH, so Sidecar will not modify %s for it; install %s first",
 			i.command, s.paths.File, i.command)
+	}
+	if i.setupHint != "" && !s.dir.Exists {
+		return Plan{}, refuse(RefuseNotInstalled, s.paths.Dir, "%s", i.setupHint)
 	}
 	if err := gateConvergeVerb(s.assetStatus, act, s.paths.File, i.provider, s.installed, s.message); err != nil {
 		return Plan{}, err
@@ -362,24 +473,52 @@ func (a sessionHookAdapter) planUninstall(s sessionHookState, p Plan) (Plan, err
 
 var _ Adapter = sessionHookAdapter{}
 
+// sessionHookIntegrationData exposes the descriptor to the discovery below. It
+// is a method rather than a field read because every adapter in this group
+// embeds sessionHookAdapter by value and is reached through the Adapter
+// interface.
+func (a sessionHookAdapter) sessionHookIntegrationData() sessionHookIntegration {
+	return a.integration
+}
+
 // sessionHookIntegrationOf returns the descriptor behind an adapter built on
 // the shared session-identity implementation.
+//
+// Discovery is by the promoted method rather than by a list of concrete types,
+// so an adapter registered on this implementation is covered by everything
+// below without being named anywhere. A type switch was what this used to be,
+// and it is exactly the list that goes stale the first time somebody adds a
+// ninth provider.
 func sessionHookIntegrationOf(a Adapter) (sessionHookIntegration, bool) {
-	switch v := a.(type) {
-	case AntigravityAdapter:
-		return v.integration, true
-	case CopilotAdapter:
-		return v.integration, true
-	case CursorAdapter:
-		return v.integration, true
-	case GrokAdapter:
-		return v.integration, true
+	type integrated interface {
+		sessionHookIntegrationData() sessionHookIntegration
+	}
+	if v, ok := a.(integrated); ok {
+		return v.sessionHookIntegrationData(), true
 	}
 	return sessionHookIntegration{}, false
 }
 
+// SessionHookProviders names every provider whose integration is one of these
+// session-identity hook entries, in registration order.
+func SessionHookProviders() []string {
+	var out []string
+	for _, a := range DefaultAdapters() {
+		if _, ok := sessionHookIntegrationOf(a); ok {
+			out = append(out, a.Provider())
+		}
+	}
+	return out
+}
+
 // SessionHookArgvCorpus is every argv the installed session-identity entries
-// can spawn, one per registered provider.
+// can spawn, one row per event each registered provider installs under.
+//
+// Every event spawns the identical command -- the payload on stdin is what
+// differs, and the CLI never sees the event name as an argument -- so the rows
+// for one provider repeat. That repetition is the point for Devin: six entries
+// mean six processes, and a change that made one of them spawn something the
+// CLI refuses would fail here.
 //
 // It is exported for TestBundledAssetsSpawnArgvTheShippedCLIAccepts in
 // internal/cli, which pushes each one through the real flag parser and the real
@@ -396,28 +535,45 @@ func sessionHookIntegrationOf(a Adapter) (sessionHookIntegration, bool) {
 // that way.
 func SessionHookArgvCorpus() [][]string {
 	var out [][]string
-	for _, a := range DefaultAdapters() {
-		i, ok := sessionHookIntegrationOf(a)
-		if !ok {
-			continue
-		}
-		command, ok := i.installedCommand()
-		if !ok {
-			continue
-		}
-		fields := strings.Fields(strings.SplitN(command, ";", 2)[0])
-		if len(fields) < 2 {
-			continue
-		}
-		out = append(out, fields[1:])
+	for _, provider := range SessionHookProviders() {
+		out = append(out, SessionHookArgvCorpusFor(provider)...)
 	}
 	return out
 }
 
+// SessionHookArgvCorpusFor is one registered provider's rows of that corpus,
+// for a test that wants to name the provider a failure belongs to.
+func SessionHookArgvCorpusFor(provider string) [][]string {
+	for _, a := range DefaultAdapters() {
+		i, ok := sessionHookIntegrationOf(a)
+		if !ok || a.Provider() != provider {
+			continue
+		}
+		command, ok := i.installedCommand()
+		if !ok {
+			return nil
+		}
+		fields := strings.Fields(strings.SplitN(command, ";", 2)[0])
+		if len(fields) < 2 {
+			return nil
+		}
+		var out [][]string
+		for range i.spec.eventNames() {
+			out = append(out, append([]string(nil), fields[1:]...))
+		}
+		return out
+	}
+	return nil
+}
+
 // installedCommand reads the command out of the canonical asset's own entry.
+//
+// The asset carries one entry per event, and all of them are the same bytes, so
+// finding the expected number of owned entries and reading the first is both
+// the check that the asset renders what the spec describes and the answer.
 func (i sessionHookIntegration) installedCommand() (string, bool) {
 	scan := scanHookTree(true, i.canonicalFile(), i.spec)
-	if scan.parseErr != "" || len(scan.owned) != 1 {
+	if scan.parseErr != "" || len(scan.owned) != len(i.spec.eventNames()) {
 		return "", false
 	}
 	entry, err := parseJSONObject(scan.owned[0].raw)
@@ -425,4 +581,16 @@ func (i sessionHookIntegration) installedCommand() (string, bool) {
 		return "", false
 	}
 	return entryCommand(entry, i.spec)
+}
+
+// sessionHookIntegrationFor finds one session-identity provider's descriptor
+// among the shipped adapters, so a caller reading the descriptor cannot drift
+// from what is registered.
+func sessionHookIntegrationFor(provider string) (sessionHookIntegration, bool) {
+	for _, a := range DefaultAdapters() {
+		if i, ok := sessionHookIntegrationOf(a); ok && a.Provider() == provider {
+			return i, true
+		}
+	}
+	return sessionHookIntegration{}, false
 }

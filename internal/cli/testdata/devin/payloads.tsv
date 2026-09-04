@@ -1,0 +1,33 @@
+# Every branch of what `sidecar agent report-session --hook-stdin` does with a
+# Devin hook payload, including the branches a healthy session never produces.
+#
+# The payloads are translated from what Herdr's own devin asset reads: its
+# hook_session_id() takes the first non-empty string of ("session_id",
+# "sessionId"), its resolve_session_id() returns None when neither is there and
+# the list fallback is disallowed, and Sidecar has no list fallback at all, so
+# "no session id" always ends in "nothing recorded" rather than in a guess.
+#
+# The file is here rather than beside the adapter because the extraction it
+# drives is the CLI's: hookPayload and its sessionID() in agent_report_session.go
+# are what turn a provider's bytes into a reference, and Devin is the payload
+# shape that made the camelCase spelling necessary.
+#
+# `outcome` is what the extraction produces:
+#   id       the pane binds to the identifier in `want`
+#   path     the pane binds to the transcript path in `want`
+#   none     no reference; the command records nothing and still exits 0
+#   subagent the payload belongs to a nested conversation, so the pane's own
+#            binding is left exactly as it was
+#   invalid  the payload cannot be decoded at all, and the command refuses
+#
+# name	payload	outcome	want
+snake-case	{"hook_event_name":"SessionStart","source":"startup","session_id":"devin-7f3a"}	id	devin-7f3a
+camel-case	{"hook_event_name":"SessionStart","source":"startup","sessionId":"devin-7f3a"}	id	devin-7f3a
+both-spellings	{"hook_event_name":"Stop","session_id":"devin-snake","sessionId":"devin-camel"}	id	devin-snake
+camel-case-on-a-later-event	{"hook_event_name":"UserPromptSubmit","sessionId":"devin-9c11"}	id	devin-9c11
+empty-snake-falls-through	{"hook_event_name":"PreToolUse","session_id":"","sessionId":"devin-6b02"}	id	devin-6b02
+whitespace-only-id	{"hook_event_name":"PostToolUse","session_id":"   "}	none	-
+no-session-at-all	{"hook_event_name":"SessionStart","source":"startup"}	none	-
+transcript-path-only	{"hook_event_name":"SessionStart","transcript_path":"/tmp/devin/session.jsonl"}	path	/tmp/devin/session.jsonl
+sub-agent	{"hook_event_name":"PreToolUse","session_id":"devin-7f3a","agent_id":"sub-1"}	subagent	-
+non-string-id	{"hook_event_name":"Stop","session_id":12345}	invalid	-

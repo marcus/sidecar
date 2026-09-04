@@ -1,8 +1,10 @@
 package agentintegration
 
 import (
+	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -308,6 +310,125 @@ func TestAPreviewsAfterStateMatchesWhatTheOpActuallyDoes(t *testing.T) {
 			t.Fatalf("uninstall predicted a Sidecar version %q on the user's config.toml", after.Version)
 		}
 	})
+
+	// The session-identity entry adapters share one implementation, so the
+	// providers come from the registry rather than from a list here: an
+	// integration registered without its preview being checked is not possible.
+	for _, provider := range SessionHookProviders() {
+		t.Run(provider+" session-identity entry", func(t *testing.T) {
+			svc, _, paths := sessionHookEntryFixture(t, provider)
+			writeFileForTest(t, paths.File, userSettingFor(provider))
+
+			install, err := svc.Plan(provider, ActionInstall)
+			if err != nil {
+				t.Fatal(err)
+			}
+			after, ok := afterFor(t, install, paths.File)
+			if !ok {
+				t.Fatalf("install planned no write to %s", paths.File)
+			}
+			integration, _ := sessionHookIntegrationFor(provider)
+			if !after.Owned || after.Ownership != OwnsEntry || after.Version != integration.assetVersion {
+				t.Fatalf("install predicted %+v; wanted an owned entry at version %s", after, integration.assetVersion)
+			}
+
+			applyTo(t, svc, provider, ActionInstall)
+			uninstall, err := svc.Plan(provider, ActionUninstall)
+			if err != nil {
+				t.Fatal(err)
+			}
+			after, ok = afterFor(t, uninstall, paths.File)
+			if !ok {
+				t.Fatalf("uninstall planned no write to %s", paths.File)
+			}
+			if after.Owned || after.Ownership == OwnsEntry {
+				t.Fatalf("uninstall predicted %+v; the op removes Sidecar's entries, so the file it leaves is the user's", after)
+			}
+			if after.Version != "" {
+				t.Fatalf("uninstall predicted a Sidecar version %q on the user's file", after.Version)
+			}
+		})
+	}
+}
+
+// TestASymlinkedSessionIdentitySettingsFileIsRefusedUnwritten pins the Lstat
+// rule for the entry adapters, the way the Claude and Codex suites pin it for
+// theirs.
+//
+// A settings file that is a symlink is refused rather than followed, because
+// following one writes through to wherever it points -- which is how an
+// installer that meant to edit ~/.qwen/settings.json edits something else
+// entirely. The check lives in the shared inspection, so proving it once per
+// registered provider is what stops a future adapter from opting out of it by
+// accident.
+func TestASymlinkedSessionIdentitySettingsFileIsRefusedUnwritten(t *testing.T) {
+	for _, provider := range SessionHookProviders() {
+		t.Run(provider, func(t *testing.T) {
+			svc, _, paths := sessionHookEntryFixture(t, provider)
+			target := filepath.Join(t.TempDir(), "elsewhere.json")
+			writeFileForTest(t, target, userSettingFor(provider))
+			if err := os.Symlink(target, paths.File); err != nil {
+				t.Skipf("symlinks are unavailable here: %v", err)
+			}
+
+			if _, err := svc.Plan(provider, ActionInstall); err == nil {
+				t.Fatal("install was planned through a symlink; it would write to whatever the link points at")
+			}
+			if got := readFileForTest(t, target); got != userSettingFor(provider) {
+				t.Fatalf("the symlink's target was written after all: %q", got)
+			}
+		})
+	}
+}
+
+// userSettingFor is a setting of the user's own that the provider's own file
+// shape accepts, so a loop over every registered provider seeds each file with
+// something that provider would really have in it.
+//
+// Antigravity is why this is not one literal. Its top-level members are each a
+// named hook block, so a string there is not an eccentric setting but a damaged
+// file, and the scan says so rather than editing it.
+func userSettingFor(provider string) string {
+	integration, ok := sessionHookIntegrationFor(provider)
+	if ok && integration.spec.namedBlocks {
+		return `{"theme": {"enabled": true}}`
+	}
+	return `{"theme": "dark"}`
+}
+
+// sessionHookEntryFixture builds one session-identity adapter's world inside
+// t.TempDir: its configuration directory exists, its CLI resolves on PATH, and
+// nothing outside the temporary tree is reachable. It is driven off the
+// descriptor so it works for every registered provider, including those whose
+// directory comes from an override and the one whose directory hangs off
+// $XDG_CONFIG_HOME.
+func sessionHookEntryFixture(t *testing.T, provider string) (Service, Env, sessionHookPaths) {
+	t.Helper()
+	integration, ok := sessionHookIntegrationFor(provider)
+	if !ok {
+		t.Fatalf("%s is not a session-identity entry provider", provider)
+	}
+	home := t.TempDir()
+	env := Env{
+		Home:       home,
+		ConfigHome: filepath.Join(home, ".config"),
+		LookPath: func(file string) (string, error) {
+			if file == integration.command {
+				return filepath.Join(home, "bin", integration.command), nil
+			}
+			return "", errors.New("not found")
+		},
+		ProviderVersion: func(string) string { return "0.0.0" },
+		UID:             os.Getuid(),
+	}
+	paths := integration.pathsFor(env)
+	if paths.Dir == "" {
+		t.Fatalf("%s resolved no configuration directory from the fixture Env", provider)
+	}
+	if err := os.MkdirAll(paths.Dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	return Service{Env: env, Adapters: DefaultAdapters()}, env, paths
 }
 
 func testEnv(t *testing.T) Env {

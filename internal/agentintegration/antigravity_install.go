@@ -93,7 +93,7 @@ func antigravityEntrySpec() hookEntrySpec {
 	return hookEntrySpec{
 		namedBlocks: true,
 		block:       AntigravityBlockName,
-		event:       AntigravityEvent,
+		events:      []string{AntigravityEvent},
 		flat:        true,
 		canonical: []versionedEntry{
 			{version: AntigravityAssetVersion, entry: antigravityCanonicalEntry()},

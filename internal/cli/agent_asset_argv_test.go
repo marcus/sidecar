@@ -483,3 +483,38 @@ func installedClaudeCommand(t *testing.T) string {
 	t.Fatal("no Claude adapter is registered")
 	return ""
 }
+
+// TestSessionIdentityEntriesSpawnArgvTheShippedCLIAccepts is the same seam for
+// the integrations that are hook entries rather than files of JavaScript.
+//
+// It is a second function rather than more rows in the table above because the
+// property differs at the end: a session-identity entry spawns
+// `report-session`, which binds a pane and writes nothing to the lifecycle
+// store, so the sequence-continuity assertion the table makes has nothing to
+// measure. What is shared is the part that matters -- the shipped flag parser
+// and the shipped kind resolution, which is exactly where the Kilo port's live
+// proof found `--kind kilo` refused with exit 5 after parsing cleanly.
+//
+// The providers are read from DefaultAdapters rather than listed, so an
+// integration registered without being checked here is not possible, and a
+// failure names the provider it belongs to rather than a row number.
+func TestSessionIdentityEntriesSpawnArgvTheShippedCLIAccepts(t *testing.T) {
+	providers := agentintegration.SessionHookProviders()
+	if len(providers) == 0 {
+		t.Skip("no session-identity entry integrations are registered")
+	}
+	for _, provider := range providers {
+		t.Run(provider, func(t *testing.T) {
+			argvs := agentintegration.SessionHookArgvCorpusFor(provider)
+			if len(argvs) == 0 {
+				t.Fatal("the integration spawns nothing, so this asserts nothing")
+			}
+			store := lifecyclestore.NewMemory()
+			for _, argv := range argvs {
+				if _, stored := acceptAssetArgv(t, store, argv); stored {
+					t.Fatalf("%v reached the lifecycle store; a session-identity entry writes no state report", argv)
+				}
+			}
+		})
+	}
+}

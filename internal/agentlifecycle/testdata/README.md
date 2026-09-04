@@ -83,12 +83,15 @@ Captured 2026-08-30 on darwin/arm64.
 | `traces/omp/simple-turn.tsv` | omp | 18.1.8 | openai/gpt-4.1-mini | success, no tool | Slice 2 |
 | `traces/omp/tool-turn-with-approval.tsv` | omp | 18.1.8 | openai/gpt-4.1-mini | success, one bash call, approved | Slice 2 |
 | `traces/omp/denied-tool-and-quit.tsv` | omp | 18.1.8 | openai/gpt-4.1-mini | one bash call denied, then /quit | Slice 2 |
+| `traces/qwen/session-start.tsv` | qwen-code | 0.23.0 | none (no auth type selected) | session start, before authentication | Slice 4 |
 
 The Pi traces were captured 2026-09-02 on darwin/arm64; the four rows above are
 one Pi 0.84.3 process each for the first three and a second process for the
 fourth. Their capture procedure and their extra sanitization rule are in the Pi
 section below, because they are the first traces in this directory to record any
 event *value*.
+
+The Qwen row was captured 2026-09-04 on darwin/arm64, and it is the first trace here taken with **no model and no credentials** -- a property of the provider rather than a shortcut. Qwen Code fires `SessionStart` before an auth type is selected, so the capture was taken with the pane sitting on its provider picker; the same payload arrives under `qwen -p`, where the run then refuses for want of auth. A session-identity integration has exactly one thing to prove, and for this provider proving it costs one process start.
 
 The error trace is kept deliberately. A failed turn is a real lifecycle path,
 and it is the one that shows `session.error` resolving to `session.idle` rather

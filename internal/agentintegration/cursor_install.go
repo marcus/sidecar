@@ -94,8 +94,8 @@ func cursorCanonicalEntry() json.RawMessage {
 
 func cursorEntrySpec() hookEntrySpec {
 	return hookEntrySpec{
-		event: CursorEvent,
-		flat:  true,
+		events: []string{CursorEvent},
+		flat:   true,
 		canonical: []versionedEntry{
 			{version: CursorAssetVersion, entry: cursorCanonicalEntry()},
 		},

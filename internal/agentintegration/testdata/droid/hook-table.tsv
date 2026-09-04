@@ -1,0 +1,15 @@
+# The events Sidecar's Droid session-identity entry is installed under.
+#
+# This is a translation of DROID_HOOK_EVENTS in Herdr's src/integration/mod.rs at
+# HERDR_INTEGRATION_VERSION=3, and it is one row on purpose. Upstream REMOVED its
+# nine lifecycle rows at that version -- DROID_REMOVED_LIFECYCLE_HOOK_EVENTS is
+# what went away, and install_droid still strips them from both settings.json and
+# the legacy hooks.json -- so a table with more rows in it would be reinstating
+# something upstream withdrew.
+#
+# `matcher` is `-` because install_droid calls ensure_command_hook with matcher
+# None. A matcher key is therefore absent from the written group, not present
+# and empty.
+#
+# event	matcher	verb
+SessionStart	-	report-session

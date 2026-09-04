@@ -293,6 +293,98 @@ var portedFrom = []PortedFrom{
 			"GROK_CONFIG_DIR, which its own comment records as a Herdr-level test seam the grok CLI does not read. " +
 			"GROK_HOME, which grok does read, is honoured.",
 	},
+	{
+		Provider:    DevinProvider,
+		UpstreamID:  "devin",
+		UpstreamDir: "devin",
+		Version:     "2",
+		Commit:      herdrVendoredCommit,
+		Evidence: "Ported from Herdr's devin integration at that commit, where the vendored " +
+			"upstream/devin/herdr-agent-state.sh carries HERDR_INTEGRATION_VERSION=2. The provider half is the six " +
+			"(event, action) rows of DEVIN_HOOK_EVENTS in src/integration/mod.rs -- SessionStart, UserPromptSubmit, " +
+			"PreToolUse, PostToolUse, PermissionRequest and Stop, every one of them mapped to `session` -- plus the " +
+			"file the entries go in (config.json, not settings.json) and the absence of a matcher, which is what " +
+			"install_devin's ensure_command_hook(.., None) writes. All of that is kept verbatim. Three deliberate " +
+			"differences, each with its reason in devin_install.go: the transport is Sidecar's, so the dropped shell " +
+			"script and its python3 dependency are gone and the six config entries invoke the CLI directly, exactly " +
+			"as the claude and codex adapters already do with the same upstream shape; no --seq is sent, because " +
+			"Sidecar's store assigns; and upstream's `devin list --format json` fallback is NOT copied, because it " +
+			"guesses which conversation a working directory belongs to and a wrong session binding is acted on by a " +
+			"cold restore. The payload's camelCase spelling IS carried: upstream reads both session_id and sessionId, " +
+			"so internal/cli's hookPayload now reads both, with a fixture for each. NOT traced: no capture of a live " +
+			"Devin session backs any of it, which is why the capability entry is docs-only at screen-fallback.",
+	},
+	{
+		Provider:    DroidProvider,
+		UpstreamID:  "droid",
+		UpstreamDir: "droid",
+		Version:     "3",
+		Commit:      herdrVendoredCommit,
+		Evidence: "Ported from Herdr's droid integration at that commit, where the vendored " +
+			"upstream/droid/herdr-agent-state.sh carries HERDR_INTEGRATION_VERSION=3. The provider half is one row: " +
+			"DROID_HOOK_EVENTS in src/integration/mod.rs is [(\"SessionStart\", \"session\")] and nothing else, " +
+			"because upstream REMOVED its nine lifecycle rows at that version rather than keeping them; the file the " +
+			"entry goes in (~/.factory/settings.json) and the absence of a matcher, which is what install_droid's " +
+			"ensure_command_hook(.., None) writes, are the rest of it. All of that is kept verbatim. Every fact was " +
+			"re-checked against Factory's own published hooks reference and settings reference rather than taken on " +
+			"trust, and one of them is not in Herdr at all: hooks.json SHADOWS the hooks key in settings.json, so an " +
+			"entry Sidecar wrote while that file existed would never fire. Sidecar inspects it and says so. Three " +
+			"deliberate differences, each with its reason in droid_install.go: the transport is Sidecar's, so the " +
+			"dropped shell script and its python3 dependency are gone; no --seq is sent, because Sidecar's store " +
+			"assigns; and Herdr's cleanup pass over hooks.json is NOT copied, because Sidecar has never written an " +
+			"entry there and an integration that edits a file it does not own is the thing the ownership rule exists " +
+			"to prevent. NOT traced: no capture of a live Droid session backs any of it, which is why the capability " +
+			"entry is docs-only at screen-fallback.",
+	},
+	{
+		Provider:    QoderCLIProvider,
+		UpstreamID:  "qodercli",
+		UpstreamDir: "qodercli",
+		Version:     "3",
+		Commit:      herdrVendoredCommit,
+		Evidence: "Ported from Herdr's qodercli integration at that commit, where the vendored " +
+			"upstream/qodercli/herdr-agent-state.sh carries HERDR_INTEGRATION_VERSION=3. The provider half is one " +
+			"row: QODERCLI_HOOK_EVENTS in src/integration/mod.rs is [(\"SessionStart\", \"session\")] and nothing " +
+			"else, because upstream REMOVED its twelve lifecycle rows at that version; the file the entry goes in " +
+			"(~/.qoder/settings.json), the \"*\" matcher, which is what install_qodercli's " +
+			"ensure_command_hook(.., Some(\"*\")) writes where the devin and droid installers pass None, and the " +
+			"$QODER_CONFIG_DIR override are the rest of it. All of that is kept verbatim. Every fact was re-checked " +
+			"against Qoder's own published hooks reference rather than taken on trust: the settings.json schema is " +
+			"Claude's nested group shape, timeout is in SECONDS with a default of 600, and the SessionStart payload " +
+			"carries session_id and hook_event_name. One thing that reference does NOT carry is QODER_CONFIG_DIR, so " +
+			"honouring it follows Herdr rather than a published contract, and the capability entry says so. Two " +
+			"deliberate differences, each with its reason in qodercli_install.go: the transport is Sidecar's, so the " +
+			"dropped shell script and its python3 dependency are gone; and no --seq is sent, because Sidecar's store " +
+			"assigns. NOT traced: no capture of a live Qoder session backs any of it, which is why the capability " +
+			"entry is docs-only at screen-fallback.",
+	},
+	{
+		Provider:    QwenProvider,
+		UpstreamID:  "qwen",
+		UpstreamDir: "qwen",
+		Version:     "1",
+		Commit:      herdrVendoredCommit,
+		Evidence: "Ported from Herdr's qwen integration at that commit, where the vendored " +
+			"upstream/qwen/herdr-agent-session.sh carries HERDR_INTEGRATION_VERSION=1. The asset is named " +
+			"herdr-agent-SESSION rather than herdr-agent-state, which is upstream saying what the integration is: " +
+			"QWEN_HOOK_EVENTS in src/integration/mod.rs is [(\"SessionStart\", \"session\")], the first and only " +
+			"release, with no lifecycle rows ever added and none removed. The file the entry goes in " +
+			"($QWEN_HOME/settings.json, or ~/.qwen/settings.json), the \"*\" matcher that install_qwen's " +
+			"ensure_command_hook(.., Some(\"*\")) writes, and the timeout of 10_000 are kept verbatim. That last " +
+			"one is the load-bearing detail and it was verified rather than copied: Qwen's own hooks reference " +
+			"documents timeout as MILLISECONDS for a command hook and seconds for an HTTP hook, so Herdr's 10_000 " +
+			"is ten seconds and the 10 every other provider gets would have been ten milliseconds here. QWEN_HOME " +
+			"was verified the same way, in qwen-code's own packages/core/src/config/storage.ts, where " +
+			"getGlobalQwenDir resolves it in place of ~/.qwen. Three deliberate differences, each with its reason " +
+			"in qwen_install.go: the transport is Sidecar's, so the dropped shell script and its python3 " +
+			"dependency are gone; no --seq is sent, because Sidecar's store assigns; and upstream's " +
+			"--session-start-source pass-through is NOT copied, because report-session has no such flag and the " +
+			"payload's source field answers no question Sidecar's binding asks -- a session id is the same " +
+			"conversation whether it arrived at startup, on resume, or after a compact. TRACED against a released " +
+			"qwen-code 0.23.0: the SessionStart entry this port installs fired and bound the pane, so the " +
+			"capability entry is real-trace at session-identity. The capture is " +
+			"internal/agentlifecycle/testdata/traces/qwen/session-start.tsv.",
+	},
 }
 
 // PortedFromRecords returns the provenance of every Sidecar integration asset.

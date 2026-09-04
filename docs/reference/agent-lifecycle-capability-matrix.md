@@ -38,6 +38,10 @@ This is enforced rather than documented. `Capability.TierFor` polices every tier
 | GitHub Copilot CLI | not installed | docs-only | `session-identity` | session only | shipped hook is one `SessionStart` entry. Nothing here is verified against a released binary, which is the weakest evidence in the registry. |
 | Cursor Agent | 2026.08.25 | docs-only | `session-identity` | session only | shipped hook is one `sessionStart` entry. The provider's ceiling is `full` on paper, and tracing is mandatory before claiming it. |
 | grok | 1.0.13 | real-trace | `session-identity` | session only | shipped hook is one `SessionStart` entry. The provider's ceiling is `full` and it is the strongest contract in the catalog, so this is the largest gap between what is claimed and what is available. |
+| Devin CLI | not run | docs-only | `screen-fallback` | session only | not traced; one capture carrying a session id promotes it to `session-identity` and nothing else has to change |
+| Droid | not run | docs-only | `screen-fallback` | session only | not traced; and a `~/.factory/hooks.json`, if you have one, shadows the entry entirely |
+| Qoder CLI | not run | docs-only | `screen-fallback` | session only | not traced; `QODER_CONFIG_DIR` is honoured on Herdr's word rather than a published contract |
+| Qwen Code | 0.23.0 | real-trace | `session-identity` | session only | none; session identity is this asset's ceiling by construction and it is reached |
 
 Pi's row went out of `capabilities.json` when nothing could produce a report for it, came back at `session-identity` when `PiAdapter` and `assets/pi/sidecar-lifecycle.js` shipped, and is now at `advisory` on `real-trace` evidence because a live Pi 0.84.3 session has been traced. It is the only row here that has reached its own ceiling: `advisory` is as high as Pi can ever go, because `full` needs `blocked_on_request` and `unblocked` and Pi ships no permission system to produce either. See "Why the Pi entry was retracted, and what brought it back".
 
@@ -508,6 +512,93 @@ One capture is in `internal/agentlifecycle/testdata/traces/grok/`, taken 2026-09
 ### Why `session-identity` is what is claimed
 
 grok is the only provider anywhere with a **dedicated cancellation event**: `StopCancelled` fires instead of `Stop` when a turn ends without completing, carrying a classified `reason` (`user_interrupt`, `permission_rejected`, `permission_cancelled`, `max_turns`, `no_progress`) and a derived `cancelledBy`. Beside it are `StopFailure` for API errors, `PermissionDenied`, `Notification{permission_prompt, idle_prompt}`, `SubagentStart`/`SubagentStop`, `PreCompact`/`PostCompact` and `SessionEnd`. That is `full` on paper, and it is the largest gap in this document between a provider's ceiling and what Sidecar's asset asks for. It is not claimed, because none of those events is traced: the capture covers `SessionStart` and `SessionEnd` and nothing else, which is exactly what the shipped asset could have subscribed to.
+## Devin CLI
+
+**Source:** Herdr's devin integration at `HERDR_INTEGRATION_VERSION=2` (`DEVIN_HOOK_EVENTS` in `src/integration/mod.rs`, `install_devin` in `src/integration/targets.rs`, and the vendored `upstream/devin/herdr-agent-state.sh`), plus the Devin CLI documentation the catalog entry cites. **Not traced.** No released Devin was executed for this port, so the entry is `screen-fallback` on `docs-only` evidence and claims nothing.
+
+Devin keeps hooks in `$XDG_CONFIG_HOME/devin/config.json`, defaulting to `~/.config/devin/config.json`. The schema is Claude Code's nested group shape: `hooks` → event → `[{matcher?, hooks: [{type, command, timeout}]}]`. Sidecar adds one session-identity entry and owns nothing else in the file. The integration is session identity only, which is also what Herdr's own authority table records for Devin, so state comes from the screen lane in both projects.
+
+### Six events, and why that is not over-installing
+
+This is the only Sidecar integration installed under more than one event, and the reason is a property of Devin rather than a preference. Upstream maps all six of `SessionStart`, `UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `PermissionRequest` and `Stop` to the same `session` action, and its asset then does something no other Herdr asset does: when the payload names no session it runs `devin list --format json` and matches an entry by working directory, except on `UserPromptSubmit`, and except on `SessionStart` with `source=startup`, where that fallback is explicitly disallowed. Read together, those two facts say upstream does not trust any single Devin event to carry the identifier. An integration that fired only on `SessionStart` would therefore bind the pane when Devin happened to volunteer the id at startup and silently never otherwise, which is the exact failure a session-identity integration exists to prevent.
+
+The cost is real and is recorded rather than hidden: six `sidecar agent report-session` processes per tool-calling turn rather than one per session. That is the price of matching upstream's coverage without guessing.
+
+### The fallback that is deliberately not copied
+
+Sidecar's `report-session` reads the payload and nothing else. It never runs another provider's CLI, never parses its output, and never decides which of several conversations a working directory belongs to. A wrong session binding is acted on by a cold restore, so a guess here is worse than no binding at all: the pane would offer to resume the wrong conversation. When the payload is silent Sidecar records nothing, says so, and the next event that does carry the id binds the pane.
+
+### The camelCase spelling, and what it cost
+
+Devin is the first provider whose payload is not uniformly snake_case. Herdr's asset reads `session_id` and then `sessionId`, taking the first non-empty string, which is a statement that a released Devin has been seen writing the camelCase one. `internal/cli`'s `hookPayload` now reads both, snake_case winning when a payload carries both, so the two implementations resolve the same payload to the same conversation. Every other provider omits the second field, so nothing else changes. `internal/cli/testdata/devin/payloads.tsv` drives every branch: both spellings, both empty, neither present, transcript-path-only, a sub-agent payload, and one that cannot be decoded at all.
+
+Which spelling a released Devin actually sends is untraced. Reading both is what makes that not matter.
+
+### What promoting this entry needs
+
+One capture. A `SessionStart`, or any of the other five events, from a released Devin carrying a session id, sanitized into `internal/agentlifecycle/testdata/traces/devin/` with a provenance row, moves the entry from `screen-fallback`/`docs-only` to `session-identity`/`real-trace`. Nothing else about the port has to change; the tier is the only thing waiting on evidence.
+
+## Droid (Factory CLI)
+
+**Source:** Herdr's droid integration at `HERDR_INTEGRATION_VERSION=3`, then Factory's own hooks reference and settings reference for everything Herdr does not record. **Not traced.** Droid is not installed on this machine and Factory's installer requires an account, so the entry is `screen-fallback` on `docs-only` evidence.
+
+Droid keeps hooks in `~/.factory/settings.json` in the same nested group shape Claude Code uses, and Sidecar adds one session-identity entry under `SessionStart`. That is upstream's whole table: version 3 has exactly one row, and its nine lifecycle rows were *removed* at that version rather than kept, so a port carrying more would be reinstating something upstream withdrew. `timeout` is in seconds here, with a documented default of 60, which is the same unit Claude and Codex use and not the unit Qwen uses.
+
+### `hooks.json` shadows the entry, and this is not in Herdr
+
+Factory's hooks reference is explicit: Droid reads hook declarations from `hooks.json` first, and falls back to the `hooks` key in the matching `settings.json` only when that file is **absent**. A user who has a `~/.factory/hooks.json` therefore gets an entry that is written correctly, reads as `current`, and never fires, the most expensive kind of wrong a status surface can be, because there is nothing on screen suggesting anything is off.
+
+`sidecar agent integration status droid` inspects that file and says so in its message, naming the path and the consequence. It does not change the status: the installation is not damaged, so offering `repair` would offer a verb that cannot fix it. And it does not edit the file. That file is the user's, Sidecar has never written to it, and moving somebody's hooks between two files is not an integration's business. Herdr does reach into `hooks.json`, but only to delete *its own* stale entries from an older layout, and Sidecar has none there to delete.
+
+### No configuration-directory override
+
+Droid is the only provider in this group without one. Herdr's `droid_dir` is `home_dir()?.join(".factory")` with nothing consulted, and Factory's settings reference names `~/.factory/settings.json` and documents no variable that relocates it. So a proof run can only redirect Droid's configuration by moving `HOME`, which is stated here rather than worked around with a variable nobody promised to honour. `TestDroidLivesUnderTheFactoryDirectoryWithNoOverride` asserts the absence, so an override invented later has to be justified rather than assumed.
+
+## Qoder CLI
+
+**Source:** Herdr's qodercli integration at `HERDR_INTEGRATION_VERSION=3`, then Qoder's own published hooks reference for everything Herdr does not record. **Not traced.** The Qoder CLI is not installed on this machine and requires an account, so the entry is `screen-fallback` on `docs-only` evidence.
+
+Qoder keeps hooks in `~/.qoder/settings.json` in Claude Code's nested group shape, and Sidecar adds one session-identity entry under `SessionStart`. That is upstream's whole table: version 3 has one row, and its twelve lifecycle rows were removed at that version rather than kept.
+
+Two details differ from the Droid entry above, and both come from Qoder's reference rather than from Herdr. The group carries a matcher of `"*"`, because `install_qodercli` passes `Some("*")` where `install_devin` and `install_droid` pass `None`; `"*"` is the every-source spelling in Qoder's schema exactly as it is in Claude's. And `timeout` is in seconds, documented with a default of 600, which is the same unit Claude, Codex and Droid use and *not* the unit Qwen uses. One field name, two meanings across this group, which is why each adapter states its unit at the constant.
+
+### The id and the command are different words
+
+`qodercli` is Herdr's label and therefore Sidecar's id everywhere; `qoder` is what the npm package installs and what every official example types. The adapter looks up `qoder` on `PATH` and asks *it* for a version, while the hook entry claims `--kind qodercli`, because that is what the catalog resolves and what a report carries. Looking up the id would report the provider missing on a machine that has it, so `TestTheProviderIdAndTheCommandDifferOnPurpose` drives the two apart deliberately.
+
+### `QODER_CONFIG_DIR` is honoured on Herdr's word
+
+Qoder's published reference names `~/.qoder/settings.json`, a project-level `.qoder/settings.json` and a `.qoder/settings.local.json`, and no variable that relocates any of them. The override comes from Herdr's `qodercli_dir`, and honouring it is what finds a relocated Qoder and what lets a proof run redirect the provider. It is recorded as untraced in the capability entry rather than presented as a contract, because the failure direction if the variable means something else is that Sidecar writes a settings file Qoder never reads and reports the integration as current.
+
+Sidecar installs into the user-level file only. A per-project copy would follow a checkout into other people's clones and report from panes Sidecar never set up, which is the same rule the Kimi port applies to `.kimi-code/local.toml`.
+
+## Qwen Code
+
+**Source:** Herdr's qwen integration at `HERDR_INTEGRATION_VERSION=1`, then Qwen Code's own published hooks reference and its `packages/core/src/config/storage.ts`, and **traced against qwen-code 0.23.0 on darwin/arm64, 2026-09-04.** The trace is `internal/agentlifecycle/testdata/traces/qwen/session-start.tsv`; `TestQwenSessionStartFiresBeforeAuthentication` re-derives every claim from it. This is the one of the four session-identity ports in Slice 4 that reached its tier, and `session-identity` is that asset's ceiling by construction rather than a waypoint: it installs one entry and reports which conversation occupies the pane, never what state it is in.
+
+Qwen keeps hooks in `~/.qwen/settings.json`, or `$QWEN_HOME/settings.json` when that variable is set, in Claude Code's nested group shape. Sidecar adds one session-identity entry under `SessionStart` with the `"*"` matcher `install_qwen` writes. That is upstream's whole table and always has been: version 1 is the first release, no lifecycle rows were ever added, and upstream even names its asset `herdr-agent-session.sh` rather than `herdr-agent-state.sh`.
+
+### The event fires before authentication, which is what made the tier reachable
+
+The proof pane was sitting on Qwen's "Connect a Provider" picker, with no auth type selected and no credentials configured for it, at the moment the hook had already run and Sidecar had already bound the pane. The same payload arrives under `qwen -p`, where the run then refuses with "No auth type is selected". So the event belongs to session creation rather than to a configured session, and requalifying this provider costs one process start rather than a model turn. That is worth knowing for every future requalification, and it is the reason a credential-free environment could earn this tier at all.
+
+Only `source=startup` is traced. `qwen --resume <id>` on the captured id produced no second `SessionStart` in roughly 25 seconds of watching, but the resume's own success was never established, so that is an unexplained observation rather than a measured absence. The `"*"` matcher is proved to catch `startup` and nothing more.
+
+### Qwen rewrites its own settings.json underneath the entry
+
+During the proof Qwen added a `$version` key and a `ui.autoModeAcknowledged` key to the very file Sidecar had installed into. The uninstall preserved both, and a hand-added `theme`, and removed only Sidecar's `hooks` key. That is the token-preserving edit working against a file the provider changed *after* the install, which is precisely the case an installer that rewrote whole files would have destroyed.
+
+### The timeout counts in milliseconds
+
+This is the one number in the four session-identity ports that is not what it looks like, and it is worth stating plainly because it is the kind of thing a port transcribes wrongly and nothing catches. Qwen's hooks reference documents `timeout` as **milliseconds** for a command hook, and seconds for an HTTP hook in the same table, which is why Herdr writes `10_000` for Qwen and `10` for every other provider it installs a hook for. Ten seconds is the same slack every Sidecar entry gets. A `10` written here would be a ten-millisecond budget: the report process would be killed before it opened the store, and *silently*, because a hook surface fails open.
+
+`QwenHookTimeoutMillis` exists as its own constant so the unit change is visible at the point of use, `TestQwenCountsItsTimeoutInMilliseconds` asserts both that it is the seconds constant times a thousand and that the other three providers still count seconds, and the fixture records the value in a fourth column no other provider's fixture has.
+
+### What is deliberately not copied
+
+Upstream forwards the `SessionStart` payload's `source` field (`startup`, `resume`, `clear`, `compact`, `branch`) to its own report command as `--session-start-source`. `sidecar agent report-session` has no such flag and does not want one: a session id names the same conversation whether it arrived at startup, on resume, or after a compact, so the field answers no question the binding asks.
+
+`QWEN_HOME` was verified rather than taken from Herdr. `Storage.getGlobalQwenDir` in qwen-code's own `packages/core/src/config/storage.ts` resolves it in place of `~/.qwen`, which is exactly the semantics Herdr assumes and the semantics this adapter implements.
 
 ## Catalog agents evaluated but not built
 
@@ -555,7 +646,7 @@ The third is the dangerous one, because nothing in a Sidecar release notices it.
 
 ### When Sidecar changes an asset
 
-1. Bump the asset version constant (`OpenCodeAssetVersion`, `CodexAssetVersion`, `ClaudeAssetVersion`, `PiAssetVersion`, `KiloAssetVersion`, `KimiAssetVersion`, `OmpAssetVersion`).
+1. Bump the asset version constant (`OpenCodeAssetVersion`, `CodexAssetVersion`, `ClaudeAssetVersion`, `PiAssetVersion`, `KiloAssetVersion`, `KimiAssetVersion`, `OmpAssetVersion`, `AntigravityAssetVersion`, `CopilotAssetVersion`, `CursorAssetVersion`, `GrokAssetVersion`, `DevinAssetVersion`, `DroidAssetVersion`, `QoderCLIAssetVersion`, `QwenAssetVersion`).
 2. Append the superseded entry to that adapter's canonical history, so an installed copy of the old version reads as `outdated` rather than as damage.
 3. Move `assetVersion` in `capabilities.json` to match.
 4. Requalify against the traces — a new asset consuming the same events still needs to be shown to consume them correctly.
