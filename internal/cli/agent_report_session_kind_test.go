@@ -4,6 +4,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/marcus/sidecar/internal/agentcatalog"
 	"github.com/marcus/sidecar/internal/agentsession"
 )
 
@@ -66,4 +67,36 @@ func TestAMistypedKindIsUnsupportedRatherThanAMismatch(t *testing.T) {
 			}
 		}
 	})
+}
+
+// TestADetectionOnlyFamilyCanStillBindItsSession is the live proof's finding,
+// pinned.
+//
+// resolveReportedKind resolved a --kind claim through agentcatalog.Lookup, which
+// searches the launchable families and their aliases only. That was right while
+// every shipped integration belonged to a launchable family, and the Kilo port
+// broke the assumption: kilo is a family Sidecar recognises in a pane and cannot
+// yet start, its Sidecar-installed plugin reports from a pane the user launched
+// themselves, and every binding it sent was refused with exit 5 while its state
+// reports, which take no --kind, were accepted.
+//
+// No offline test caught it because every test in the tree passed a launchable
+// id, which is exactly why this one drives the whole detection catalog rather
+// than the single provider that exposed the bug. A family that becomes
+// launchable later still passes, through the Lookup branch.
+func TestADetectionOnlyFamilyCanStillBindItsSession(t *testing.T) {
+	families := agentcatalog.DetectionFamilies()
+	if len(families) == 0 {
+		t.Fatal("the detection catalog is empty, so this asserts nothing")
+	}
+	for _, family := range families {
+		got, err := resolveReportedKind(family.ID)
+		if err != nil {
+			t.Fatalf("resolveReportedKind(%q) = %v; a detection-only family's integration cannot bind "+
+				"the conversation in its own pane", family.ID, err)
+		}
+		if got != family.ID {
+			t.Fatalf("resolveReportedKind(%q) = %q, want it unchanged", family.ID, got)
+		}
+	}
 }

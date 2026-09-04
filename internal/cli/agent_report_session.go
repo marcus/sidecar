@@ -242,14 +242,31 @@ func readHookPayload(r io.Reader) (hookPayload, error) {
 // consulting the pane at all. Every shipped integration passes a canonical id
 // already (hookconfig writes them), so this changes no working path — it makes
 // the broken ones say what is broken.
+// A DETECTION-ONLY FAMILY COUNTS, and the reason is that this verb answers a
+// question about a pane rather than about a launch. agentcatalog.Lookup searches
+// the launchable families and their aliases only, which was right while every
+// shipped integration belonged to one; the Kilo port broke that assumption. Kilo
+// is a family Sidecar recognises in a pane and cannot yet start, and its plugin
+// is a Sidecar-installed integration reporting from a pane the user launched
+// themselves. Refusing it here made the asset's binding fail on every turn --
+// exit 5, "kilo is not an agent kind Sidecar knows" -- while its state reports,
+// which take no --kind, were accepted. Found by the live proof; no test could
+// have caught it, because every test in the tree passed a launchable id.
+//
+// FindDetection is consulted after Lookup, not instead of it, so a launchable
+// family's aliases keep resolving through the path that already handled them.
+// When the catalog gains launch configuration for these families the fallback
+// simply stops being reached.
 func resolveReportedKind(claim string) (string, error) {
 	claim = strings.TrimSpace(claim)
-	family, ok := agentcatalog.Lookup(claim)
-	if !ok {
-		return "", fmt.Errorf("%w: %q is not an agent kind Sidecar knows",
-			agentsession.ErrUnsupportedKind, claim)
+	if family, ok := agentcatalog.Lookup(claim); ok {
+		return family.ID, nil
 	}
-	return family.ID, nil
+	if family, ok := agentcatalog.FindDetection(claim); ok {
+		return family.ID, nil
+	}
+	return "", fmt.Errorf("%w: %q is not an agent kind Sidecar knows",
+		agentsession.ErrUnsupportedKind, claim)
 }
 
 func runAgentReportSession(env Env, args []string) int {

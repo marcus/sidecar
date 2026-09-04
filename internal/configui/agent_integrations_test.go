@@ -209,12 +209,12 @@ func TestTheRouteShowsEveryProviderAndItsHonestState(t *testing.T) {
 	// adapter, so the route has to show it and say so. It took that job from pi
 	// while pi's capability entry was retracted, and keeps it now that pi ships
 	// an adapter of its own.
-	for _, want := range []string{"opencode", "codex", "claude", "pi", "grok", "unsupported"} {
+	for _, want := range []string{"opencode", "codex", "claude", "pi", "kilo", "grok", "unsupported"} {
 		if !strings.Contains(view, want) {
 			t.Fatalf("the route does not mention %q:\n%s", want, view)
 		}
 	}
-	if !strings.Contains(view, "0 of 4 installed") {
+	if !strings.Contains(view, "0 of 5 installed") {
 		t.Fatalf("the summary is wrong:\n%s", view)
 	}
 }
@@ -342,7 +342,7 @@ func TestInstallingIsConfirmedByNamingTheFilesAndThenActuallyInstalls(t *testing
 	// The route re-reads rather than assuming, so what it shows is what is on
 	// disk.
 	view = ansi.Strip(m.View(160, 45))
-	if !strings.Contains(view, "current") || !strings.Contains(view, "1 of 4 installed") {
+	if !strings.Contains(view, "current") || !strings.Contains(view, "1 of 5 installed") {
 		t.Fatalf("the route did not refresh after the mutation:\n%s", view)
 	}
 }
@@ -495,11 +495,28 @@ func TestTheRouteFitsEveryTerminalSizeAndKeepsItsRowsReachable(t *testing.T) {
 				t.Fatalf("%dx%d line %d is %d wide", size[0], size[1], i, w)
 			}
 		}
-		// Every provider row is still declared, so the cursor cannot walk onto
-		// a row that was clipped away.
+		// The row the cursor is on stays visible, which is the property this
+		// is really about: the cursor must never be able to walk onto a row
+		// that was clipped away.
+		//
+		// It used to look for the literal "opencode", which was the same
+		// assertion only while the alphabetically-sorted list was short enough
+		// for every provider to fit in 24 lines. The kilo port made it five
+		// providers and opencode fell below the fold of the DEFAULT frame,
+		// where the cursor is on the first row -- ordinary list behaviour, and
+		// not what this test exists to catch. Focusing opencode brings it back
+		// into view at 60x24, which is what the check below states directly.
 		stripped := ansi.Strip(view)
-		if !strings.Contains(stripped, "opencode") {
-			t.Fatalf("%dx%d lost the provider list:\n%s", size[0], size[1], stripped)
+		if !strings.Contains(stripped, "Agents") {
+			t.Fatalf("%dx%d lost the provider list entirely:\n%s", size[0], size[1], stripped)
+		}
+		for _, provider := range []string{"claude", "opencode"} {
+			focusIntegration(t, m, provider)
+			focused := ansi.Strip(m.View(size[0], size[1]))
+			if !strings.Contains(focused, provider) {
+				t.Fatalf("%dx%d clipped %s away while the cursor was on it:\n%s",
+					size[0], size[1], provider, focused)
+			}
 		}
 	}
 }

@@ -31,6 +31,7 @@ This is enforced rather than documented. `Capability.TierFor` polices every tier
 | Codex | 0.151.0 | real-trace | `session-identity` | session only | shipped hook is SessionStart only. The provider's own contract is traced and would support `full`. |
 | Claude Code | 2.1.220 | real-trace | `session-identity` | session only | shipped hook is SessionStart only. The provider's ceiling is `advisory`: no cancellation event exists. |
 | Pi | 0.84.3 | real-trace | `advisory` | lifecycle authority | blocking is structurally impossible; `advisory` is the ceiling and is reached |
+| Kilo Code | 7.5.9 | real-trace | `advisory` | lifecycle authority | cancellation is indistinguishable and the shipped asset releases nothing on exit, so `advisory` is the ceiling and is reached |
 
 Pi's row went out of `capabilities.json` when nothing could produce a report for it, came back at `session-identity` when `PiAdapter` and `assets/pi/sidecar-lifecycle.js` shipped, and is now at `advisory` on `real-trace` evidence because a live Pi 0.84.3 session has been traced. It is the only row here that has reached its own ceiling: `advisory` is as high as Pi can ever go, because `full` needs `blocked_on_request` and `unblocked` and Pi ships no permission system to produce either. See "Why the Pi entry was retracted, and what brought it back".
 
@@ -42,17 +43,17 @@ Two columns are doing different jobs here and it is worth being explicit about w
 
 `YES` means an official event exists and, where marked traced, was observed. `PARTIAL` means it must be inferred. `NO` means no event exists.
 
-| Transition | OpenCode | Codex | Claude Code | Pi |
-| --- | --- | --- | --- | --- |
-| work start | YES (traced) | YES (traced) | YES (traced) | YES |
-| tool use | YES (traced) | YES (traced) | YES (traced) | YES |
-| blocked on request | YES (traced) | YES (traced) | YES (traced) | NO |
-| unblocked | YES (traced) | YES (traced) | PARTIAL (traced) | NO |
-| turn complete | YES (traced) | YES (traced) | PARTIAL (traced) | YES |
-| cancellation | YES (traced) | YES (traced) | NO (confirmed) | PARTIAL |
-| session identity | YES (traced) | YES (traced) | YES (traced) | YES |
-| subagent | PARTIAL | YES | YES | NO |
-| process exit | YES (traced) | YES (traced) | YES (traced) | YES |
+| Transition | OpenCode | Codex | Claude Code | Pi | Kilo Code |
+| --- | --- | --- | --- | --- | --- |
+| work start | YES (traced) | YES (traced) | YES (traced) | YES | YES (traced) |
+| tool use | YES (traced) | YES (traced) | YES (traced) | YES | NO (on the plugin event stream) |
+| blocked on request | YES (traced) | YES (traced) | YES (traced) | NO | YES (traced) |
+| unblocked | YES (traced) | YES (traced) | PARTIAL (traced) | NO | YES (traced) |
+| turn complete | YES (traced) | YES (traced) | PARTIAL (traced) | YES | YES (traced) |
+| cancellation | YES (traced) | YES (traced) | NO (confirmed) | PARTIAL | PARTIAL |
+| session identity | YES (traced) | YES (traced) | YES (traced) | YES | YES (traced) |
+| subagent | PARTIAL | YES | YES | NO | PARTIAL |
+| process exit | YES (traced) | YES (traced) | YES (traced) | YES | YES (not consumed) |
 
 Claude Code's `unblocked` and `turn complete` are marked PARTIAL *after* tracing rather than before: both events exist and both fire on the ordinary path, and both go missing on exactly the paths where they would matter most. See the Claude Code section.
 
@@ -228,6 +229,49 @@ Two findings that belong to the arbitration machinery rather than to Pi, recorde
 **Uninstalling an integration does not, by itself, hand the lane back to the screen.** `StoreSource.Evidence` derives `integrationStatus` from the *record* — source known, asset version matching — never from the installed files. So `sidecar agent integration status pi` reports `not-installed`/`screen-fallback` while `sidecar agent explain` still reports `integrationStatus=current`/`authority=lifecycle` from reports already in the store. Restarting the provider flips it: `authority=screen`, `fallbackReason=process_generation_mismatch`. That is arbitration working as designed — a stored claim checked against the live world — but a fallback proof has to end the run, not just remove the file.
 
 **`sidecar agent start --kind pi` times out, and no tier can fix it.** The refusal is `pi.process-mismatch`: Pi installs as a `#!/usr/bin/env node` shim, tmux reports the pane's foreground command as `node`, and `DetectPi` refuses before any manifest rule runs. The screen lane by itself answers `idle` for the same capture (`sidecar agent explain --file` gives `fallback_reason=default_known_agent_idle_fallback`), so widening the process gate is the whole fix. `agentcontrol`'s detector calls `agentactivity.Detect` only and never consults the lifecycle store, so hooks authority is not on that path at all. Tracked as Slice 3 of the parity plan.
+
+## Kilo Code
+
+**Source:** the shipped `@kilocode/cli` 7.5.9 binary, read rather than inferred from prose, and four sanitized captures of that version in `internal/agentlifecycle/testdata/traces/kilo/`. **Traced.**
+
+Kilo is an OpenCode fork, so its plugin surface is OpenCode's: a module export that is a function is called as a plugin factory, the object it returns is a bag of hooks, and `chat.message` plus a bus `event` hook are the two that carry lifecycle. Everything below was measured against 7.5.9, because Herdr's kilo integration is at version 4 and several of its assumptions no longer hold.
+
+### The one upstream bug the port fixes
+
+Kilo's `session.status` event carries an **object** whose `type` is the discriminator. The shipped schema is a union of `{type:"idle"}`, `{type:"busy"}`, `{type:"retry",...}` and `{type:"offline",...}`. Herdr's kilo asset accepts a status only when `typeof status === "string"`, so on this release it maps none of them and falls through to re-reporting the session on every status event.
+
+Herdr's own **opencode** asset at version 10 reads `status?.type` and has done since before this port; the kilo variant never received the fix, in the same way the pi variant never received omp's Windows-path fix. Sidecar takes the fixed form, and the reason it matters is not tidiness: `session.status` is the only **state-shaped** signal Kilo has, so an asset that cannot read it gives up the property that lets a dropped or misordered event self-correct. `traces/kilo/error-turn.tsv` shows the concrete cost, below.
+
+### Two branches that can never fire, and one that fires oddly
+
+`tool.execute.before` and `tool.execute.after` are plugin **hooks** in Kilo, invoked through `Plugin.trigger`, not bus events. An `event` handler never sees them. `traces/kilo/tool-turn.tsv` is a turn in which a bash tool really ran, with the command and its output in the run log, and neither name appears anywhere between `chat.message` and `session.idle`. Herdr lists both in its event switch in its kilo and its opencode assets alike, so the branches are upstream's reading and are kept, and `tool_use` is not claimed on the strength of them.
+
+`session.error` maps to **blocked** upstream, without reading the error name, and the port keeps that. It reads oddly and it is safe: `traces/kilo/error-turn.tsv` shows `session.status` idle arriving one millisecond after the error, so the lane an error opens is closed by the next state-shaped assertion rather than latching. That trace is also the argument for the status fix, because with upstream's string-only read nothing would close it until `session.idle`.
+
+`retry` is deliberately absent from the status vocabulary, which is upstream's list kept verbatim. A `{type:"retry"}` status re-asserts the binding rather than a lane, which is harmless because a retry happens inside a turn a busy assertion already opened. Herdr's opencode asset does map retry to working, so this is a place where the kilo asset is behind its sibling and the port chose fidelity over improvement.
+
+### Why `advisory` is the ceiling
+
+`full` needs `cancelled` and `process_exit`, and this asset can produce neither. A user interrupt reaches the bus as `session.error` carrying `error.name = MessageAbortedError`, the same shape a provider failure takes with a different name, and upstream's asset does not read the name; and upstream has never had a `dispose` hook, so nothing releases the lane on teardown. Kilo does call `dispose`, and Sidecar's own OpenCode asset uses it, so both are differences between the two ports rather than limitations of the provider. Both move together with `covered` if a future asset version subscribes.
+
+### Where Kilo reads plugins, and the trap it inherits
+
+The global config directory is `$XDG_CONFIG_HOME/kilo`, falling back to `~/.config/kilo`, with `KILO_CONFIG_DIR` as the override. Herdr hardcodes `~/.config/kilo` and honours no override at all. Kilo also loads `~/.kilo/`, `~/.kilocode/`, and project-local `.kilo/` and `.kilocode/` walking up from the working directory; Sidecar installs into none of them.
+
+Kilo globs `{plugin,plugins}/*.{ts,js}` in **every** config directory it discovers, so the OpenCode double-load trap applies here too: a copy in each directory fires every event twice. Measured with two probe plugins, one per directory, both of which loaded and ran. The installer owns `plugin/` and reports anything with its asset's name in `plugins/` as `needs-repair`.
+
+One place Kilo is **laxer** than the OpenCode it forked from: a non-function export does not disqualify a plugin module. Kilo's loader walks the namespace and skips an export it cannot call, so a factory beside a string export still runs; OpenCode 1.18.25 drops the whole module in that case, silently. Sidecar's asset holds to the stricter convention anyway, because the cost is zero and relying on a fork staying laxer than its upstream is a bet nobody promised to keep.
+
+### What the live proof showed
+
+Sidecar's asset was installed by `sidecar agent integration install kilo` rather than by hand, and a Kilo TUI ran in a Sidecar-managed shell on a private tmux server with an isolated Sidecar config and state tree. The store recorded `report-session --kind kilo --id ...` and then `working`/`turn_start` and `idle`/`turn_complete`, all accepted, and `sidecar agent explain --shell` read `state=idle authority=lifecycle tier=advisory source=sidecar.kilo.plugin integrationStatus=current` with `screenState=unknown` throughout: the verdict was authored by hooks and by nothing else. The binding landed in `shells.json` as `reported: true`, which is what makes the reference auto-resumable. Uninstalling and ending the run flipped the lane to `authority=screen`, `fallbackReason=process_generation_mismatch`, exactly as the Pi proof recorded that it must.
+
+What it did **not** establish is worth stating, because the summary invites the assumption. `screenEvidence` was `unsupported-agent` throughout, so the screen lane never answered and the hooks lane was the only lane. The binding was accepted, but `CheckReportedKind` refuses only a positively identified occupant of a *different* kind and passes an unidentified one, so exit 0 does not show that process identity named the pane `kilo`. Kilo installs as a `#!/usr/bin/env node` shim, which is the case Slice 3's process-tree scoring exists for; whether the widened resolver names it is a separate measurement this run did not make.
+
+Two things the proof found that no offline test could:
+
+- **`agent report-session --kind kilo` was refused on every turn.** `resolveReportedKind` resolved a `--kind` claim through `agentcatalog.Lookup`, which searches the launchable families and their aliases only. Kilo is detection-only today, so every binding failed with exit 5 while the state reports, which take no `--kind`, were accepted. Every test in the tree passed a launchable id, which is why nothing caught it. The lookup now falls back to the detection catalog, which is the right rule for a verb that answers a question about a pane rather than about a launch.
+- **`KILO_CONFIG_DIR` is not enough to isolate a proof run.** Kilo still creates its XDG default config directory at startup whatever that variable says, and this run wrote one zero-byte migration marker into the maintainer's real `~/.config/kilo` before the mistake was caught. The file was removed and the directory restored. Move `XDG_CONFIG_HOME` as well.
 
 ## Catalog agents evaluated but not built
 

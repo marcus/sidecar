@@ -4,7 +4,13 @@ All notable changes to sidecar are documented here.
 
 ## [Unreleased]
 
+### Features
+
+- **Kilo Code reports its own lifecycle to Sidecar.** `sidecar agent integration install kilo` writes one Sidecar-owned plugin into Kilo's config directory (`$XDG_CONFIG_HOME/kilo/plugin`, or `$KILO_CONFIG_DIR/plugin`), and from then on a Kilo pane's working, blocked, unblocked, idle and session-identity transitions come from Kilo itself rather than from reading its screen. It installs at the advisory tier on real traces of kilo 7.5.9, which is the ceiling this integration can reach: a user interrupt and a provider failure reach Kilo's bus as the same event with a different name, so a cancelled turn is not distinguishable from a failed one, and nothing releases the lane on exit. Kilo loads both `plugin/` and `plugins/`, so a copy in each would report every event twice; Sidecar owns one of them and reports anything with its asset's name in the other as needing repair. Install, inspect, repair and uninstall go through the same adapter contract as the other integrations, so `--dry-run` shows the exact operations and uninstall removes only what Sidecar owns. It reports lifecycle facts only: never prompts, responses, tool data, paths or credentials.
+
 ### Bug Fixes
+
+- **An integration for an agent Sidecar can recognise but not start can now bind the conversation in its pane.** `sidecar agent report-session --kind KIND` resolved the kind through the launchable agent families only, so a hook for a detection-only family was refused as an agent kind Sidecar does not know, even when Sidecar itself had installed the integration sending it. The lookup now also consults the families Sidecar recognises in a pane, which is the right question for a verb that reports about a pane rather than about a launch.
 
 - **A worktree created non-interactively can now be deleted non-interactively through the same lifecycle as the TUI.** `sidecar worktree delete TARGET --plan --json` reports the exact checkout, dirtiness, remote availability, branch-cleanup choices, and pinned branch and HEAD without changing anything; using the returned absolute path and re-running with `--expect-branch BRANCH --expect-head-oid OID --yes` closes its Sidecar worktree session and rooted managed shells before removing the directory. Local and remote branch cleanup remain explicit flags, as the confirmation's unchecked boxes are, and a failed create's exact pending-creation journal is cleared only after deletion succeeds. A rooted shell that refuses teardown is reported as a warning after the checkout is removed, while requested branch and journal cleanup still finish. The shared refusal rules still protect main, bare, detached, locked, missing, and prunable worktrees. (td-85b0c4)
 
