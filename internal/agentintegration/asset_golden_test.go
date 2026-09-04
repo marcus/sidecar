@@ -104,6 +104,21 @@ var assetGoldens = []assetGolden{
 	// hook's timeout in milliseconds where every other provider here counts
 	// seconds. Writing 10 would be a ten-millisecond budget.
 	{provider: QwenProvider, name: "settings.json", version: "1", checksum: "5173d78422441cb47488768f5f8b508d339cce35bd3abe9b1c1cfb95546bed8a"},
+	// Mastra Code's asset is not a file either: it is the eleven entries the
+	// installer writes into the user's hooks.json, rendered from mastracodeHooks.
+	// So this checksum covers the eleven event keys, the exact CLI command each
+	// one spawns -- including the `|| true` guard on the three events Mastra Code
+	// reads exit code 2 from as a refusal -- the millisecond timeout, and the
+	// description its own `/hooks` command prints back. A change to any of them
+	// lands here, which is the intent: the event-to-lane mapping is the part a
+	// tier is granted against.
+	// Like Pi, mastracode stays at version 1 across a content change, and for the
+	// same reason: no release has shipped `agent integration install mastracode`,
+	// so there is no copy of version 1 on any machine to be misread as current.
+	// The change that moved this checksum is the one the live proof found -- the
+	// session binding moving from SessionStart, whose payload carries the literal
+	// "session-init", to AgentStart, which carries the real thread id.
+	{provider: MastracodeProvider, name: "hooks.json", version: "1", checksum: "e2ee505ac99b886e89f36c265bb12235e01d5eb9df7b868710088f294e5e8494"},
 }
 
 // bumpInstructions is the whole point of the guard: a failure here has to tell
@@ -116,7 +131,8 @@ An asset's bytes changed. Before updating the golden below, do this in order:
      ClaudeAssetVersion, PiAssetVersion, KiloAssetVersion, KimiAssetVersion,
      OmpAssetVersion, AntigravityAssetVersion, CopilotAssetVersion,
      CursorAssetVersion, GrokAssetVersion, DevinAssetVersion, DroidAssetVersion,
-     QoderCLIAssetVersion, or QwenAssetVersion) if it has not already moved. An installed copy is
+     QoderCLIAssetVersion, QwenAssetVersion, or MastracodeAssetVersion) if it has
+     not already moved. An installed copy is
      recognised as outdated by its version, so without this every existing
      install keeps reporting itself current while running different code.
   2. Update the matching AssetVersion in internal/agentlifecycle/capabilities.json,

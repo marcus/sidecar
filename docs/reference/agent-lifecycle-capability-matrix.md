@@ -600,6 +600,58 @@ Upstream forwards the `SessionStart` payload's `source` field (`startup`, `resum
 
 `QWEN_HOME` was verified rather than taken from Herdr. `Storage.getGlobalQwenDir` in qwen-code's own `packages/core/src/config/storage.ts` resolves it in place of `~/.qwen`, which is exactly the semantics Herdr assumes and the semantics this adapter implements.
 
+## Mastra Code
+
+**Source:** Mastra Code's own published npm package, read file by file, then traced against mastracode 0.38.0. The event-to-lane mapping is ported from Herdr's mastracode integration at `HERDR_INTEGRATION_VERSION=2`, with one row's event corrected against a measurement.
+
+Mastra Code has fourteen hook events, configured as a JSON object in `~/.mastracode/hooks.json` whose top level *is* the event map: each key is an event name and each value an array of `{type, command, timeout, description, matcher}` entries. Its loader keeps an entry when `type` is `"command"` and `command` is a string, and ignores every other field, so it is far laxer than Kimi's four-field schema. A project-local `<cwd>/.mastracode/hooks.json` is appended after the global one; Sidecar deliberately does not install there, because a per-project copy would follow a checkout into other people's clones. The payload arrives on stdin carrying `hook_event_name`, `session_id`, `cwd` and, while a run is active, `run_id`, plus per-event fields.
+
+**The port ships eleven entries**, which is upstream's table row for row. Sidecar's asset is not a script, for the same reason Kimi's is not: Herdr's is a shell shim whose only jobs are gating on `HERDR_ENV`, shelling out to `python3` for `session_id`, and writing a JSON-RPC frame to a socket, and every one of those disappears when the transport is a CLI verb.
+
+### Three things about this provider that no other one here does
+
+**The timeout field is milliseconds.** Every other provider Sidecar installs into counts it in seconds and shares `hookTimeoutSec`. Mastra Code's executor reads `hook.timeout ?? 1e4` straight into `setTimeout`, so writing the shared constant would have given every report a ten-millisecond budget and `SIGKILL`ed it before it could append, while leaving the entry valid JSON that loads and matches every offline expectation. `TestMastracodeTimeoutIsInMilliseconds` is one line of test for one line of trap.
+
+**Three events are blocking, and a bare report on one of them can stop the agent.** `isBlockingEvent` names `PreToolUse`, `Stop` and `UserPromptSubmit`, and for those three `runHooksForEvent` reads an exit code of exactly 2 from a hook as a refusal of the tool call or the turn. `sidecar agent report` exits 2 on a usage error, and an installed `hooks.json` outlives the binary that wrote it, so a Sidecar downgrade below the release that added a flag the asset passes would have refused every prompt and every tool call with Sidecar's own usage text as the reason. The three rows on those events therefore end their command with `|| true`; the other eight do not, so any other non-zero exit still reaches the user as a warning line, which is diagnostic rather than behaviour-changing. `TestMastracodeCannotBlockTheAgentItReportsOn` asserts both directions.
+
+**Hooks for one event run sequentially.** Kimi runs them in parallel, which is why its table must have exactly one row per event; Mastra Code awaits each in turn, so an event may carry two rows and the order in the array is the order they run. That is what makes the `AgentStart` pair below safe.
+
+### The one row whose event moved, and why
+
+Upstream binds the pane's conversation on `SessionStart`. On this release that event carries no conversation. `createMastraCode` constructs the hook manager with the **literal** session id `"session-init"`; the only thing that ever replaces it is a `thread_created`/`thread_changed` subscription in `wireSessionConcerns`; and `MastraTUI.run()` dispatches `runSessionStart()` immediately after `init()`, before any thread exists.
+
+That was measured rather than inferred. The first proof run installed upstream's mapping unchanged, and Sidecar's `shells.json` came back holding `{"kind":"id","value":"session-init","reported":true}` while the TUI was printing `Created thread: b42847d3-…`. A reference from an official source is marked resumable, so shipping that row would have made every Mastra Code shell on a machine claim the same non-existent conversation, which is exactly what `agentsession`'s "resuming the wrong conversation is worse than resuming none" forbids.
+
+`traces/mastracode/session-start-carries-no-thread.tsv` is the whole evidence, and its surprising row is the second one: **`UserPromptSubmit` carries the placeholder too**, because the thread is not created until the prompt is on its way. `AgentStart` is the earliest event that can name the conversation at all, and it does. So the binding is there, which also re-binds a pane whose thread changed under `/new`. That was proved live, where `/new` moved the recorded reference to the new thread id the TUI printed. Herdr's own pi asset re-binds per turn on its agent-start event for the same reason.
+
+A session **resumed** into an existing thread does carry the real id on `SessionStart`, because the restore fires `thread_changed` during `init()`. That is why the placeholder is invisible unless a capture starts from a project with no history, and why a binding on `SessionStart` alone would have looked correct in casual testing.
+
+It is also the one thing the move costs, and it is worth naming rather than leaving to be discovered. On a resumed session Herdr's binding names the conversation before the first prompt and Sidecar's does not, so a resumed Mastra Code pane carries no conversation reference until its first `AgentStart`. A cold restore of a pane that was resumed and never prompted can therefore offer the shell rather than the conversation. That is the side to err on: the alternative binds, on every machine and in every project, a placeholder that names no conversation at all.
+
+### What the traces measured, and the one gap that caps it at advisory
+
+Five captures are in `internal/agentlifecycle/testdata/traces/mastracode/`, taken 2026-09-04 from a live Mastra Code TUI in a Sidecar-managed shell on a private tmux server, with the provider installed into a scratch npm prefix and `HOME` moved, which is the only lever there is, since Mastra Code reads no environment variable for its configuration directory. Six tests in `hooktrace_test.go` re-derive each claim from the fixture that earned it.
+
+`work_start`, `tool_use`, `blocked_on_request`, `unblocked`, `turn_complete`, `cancelled` and `session_identity` are covered: six of the seven transitions `FullLifecycleTransitions()` names, plus `tool_use`. The blocked lane is claimed on the strongest evidence in this document, because the captured `decision` is **`declined`** rather than `approved`: Claude Code caps below `full` precisely because a denied permission emits nothing and the pane latches, and here `PermissionResult` fires on the denial, carries the outcome, and is followed by no `PreToolUse` at all because the tool never ran.
+
+The one transition that is missing is why the tier is `advisory`:
+
+- **`process_exit` is unclaimed, and unlike Kimi's and Pi's it is unclaimable.** `SessionEnd` fires on `/exit` and is captured, but it carries `session_id`, `cwd` and `hook_event_name` and nothing else: `HookStdinSession` declares no reason of any kind. Kimi's `SessionEnd` carries `reason=exit` and could therefore distinguish an exit from any other ending. An asset that hooked this one would release the lane on every session ending, whatever caused it.
+
+Three further findings belong here.
+
+**The permission pair precedes the tool hook**, which is the reverse of Kimi's order. A pane reads blocked, then `working(permission_resolved)`, then `working(tool_use)`, never `working(tool_use)` then blocked.
+
+**A cancelled turn's last report says `turn_complete`.** `Interrupt` fires carrying `reason=user_interrupt` and the port maps it to `idle`/`cancelled`, but `AgentEnd` and `Stop` bracket it, both carrying `stop_reason=aborted`, and upstream's mapping reads neither. The lane is `idle` throughout and correct; only the reason a later reader sees is the weaker one. The order of `Interrupt` against `AgentEnd` is not even stable between captures. Distinguishing them would mean reading `stop_reason`, which is a change to the provider half rather than to the transport.
+
+**Sub-agent activity is untraced rather than unreachable.** `SubagentStart` and `SubagentEnd` rows ship because upstream has them and because Mastra Code declares both events with a `run_id` and an `agent_type`, but no captured turn spawned one, so `subagent` is not in `covered`. Neither row returns the pane to idle: `SubagentEnd` reports working, because a sub-agent finishing hands the pane back to its parent's work.
+
+### Two smaller facts a reader will otherwise rediscover
+
+**`Notification` and `PostToolUse` fire and are not hooked**, by upstream or here. `Notification` carries a `reason` of `tool_approval`, `ask_question`, `plan_approval`, `sandbox_access` or `agent_done`, and it is traced firing immediately before `PermissionRequest` and again before `AgentEnd`. It is the only event that would let a hooks lane tell a question from a tool approval, and the only one that fires when the TUI waits for input for some other reason; both are unreached today.
+
+**Mastra Code ships no version flag**, so Sidecar records no provider version for it and `testedProviderRange` can never be confirmed against a running binary. `mastracode --version` is not a headless flag, so with no TTY the CLI falls through to headless mode and prints its usage banner; the banner's first line is what a version probe would record and every surface would then render as this provider's version. The adapter leaves the field empty instead, which is true where the banner would be false. It costs nothing at this tier, because `TierFor` gates on the tested range only at `full`. The version in the entry was read from the TUI's own start banner.
+
 ## Catalog agents evaluated but not built
 
 These are recorded rather than omitted so that "evaluated, and deliberately not built" is distinguishable from "never looked at". All are `screen-fallback` with `evidence: none`: **none is trace-backed**, so each selects a candidate rather than earning a tier, and `TierFor` would refuse them anything else regardless.
@@ -646,7 +698,7 @@ The third is the dangerous one, because nothing in a Sidecar release notices it.
 
 ### When Sidecar changes an asset
 
-1. Bump the asset version constant (`OpenCodeAssetVersion`, `CodexAssetVersion`, `ClaudeAssetVersion`, `PiAssetVersion`, `KiloAssetVersion`, `KimiAssetVersion`, `OmpAssetVersion`, `AntigravityAssetVersion`, `CopilotAssetVersion`, `CursorAssetVersion`, `GrokAssetVersion`, `DevinAssetVersion`, `DroidAssetVersion`, `QoderCLIAssetVersion`, `QwenAssetVersion`).
+1. Bump the asset version constant (`OpenCodeAssetVersion`, `CodexAssetVersion`, `ClaudeAssetVersion`, `PiAssetVersion`, `KiloAssetVersion`, `KimiAssetVersion`, `OmpAssetVersion`, `AntigravityAssetVersion`, `CopilotAssetVersion`, `CursorAssetVersion`, `GrokAssetVersion`, `DevinAssetVersion`, `DroidAssetVersion`, `QoderCLIAssetVersion`, `QwenAssetVersion`, `MastracodeAssetVersion`).
 2. Append the superseded entry to that adapter's canonical history, so an installed copy of the old version reads as `outdated` rather than as damage.
 3. Move `assetVersion` in `capabilities.json` to match.
 4. Requalify against the traces — a new asset consuming the same events still needs to be shown to consume them correctly.

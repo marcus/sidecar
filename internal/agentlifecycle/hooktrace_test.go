@@ -137,6 +137,25 @@ var valueBearingTraceKeys = map[string]bool{
 	"willContinue": true,
 	"stopReason":   true,
 	"approved":     true,
+	// Mastra Code's four, each an enumeration its own types.d.ts closes.
+	// `stop_reason` is complete, aborted, error or suspended; `decision` is
+	// approved, declined, dismissed, auto_approved or auto_declined;
+	// `permission_kind` is tool_approval, sandbox_access or plan_approval; and its
+	// `reason`, which distinguishes a user interrupt from the other two interrupt
+	// causes and names why a Notification fired, is covered by the entry above.
+	//
+	// `session_id` is the one that needs its own sentence, because unlike every
+	// other key here it names a field whose real value is an identifier. It
+	// records ONLY the word `placeholder` or the word `thread` -- never an id --
+	// in exactly the way `ctx.sessionFile` records only present or absent. The
+	// distinction is the whole evidence for this port's one correction to
+	// upstream's mapping, and a bare field name could not carry it: SessionStart
+	// and UserPromptSubmit have the field and it holds Mastra Code's constructor
+	// placeholder rather than a conversation.
+	"stop_reason":     true,
+	"decision":        true,
+	"permission_kind": true,
+	"session_id":      true,
 }
 
 // TestNoHookTraceCarriesAValue is the privacy gate over the fixtures
@@ -151,7 +170,7 @@ var valueBearingTraceKeys = map[string]bool{
 // every test in the tree. So the allowlist above is enforced here: a `=` on any
 // key outside it fails, whatever the value looks like.
 func TestNoHookTraceCarriesAValue(t *testing.T) {
-	for _, provider := range []string{"codex", "claude", "pi", "kilo", "kimi", "omp", "grok", "qwen"} {
+	for _, provider := range []string{"codex", "claude", "pi", "kilo", "kimi", "omp", "grok", "qwen", "mastracode"} {
 		entries, err := os.ReadDir(filepath.Join("testdata", "traces", provider))
 		if err != nil {
 			t.Fatalf("%s has no traces but its capability entry claims real evidence: %v", provider, err)
@@ -1263,6 +1282,230 @@ func TestGrokSendsBothSpellingsOfEverySessionField(t *testing.T) {
 			if !have[pair[0]] || !have[pair[1]] {
 				t.Fatalf("%s carries %q=%v and %q=%v; the recorded finding is that grok sends both",
 					r.event, pair[0], have[pair[0]], pair[1], have[pair[1]])
+			}
+		}
+	}
+}
+
+// --- Mastra Code ---
+//
+// Mastra Code's traces have the same job Kimi's do -- its provider half is a
+// table of config entries rather than a script, so what has to be proved is that
+// every event the eleven rows depend on really fires, in the order the ladder
+// assumes, on a released Mastra Code. One of them has a second job: it is the
+// whole evidence for the one row whose event this port moved.
+
+// TestMastracodeSessionStartCarriesNoConversation is the measurement behind this
+// port's single correction to upstream's mapping, and it is the reason the
+// session binding is on AgentStart.
+//
+// Herdr binds the pane's conversation on SessionStart. On Mastra Code 0.38.0 the
+// hook manager is constructed with the literal session id "session-init" and only
+// a thread_created/thread_changed subscription ever replaces it, while the TUI
+// dispatches SessionStart immediately after init. In a project with no thread to
+// restore, both SessionStart and -- the surprising half -- UserPromptSubmit carry
+// the placeholder, because the thread is not created until the prompt is on its
+// way. AgentStart is the earliest event that can name the conversation at all.
+//
+// Binding the placeholder would have marked a constant as an official, resumable
+// conversation reference on every machine, which is exactly what agentsession's
+// "resuming the wrong conversation is worse than resuming none" forbids.
+func TestMastracodeSessionStartCarriesNoConversation(t *testing.T) {
+	rows := readHookTrace(t, "mastracode", "session-start-carries-no-thread.tsv")
+	assertEvents(t, eventsOf(rows), "SessionStart", "UserPromptSubmit", "AgentStart")
+
+	for _, r := range rows[:2] {
+		if !contains(r.fields, "session_id=placeholder") {
+			t.Fatalf("%s no longer carries the constructor placeholder: %v; if Mastra Code has "+
+				"started naming the thread here, the session binding can move back to SessionStart", r.event, r.fields)
+		}
+	}
+	if !contains(rows[2].fields, "session_id=thread") {
+		t.Fatalf("AgentStart no longer carries a real thread id: %v; the shipped session row binds on "+
+			"this event and would be binding nothing", rows[2].fields)
+	}
+}
+
+// TestMastracodeAResumedSessionStartDoesCarryTheThread is the other half, and it
+// is why the placeholder is invisible in casual testing: a TUI restarted into an
+// existing thread fires thread_changed during init, so SessionStart is correct
+// there. A capture that only ever resumed would have made upstream's mapping look
+// right.
+func TestMastracodeAResumedSessionStartDoesCarryTheThread(t *testing.T) {
+	rows := readHookTrace(t, "mastracode", "tool-turn-auto-approved.tsv")
+	if rows[0].event != "SessionStart" {
+		t.Fatalf("the capture no longer starts at SessionStart: %v", eventsOf(rows))
+	}
+	if !contains(rows[0].fields, "session_id=thread") {
+		t.Fatalf("the resumed SessionStart no longer carries a real thread id: %v", rows[0].fields)
+	}
+}
+
+// TestMastracodeResolvesABlockedPaneWithOneEvent is the finding that decides
+// whether the blocked lane can be claimed, and it is the direct contrast with
+// Codex and Claude Code that Kimi's equivalent test also draws.
+//
+// This capture is stronger than Kimi's in one respect: the decision it records is
+// `declined`. Claude Code caps below full authority precisely because a DENIED
+// permission emits nothing, so the pane latches. Mastra Code's PermissionResult
+// fires on the denial, carries the outcome, and is followed by no PreToolUse at
+// all, because the tool never ran.
+func TestMastracodeResolvesABlockedPaneWithOneEvent(t *testing.T) {
+	rows := readHookTrace(t, "mastracode", "declined-permission-turn.tsv")
+	assertEvents(t, eventsOf(rows),
+		"UserPromptSubmit", "AgentStart", "Notification", "PermissionRequest",
+		"PermissionResult", "Notification", "AgentEnd", "Stop")
+
+	request, result := indexOf(eventsOf(rows), "PermissionRequest"), indexOf(eventsOf(rows), "PermissionResult")
+	if result <= request {
+		t.Fatal("PermissionResult no longer follows PermissionRequest")
+	}
+	if !contains(rows[result].fields, "decision=declined") {
+		t.Fatalf("the capture no longer records a DENIED permission: %v. An approval alone would not show "+
+			"that the pane leaves the blocked lane on a denial, which is the whole claim.", rows[result].fields)
+	}
+	for _, e := range eventsOf(rows) {
+		if e == "PreToolUse" {
+			t.Fatal("a declined permission is followed by PreToolUse; the recorded finding is that the tool never runs")
+		}
+	}
+
+	capability, ok := CapabilityForSource("sidecar.mastracode.hooks")
+	if !ok {
+		t.Fatal("no capability registered for sidecar.mastracode.hooks")
+	}
+	for _, want := range []Transition{TransitionBlockedOnRequest, TransitionUnblocked} {
+		if !capability.Covers(want) {
+			t.Fatalf("the trace shows %s and the registry does not claim it", want)
+		}
+	}
+}
+
+// TestMastracodePermissionPrecedesTheToolHook pins an ordering that is the
+// reverse of Kimi's and that a reader of the store would otherwise have to
+// discover.
+//
+// On Kimi, PreToolUse fires and then the permission pair resolves around it. On
+// Mastra Code the permission is asked first and PreToolUse only fires if it was
+// granted, so a pane reads blocked, then working(permission_resolved), then
+// working(tool_use) -- never working(tool_use) then blocked.
+func TestMastracodePermissionPrecedesTheToolHook(t *testing.T) {
+	declined := eventsOf(readHookTrace(t, "mastracode", "declined-permission-turn.tsv"))
+	if indexOf(declined, "PermissionRequest") < 0 {
+		t.Fatal("the declined capture no longer holds a permission request")
+	}
+	if indexOf(declined, "PreToolUse") >= 0 {
+		t.Fatal("PreToolUse fired for a tool that was never allowed to run")
+	}
+	// The auto-approved capture is the same turn shape with the permission pair
+	// absent entirely, which is what a session grant or YOLO mode produces.
+	auto := eventsOf(readHookTrace(t, "mastracode", "tool-turn-auto-approved.tsv"))
+	if indexOf(auto, "PermissionRequest") >= 0 {
+		t.Fatal("the auto-approved capture holds a permission request; it exists to show the case with none")
+	}
+	if indexOf(auto, "PreToolUse") < 0 {
+		t.Fatal("the auto-approved capture no longer runs a tool")
+	}
+}
+
+// TestMastracodeCancellationIsFirstClassButIsFollowedByATurnCompletion pins the
+// transition and the limitation together, because the second is the part that
+// would otherwise be discovered from a confusing `agent explain`.
+//
+// Interrupt fires carrying reason=user_interrupt, which the port maps to
+// idle/cancelled. But AgentEnd and Stop bracket it, both carrying
+// stop_reason=aborted, and upstream's mapping reads neither -- so the LAST report
+// of a cancelled turn carries reason=turn_complete. The lane is idle throughout
+// and correct; only the reason a later reader sees is the weaker one.
+func TestMastracodeCancellationIsFirstClassButIsFollowedByATurnCompletion(t *testing.T) {
+	rows := readHookTrace(t, "mastracode", "interrupted-turn.tsv")
+	events := eventsOf(rows)
+
+	interrupt := indexOf(events, "Interrupt")
+	if interrupt < 0 {
+		t.Fatalf("the cancelled capture no longer holds an Interrupt: %v", events)
+	}
+	if !contains(rows[interrupt].fields, "reason=user_interrupt") {
+		t.Fatalf("Interrupt no longer records why it fired: %v", rows[interrupt].fields)
+	}
+	if events[len(events)-1] != "Stop" {
+		t.Fatalf("a cancelled turn no longer ends at Stop: %v", events)
+	}
+	if !contains(rows[len(rows)-1].fields, "stop_reason=aborted") {
+		t.Fatalf("the closing Stop no longer records that the turn was aborted: %v", rows[len(rows)-1].fields)
+	}
+
+	capability, ok := CapabilityForSource("sidecar.mastracode.hooks")
+	if !ok {
+		t.Fatal("no capability registered for sidecar.mastracode.hooks")
+	}
+	if !capability.Covers(TransitionCancelled) {
+		t.Fatal("the trace shows a cancellation and the registry does not claim it")
+	}
+}
+
+// TestMastracodeProcessExitIsUnclaimedAndUnclaimable is the same shape as Kimi's
+// and Pi's gap tests with one difference that matters: for those two the event
+// carries a reason and the gap is a choice. Here the event carries none, so even
+// an asset that subscribed could not tell an exit from any other session ending.
+func TestMastracodeProcessExitIsUnclaimedAndUnclaimable(t *testing.T) {
+	rows := readHookTrace(t, "mastracode", "session-end.tsv")
+	assertEvents(t, eventsOf(rows), "SessionEnd")
+	for _, f := range rows[0].fields {
+		if strings.HasPrefix(f, "reason") || strings.HasPrefix(f, "stop_reason") {
+			t.Fatalf("SessionEnd now carries %q; the recorded finding is that it carries no discriminator "+
+				"at all, which is why process_exit is unclaimable rather than merely unclaimed", f)
+		}
+	}
+
+	capability, ok := CapabilityForSource("sidecar.mastracode.hooks")
+	if !ok {
+		t.Fatal("no capability registered for sidecar.mastracode.hooks")
+	}
+	if capability.Covers(TransitionProcessExit) {
+		t.Fatal("mastracode claims process_exit; the shipped hook table does not carry a SessionEnd row")
+	}
+}
+
+// TestMastracodeTierIsTheCeilingItsTracesReach guards the boundary the rest of
+// these tests sit on. `advisory` is what six of the seven transitions
+// FullLifecycleTransitions names earn; `full` needs process_exit, which the test
+// above shows is unclaimable on this release.
+func TestMastracodeTierIsTheCeilingItsTracesReach(t *testing.T) {
+	capability, ok := CapabilityForSource("sidecar.mastracode.hooks")
+	if !ok {
+		t.Fatal("no capability registered for sidecar.mastracode.hooks")
+	}
+	if capability.Tier != TierAdvisory {
+		t.Fatalf("the mastracode source claims %q; its traces earn advisory", capability.Tier)
+	}
+	if capability.Evidence != EvidenceRealTrace {
+		t.Fatalf("the mastracode source claims %q evidence; five captures of 0.38.0 are checked in", capability.Evidence)
+	}
+	if capability.CoversFullLifecycle() {
+		t.Fatal("the mastracode source covers every full-lifecycle transition and still claims advisory; " +
+			"either the coverage is overstated or the tier is understated")
+	}
+	var missing []Transition
+	for _, want := range FullLifecycleTransitions() {
+		if !capability.Covers(want) {
+			missing = append(missing, want)
+		}
+	}
+	if len(missing) != 1 || missing[0] != TransitionProcessExit {
+		t.Fatalf("the uncovered full-lifecycle transitions are %v; the recorded finding is that process_exit "+
+			"is the only one", missing)
+	}
+	// Sub-agent activity is untraced rather than unreachable, and the two are
+	// different claims. The rows ship; no captured turn spawned one.
+	if capability.Covers(TransitionSubagent) {
+		t.Fatal("mastracode claims the subagent transition; no checked-in capture holds a SubagentStart")
+	}
+	for _, name := range []string{"session-start-carries-no-thread.tsv", "declined-permission-turn.tsv",
+		"tool-turn-auto-approved.tsv", "interrupted-turn.tsv", "session-end.tsv"} {
+		for _, e := range eventsOf(readHookTrace(t, "mastracode", name)) {
+			if strings.HasPrefix(e, "Subagent") {
+				t.Fatalf("%s records a sub-agent event; the subagent gap is no longer unmeasured", name)
 			}
 		}
 	}

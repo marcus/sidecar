@@ -1,0 +1,29 @@
+# ms	event	session	turn	tool	fields
+0	SessionStart	session-1	-	-	cwd,hook_event_name,session_id=placeholder
+38508	UserPromptSubmit	session-1	-	-	cwd,hook_event_name,session_id=placeholder,user_message
+41549	AgentStart	session-1	turn-1	-	cwd,hook_event_name,run_id,session_id=thread
+#
+# The three events of a first session in a project with no thread to restore,
+# and the whole evidence for this port's one correction to upstream's mapping.
+#
+# session_id records only whether the payload named the PLACEHOLDER Mastra Code
+# constructs its hook manager with, or a real thread; never the id itself.
+#
+# SessionStart carries the placeholder. So does UserPromptSubmit, which is the
+# surprising half: the thread is not created until the prompt is on its way, so
+# the earliest event that can name the conversation at all is AgentStart. It does,
+# and the id it carries is the one the TUI printed as `Created thread:` in the same
+# run.
+#
+# Herdr binds on SessionStart. On this release that binds the string
+# "session-init", identically on every machine, and Sidecar marks a reference from
+# an official source resumable. So the binding is on AgentStart instead, which also
+# re-binds a pane whose thread changed under /new. mastracode.go carries the
+# mechanism: createMastraCode passes the literal "session-init", only a
+# thread_created/thread_changed subscription replaces it, and MastraTUI.run
+# dispatches SessionStart immediately after init.
+#
+# A session RESUMED into an existing thread does carry the real id on SessionStart,
+# because the restore fires thread_changed during init. That is why the placeholder
+# is not visible unless the capture starts from a project with no history, and why
+# a binding on SessionStart alone would have looked correct in casual testing.

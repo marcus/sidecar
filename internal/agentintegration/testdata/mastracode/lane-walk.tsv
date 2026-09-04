@@ -1,0 +1,24 @@
+# Two turns that touch every branch of the ladder, in the order the events would
+# arrive. `lane` is what the pane reports after the row's hook has fired.
+#
+# The rows a successful turn never produces are here on purpose. A permission
+# request is the only thing that puts a Mastra Code pane in the blocked lane, and
+# PermissionResult is its only resolver; if that resolver were dropped the pane
+# would latch on blocked, which is the failure this file exists to make visible.
+# The sub-agent pair is here for the same reason in the other direction: neither
+# SubagentStart nor SubagentEnd may return the pane to idle on its own, because a
+# sub-agent finishing hands the pane back to its parent's work.
+#
+# event	lane	reason
+UserPromptSubmit	working	turn_start
+AgentStart	working	turn_start
+PreToolUse	working	tool_use
+PermissionRequest	blocked	permission_request
+PermissionResult	working	permission_resolved
+SubagentStart	working	subagent_start
+SubagentEnd	working	subagent_stop
+AgentEnd	idle	turn_complete
+Stop	idle	turn_complete
+UserPromptSubmit	working	turn_start
+AgentStart	working	turn_start
+Interrupt	idle	cancelled

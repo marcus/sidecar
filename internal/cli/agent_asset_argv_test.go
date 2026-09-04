@@ -59,6 +59,7 @@ func TestBundledAssetsSpawnArgvTheShippedCLIAccepts(t *testing.T) {
 		{name: "kimi", run: runKimiHookCorpus},
 		{name: "omp", run: runOmpOrderingHarness},
 		{name: "session-identity", run: runSessionHookCorpus},
+		{name: "mastracode", run: runMastracodeHookCorpus},
 	} {
 		t.Run(provider.name, func(t *testing.T) {
 			argvs := provider.run(t, node, t.TempDir())
@@ -336,6 +337,22 @@ func runKimiHookCorpus(t *testing.T, _, _ string) [][]string {
 func runSessionHookCorpus(t *testing.T, _, _ string) [][]string {
 	t.Helper()
 	return agentintegration.SessionHookArgvCorpus()
+}
+
+// runMastracodeHookCorpus returns every argv Mastra Code's installed hooks can
+// spawn, for the same reason and in the same way as Kimi's above.
+//
+// One difference is worth naming because it is invisible here. Three of the
+// eleven commands Sidecar writes into hooks.json end in `|| true`, because Mastra
+// Code reads exit code 2 on PreToolUse, Stop and UserPromptSubmit as a refusal of
+// the agent's own work. That guard is shell, not argv, so it is absent from this
+// corpus by construction -- which is exactly right for this test, whose question
+// is whether the CLI accepts what the hook hands it. Whether the guard is present
+// on the right rows is
+// TestMastracodeCannotBlockTheAgentItReportsOn's question instead.
+func runMastracodeHookCorpus(t *testing.T, _, _ string) [][]string {
+	t.Helper()
+	return agentintegration.MastracodeHookArgvCorpus()
 }
 
 func runAssetHarness(t *testing.T, node, provider, dir string, args ...string) []byte {

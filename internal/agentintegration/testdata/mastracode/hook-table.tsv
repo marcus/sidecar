@@ -1,0 +1,21 @@
+# The provider half, as it is shipped. `blocking` records whether Mastra Code
+# reads exit code 2 from this row's command as a refusal of the agent's own work,
+# which is what decides whether the installed command carries the `|| true` guard.
+#
+# One row moved event against upstream. Herdr binds the session on SessionStart;
+# on Mastra Code 0.38.0 that event's payload carries the literal "session-init"
+# rather than a thread id, so the binding is on AgentStart, which carries the real
+# one. mastracode.go records the mechanism and the capture that measured it.
+#
+# event	blocking	verb	state	reason
+UserPromptSubmit	yes	report	working	turn_start
+AgentStart	no	report-session	-	-
+AgentStart	no	report	working	turn_start
+PreToolUse	yes	report	working	tool_use
+PermissionRequest	no	report	blocked	permission_request
+PermissionResult	no	report	working	permission_resolved
+SubagentStart	no	report	working	subagent_start
+SubagentEnd	no	report	working	subagent_stop
+Interrupt	no	report	idle	cancelled
+AgentEnd	no	report	idle	turn_complete
+Stop	yes	report	idle	turn_complete

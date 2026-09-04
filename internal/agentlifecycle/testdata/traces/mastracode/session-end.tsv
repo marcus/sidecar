@@ -1,0 +1,15 @@
+# ms	event	session	turn	tool	fields
+0	SessionEnd	session-1	-	-	cwd,hook_event_name,session_id=thread
+#
+# The SessionEnd that follows /exit, captured so `process_exit` being unclaimed is
+# a choice with evidence rather than an omission.
+#
+# It carries the real thread id and nothing else: Mastra Code's HookStdinSession
+# declares session_id, cwd, hook_event_name and three optional worktree fields, and
+# no reason of any kind. Kimi's SessionEnd carries reason=exit and could therefore
+# distinguish an exit from any other ending; this one cannot, so an asset that
+# hooked it would release the lane on every session ending whatever caused it.
+# Upstream's eleven rows do not subscribe to it and neither does this port.
+#
+# The offset is 0 because this capture predates the timestamping tracer the other
+# four use, and one row has nothing to be relative to.

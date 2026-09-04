@@ -52,6 +52,7 @@ func OfficialSources() []string {
 		"sidecar.droid.hooks",
 		"sidecar.qodercli.hooks",
 		"sidecar.qwen.hooks",
+		"sidecar.mastracode.hooks",
 	}
 }
 
@@ -100,6 +101,8 @@ func OfficialSourceFor(kind string) string {
 		return "sidecar.qodercli.hooks"
 	case "qwen":
 		return "sidecar.qwen.hooks"
+	case "mastracode":
+		return "sidecar.mastracode.hooks"
 	default:
 		return ""
 	}

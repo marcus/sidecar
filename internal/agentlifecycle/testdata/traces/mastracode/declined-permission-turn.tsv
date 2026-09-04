@@ -1,0 +1,26 @@
+# ms	event	session	turn	tool	fields
+0	UserPromptSubmit	session-1	-	-	cwd,hook_event_name,session_id=thread,user_message
+184	AgentStart	session-1	turn-1	-	cwd,hook_event_name,run_id,session_id=thread
+2803	Notification	session-1	turn-1	-	cwd,hook_event_name,message,reason=tool_approval,run_id,session_id=thread
+2848	PermissionRequest	session-1	turn-1	write_file	cwd,hook_event_name,permission_kind=tool_approval,run_id,session_id=thread,tool_call_id,tool_input,tool_name
+28174	PermissionResult	session-1	turn-1	write_file	cwd,decision=declined,hook_event_name,permission_kind=tool_approval,run_id,session_id=thread,tool_call_id,tool_input,tool_name
+31387	Notification	session-1	turn-1	-	cwd,hook_event_name,reason=agent_done,run_id,session_id=thread
+31443	AgentEnd	session-1	turn-1	-	cwd,hook_event_name,run_id,session_id=thread,stop_reason=complete
+31529	Stop	session-1	turn-1	-	cwd,hook_event_name,run_id,session_id=thread,stop_reason=complete
+#
+# One TUI turn whose write_file needed approval and was DECLINED, which is the
+# capture the blocked lane rests on.
+#
+# PermissionResult fires on a denial exactly as it does on an approval, carrying
+# the outcome in `decision`. That is what makes the blocked lane claimable here:
+# Claude Code caps below full authority because a denial emits nothing at all and
+# the pane latches, and Codex escapes that only because denial takes a different
+# event from approval. Mastra Code needs neither workaround, and a separate
+# capture in the same run recorded decision=approved through the same event.
+#
+# Two orderings are worth reading off this file. Notification fires immediately
+# before PermissionRequest carrying reason=tool_approval, and again before AgentEnd
+# carrying reason=agent_done; neither is hooked, by upstream or here. And the
+# permission pair precedes PreToolUse rather than following it, which is the
+# reverse of Kimi's order -- here there is no PreToolUse at all, because the tool
+# never ran.

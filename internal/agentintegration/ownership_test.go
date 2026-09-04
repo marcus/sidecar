@@ -349,6 +349,43 @@ func TestAPreviewsAfterStateMatchesWhatTheOpActuallyDoes(t *testing.T) {
 			}
 		})
 	}
+
+	// Mastra Code is the third entry-owning shape and the one with the most
+	// entries in a single file, so the after-state a dry run shows for it is the
+	// one a user is most likely to read before pressing anything.
+	t.Run("mastracode hooks.json", func(t *testing.T) {
+		svc, _, paths := mastracodeFixture(t)
+		writeFileForTest(t, paths.Config,
+			"{\n  \"Notification\": [\n    {\n      \"type\": \"command\",\n      \"command\": \"echo keep\"\n    }\n  ]\n}\n")
+
+		install, err := svc.Plan(MastracodeProvider, ActionInstall)
+		if err != nil {
+			t.Fatal(err)
+		}
+		after, ok := afterFor(t, install, paths.Config)
+		if !ok {
+			t.Fatal("install planned no write to hooks.json")
+		}
+		if !after.Owned || after.Ownership != OwnsEntry || after.Version != MastracodeAssetVersion {
+			t.Fatalf("install predicted %+v; wanted an owned entry at version %s", after, MastracodeAssetVersion)
+		}
+
+		applyTo(t, svc, MastracodeProvider, ActionInstall)
+		uninstall, err := svc.Plan(MastracodeProvider, ActionUninstall)
+		if err != nil {
+			t.Fatal(err)
+		}
+		after, ok = afterFor(t, uninstall, paths.Config)
+		if !ok {
+			t.Fatal("uninstall planned no write to hooks.json")
+		}
+		if after.Owned || after.Ownership == OwnsEntry {
+			t.Fatalf("uninstall predicted %+v for hooks.json; it removes Sidecar's eleven entries, so what it leaves is the user's file", after)
+		}
+		if after.Version != "" {
+			t.Fatalf("uninstall predicted a Sidecar version %q on the user's hooks.json", after.Version)
+		}
+	})
 }
 
 // TestASymlinkedSessionIdentitySettingsFileIsRefusedUnwritten pins the Lstat

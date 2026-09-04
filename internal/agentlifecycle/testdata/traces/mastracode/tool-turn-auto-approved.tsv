@@ -1,0 +1,24 @@
+# ms	event	session	turn	tool	fields
+0	SessionStart	session-1	-	-	cwd,hook_event_name,session_id=thread
+44711	UserPromptSubmit	session-1	-	-	cwd,hook_event_name,session_id=thread,user_message
+44928	AgentStart	session-1	turn-1	-	cwd,hook_event_name,run_id,session_id=thread
+48334	PreToolUse	session-1	turn-1	write_file	cwd,hook_event_name,run_id,session_id=thread,tool_input,tool_name
+48361	PostToolUse	session-1	turn-1	write_file	cwd,hook_event_name,run_id,session_id=thread,tool_error,tool_input,tool_name,tool_output
+50792	Notification	session-1	turn-1	-	cwd,hook_event_name,reason=agent_done,run_id,session_id=thread
+50845	AgentEnd	session-1	turn-1	-	cwd,hook_event_name,run_id,session_id=thread,stop_reason=complete
+50918	Stop	session-1	turn-1	-	cwd,hook_event_name,run_id,session_id=thread,stop_reason=complete
+#
+# A turn whose write_file ran with no permission event at all, because YOLO mode
+# was on. It is the counterpart to the declined turn, and it is why the blocked
+# evidence had to be captured with YOLO off: the same tool, in the same session,
+# emits the permission pair or does not, depending only on that setting. Session
+# grants ("always allow <category>", reset on restart) have the same effect.
+#
+# It also carries the complete happy path: UserPromptSubmit, AgentStart,
+# PreToolUse, PostToolUse, Notification(agent_done), AgentEnd and Stop, both of
+# the last two with stop_reason=complete. PostToolUse fires and is not hooked, by
+# upstream or here.
+#
+# SessionStart at the top is a RESUMED session -- the TUI was restarted in a
+# project that already had a thread -- so it carries the real one rather than the
+# placeholder. session-start-carries-no-thread.tsv is the other case.

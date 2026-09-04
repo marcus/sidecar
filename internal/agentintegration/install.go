@@ -590,6 +590,7 @@ func DefaultAdapters() []Adapter {
 		OpenCodeAdapter{}, CodexAdapter{}, ClaudeAdapter{}, PiAdapter{}, KiloAdapter{}, KimiAdapter{}, OmpAdapter{},
 		NewAntigravityAdapter(), NewCopilotAdapter(), NewCursorAdapter(), NewGrokAdapter(),
 		NewDevinAdapter(), NewDroidAdapter(), NewQoderCLIAdapter(), NewQwenAdapter(),
+		MastracodeAdapter{},
 	}
 }
 
