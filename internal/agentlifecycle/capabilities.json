@@ -335,5 +335,27 @@
     "orderingGuaranteed": false,
     "sourceDoc": "https://docs.devin.ai/cli",
     "sourceVersionNote": "Not run. The contract is read from Herdr's devin integration at HERDR_INTEGRATION_VERSION=2 (src/integration/mod.rs DEVIN_HOOK_EVENTS, src/integration/targets.rs install_devin, and the vendored upstream/devin/herdr-agent-state.sh, which is the only Herdr asset that reads a hook payload under two spellings and the only one with a session-list fallback) and from the Devin CLI documentation the catalog entry cites. No released Devin version was executed for this port and no trace backs any claim in it; see internal/agentintegration/portedfrom.go."
+  },
+  {
+    "schemaVersion": 1,
+    "provider": "droid",
+    "source": "sidecar.droid.hooks",
+    "assetVersion": "1",
+    "tier": "screen-fallback",
+    "evidence": "docs-only",
+    "minProviderVersion": "",
+    "testedProviderRange": "",
+    "covered": [],
+    "knownGaps": [
+      "NOT TRACED, and that is why the tier is screen-fallback rather than session-identity. Droid is not installed on the machine this port was written on and Factory's installer requires an account, so no released version fired the hook here. session-identity is the tier this asset is built to hold: one SessionStart carrying a session id, sanitized into testdata/traces/droid, promotes this entry and nothing else has to change.",
+      "The shipped asset is a session-identity hook entry and nothing else, which is upstream's whole table. Herdr's droid integration at version 3 has one row, SessionStart to session, and its nine lifecycle rows were REMOVED at that version rather than kept. State comes from the screen lane in Sidecar and in Herdr alike, which is what Herdr's own authority table records for droid.",
+      "~/.factory/hooks.json SHADOWS the hooks key in settings.json, and this is the failure mode most likely to be met in the field. Factory's hooks reference states that Droid reads hook declarations from hooks.json first and falls back to the hooks key in the matching settings.json only when that file is ABSENT. So a user who has a hooks.json gets an entry that is correct, reads as current, and never fires. `sidecar agent integration status droid` inspects that file and says so; Sidecar does not edit it, because it is the user's, Sidecar has never written to it, and moving somebody's hooks between two files is not an integration's business. Herdr does reach into hooks.json, but only to delete its own stale entries from an older layout.",
+      "Droid has NO configuration-directory override. Herdr's droid_dir is home_dir().join(\".factory\") with nothing consulted, and Factory's settings reference names ~/.factory/settings.json and documents no variable that relocates it. So this is the one provider in this group whose configuration a proof run can only redirect by moving HOME, which is stated here rather than worked around with a variable nobody promised to honour.",
+      "Droid merges settings across enterprise, project and user scopes, so Sidecar owns exactly its own entry in the user-level file and can never own the effective hook set. Another scope can add hooks beside it, and an enterprise `hooksDisabled` toggle can switch the whole mechanism off, in which case the entry is installed and inert.",
+      "Ownership is by the report-session command and nothing else, so an entry of the user's that WRAPS that command in a script of their own is never adopted, overwritten or deleted -- and is also invisible to `integration status`. That fails in the documented direction and is the same limitation every entry integration has."
+    ],
+    "orderingGuaranteed": false,
+    "sourceDoc": "https://docs.factory.ai/reference/hooks-reference",
+    "sourceVersionNote": "Not run. The contract is read from Herdr's droid integration at HERDR_INTEGRATION_VERSION=3 (DROID_HOOK_EVENTS and install_droid in src/integration, plus the vendored upstream/droid/herdr-agent-state.sh, whose python3 half reads session_id from the SessionStart payload) and from Factory's own hooks reference and settings reference, which give the file precedence rule, the entry schema, the timeout unit (seconds, defaulting to 60) and the SessionStart payload's session_id field. No released Droid was executed for this port and no trace backs any claim in it; see internal/agentintegration/portedfrom.go."
   }
 ]

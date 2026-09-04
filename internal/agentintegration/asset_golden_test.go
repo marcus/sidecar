@@ -66,6 +66,8 @@ var assetGoldens = []assetGolden{
 	// entry spawns, and the timeout -- which is the whole of what the
 	// integration does, and which is the part a tier is granted against.
 	{provider: DevinProvider, name: "config.json", version: "1", checksum: "3ab2713ba5c12fc3071a1b83d230d0fb16ef2f399c347d554f94e06d407f50a7"},
+	// Droid, same shape as Devin with one event rather than six.
+	{provider: DroidProvider, name: "settings.json", version: "1", checksum: "6e16a3fb39c4468cf3f7605f1f2e35d9d1287cfd9166dd90e5b67a51a2297b36"},
 }
 
 // bumpInstructions is the whole point of the guard: a failure here has to tell
@@ -75,7 +77,7 @@ const bumpInstructions = `
 An asset's bytes changed. Before updating the golden below, do this in order:
 
   1. Bump the asset's version constant (OpenCodeAssetVersion, CodexAssetVersion,
-     ClaudeAssetVersion, PiAssetVersion, KiloAssetVersion, KimiAssetVersion, or DevinAssetVersion) if it has not already moved. An installed copy is
+     ClaudeAssetVersion, PiAssetVersion, KiloAssetVersion, KimiAssetVersion, DevinAssetVersion, or DroidAssetVersion) if it has not already moved. An installed copy is
      recognised as outdated by its version, so without this every existing
      install keeps reporting itself current while running different code.
   2. Update the matching AssetVersion in internal/agentlifecycle/capabilities.json,

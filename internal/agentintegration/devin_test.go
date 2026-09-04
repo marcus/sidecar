@@ -89,7 +89,13 @@ func TestDevinInstallsUnderExactlyTheEventsUpstreamNames(t *testing.T) {
 
 func readDevinHookTable(t *testing.T) [][]string {
 	t.Helper()
-	f, err := os.Open(filepath.Join("testdata", "devin", "hook-table.tsv"))
+	return readHookTableAt(t, filepath.Join("testdata", "devin", "hook-table.tsv"))
+}
+
+// readHookTableAt reads a three-column event fixture: event, matcher, verb.
+func readHookTableAt(t *testing.T, path string) [][]string {
+	t.Helper()
+	f, err := os.Open(path)
 	if err != nil {
 		t.Fatal(err)
 	}

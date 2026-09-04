@@ -82,6 +82,23 @@ type sessionEntrySpec struct {
 	// setupHint is the sentence a user gets when the configuration directory is
 	// not there. It names the provider's own way to create it.
 	setupHint string
+
+	// shadowedBy names a sibling file inside the same directory whose mere
+	// presence makes the hooks key in `file` inert.
+	//
+	// Droid is the one provider that has one, and it is exactly the failure a
+	// status surface exists to catch: Droid reads hook declarations from
+	// ~/.factory/hooks.json first and falls back to settings.json's hooks key
+	// only when that file is absent. An entry Sidecar wrote into settings.json
+	// while hooks.json existed would be correct, would read as current, and
+	// would never fire. Sidecar does not edit the shadow file -- it is the
+	// user's, Sidecar has never written to it, and moving somebody's hooks
+	// between two files is not an integration's business -- so the honest
+	// response is to inspect it and say so.
+	shadowedBy string
+	// shadowNote renders the sentence a status carries while the shadow file
+	// exists. It takes the path so the user can act on it.
+	shadowNote func(shadow string) string
 }
 
 // canonicalEntry is the exact hook entry this spec's version ships.
@@ -131,6 +148,9 @@ type sessionEntryPaths struct {
 	Dir      string
 	Settings string
 	Backup   string
+	// Shadow is the file that would make Settings' hooks key inert, when the
+	// provider has one. Sidecar reads it and never writes it.
+	Shadow string
 }
 
 func (s sessionEntrySpec) pathsFor(env Env) sessionEntryPaths {
@@ -139,7 +159,11 @@ func (s sessionEntrySpec) pathsFor(env Env) sessionEntryPaths {
 		return sessionEntryPaths{}
 	}
 	settings := filepath.Join(dir, s.file)
-	return sessionEntryPaths{Dir: dir, Settings: settings, Backup: settings + sessionEntryBackupSuffix}
+	p := sessionEntryPaths{Dir: dir, Settings: settings, Backup: settings + sessionEntryBackupSuffix}
+	if s.shadowedBy != "" {
+		p.Shadow = filepath.Join(dir, s.shadowedBy)
+	}
+	return p
 }
 
 // dirFor resolves the provider's configuration directory the way the provider
@@ -219,6 +243,11 @@ type sessionEntryState struct {
 	providerPath    string
 	providerVersion string
 
+	// shadow is the state of the file that would make the settings file's
+	// hooks key inert, for a provider that has one. It is inspected, never
+	// written.
+	shadow FileState
+
 	assetStatus agentlifecycle.IntegrationStatus
 	status      agentlifecycle.IntegrationStatus
 	message     string
@@ -244,6 +273,19 @@ func (a sessionEntryAdapter) inspect(env Env) sessionEntryState {
 		ownEntry(&s.settings, s.scan.owned[len(s.scan.owned)-1].version)
 	}
 	s.assetStatus, s.message, s.installed = entryAssetStatus(s.dir, s.settings, s.scan, s.spec, a.spec.file)
+
+	// The shadow file is a fact about whether an installation FIRES, not about
+	// whether it is installed, so it changes the message and never the status.
+	// A user whose hooks live in the shadow file has a perfectly healthy
+	// installation that does nothing, and calling that needs-repair would offer
+	// them a repair verb that cannot fix it.
+	if a.spec.shadowedBy != "" {
+		s.shadow = FileState{Path: p.Shadow, Exists: fileExists(p.Shadow)}
+		if s.shadow.Exists && a.spec.shadowNote != nil {
+			note := a.spec.shadowNote(p.Shadow)
+			s.message = note + orEmpty("; "+s.message, s.message != "")
+		}
+	}
 
 	s.status = s.assetStatus
 	if s.providerPath == "" {
@@ -280,6 +322,12 @@ func (a sessionEntryAdapter) statusOf(s sessionEntryState) Status {
 	}}
 	st.ProviderPath = s.providerPath
 	st.Files = []FileState{s.dir, s.settings, s.backup}
+	if a.spec.shadowedBy != "" {
+		// Reported among the files this adapter inspected, and deliberately not
+		// among TargetPaths: TargetPaths are the files an install or uninstall
+		// would touch, and Sidecar never writes this one.
+		st.Files = append(st.Files, s.shadow)
+	}
 	for _, act := range Actions() {
 		if _, err := a.plan(s, act); err == nil {
 			st.Offered = append(st.Offered, act)

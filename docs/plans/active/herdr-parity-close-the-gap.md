@@ -273,6 +273,14 @@ Answer open question 3 first. Then port in order of live use, confirming for eac
 
 **A structural note for the lanes that follow.** The four session-identity ports in this lane are instances of one `sessionEntryAdapter` in `internal/agentintegration/sessionentry.go` rather than four copies of `claude_install.go`. The per-provider file is data: where the settings file is, what relocates it, which events, what matcher, what timeout. Claude and Codex keep their own adapters untouched, because Codex edits a second TOML file and neither was written against this shape.
 
+#### Result for `droid`, 2026-09-04 (`td-73c4ff`)
+
+**Shipped untraced, at `screen-fallback` on `docs-only` evidence.** Droid is not installed here and Factory's installer requires an account. One `SessionStart` entry in `~/.factory/settings.json`, which is upstream's whole table at version 3: its nine lifecycle rows were removed at that version rather than kept, so a port carrying more would be reinstating something upstream withdrew.
+
+**The finding that is not in Herdr at all: `~/.factory/hooks.json` shadows the entry.** Factory's hooks reference states that Droid reads hook declarations from `hooks.json` first and falls back to the `hooks` key in the matching `settings.json` only when that file is absent. A user who has one therefore gets an entry that is written correctly, reads as `current`, and never fires. `integration status` now inspects that file and names it and the consequence in its message. It does not change the status, because the installation is not damaged and `repair` could not fix it, and it does not edit the file: that file is the user's, Sidecar has never written to it, and moving somebody's hooks between two files is not an integration's business. Herdr does reach into `hooks.json`, but only to delete its own stale entries from an older layout, and Sidecar has none there.
+
+**Droid has no configuration-directory override, and the absence is asserted.** Herdr's `droid_dir` consults nothing and Factory documents nothing, so a proof run can redirect Droid only by moving `HOME`. `TestDroidLivesUnderTheFactoryDirectoryWithNoOverride` fails if one is invented later, which is the cheapest way to stop Sidecar writing somewhere Droid does not read.
+
 ### Slice 5 — The launch catalog moves to TOML and grows to every recognised agent (medium)
 
 Today `internal/agentcatalog` holds ten launchable families as a Go slice and ten detection-only families as a second slice. The knowledge in the first is small and flat: a command, an auto-approve flag, resume arguments, aliases, an adapter id. That is configuration, and it belongs in data a user or an agent can read and extend without a rebuild.

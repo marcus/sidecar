@@ -34,6 +34,7 @@ This is enforced rather than documented. `Capability.TierFor` polices every tier
 | Kilo Code | 7.5.9 | real-trace | `advisory` | lifecycle authority | cancellation is indistinguishable and the shipped asset releases nothing on exit, so `advisory` is the ceiling and is reached |
 | Kimi Code | 0.40.1 | real-trace | `advisory` | lifecycle authority | session identity is refused by Sidecar's own catalog, and process exit is unclaimed by choice; `full` needs both |
 | Devin CLI | not run | docs-only | `screen-fallback` | session only | not traced; one capture carrying a session id promotes it to `session-identity` and nothing else has to change |
+| Droid | not run | docs-only | `screen-fallback` | session only | not traced; and a `~/.factory/hooks.json`, if you have one, shadows the entry entirely |
 
 Pi's row went out of `capabilities.json` when nothing could produce a report for it, came back at `session-identity` when `PiAdapter` and `assets/pi/sidecar-lifecycle.js` shipped, and is now at `advisory` on `real-trace` evidence because a live Pi 0.84.3 session has been traced. It is the only row here that has reached its own ceiling: `advisory` is as high as Pi can ever go, because `full` needs `blocked_on_request` and `unblocked` and Pi ships no permission system to produce either. See "Why the Pi entry was retracted, and what brought it back".
 
@@ -338,6 +339,22 @@ Which spelling a released Devin actually sends is untraced. Reading both is what
 
 One capture. A `SessionStart` — or any of the other five events — from a released Devin carrying a session id, sanitized into `internal/agentlifecycle/testdata/traces/devin/` with a provenance row, moves the entry from `screen-fallback`/`docs-only` to `session-identity`/`real-trace`. Nothing else about the port has to change; the tier is the only thing waiting on evidence.
 
+## Droid (Factory CLI)
+
+**Source:** Herdr's droid integration at `HERDR_INTEGRATION_VERSION=3`, then Factory's own hooks reference and settings reference for everything Herdr does not record. **Not traced.** Droid is not installed on this machine and Factory's installer requires an account, so the entry is `screen-fallback` on `docs-only` evidence.
+
+Droid keeps hooks in `~/.factory/settings.json` in the same nested group shape Claude Code uses, and Sidecar adds one session-identity entry under `SessionStart`. That is upstream's whole table: version 3 has exactly one row, and its nine lifecycle rows were *removed* at that version rather than kept, so a port carrying more would be reinstating something upstream withdrew. `timeout` is in seconds here — Factory documents a default of 60 — which is the same unit Claude and Codex use and not the unit Qwen uses.
+
+### `hooks.json` shadows the entry, and this is not in Herdr
+
+Factory's hooks reference is explicit: Droid reads hook declarations from `hooks.json` first, and falls back to the `hooks` key in the matching `settings.json` only when that file is **absent**. A user who has a `~/.factory/hooks.json` therefore gets an entry that is written correctly, reads as `current`, and never fires — the most expensive kind of wrong a status surface can be, because there is nothing on screen suggesting anything is off.
+
+`sidecar agent integration status droid` inspects that file and says so in its message, naming the path and the consequence. It does not change the status: the installation is not damaged, so offering `repair` would offer a verb that cannot fix it. And it does not edit the file. That file is the user's, Sidecar has never written to it, and moving somebody's hooks between two files is not an integration's business. Herdr does reach into `hooks.json`, but only to delete *its own* stale entries from an older layout, and Sidecar has none there to delete.
+
+### No configuration-directory override
+
+Droid is the only provider in this group without one. Herdr's `droid_dir` is `home_dir()?.join(".factory")` with nothing consulted, and Factory's settings reference names `~/.factory/settings.json` and documents no variable that relocates it. So a proof run can only redirect Droid's configuration by moving `HOME`, which is stated here rather than worked around with a variable nobody promised to honour. `TestDroidLivesUnderTheFactoryDirectoryWithNoOverride` asserts the absence, so an override invented later has to be justified rather than assumed.
+
 ## Catalog agents evaluated but not built
 
 These are recorded rather than omitted so that "evaluated, and deliberately not built" is distinguishable from "never looked at". All are `screen-fallback` with `evidence: none`: **none is trace-backed**, so each selects a candidate rather than earning a tier, and `TierFor` would refuse them anything else regardless.
@@ -388,7 +405,7 @@ The third is the dangerous one, because nothing in a Sidecar release notices it.
 
 ### When Sidecar changes an asset
 
-1. Bump the asset version constant (`OpenCodeAssetVersion`, `CodexAssetVersion`, `ClaudeAssetVersion`, `PiAssetVersion`, `KimiAssetVersion`, `DevinAssetVersion`).
+1. Bump the asset version constant (`OpenCodeAssetVersion`, `CodexAssetVersion`, `ClaudeAssetVersion`, `PiAssetVersion`, `KimiAssetVersion`, `DevinAssetVersion`, `DroidAssetVersion`).
 2. Append the superseded entry to that adapter's canonical history, so an installed copy of the old version reads as `outdated` rather than as damage.
 3. Move `assetVersion` in `capabilities.json` to match.
 4. Requalify against the traces — a new asset consuming the same events still needs to be shown to consume them correctly.

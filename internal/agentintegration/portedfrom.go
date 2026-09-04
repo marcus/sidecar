@@ -192,6 +192,28 @@ var portedFrom = []PortedFrom{
 			"so internal/cli's hookPayload now reads both, with a fixture for each. NOT traced: no capture of a live " +
 			"Devin session backs any of it, which is why the capability entry is docs-only at screen-fallback.",
 	},
+	{
+		Provider:    DroidProvider,
+		UpstreamID:  "droid",
+		UpstreamDir: "droid",
+		Version:     "3",
+		Commit:      herdrVendoredCommit,
+		Evidence: "Ported from Herdr's droid integration at that commit, where the vendored " +
+			"upstream/droid/herdr-agent-state.sh carries HERDR_INTEGRATION_VERSION=3. The provider half is one row: " +
+			"DROID_HOOK_EVENTS in src/integration/mod.rs is [(\"SessionStart\", \"session\")] and nothing else, " +
+			"because upstream REMOVED its nine lifecycle rows at that version rather than keeping them; the file the " +
+			"entry goes in (~/.factory/settings.json) and the absence of a matcher, which is what install_droid's " +
+			"ensure_command_hook(.., None) writes, are the rest of it. All of that is kept verbatim. Every fact was " +
+			"re-checked against Factory's own published hooks reference and settings reference rather than taken on " +
+			"trust, and one of them is not in Herdr at all: hooks.json SHADOWS the hooks key in settings.json, so an " +
+			"entry Sidecar wrote while that file existed would never fire. Sidecar inspects it and says so. Three " +
+			"deliberate differences, each with its reason in droid_install.go: the transport is Sidecar's, so the " +
+			"dropped shell script and its python3 dependency are gone; no --seq is sent, because Sidecar's store " +
+			"assigns; and Herdr's cleanup pass over hooks.json is NOT copied, because Sidecar has never written an " +
+			"entry there and an integration that edits a file it does not own is the thing the ownership rule exists " +
+			"to prevent. NOT traced: no capture of a live Droid session backs any of it, which is why the capability " +
+			"entry is docs-only at screen-fallback.",
+	},
 }
 
 // PortedFromRecords returns the provenance of every Sidecar integration asset.
