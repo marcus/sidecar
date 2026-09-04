@@ -141,7 +141,7 @@ func commandGate(agent, command string) bool {
 		// An alias-gated family has no hand-written gate because it has no
 		// hand-written anything: the whole of its Sidecar detection code is one
 		// alias case in identifyProcessName. The refusal it owes the engine is
-		// the same one every provider above owes — evaluate qwen.toml only against a pane
+		// the same one every provider above owes: evaluate qwen.toml only against a pane
 		// actually running Qwen — and identifyProcessName already answers that
 		// from Herdr's own alias table, so the gate is that answer.
 		//

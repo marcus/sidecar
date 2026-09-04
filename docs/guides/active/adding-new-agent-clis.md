@@ -76,7 +76,7 @@ resume_kinds = ["id"]
 
 ### 1.2 The three rules a file has to follow
 
-**Record where every fact came from, in a comment at the top.** A command name, an auto-approve flag and a resume shape are claims about somebody else's software. The next person needs to know whether they came from the provider's `--help`, its documentation, or Herdr's `agent_resume.rs` — which is the reference for resume, and the only launch-adjacent knowledge upstream holds.
+**Record where every fact came from, in a comment at the top.** A command name, an auto-approve flag and a resume shape are claims about somebody else's software. The next person needs to know whether they came from the provider's `--help`, its documentation, or Herdr's `agent_resume.rs`, which is the reference for resume and the only launch-adjacent knowledge upstream holds.
 
 **Never guess a flag.** A provider with no auto-approve mode gets no `skip_permissions_arg`, and the file says so and says why. Three bundled families have none, for three different reasons: Cline auto-approves by default and its flag takes a value, Devin's bypass is two argv entries the single-entry field cannot hold, and Mastra Code's is an in-app toggle. A guessed flag is a command line nothing has run.
 
@@ -113,13 +113,13 @@ That makes this step three moves rather than a subsystem: **sync or vendor the m
 
 There are two kinds of agent family, and picking the wrong one is the difference between one commit and seven. Both are one TOML file; what differs is whether the file states a `command`.
 
-**Detection-only** is an agent Sidecar recognises in a pane and never offers to start. Its file carries an id, a display name, a short label, and Herdr's process aliases — and no `command`, so no resume, no adapter id and no auto-approve flag either. It skips Steps 1, 3, 4, 5 and 6 entirely, and it costs no theme work, because `styles.AgentColor` answers `TextMuted` for a provider no theme registers and `styles.AgentLabel` falls back to the short label. This is the right shape when Herdr publishes a manifest for the agent and nobody has established what starts it.
+**Detection-only** is an agent Sidecar recognises in a pane and never offers to start. Its file carries an id, a display name, a short label, and Herdr's process aliases, and no `command`, so no resume, no adapter id and no auto-approve flag either. It skips Steps 1, 3, 4, 5 and 6 entirely, and it costs no theme work, because `styles.AgentColor` answers `TextMuted` for a provider no theme registers and `styles.AgentLabel` falls back to the short label. This is the right shape when Herdr publishes a manifest for the agent and nobody has established what starts it.
 
 Sidecar ships no detection-only family today. Ten were registered in Phase 4 of the parity plan and all ten gained a command in Slice 5, once somebody read each provider's documentation. The bucket stays because the next agent Herdr adds is detection-only from the moment its manifest is vendored until that reading is done, and a picker must never offer a program nobody can start.
 
 **Full** is an agent Sidecar launches, resumes, reads transcripts for, and colours. Its file states a `command` and it works through all seven subsystems below. This is the right shape when a user will pick the agent from a creation modal.
 
-Promoting a detection-only family to a full one is: add `command`, `skip_permissions_arg` and `resume_args` to the file it already has, then work the remaining steps. Nothing has to be undone, and nothing moves between lists — the bucket is derived from the presence of a command, not from a flag or a second file.
+Promoting a detection-only family to a full one is: add `command`, `skip_permissions_arg` and `resume_args` to the file it already has, then work the remaining steps. Nothing has to be undone, and nothing moves between lists: the bucket is derived from the presence of a command, not from a flag or a second file.
 
 The id of a detection-only family is **Herdr's own agent label**, not a prettier product name, so the manifest file name, the key into `aliases.upstream.json`, and `sidecar agent explain --agent` all agree with no mapping. That is why Qoder is registered as `qodercli` even though the program it launches is `qoder`; where the two differ, `short` follows the command, because a chip reading `qodercli` names a manifest file rather than a program. A full family may use a Sidecar spelling, at the cost of an entry in `ManifestAgentID` and `HerdrAgentLabel` in `manifest_detect.go` (today: `copilot` → `github-copilot`, `antigravity` → `agy`).
 

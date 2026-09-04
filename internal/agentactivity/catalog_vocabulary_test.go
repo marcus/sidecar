@@ -71,8 +71,8 @@ var aliasGatedFamilies = []string{
 	"kimi", "kiro", "maki", "qodercli", "qwen",
 }
 
-// The two spellings of the alias-gated set — the list above and this package's
-// aliasGatedFamily switch — are what Supports and processGate are built on.
+// The two spellings of the alias-gated set, the list above and this package's
+// aliasGatedFamily switch, are what Supports and processGate are built on.
 // They are separate so that agentactivity's hot path does not import the
 // catalog, which makes them exactly the kind of pair that drifts.
 func TestAliasGatedSetMatchesTheCatalog(t *testing.T) {

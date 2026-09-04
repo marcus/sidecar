@@ -380,8 +380,8 @@ func Detect(ob Observation) Result { return DetectManifestResult(ob) }
 //
 // It answers true for twenty agents: the ten with a hand-written process gate,
 // and the ten below that reach the engine through the alias table alone. Both
-// groups have the same two things for detection purposes — a vendored Herdr
-// manifest and a gate — which is the point. Supports is a statement about the
+// groups have the same two things for detection purposes, a vendored Herdr
+// manifest and a gate, which is the point. Supports is a statement about the
 // screen lane, not about launch, resume, or a conversation adapter;
 // agentcatalog.Families and agentcatalog.DetectionOnly are what answer those.
 //
