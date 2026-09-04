@@ -724,28 +724,138 @@ func TestTheRouteFitsEveryTerminalSizeAndKeepsItsRowsReachable(t *testing.T) {
 				t.Fatalf("%dx%d line %d is %d wide", size[0], size[1], i, w)
 			}
 		}
-		// Every provider row is still declared and still clickable, so the
-		// cursor cannot walk onto a row that was clipped away. The name itself
-		// is checked by identity rather than by text: a 60-column pane spends
-		// its last columns on the action pills and abbreviates the name, which
-		// is the trade the column plan makes deliberately.
+		// Every provider is reachable: put the cursor on it and its row is
+		// painted, with a hit region on the line it was painted on. A pane too
+		// short to hold every row at once windows them (see
+		// windowIntegrationRows), so what has to hold is that the cursor's own
+		// row is always on screen, never that all of them are -- a region over
+		// a row the window scrolled away would be a click on a provider the
+		// user cannot see.
+		//
+		// The name itself is checked by identity rather than by text: a
+		// 60-column pane spends its last columns on the action pills and
+		// abbreviates the name, which is the trade the column plan makes
+		// deliberately.
 		state := m.agentIntegrations()
 		rows, _ := splitIntegrations(state.list)
-		regions := map[string]mouse.Rect{}
-		for _, r := range m.mouse.HitMap.Regions() {
-			regions[r.ID] = r.Rect
-		}
 		for _, index := range rows {
+			focusIntegrationRow(t, m, index, size[0], size[1])
+			view = m.View(size[0], size[1])
+			painted := strings.Split(view, "\n")
+			regions := map[string]mouse.Rect{}
+			for _, r := range m.mouse.HitMap.Regions() {
+				regions[r.ID] = r.Rect
+			}
 			id := regionIntegrationRow + itoa(index)
 			rect, ok := regions[id]
 			if !ok {
-				t.Fatalf("%dx%d lost the row for %s", size[0], size[1], state.list[index].Provider)
+				t.Fatalf("%dx%d lost the row for %s while the cursor was on it", size[0], size[1], state.list[index].Provider)
 			}
 			if rect.X+rect.W > size[0] {
 				t.Fatalf("%dx%d: %s's row runs to column %d", size[0], size[1], state.list[index].Provider, rect.X+rect.W)
 			}
+			// The pane paints its content two lines into the frame, so a
+			// region past the last painted line is a target over nothing.
+			if rect.Y+rect.H > len(painted) {
+				t.Fatalf("%dx%d: %s's row region ends at line %d of %d painted", size[0], size[1], state.list[index].Provider, rect.Y+rect.H, len(painted))
+			}
 		}
 	}
+}
+
+// TestARowScrolledOutOfTheWindowKeepsNoLiveTarget is the other half of the
+// window's contract. The rows give way before the detail box does, and a row
+// the window hid must take its pills with it: a hit region over a line that is
+// no longer painted is a click that installs for a provider the user is not
+// looking at.
+func TestARowScrolledOutOfTheWindowKeepsNoLiveTarget(t *testing.T) {
+	m, _, _ := integrationsFixture(t)
+	openIntegrations(t, m)
+	fakeIntegrations(t, m, 17)
+
+	const width, height = 80, 30
+	state := m.agentIntegrations()
+	rows, _ := splitIntegrations(state.list)
+
+	focusIntegrationRow(t, m, rows[0], width, height)
+	if state.rowScroll != 0 {
+		t.Fatalf("the window starts at %d with the cursor on the first row", state.rowScroll)
+	}
+	first := integrationRegionRows(m)
+	if len(first) == 0 || len(first) >= len(rows) {
+		t.Fatalf("%d of %d rows are live at %dx%d; the window painted nothing or everything", len(first), len(rows), width, height)
+	}
+	if !first[rows[0]] {
+		t.Fatal("the cursor's own row is not live")
+	}
+	// The detail box is what the rows gave way for, so it has to be on screen.
+	text := strings.Join(detailColumn(t, m, width, height), "\n")
+	for _, want := range []string{"Files", "Tier", "Report", "Gaps"} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("the window hid rows and still lost the detail box's %s line:\n%s", want, text)
+		}
+	}
+
+	// Walking to the last row scrolls the window, and everything it left
+	// behind loses its row region and its pills with it.
+	last := rows[len(rows)-1]
+	focusIntegrationRow(t, m, last, width, height)
+	if state.rowScroll == 0 {
+		t.Fatal("the window did not follow the cursor to the last row")
+	}
+	live := integrationRegionRows(m)
+	if !live[last] {
+		t.Fatal("the last row is not live with the cursor on it")
+	}
+	regions := map[string]bool{}
+	for _, r := range m.mouse.HitMap.Regions() {
+		regions[r.ID] = true
+	}
+	for _, index := range rows {
+		if live[index] {
+			continue
+		}
+		for _, act := range state.list[index].Offered {
+			if regions[integrationActionID(index, act)] {
+				t.Fatalf("row %d is off screen but its %s pill is still clickable", index, act)
+			}
+		}
+	}
+	if !first[rows[0]] || live[rows[0]] {
+		t.Fatal("the first row is still live after the window scrolled past it")
+	}
+}
+
+// focusIntegrationRow puts the keyboard on one provider's row at a given pane
+// size. The cursor is driven through focus rather than by writing the route's
+// own cursor field, because the route reads its cursor back off the focused
+// control on every frame -- which is what keeps the highlight and the detail
+// box naming the same provider.
+func focusIntegrationRow(t *testing.T, m *Model, index, width, height int) {
+	t.Helper()
+	m.detailFocus = true
+	m.View(width, height)
+	m.focusControlByID(regionIntegrationRow + itoa(index))
+	m.View(width, height)
+	if got := m.agentIntegrations().cursor; got != index {
+		t.Fatalf("the cursor landed on row %d, want %d", got, index)
+	}
+}
+
+// integrationRegionRows is the set of provider indices with a live row region.
+func integrationRegionRows(m *Model) map[int]bool {
+	out := map[int]bool{}
+	for _, r := range m.mouse.HitMap.Regions() {
+		if !strings.HasPrefix(r.ID, regionIntegrationRow) {
+			continue
+		}
+		index, err := strconv.Atoi(strings.TrimPrefix(r.ID, regionIntegrationRow))
+		if err != nil {
+			continue
+		}
+		out[index] = true
+	}
+	return out
 }
 
 func TestIntegrationActionKeysDoNotCollideWithOtherPages(t *testing.T) {
@@ -1078,6 +1188,72 @@ func TestTheFooterNamesTheActionsTheCursorCanRun(t *testing.T) {
 		}
 		if named[cmd.Name] != want[act] {
 			t.Fatalf("the footer names %q=%v while the service offers it=%v", cmd.Name, named[cmd.Name], want[act])
+		}
+	}
+}
+
+// TestEveryPillRegionLandsOnThePillItWasPaintedFrom is the hit-region check the
+// width test did not make. That one proves a region exists at 80, 120 and 200;
+// this one proves the region is over the pill.
+//
+// The action column's regions are not measured from the painted line: they are
+// laid out from the right edge of the row, one pill width at a time, on the
+// assumption that a pill is its text plus the two columns styles.Button pads it
+// with. Nothing checked that assumption, so a change to the chip's padding, or
+// to the gap the pills are joined with, would move every action target off its
+// pill silently -- and the compact form, where a pill is three columns wide, is
+// where a one-column drift stops overlapping the pill at all.
+func TestEveryPillRegionLandsOnThePillItWasPaintedFrom(t *testing.T) {
+	m, _, _ := integrationsFixture(t)
+	openIntegrations(t, m)
+	fakeIntegrations(t, m, 7)
+
+	for _, width := range []int{80, 120, 200} {
+		const height = 60
+		lines := detailColumn(t, m, width, height)
+		state := m.agentIntegrations()
+		rows, _ := splitIntegrations(state.list)
+		table := layoutIntegrationTable(integrationRows(state.list, rows), paneContentWidth(width-m.sidebarWidth))
+		rects := map[string]mouse.Rect{}
+		for _, r := range m.mouse.HitMap.Regions() {
+			rects[r.ID] = r.Rect
+		}
+		for _, index := range rows {
+			st := state.list[index]
+			rowRect, ok := rects[regionIntegrationRow+itoa(index)]
+			if !ok {
+				t.Fatalf("width %d: %s has no row region", width, st.Provider)
+			}
+			line := ""
+			for _, candidate := range lines {
+				if strings.HasPrefix(candidate, strings.Repeat(" ", RowIndent)+st.Provider) {
+					line = candidate
+					break
+				}
+			}
+			if line == "" {
+				t.Fatalf("width %d: %s's row is not painted", width, st.Provider)
+			}
+			for _, act := range st.Offered {
+				rect, ok := rects[integrationActionID(index, act)]
+				if !ok {
+					t.Fatalf("width %d: %s's %s pill has no region", width, st.Provider, act)
+				}
+				text := integrationPillText(act, table.compact)
+				// One column in from the region's left edge is where the pill's
+				// own padding ends and its text begins.
+				at := rect.X - rowRect.X + 1
+				runes := []rune(line)
+				if at < 0 || at+len([]rune(text)) > len(runes) {
+					t.Fatalf("width %d: %s's %s region starts at column %d of a %d-column row", width, st.Provider, act, at, len(runes))
+				}
+				if got := string(runes[at : at+len([]rune(text))]); got != text {
+					t.Fatalf("width %d: %s's %s region covers %q, not the pill %q\nrow: %q", width, st.Provider, act, got, text, line)
+				}
+				if rect.W != ansi.StringWidth(text)+2 {
+					t.Fatalf("width %d: %s's %s region is %d columns for a %d-column pill", width, st.Provider, act, rect.W, ansi.StringWidth(text)+2)
+				}
+			}
 		}
 	}
 }

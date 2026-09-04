@@ -103,6 +103,14 @@ type agentIntegrationsState struct {
 	list   []agentintegration.Status
 	cursor int
 
+	// rowTop, rowCount and rowScroll are the row block: where it started in the
+	// frame just painted, how many rows it holds, and how far into it the
+	// window is. The first two are written by the paint, the third is decided
+	// after it, when the frame's real height is known.
+	rowTop    int
+	rowCount  int
+	rowScroll int
+
 	// notice is the outcome of the last mutation, shown until the next one.
 	notice string
 	// busy is the action in flight, so the route can say so rather than look
@@ -565,6 +573,10 @@ func splitIntegrations(list []agentintegration.Status) (rows, unsupported []int)
 // buildAgentIntegrations paints the route.
 func (m *Model) buildAgentIntegrations(b *paneBuilder) {
 	state := m.agentIntegrations()
+	// The row block is re-measured by every paint. A frame that paints no rows
+	// -- checking, never checked, nothing shipped -- has to say so, or the
+	// window below would cut lines the previous frame's block occupied.
+	state.rowTop, state.rowCount = 0, 0
 
 	b.lead("A small addition to an agent's own configuration, so Sidecar learns what that agent is doing from its own lifecycle events instead of its screen.")
 	b.blank()
@@ -591,6 +603,12 @@ func (m *Model) buildAgentIntegrations(b *paneBuilder) {
 		return
 	}
 
+	// The home directory is read once for the whole frame. Every path on the
+	// page is abbreviated against it, and resolving it per row rebuilt the whole
+	// application service -- adapters included -- once for each of seventeen
+	// rows, on a render path.
+	home := m.integrations().Env.Home
+
 	rows, unsupported := splitIntegrations(state.list)
 	b.rightControl(integrationHeaderLeft(b.inner, state.list),
 		regionIntegrationRecheck, "r", "R  Recheck", func(m *Model) tea.Cmd {
@@ -610,9 +628,11 @@ func (m *Model) buildAgentIntegrations(b *paneBuilder) {
 	if len(rows) > 0 {
 		table := layoutIntegrationTable(integrationRows(state.list, rows), b.inner)
 		b.text(integrationColumnHeader(table))
+		state.rowTop = len(b.lines)
 		for _, index := range rows {
-			m.buildIntegrationRow(b, table, index, state.list[index])
+			m.buildIntegrationRow(b, table, home, index, state.list[index])
 		}
+		state.rowCount = len(b.lines) - state.rowTop
 		if table.compact {
 			b.text(integrationKeyLegend())
 		}
@@ -641,7 +661,7 @@ func (m *Model) buildAgentIntegrations(b *paneBuilder) {
 	}
 
 	if len(rows) > 0 && state.cursor >= 0 && state.cursor < len(state.list) {
-		m.buildIntegrationDetail(b, state.list[state.cursor])
+		m.buildIntegrationDetail(b, home, state.list[state.cursor])
 		b.blank()
 	}
 
@@ -708,7 +728,7 @@ func integrationKeyLegend() string {
 // and seventeen rows the cursor would need eighty-five presses to cross the
 // page. They answer to the pointer on every row, and to their shortcut letters
 // on the row the cursor is on.
-func (m *Model) buildIntegrationRow(b *paneBuilder, t integrationTable, index int, st agentintegration.Status) {
+func (m *Model) buildIntegrationRow(b *paneBuilder, t integrationTable, home string, index int, st agentintegration.Status) {
 	id := fmt.Sprintf("%s%d", regionIntegrationRow, index)
 	offered := map[agentintegration.Action]bool{}
 	for _, act := range st.Offered {
@@ -737,7 +757,7 @@ func (m *Model) buildIntegrationRow(b *paneBuilder, t integrationTable, index in
 		cells = append(cells, Muted(padDisplay(clampStart(string(st.EffectiveTier), t.tier), t.tier)))
 	}
 	if t.files > 0 {
-		cells = append(cells, Muted(padDisplay(integrationFilesCell(st, m.integrations().Env.Home, t.files), t.files)))
+		cells = append(cells, Muted(padDisplay(integrationFilesCell(st, home, t.files), t.files)))
 	}
 
 	// Pills are rendered before the row is assembled so their exact widths are
@@ -788,6 +808,100 @@ func (m *Model) buildIntegrationRow(b *paneBuilder, t integrationTable, index in
 			b.m.mouse.HitMap.AddRect(integrationActionRegion(index, act), x, 1+y, width, 1, nil)
 		}
 		x += width + 1
+	}
+}
+
+// integrationRowsFloor is the fewest rows the window will ever leave on
+// screen. Below it the page is not a table any more, so the rest of it gives
+// way instead: the detail box and the closing note are truncated by the pane's
+// own height contract, exactly as they were before the window existed.
+const integrationRowsFloor = 3
+
+// windowIntegrationRows scrolls the row block, and only the row block.
+//
+// The route is a list with a detail box under it, and the box describes the row
+// the cursor is on. A page that truncated at the pane's bottom edge therefore
+// lost the box first and the closing note with it: at 80x30 the note was
+// already gone with four providers, and the plan's later slices bring fifteen
+// to seventeen. Scrolling the whole page would have moved the box off screen
+// just as reliably, one keypress later.
+//
+// So the rows are the only thing that gives way. The column header above them,
+// the detail box and the notes below them are pinned, the window holds the
+// cursor's own row, and the rows outside it lose their hit regions rather than
+// leaving live targets over lines that are no longer painted.
+func (m *Model) windowIntegrationRows(lines []string, height int) []string {
+	state := m.agentIntegrations()
+	count := state.rowCount
+	over := len(lines) - height
+	if height <= 0 || count == 0 || over <= 0 {
+		state.rowScroll = 0
+		return lines
+	}
+	// The window is bought and paid for in rows, so it is only taken where it
+	// buys something: enough rows hidden and the whole page fits, fewer than the
+	// floor and it would hide rows and still truncate, which is strictly worse
+	// than truncating alone. On a pane too short for either, the height
+	// contract truncates exactly as it did before.
+	visible := count - over
+	if visible >= count || visible < integrationRowsFloor {
+		state.rowScroll = 0
+		return lines
+	}
+
+	// The window follows the cursor rather than the pointer or the top of the
+	// list: the cursor is what the detail box is about, so a box describing a
+	// row nobody can see is the one thing the window must not produce.
+	rows, _ := splitIntegrations(state.list)
+	cursor := 0
+	for position, index := range rows {
+		if index == state.cursor {
+			cursor = position
+			break
+		}
+	}
+	scroll := min(max(0, state.rowScroll), count-visible)
+	if cursor < scroll {
+		scroll = cursor
+	} else if cursor >= scroll+visible {
+		scroll = cursor - visible + 1
+	}
+	state.rowScroll = min(max(0, scroll), count-visible)
+
+	out := make([]string, 0, len(lines)-(count-visible))
+	out = append(out, lines[:state.rowTop]...)
+	out = append(out, lines[state.rowTop+state.rowScroll:state.rowTop+state.rowScroll+visible]...)
+	out = append(out, lines[state.rowTop+count:]...)
+	m.translateIntegrationRegions(state.rowTop, state.rowScroll, visible)
+	return out
+}
+
+// translateIntegrationRegions moves the row block's hit regions onto the lines
+// the window actually painted, and drops the ones it did not. A region left
+// where a hidden row used to be is a click that acts on a provider the user
+// cannot see.
+//
+// Only the row block's own regions are touched. Every other region on the frame
+// -- the sidebar's rows, the navbar, the Back and Recheck controls -- is in the
+// same coordinate space but not in this pane's row block, and shifting one by
+// its y alone would move a sidebar row that merely happens to sit at the same
+// line. Nothing in this route registers a region below the block, so nothing
+// below it needs moving.
+func (m *Model) translateIntegrationRegions(top, scroll, visible int) {
+	regions := m.mouse.HitMap.Regions()
+	m.mouse.HitMap.Clear()
+	for _, region := range regions {
+		if !strings.HasPrefix(region.ID, regionIntegrationRow) && !strings.HasPrefix(region.ID, regionIntegrationAction) {
+			m.mouse.HitMap.Add(region.ID, region.Rect, region.Data)
+			continue
+		}
+		y := region.Rect.Y - 1
+		if y < top+scroll || y >= top+scroll+visible {
+			continue
+		}
+		rect := region.Rect
+		rect.Y -= scroll
+		m.mouse.HitMap.Add(region.ID, rect, region.Data)
 	}
 }
 
@@ -871,10 +985,10 @@ func abs(n int) int {
 // beside claude reads as ten faults in Sidecar, when they are gaps in the
 // provider's own hook contract, and the only useful next step was always to go
 // and read them.
-func (m *Model) buildIntegrationDetail(b *paneBuilder, st agentintegration.Status) {
+func (m *Model) buildIntegrationDetail(b *paneBuilder, home string, st agentintegration.Status) {
 	width := min(b.inner, MaxRowWidth+integrationTierColumn)
 	b.text(integrationDetailRule(st, width))
-	for _, field := range integrationDetailFields(st, m.integrations().Env.Home) {
+	for _, field := range integrationDetailFields(st, home) {
 		b.text(integrationDetailLine(field[0], field[1], width))
 	}
 }
