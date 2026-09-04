@@ -235,6 +235,29 @@ var portedFrom = []PortedFrom{
 			"file would edit bytes outside Sidecar's entry for no effect. One further difference: the transport is " +
 			"Sidecar's, so the dropped shell script and its python3 dependency are gone.",
 	},
+	{
+		Provider:    GrokProvider,
+		UpstreamID:  "grok",
+		UpstreamDir: "grok",
+		Version:     "1",
+		Commit:      herdrVendoredCommit,
+		Evidence: "Ported from Herdr's grok integration at that commit, where the vendored " +
+			"upstream/grok/herdr-agent-state.sh carries HERDR_INTEGRATION_VERSION=1. The provider half is kept: " +
+			"a dedicated hook file in grok's own hooks directory, which grok globs and merges; the SessionStart " +
+			"registration in a matcher group with no matcher key, which is grok's documented match-everything " +
+			"default; the ten second timeout; and the session-start-only guard, which is structural here because " +
+			"the entry is registered on one event rather than dispatched to by a script. Every fact was re-checked " +
+			"against the documentation grok 1.0.13 embeds in its own shipped binary rather than taken on trust. " +
+			"Three deliberate differences, each with its reason in grok_install.go: the transport is Sidecar's, so " +
+			"the dropped shell script and its python3 dependency are gone and the entry invokes the CLI directly; " +
+			"ownership is by entry rather than by file, where Herdr deletes its whole herdr.json at uninstall, so a " +
+			"hook a user added beside Sidecar's survives and the file is removed only when Sidecar's entry was all " +
+			"it held; and GROK_SESSION_ID is not read, because report-session's payload reader serves every " +
+			"provider and a per-provider environment read would be a second way for one provider to name a " +
+			"session, so the camelCase sessionId on the payload is used instead. NOT followed: Herdr's " +
+			"GROK_CONFIG_DIR, which its own comment records as a Herdr-level test seam the grok CLI does not read. " +
+			"GROK_HOME, which grok does read, is honoured.",
+	},
 }
 
 // PortedFromRecords returns the provenance of every Sidecar integration asset.

@@ -299,6 +299,34 @@ Answer open question 3 first. Then port in order of live use, confirming for eac
 
 **The scan accepts a handler with no `type`.** Cursor documents the minimal `{"command": ...}` form and Herdr writes it, while Cursor's own generator emits `{"type": "command", "command": ...}`, so both exist in the wild and a Sidecar entry in either is Sidecar's.
 
+#### Result for `grok`, 2026-09-04 (`td-73c4ff`), and the two Claude-adjacent fixes
+
+**Shipped at `session-identity` on `docs-only` evidence.** One `SessionStart` entry in `~/.grok/hooks/sidecar.json`, in a matcher group with no matcher key, which is grok's documented match-everything default and Herdr's shape. Ported from Herdr's grok integration version 1 and re-checked against the documentation grok 1.0.13 embeds in its own binary.
+
+**Sidecar owns a dedicated file and still owns only the entry inside it.** grok merges every `<grok home>/hooks/*.json`, so Sidecar writes its own file rather than editing the user's. Herdr does the same and then deletes its file outright at uninstall; Sidecar keeps the entry rule, so a hook a user added beside Sidecar's inside a file named after Sidecar survives, and the file is removed only when Sidecar's entry was all it held. `GROK_HOME` is honoured, because grok reads it; Herdr's `GROK_CONFIG_DIR` is not, because Herdr's own comment says the grok CLI does not.
+
+**`GROK_SESSION_ID` is deliberately not read.** Herdr's asset prefers the environment variable over the payload. `--hook-stdin` is one bounded reader serving every provider, and a per-provider environment read would be a second way for one provider to name a session, so Sidecar takes the camelCase `sessionId` grok puts on the payload.
+
+**Three Sidecar integrations fire inside one grok session, and the gate that decides between them is now proved from the shipped bytes.** grok's documented hook locations include `~/.claude/settings.json` and `~/.cursor/hooks.json`, so a single grok session start runs Sidecar's grok, Claude and Cursor entries, all carrying grok's own session id. `TestBothEntriesFireInAGrokSessionAndOnlyGroksBinds` in `internal/cli` reads the grok and Claude kinds out of the two adapters' own canonical assets and drives both against a grok-typed shell: the Claude claim is refused with `kind_mismatch` and the grok claim binds as resumable, with the shell still recorded as grok. Hand-disabling the check in `shellstate` makes it fail with "the Claude entry bound a grok session", which is td-11040b in one sentence. The reverse direction needs no gate, because Claude does not read `~/.grok/hooks/`.
+
+#### The two Claude-adjacent fixes this slice also carried
+
+**`CLAUDE_CONFIG_DIR` is honoured by status, install and uninstall alike.** Claude Code resolves its configuration home as the raw variable, falling back to `$HOME/.claude`, and refuses to run when the result is not absolute. The installer read only `$HOME`, so a relocated Claude got `not-installed` for a settings.json full of hooks, an install that wrote where Claude never reads, and an uninstall that could not find its own entry. A relative or whitespace-only value keeps the default, because Claude itself will not start with a non-absolute home.
+
+**The capability entry's two Sidecar-scope gaps are corrected.** The `CLAUDE_CONFIG_DIR` blind spot is closed by the above, and the grok/Claude shared-settings binding was already fixed and closed as `td-11040b`; both texts said otherwise, in `capabilities.json` and in the capability matrix.
+
+#### One rule the four ports established between them
+
+**Follow the code path that reads the file, not the variable name that looks like it should.** Three of the four providers ship a configuration-directory override in Herdr's installer and the four answers differ, each on evidence:
+
+| Provider | Herdr honours | Sidecar honours | Why |
+| --- | --- | --- | --- |
+| Claude | `CLAUDE_CONFIG_DIR` | yes | the shipped binary resolves its config home from it |
+| grok | `GROK_HOME`, `GROK_CONFIG_DIR` | `GROK_HOME` only | the binary carries `GROK_HOME`; Herdr's own comment calls the other its test seam |
+| Cursor | `CURSOR_CONFIG_DIR` | no | cursor-agent has a resolver that reads it and a hook loader that does not use it |
+| Antigravity | `ANTIGRAVITY_CLI_CONFIG_DIR` | no | the variable appears nowhere in the shipped agy binary |
+| Copilot | `COPILOT_HOME` | yes | no binary to check; a plausible provider override beats none, and the entry says it is unverified |
+
 ### Slice 5 — The launch catalog moves to TOML and grows to every recognised agent (medium)
 
 Today `internal/agentcatalog` holds ten launchable families as a Go slice and ten detection-only families as a second slice. The knowledge in the first is small and flat: a command, an auto-approve flag, resume arguments, aliases, an adapter id. That is configuration, and it belongs in data a user or an agent can read and extend without a rebuild.

@@ -36,6 +36,7 @@ This is enforced rather than documented. `Capability.TierFor` polices every tier
 | Antigravity | 1.1.22 | docs-only | `session-identity` | session only | shipped hook is one `PreInvocation` entry. The provider's ceiling is `advisory`: it has no blocking event and no cancellation event. |
 | GitHub Copilot CLI | not installed | docs-only | `session-identity` | session only | shipped hook is one `SessionStart` entry. Nothing here is verified against a released binary, which is the weakest evidence in the registry. |
 | Cursor Agent | 2026.08.25 | docs-only | `session-identity` | session only | shipped hook is one `sessionStart` entry. The provider's ceiling is `full` on paper, and tracing is mandatory before claiming it. |
+| grok | 1.0.13 | docs-only | `session-identity` | session only | shipped hook is one `SessionStart` entry. The provider's ceiling is `full` and it is the strongest contract in the catalog, so this is the largest gap between what is claimed and what is available. |
 
 Pi's row went out of `capabilities.json` when nothing could produce a report for it, came back at `session-identity` when `PiAdapter` and `assets/pi/sidecar-lifecycle.js` shipped, and is now at `advisory` on `real-trace` evidence because a live Pi 0.84.3 session has been traced. It is the only row here that has reached its own ceiling: `advisory` is as high as Pi can ever go, because `full` needs `blocked_on_request` and `unblocked` and Pi ships no permission system to produce either. See "Why the Pi entry was retracted, and what brought it back".
 
@@ -63,17 +64,17 @@ Claude Code's `unblocked` and `turn complete` are marked PARTIAL *after* tracing
 
 The **session-identity ports** are a second table, because a column each in the one above would say `NO` or "not hooked" nine times per provider and hide the one row that matters. For all of them the shipped Sidecar asset registers exactly one entry and claims exactly `session_identity`; state keeps coming from the screen lane. What the table records is the provider's own ceiling, so a later lane can see what a fuller asset would be able to reach.
 
-| Transition | Antigravity | GitHub Copilot CLI | Cursor Agent |
-| --- | --- | --- | --- |
-| work start | YES (`PreInvocation`), not hooked | YES (`UserPromptSubmit`), not hooked | YES (`beforeSubmitPrompt`), not hooked |
-| tool use | YES (`PreToolUse`/`PostToolUse`), not hooked | YES (`PreToolUse`/`PostToolUse`), not hooked | YES (`preToolUse`/`postToolUse`), not hooked |
-| blocked on request | NO | YES (`permissionRequest`), unverified | unknown |
-| unblocked | NO | unknown | unknown |
-| turn complete | YES (`Stop`), not hooked | YES (`Stop`), not hooked | YES (`stop`), not hooked |
-| cancellation | NO | PARTIAL (`sessionEnd` abort reason, session-granular) | YES (`stop` status `aborted`, `postToolUseFailure.is_interrupt`), not hooked |
-| session identity | YES (`conversationId` on every payload) | YES (`session_id` on `SessionStart`) | YES (`session_id` on `sessionStart`) |
-| subagent | NO | unknown | YES (`subagentStart`/`subagentStop`), not hooked |
-| process exit | NO | YES (`SessionEnd`), not hooked | YES (`sessionEnd`), not hooked |
+| Transition | Antigravity | GitHub Copilot CLI | Cursor Agent | grok |
+| --- | --- | --- | --- | --- |
+| work start | YES (`PreInvocation`), not hooked | YES (`UserPromptSubmit`), not hooked | YES (`beforeSubmitPrompt`), not hooked | YES (`UserPromptSubmit`), not hooked |
+| tool use | YES (`PreToolUse`/`PostToolUse`), not hooked | YES (`PreToolUse`/`PostToolUse`), not hooked | YES (`preToolUse`/`postToolUse`), not hooked | YES (`PreToolUse`/`PostToolUse`), not hooked |
+| blocked on request | NO | YES (`permissionRequest`), unverified | unknown | YES (`Notification{permission_prompt}`), not hooked |
+| unblocked | NO | unknown | unknown | YES (`PermissionDenied` and the tool events), not hooked |
+| turn complete | YES (`Stop`), not hooked | YES (`Stop`), not hooked | YES (`stop`), not hooked | YES (`Stop`, `reason=end_turn`), not hooked |
+| cancellation | NO | PARTIAL (`sessionEnd` abort reason, session-granular) | YES (`stop` status `aborted`, `postToolUseFailure.is_interrupt`), not hooked | YES (`StopCancelled` with a classified reason), not hooked |
+| session identity | YES (`conversationId` on every payload) | YES (`session_id` on `SessionStart`) | YES (`session_id` on `sessionStart`) | YES (`sessionId` on `SessionStart`) |
+| subagent | NO | unknown | YES (`subagentStart`/`subagentStop`), not hooked | YES (`SubagentStart`/`SubagentStop`), not hooked |
+| process exit | NO | YES (`SessionEnd`), not hooked | YES (`sessionEnd`), not hooked | YES (`SessionEnd`), not hooked |
 
 Copilot's column is the only one in this document with `unknown` in it, and that is the honest word: it is read from Herdr's event lists and a documentation page rather than from a shipped artifact, because the CLI is not installed on any machine Sidecar has surveyed.
 
@@ -406,13 +407,40 @@ The same bundle resolves `~/.claude/settings.json`, the project-local `.claude/s
 
 The provider's ceiling is `full` on paper -- the bundle carries a full registry including `stop` with an `aborted` status and `postToolUseFailure.is_interrupt`, which is a distinguishable cancellation, plus `subagentStart`/`subagentStop` and `sessionEnd`. None of it is traced, and there are user reports of events being omitted on particular versions, so tracing stays mandatory before any tier above this one. The shipped asset asks for none of it.
 
+## grok
+
+**Source:** the documentation grok 1.0.13 embeds in its own shipped binary, cross-read against Herdr's `grok` integration at `HERDR_INTEGRATION_VERSION=1`. Not traced.
+
+grok has the strongest hook contract in the catalog and the shipped Sidecar asset asks for none of it. The port is one `SessionStart` entry in `~/.grok/hooks/sidecar.json`, in a matcher group with no matcher key, which is grok's documented match-everything default and Herdr's shape.
+
+### A dedicated file, and ownership still by entry
+
+grok merges every `<grok home>/hooks/*.json`, so Sidecar writes a file of its own there rather than editing the user's. Herdr does the same and then deletes its file outright at uninstall, because every byte in it is Herdr's. Sidecar does not claim the file: ownership stays the entry rule, so a hook a user added beside Sidecar's inside a file named after Sidecar survives, and the file is removed only when Sidecar's entry was all it held. That costs nothing and closes a case a file-owning uninstall would have destroyed.
+
+`GROK_HOME` relocates the configuration home and is honoured -- it is grok's own variable, carried in the shipped binary alongside the error "no user grok home (set $GROK_HOME or $HOME)". Herdr also honours a `GROK_CONFIG_DIR`, and its own comment records that the grok CLI does not read that one, so Sidecar does not follow it. That is the same rule applied to Cursor and Antigravity.
+
+### Three integrations fire inside one grok session, and one of them binds
+
+grok's documented hook locations include `~/.claude/settings.json` and `~/.cursor/hooks.json`, for Claude Code and Cursor compatibility, alongside its own hooks directory. On a machine with all three Sidecar integrations installed, a single grok session start therefore runs three Sidecar hook processes: one claiming `--kind grok`, one `--kind claude`, one `--kind cursor`, all carrying grok's own session id.
+
+Exactly one binds. `report-session` canonicalises the claimed kind through the catalog and then verifies it against the pane's own occupant and the shell's recorded provider, so the two foreign claims are refused with `kind_mismatch` and the grok claim is recorded. That gate is `td-11040b`, and `TestBothEntriesFireInAGrokSessionAndOnlyGroksBinds` drives the Claude and grok entries -- read out of the two adapters' own canonical assets -- against a grok-typed shell. Hand-disabling the gate makes it fail with "the Claude entry bound a grok session".
+
+The reverse direction needs no gate: Claude does not read `~/.grok/hooks/`, so Sidecar's grok entry can only ever fire inside grok.
+
+### The session id comes off the payload, not the environment
+
+grok's payload is camelCase -- `hookEventName`, `sessionId`, `cwd`, `workspaceRoot`, `promptId` -- and grok also exports `GROK_SESSION_ID` into every hook process. Herdr's asset prefers the variable and falls back to the payload. Sidecar reads the payload only: `--hook-stdin` is one bounded reader serving six providers, and a per-provider environment read would be a second way for one provider to name a session. Nothing observed so far disagrees.
+
+### Why `session-identity` is what is claimed
+
+grok is the only provider anywhere with a **dedicated cancellation event**: `StopCancelled` fires instead of `Stop` when a turn ends without completing, carrying a classified `reason` (`user_interrupt`, `permission_rejected`, `permission_cancelled`, `max_turns`, `no_progress`) and a derived `cancelledBy`. Beside it are `StopFailure` for API errors, `PermissionDenied`, `Notification{permission_prompt, idle_prompt}`, `SubagentStart`/`SubagentStop`, `PreCompact`/`PostCompact` and `SessionEnd`. That is `full` on paper, and it is the largest gap in this document between a provider's ceiling and what Sidecar's asset asks for. It is not claimed, because nothing here is traced.
+
 ## Catalog agents evaluated but not built
 
 These are recorded rather than omitted so that "evaluated, and deliberately not built" is distinguishable from "never looked at". All are `screen-fallback` with `evidence: none`: **none is trace-backed**, so each selects a candidate rather than earning a tier, and `TierFor` would refuse them anything else regardless.
 
 | Agent | Seen | Hook surface | Ceiling on paper | Why it is not built |
 | --- | --- | --- | --- | --- |
-| grok | 1.0.13 | strongest in the catalog | `full` | Untraced. The only provider anywhere with a dedicated cancellation event: `StopCancelled` carrying `user_interrupt`, `permission_rejected` and `permission_cancelled`, alongside `PermissionDenied` and `Notification{permission_prompt, idle_prompt}`. |
 | amp | not installed | TypeScript plugin process | `advisory` | Not installed and not traced. No permission event and no reliable process-exit signal, so two lanes would stay with screen detection anyway. |
 
 Two findings from this sweep are worth more than the table.

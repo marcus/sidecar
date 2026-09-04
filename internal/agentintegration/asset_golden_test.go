@@ -77,6 +77,11 @@ var assetGoldens = []assetGolden{
 	// goes only into a file Sidecar creates, never into a user's own, so a
 	// change here is a change to what a fresh install looks like.
 	{provider: CursorProvider, name: "hooks.json", version: "1", checksum: "c5b43c13c5aa7b5bc368dd815c542b9060f2910c985f57b31376d3dab4296a72"},
+	// grok's file is one Sidecar writes alone, into a directory grok globs, so
+	// this checksum is the whole installed artifact rather than a fragment of a
+	// user's file: the matcher group with no matcher key, the SessionStart
+	// event, the command and the timeout.
+	{provider: GrokProvider, name: "sidecar.json", version: "1", checksum: "b228a059c0cb7ad1fec2cec8d9e3884f24231c1343915cfdbc0aa4442143f943"},
 }
 
 // bumpInstructions is the whole point of the guard: a failure here has to tell

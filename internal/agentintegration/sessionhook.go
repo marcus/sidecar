@@ -372,6 +372,8 @@ func sessionHookIntegrationOf(a Adapter) (sessionHookIntegration, bool) {
 		return v.integration, true
 	case CursorAdapter:
 		return v.integration, true
+	case GrokAdapter:
+		return v.integration, true
 	}
 	return sessionHookIntegration{}, false
 }

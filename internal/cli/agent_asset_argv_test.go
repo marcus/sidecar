@@ -3,11 +3,13 @@ package cli
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"sort"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -15,6 +17,8 @@ import (
 	"github.com/marcus/sidecar/internal/agentintegration"
 	"github.com/marcus/sidecar/internal/agentlifecycle"
 	"github.com/marcus/sidecar/internal/agentlifecycle/lifecyclestore"
+	"github.com/marcus/sidecar/internal/agentsession"
+	"github.com/marcus/sidecar/internal/shellstate"
 )
 
 // The subprocess seam, closed.
@@ -338,5 +342,121 @@ func assetHarnessNode(t *testing.T) string {
 		t.Fatal("SIDECAR_REQUIRE_NODE=1 but node is not on PATH; the asset argv seam cannot be checked")
 	}
 	t.Skip("node is not installed; skipping the asset argv seam check")
+	return ""
+}
+
+// TestBothEntriesFireInAGrokSessionAndOnlyGroksBinds is the cross-provider
+// binding rule, driven from the shipped bytes of two different integrations.
+//
+// grok reads ~/.claude/settings.json and ~/.cursor/hooks.json by design; its
+// own documentation carries a "Claude Code Compatibility" section for exactly
+// that. So a machine with both integrations installed has, inside a single grok
+// session, Sidecar's grok entry claiming `--kind grok` and Sidecar's Claude
+// entry claiming `--kind claude`, both firing on that session's start, both
+// carrying grok's own session id. Exactly one of them may bind: the other would
+// make a cold restore offer `claude --resume <grok session id>`, which is
+// td-11040b.
+//
+// The kinds are read out of each adapter's canonical asset rather than typed
+// here, so this is a statement about what Sidecar actually installs. The gate
+// itself is the same one the live verb applies: the claimed kind is resolved
+// through the catalog and then checked against the shell's recorded provider.
+func TestBothEntriesFireInAGrokSessionAndOnlyGroksBinds(t *testing.T) {
+	kinds := map[string]string{}
+	for _, argv := range agentintegration.SessionHookArgvCorpus() {
+		cmd := RootCommand().FindSubcommand("agent").FindSubcommand("report-session")
+		var out, errOut bytes.Buffer
+		// argv[0] is the `agent` group and argv[1] the verb; the flags start
+		// after both, which is where the real dispatcher hands them over too.
+		f, code := parseReportSessionFlags(Env{Stdout: &out, Stderr: &errOut}, argv[2:], RenderHelp(cmd))
+		if code != -1 {
+			t.Fatalf("the shipped CLI refused an argv an asset spawns: %v", argv)
+		}
+		kind, err := resolveReportedKind(f.kind)
+		if err != nil {
+			t.Fatalf("the shipped CLI refused the kind an asset claims: %v", err)
+		}
+		kinds[kind] = kind
+	}
+	if kinds["grok"] == "" {
+		t.Fatal("no installed entry claims kind grok, so this proves nothing")
+	}
+	// Claude's entry is built the same way, from the Claude adapter's own asset.
+	claudeCommand := installedClaudeCommand(t)
+	if !strings.Contains(claudeCommand, "--kind claude") {
+		t.Fatalf("the Claude entry does not claim --kind claude: %q", claudeCommand)
+	}
+
+	// One managed shell, recorded as running grok, which is what the pane's
+	// occupant resolves to in the live verb.
+	path := filepath.Join(t.TempDir(), "shells.json")
+	if err := shellstate.AddAtPath(path, shellstate.Definition{
+		TmuxName: "sidecar-sh-p-1", DisplayName: "grok pane", Namespace: "/tmp/socket",
+		AgentType: "grok", CreatedAt: time.Now().UTC().Truncate(time.Second), WorkDir: "/repo",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	id := shellstate.Identity{TmuxName: "sidecar-sh-p-1", Namespace: "/tmp/socket"}
+	const live = "pid=100,start=A"
+	const grokSessionID = "grok-session-id"
+
+	// The Claude entry fires first, because ~/.claude/settings.json is a
+	// higher-authority layer for grok than its own hooks directory. It is
+	// refused rather than bound.
+	_, err := shellstate.BindSessionAtPath(path, id, shellstate.SessionUpdate{
+		Kind: "claude", Live: live,
+		Ref: agentsession.Ref{
+			Kind: agentsession.RefID, Value: grokSessionID,
+			Source: "sidecar.claude.hooks", Reported: true, Generation: live,
+		},
+	})
+	if err == nil {
+		t.Fatal("the Claude entry bound a grok session, which is exactly td-11040b")
+	}
+	if !errors.Is(err, agentsession.ErrKindMismatch) {
+		t.Fatalf("the Claude entry was refused with %v; wanted a kind mismatch", err)
+	}
+
+	// The grok entry fires next and binds.
+	out, err := shellstate.BindSessionAtPath(path, id, shellstate.SessionUpdate{
+		Kind: "grok", Live: live,
+		Ref: agentsession.Ref{
+			Kind: agentsession.RefID, Value: grokSessionID,
+			Source: "sidecar.grok.hooks", Reported: true, Generation: live,
+		},
+	})
+	if err != nil {
+		t.Fatalf("the grok entry was refused in its own session: %v", err)
+	}
+	if out.Ref == nil || out.Ref.Value != grokSessionID || out.Kind != "grok" {
+		t.Fatalf("the grok entry bound %+v as kind %q", out.Ref, out.Kind)
+	}
+	if !out.Ref.Reported {
+		t.Fatal("the grok binding is not resumable, so a cold restore could not use it")
+	}
+
+	// And the shell is still a grok shell: a refused report must not quietly
+	// change what the pane is.
+	ref, kind, bound, err := shellstate.SessionRefAtPath(path, id)
+	if err != nil || !bound {
+		t.Fatalf("the binding did not persist: %+v %v %v", ref, bound, err)
+	}
+	if kind != "grok" || ref.Value != grokSessionID {
+		t.Fatalf("the shell records kind %q and reference %q", kind, ref.Value)
+	}
+}
+
+// installedClaudeCommand reads the command out of the Claude adapter's own
+// canonical asset, so the test is about the entry that gets installed rather
+// than about a string typed beside it.
+func installedClaudeCommand(t *testing.T) string {
+	t.Helper()
+	for _, a := range agentintegration.DefaultAdapters() {
+		if a.Provider() != "claude" {
+			continue
+		}
+		return a.Assets()[0].Content
+	}
+	t.Fatal("no Claude adapter is registered")
 	return ""
 }

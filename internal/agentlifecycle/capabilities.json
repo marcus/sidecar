@@ -163,21 +163,29 @@
   {
     "schemaVersion": 1,
     "provider": "grok",
-    "source": "",
-    "assetVersion": "",
-    "tier": "screen-fallback",
-    "evidence": "none",
+    "source": "sidecar.grok.hooks",
+    "assetVersion": "1",
+    "tier": "session-identity",
+    "evidence": "docs-only",
     "minProviderVersion": "",
-    "testedProviderRange": "",
-    "covered": [],
+    "testedProviderRange": "1.0.13",
+    "covered": [
+      "session_identity"
+    ],
     "knownGaps": [
-      "No Sidecar integration is built, so nothing is claimed and screen detection remains the sole authority.",
-      "Not traced. Every statement here is read from the shipped binary's embedded documentation, so it selects a candidate rather than earning a tier.",
-      "grok also reads ~/.claude/settings.json and ~/.cursor/hooks.json by default, so hooks installed for those providers execute inside grok sessions. Any grok integration must expect cross-provider firing in both directions, and payload field naming differs."
+      "The shipped asset is a single SessionStart hook entry: session identity only, by design, and that is what the tier reflects. grok has the strongest hook contract in the catalog and this asset asks for none of it.",
+      "Not traced. Every statement here is read from the documentation grok 1.0.13 embeds in its own shipped binary, so the tier rests on documentation rather than on a capture.",
+      "grok loads hooks from ~/.claude/settings.json and ~/.cursor/hooks.json as well as its own ~/.grok/hooks/*.json, so Sidecar's Claude and Cursor entries also fire inside grok sessions, each claiming its own --kind. Exactly one of the three binds: report-session canonicalises the kind through the catalog and then verifies it against the pane's own occupant, so the foreign claims are refused with kind_mismatch. That is td-11040b, and TestBothEntriesFireInAGrokSessionAndOnlyGroksBinds drives the Claude and grok entries against a grok-typed shell.",
+      "The reverse direction is safe by construction rather than by a check: Claude does not read ~/.grok/hooks/, so Sidecar's grok entry can only ever fire inside grok.",
+      "grok's payload is camelCase (hookEventName, sessionId, cwd, workspaceRoot, promptId), and grok also exports GROK_SESSION_ID into every hook process. Herdr's asset prefers the variable and falls back to the payload; Sidecar reads the payload only, because --hook-stdin is one bounded reader serving every provider and a per-provider environment read would be a second way for one provider to name a session. Nothing has been observed where the two disagree.",
+      "Sidecar owns a dedicated file, ~/.grok/hooks/sidecar.json, because grok merges every *.json in that directory. Ownership is still by entry rather than by file: a hook a user adds to that file is preserved, and the file is removed only when Sidecar's entry was all it held. Herdr deletes its equivalent file outright.",
+      "GROK_HOME relocates the configuration home and is honoured. Herdr also honours a GROK_CONFIG_DIR, and its own comment says the grok CLI does not read it, so Sidecar does not follow that one.",
+      "Hooks are deduplicated across layers by identical handler, and grok's own Stop hook defaults to a 600 second timeout while other events default to 5. Sidecar's entry declares 10 explicitly on SessionStart.",
+      "grok's contract would support `full` once traced -- it is the only provider anywhere with a dedicated cancellation event, StopCancelled, carrying user_interrupt, permission_rejected, permission_cancelled, max_turns and no_progress, alongside PermissionDenied, StopFailure and Notification{permission_prompt, idle_prompt}. The ceiling is a target, not a claim."
     ],
     "orderingGuaranteed": false,
     "sourceDoc": "https://docs.x.ai/docs/grok-cli",
-    "sourceVersionNote": "grok 1.0.13. The strongest hook contract in the catalog and the only one with a dedicated cancellation event: StopCancelled carries reasons including user_interrupt, permission_rejected and permission_cancelled, alongside PermissionDenied, Notification{permission_prompt,idle_prompt}, SessionStart/SessionEnd and GROK_SESSION_ID. Verified in the shipped binary's embedded documentation, which documents StopCancelled where the vendor website does not. A full-tier candidate once traced."
+    "sourceVersionNote": "grok 1.0.13 on darwin/arm64. The hook locations table, the event list, the JSON and TOML hook formats, the camelCase payload fields, GROK_SESSION_ID, and the Claude and Cursor compatibility sources were all read from the documentation the shipped binary embeds, which documents StopCancelled where the vendor website does not. Ported from Herdr's grok integration version 1."
   },
   {
     "schemaVersion": 1,

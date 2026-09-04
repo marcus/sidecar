@@ -373,6 +373,12 @@ type Env struct {
 	// against a released provider binary, because Copilot is not installed on
 	// any machine Sidecar has surveyed; the capability entry records that.
 	CopilotHome string
+	// GrokHome is $GROK_HOME when set, and empty otherwise. It is grok's own
+	// variable for its configuration home -- the shipped binary carries the
+	// string and the error "no user grok home (set $GROK_HOME or $HOME)" -- so
+	// honouring it is what puts Sidecar's hook file where a relocated grok
+	// reads, and what lets a proof run redirect the provider.
+	GrokHome string
 	// ClaudeConfigDir is $CLAUDE_CONFIG_DIR when set, and empty otherwise. It
 	// is Claude Code's own override for its whole configuration home: the
 	// binary resolves that home as the variable's value, falling back to
@@ -401,6 +407,7 @@ func OSEnv() Env {
 		KiloConfigDir:   os.Getenv("KILO_CONFIG_DIR"),
 		KimiCodeHome:    os.Getenv("KIMI_CODE_HOME"),
 		CopilotHome:     os.Getenv("COPILOT_HOME"),
+		GrokHome:        os.Getenv("GROK_HOME"),
 		ClaudeConfigDir: os.Getenv("CLAUDE_CONFIG_DIR"),
 		LookPath:        exec.LookPath,
 		ProviderVersion: detectProviderVersion,
@@ -537,7 +544,7 @@ type Adapter interface {
 
 // DefaultAdapters returns the adapters this build ships.
 func DefaultAdapters() []Adapter {
-	return []Adapter{OpenCodeAdapter{}, CodexAdapter{}, ClaudeAdapter{}, PiAdapter{}, KiloAdapter{}, KimiAdapter{}, NewAntigravityAdapter(), NewCopilotAdapter(), NewCursorAdapter()}
+	return []Adapter{OpenCodeAdapter{}, CodexAdapter{}, ClaudeAdapter{}, PiAdapter{}, KiloAdapter{}, KimiAdapter{}, NewAntigravityAdapter(), NewCopilotAdapter(), NewCursorAdapter(), NewGrokAdapter()}
 }
 
 // Service is the application service behind the CLI and the Configuration

@@ -38,6 +38,8 @@ func sessionHookAdapters(t *testing.T) []sessionHookAdapter {
 			out = append(out, v.sessionHookAdapter)
 		case CursorAdapter:
 			out = append(out, v.sessionHookAdapter)
+		case GrokAdapter:
+			out = append(out, v.sessionHookAdapter)
 		}
 	}
 	if len(out) == 0 {
