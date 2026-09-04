@@ -283,7 +283,7 @@ The startup posture is unchanged: no subprocess, no `LookPath`, no config read o
 7. **A cell keyed by an undeclared column is dropped.** It has no width, no header, and no place in the row; keeping it would be keeping a string nothing can paint.
 8. **M2 was split** into M2a (this) and M2b (the browser and the tab), because the host half is independently useful and independently provable.
 
-None of the [pending protocol revisions](README.md#protocol-revisions-pending-from-the-m0-recall-mockup) was implemented. The draft is implemented as written.
+None of the [protocol revisions the M0 mockup surfaced](README.md#protocol-revisions-from-the-m0-recall-mockup--all-settled) was implemented in M2a. The draft is implemented as written; the revisions landed in M4b and M4e-a.
 
 ## Deviations from the design, recorded in M2b
 
