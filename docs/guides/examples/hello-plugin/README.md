@@ -14,8 +14,8 @@ echo '{"protocol":"sidecar.plugin/v1-draft","method":"list","instance":"hello","
 Run it through Sidecar:
 
 ```bash
-sidecar --enable-feature=plugin_protocol plugin add hello --command python3 "$PWD/hello_plugin.py"
-sidecar --enable-feature=plugin_protocol plugin check hello --list greetings --query bon
+sidecar plugin add hello --command python3 "$PWD/hello_plugin.py"
+sidecar plugin check hello --list greetings --query bon
 ```
 
 `TestGuideExamplePlugin*` in `internal/pluginhost` drives this file through the real host on every build, so the guide cannot describe a plugin that no longer works. Change the file and run `go test ./internal/pluginhost/ -run TestGuideExample`.

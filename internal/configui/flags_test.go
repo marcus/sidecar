@@ -332,3 +332,55 @@ func TestSearchFindsFlagsByConfigName(t *testing.T) {
 		})
 	}
 }
+
+// The Notes and Tasks rows report what Panels reports. Their feature flags are
+// read-only aliases now: the config key decides once it is written, and the
+// flag answers only while it is absent. A row reading the flag alone rendered
+// "Tasks panel OFF" next to a Panels page rendering Tasks ON.
+func TestAliasRowsAgreeWithThePanelsPage(t *testing.T) {
+	on, off := true, false
+	tests := []struct {
+		name    string
+		panelID string
+		flag    string
+		mutate  func(*config.Config)
+		want    bool
+	}{
+		{
+			name:    "tasks on by config while the flag is off",
+			panelID: panelIDTasks,
+			flag:    features.TasksPlugin.Name,
+			mutate: func(cfg *config.Config) {
+				cfg.Features.Flags = map[string]bool{features.TasksPlugin.Name: false}
+				cfg.Plugins.Tasks.Enabled = &on
+			},
+			want: true,
+		},
+		{
+			name:    "notes off by config while the flag is on",
+			panelID: panelIDNotes,
+			flag:    features.NotesPlugin.Name,
+			mutate: func(cfg *config.Config) {
+				cfg.Features.Flags = map[string]bool{features.NotesPlugin.Name: true}
+				cfg.Plugins.Notes.Enabled = &off
+			},
+			want: false,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			m := flagsFixture(t, tc.mutate)
+			d, ok := m.panelDescriptor(tc.panelID)
+			if !ok {
+				t.Fatalf("no %s descriptor in the catalog", tc.panelID)
+			}
+			row := previewCopy[tc.flag]
+			if got := row.state(m); got != m.panelOn(d) {
+				t.Fatalf("Feature Flags says %v, Panels says %v", got, m.panelOn(d))
+			}
+			if got := row.state(m); got != tc.want {
+				t.Fatalf("row state = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}

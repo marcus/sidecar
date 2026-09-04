@@ -106,10 +106,13 @@ func describeResourceProvidersCmd(cfg *config.Config) tea.Cmd {
 	if !resources && !protocol {
 		return nil
 	}
-	// Reading the already-parsed config struct is not I/O, but it still happens
-	// inside the command rather than here, so that the decision and the work
-	// sit on the same side of the latch.
-	if len(cfg.TerminalResources.Providers) == 0 && len(cfg.Plugins.External) == 0 {
+	// Reading the already-parsed config struct is not I/O, so the decision costs
+	// nothing here: this is a walk of at most sixteen entries, and it must be a
+	// per-section one rather than "is anything configured at all". Both flags
+	// default on, so a user with providers in only one section and that
+	// section's flag off would otherwise get a goroutine that waits on the latch
+	// to discover it has nothing to run.
+	if len(enabledPluginInstances(cfg, resources, protocol)) == 0 {
 		return nil
 	}
 

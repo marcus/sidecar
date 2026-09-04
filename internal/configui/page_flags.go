@@ -212,12 +212,14 @@ var previewCopy = map[string]preview{
 		help:         "Keep quick notes in their own Sidecar panel.",
 		owner:        PagePanels,
 		ownerControl: regionPanel + panelIDNotes,
+		reads:        panelReads(panelIDNotes, features.NotesPlugin.Name),
 	},
 	features.TasksPlugin.Name: {
 		label:        "Tasks panel",
 		help:         "Show the embedded Tasks tab for your task list.",
 		owner:        PagePanels,
 		ownerControl: regionPanel + panelIDTasks,
+		reads:        panelReads(panelIDTasks, features.TasksPlugin.Name),
 	},
 	features.ConversationsPlugin.Name: {
 		label:        conversationsFlagLabel,
@@ -226,6 +228,27 @@ var previewCopy = map[string]preview{
 		ownerControl: regionPanel + panelIDConversations,
 		reads:        (*Model).conversationsOn,
 	},
+}
+
+// panelReads makes a row report the panel's own answer rather than the flag
+// behind it.
+//
+// notes_plugin and tasks_plugin are read-only aliases: the config key decides
+// once it is written, and the flag answers only while it is absent. A row
+// reading the flag alone therefore renders ON next to a Panels page rendering
+// OFF, which is what it did. It reports the preference, exactly as Panels does,
+// so the two pages agree even when a dependency (td, for Notes) is off.
+//
+// The flag is the fallback for a Model with no descriptor catalog, where the
+// panel's own answer is not reachable.
+func panelReads(panelID, flag string) func(*Model) bool {
+	return func(m *Model) bool {
+		d, ok := m.panelDescriptor(panelID)
+		if !ok {
+			return m.flagEnabled(flag)
+		}
+		return m.panelOn(d)
+	}
 }
 
 // scrollFlagsPage keeps the focused flag inside the detail pane while retaining

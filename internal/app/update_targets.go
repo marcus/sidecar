@@ -6,7 +6,8 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
-	"github.com/marcus/sidecar/internal/features"
+	"github.com/marcus/sidecar/internal/config"
+	"github.com/marcus/sidecar/internal/plugins/tasks"
 	"github.com/marcus/sidecar/internal/version"
 )
 
@@ -32,15 +33,16 @@ type UpdateTargetResultMsg struct {
 
 // updateDescriptors returns the products to discover, in display order.
 //
-// Tasks takes part only when the tasks_plugin feature is effectively enabled,
-// so config and CLI overrides behave exactly like plugin assembly. A disabled
-// plugin adds no startup process or network work at all.
-func updateDescriptors() []version.Descriptor {
+// Tasks takes part only when the Tasks descriptor says it is enabled, so
+// plugins.tasks.enabled, the tasks_plugin alias and a CLI override all behave
+// exactly as they do in plugin assembly. A disabled plugin adds no startup
+// process or network work at all.
+func updateDescriptors(cfg *config.Config) []version.Descriptor {
 	descs := []version.Descriptor{
 		version.SidecarDescriptor(),
 		version.TdDescriptor(),
 	}
-	if features.IsEnabled(features.TasksPlugin.Name) {
+	if tasks.Descriptor().IsEnabled(cfg) {
 		descs = append(descs, version.TasksDescriptor())
 	}
 	return descs
@@ -50,7 +52,7 @@ func updateDescriptors() []version.Descriptor {
 // product. force bypasses the per-product cache.
 func (m *Model) productCheckCmds(force bool) []tea.Cmd {
 	var cmds []tea.Cmd
-	for _, d := range updateDescriptors() {
+	for _, d := range updateDescriptors(m.cfg) {
 		current := ""
 		if d.Product == version.ProductSidecar {
 			current = m.currentVersion

@@ -448,7 +448,7 @@ Two rules this protocol restates because it widens what a plugin can ask for:
 - `timeout` is clamped to [1s, 60s]; `claimHosts` means what it means for a resource provider.
 - Array order is precedence. At most 16 instances across both sections.
 
-Everything under `plugins.external` is behind the `plugin_protocol` feature flag, default off while the protocol is a draft. Turn it on with `sidecar --enable-feature=plugin_protocol` or `features.flags.plugin_protocol` in config. The flag gates only this section: `terminal_resource_providers` governs the frozen one on its own, so turning the draft protocol off cannot take a working resource provider down with it.
+Everything under `plugins.external` is behind the `plugin_protocol` feature flag, which is on by default: nothing is configured on a fresh install, so nothing is described or started. Set `features.flags.plugin_protocol` to false to stop every plugin process while leaving the configuration in place. The flag gates only this section: `terminal_resource_providers` governs the frozen one on its own, so turning this protocol off cannot take a working resource provider down with it.
 
 An ID configured in both sections is one plugin: `plugins.external` wins and the legacy entry is dropped, so a half-finished migration cannot start two child processes under one identity.
 

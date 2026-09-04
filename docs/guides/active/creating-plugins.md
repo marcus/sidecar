@@ -10,13 +10,7 @@ The contract itself — every field, every bound, every rule — is [docs/refere
 
 ## Before you start
 
-The plugin protocol is a draft, gated by a feature flag that is off by default:
-
-```bash
-sidecar --enable-feature=plugin_protocol
-```
-
-or, permanently, `features.flags.plugin_protocol: true` in `~/.config/sidecar/config.json`. Every `sidecar plugin` command below needs it; without it they exit `4` and say so. The identifier is `sidecar.plugin/v1-draft` until the protocol freezes; see [the reference's draft status](../../reference/plugin-protocol.md#draft-status-what-is-settled-and-what-is-not) for what that does and does not mean for your plugin.
+The plugin host is governed by the `plugin_protocol` feature flag, which is on by default — an install with nothing configured starts nothing, so it costs you nothing until you configure a plugin. Every `sidecar plugin` command below needs it; with `features.flags.plugin_protocol: false` in `~/.config/sidecar/config.json` they exit `4` and say so, which is also how you stop every plugin process while leaving the configuration in place. The identifier is `sidecar.plugin/v1-draft` until the protocol freezes; see [the reference's draft status](../../reference/plugin-protocol.md#draft-status-what-is-settled-and-what-is-not) for what that does and does not mean for your plugin.
 
 ## Which class of plugin do you want?
 

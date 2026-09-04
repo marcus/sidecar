@@ -39,8 +39,9 @@ Sidecar app
             └─ Tasks store + journal ──▶ configured tasks data
 ```
 
-The plugin is gated by the `tasks_plugin` feature flag (default off,
-`internal/features/features.go`) and placed by
+The plugin is gated by `plugins.tasks.enabled` (off until it is asked for),
+with the `tasks_plugin` feature flag as a read-only alias while that key is
+absent — the rule lives in `internal/panelpref`. It is placed by
 `internal/plugins/assembly/assembly.go` after Workspaces or after Notes per
 `plugins.tasks.position`. Tab numbers are derived from that ordered plan —
 nothing may assume Tasks is tab 6.

@@ -171,3 +171,120 @@ func TestPanelsPageListsEverySurfaceInTheRealCatalog(t *testing.T) {
 		}
 	}
 }
+
+// internal/config restates the IDs Sidecar's own surfaces answer to, because
+// it is a leaf package and cannot read the descriptor catalog. This is the
+// test that keeps the restatement true: a plugin added to the catalog, or a
+// global tab added to the app shell, without being named there would let an
+// external plugin take its id and paint two tabs with one identity.
+func TestReservedPluginIDsCoverTheCatalog(t *testing.T) {
+	for _, d := range Descriptors() {
+		name, ok := config.ReservedPluginID(d.ID)
+		if !ok {
+			t.Errorf("descriptor %q is not in config's reserved id list; an external plugin could take its id", d.ID)
+			continue
+		}
+		if name != d.Name {
+			t.Errorf("reserved id %q is called %q in config and %q in the catalog", d.ID, name, d.Name)
+		}
+	}
+	// The two app-owned global tabs have no descriptor and are just as
+	// unavailable as an id.
+	for _, id := range []string{app.GlobalSessions, app.GlobalActivity} {
+		if _, ok := config.ReservedPluginID(id); !ok {
+			t.Errorf("app-owned global surface %q is not in config's reserved id list", id)
+		}
+	}
+}
+
+// The Flags page and the Panels page must report the same state for Notes and
+// Tasks, rendered from the real descriptor catalog rather than configui's
+// fixture. configui's own test binds its fixture descriptors straight to
+// internal/panelpref, so it proves the row mechanism but cannot prove that the
+// descriptors Sidecar ships answer the same way; this renders both pages with
+// what `Descriptors()` actually returns, in the two configurations where the
+// alias and the config key disagree — which is the disagreement td-a360ff
+// reported.
+func TestFlagsPageAgreesWithPanelsInTheRealCatalog(t *testing.T) {
+	on, off := true, false
+	for _, tc := range []struct {
+		name       string
+		flagsLabel string
+		panelLabel string
+		mutate     func(*config.Config)
+		want       string
+	}{
+		{
+			name:       "tasks on by config while the flag is off",
+			flagsLabel: "Tasks panel",
+			panelLabel: "Tasks",
+			mutate: func(cfg *config.Config) {
+				cfg.Features.Flags[features.TasksPlugin.Name] = false
+				cfg.Plugins.Tasks.Enabled = &on
+			},
+			want: "ON",
+		},
+		{
+			name:       "notes off by config while the flag is on",
+			flagsLabel: "Notes panel",
+			panelLabel: "Notes",
+			mutate: func(cfg *config.Config) {
+				cfg.Features.Flags[features.NotesPlugin.Name] = true
+				cfg.Plugins.Notes.Enabled = &off
+			},
+			want: "OFF",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			path := filepath.Join(dir, "config.json")
+			if err := os.WriteFile(path, []byte("{}"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			config.SetTestConfigPath(path)
+			t.Cleanup(config.ResetTestConfigPath)
+
+			cfg := config.Default()
+			tc.mutate(cfg)
+			features.Init(cfg)
+			t.Cleanup(func() { features.Init(config.Default()) })
+
+			flags := settingsRowState(t, cfg, configui.PageFlags, tc.flagsLabel)
+			panels := settingsRowState(t, cfg, configui.PagePanels, tc.panelLabel)
+			if flags != panels {
+				t.Fatalf("Feature Flags says %s and Panels says %s for %q", flags, panels, tc.panelLabel)
+			}
+			if flags != tc.want {
+				t.Fatalf("both pages say %s, want %s", flags, tc.want)
+			}
+		})
+	}
+}
+
+// settingsRowState renders one settings page from the real catalog and reports
+// the ON/OFF a labelled row shows. The rows are "<label> [BETA] ... ON", inside
+// the pane borders.
+func settingsRowState(t *testing.T, cfg *config.Config, page configui.PageID, label string) string {
+	t.Helper()
+	m := configui.New()
+	m.SetPluginDescriptors(Descriptors())
+	m.SetHostState(configui.HostState{Config: cfg})
+	m.Open(page)
+	view := ansi.Strip(m.View(160, 45))
+	for _, line := range strings.Split(view, "\n") {
+		fields := strings.Fields(strings.ReplaceAll(line, "│", " "))
+		if len(fields) == 0 {
+			continue
+		}
+		state := fields[len(fields)-1]
+		if state != "ON" && state != "OFF" {
+			continue
+		}
+		text := strings.TrimSpace(strings.TrimSuffix(strings.Join(fields[:len(fields)-1], " "), " BETA"))
+		if text == label {
+			return state
+		}
+	}
+	t.Fatalf("no %q row with a state on the page:\n%s", label, view)
+	return ""
+}

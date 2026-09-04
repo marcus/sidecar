@@ -5,21 +5,22 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/marcus/sidecar/internal/docview"
-	"github.com/marcus/sidecar/internal/features"
 	"github.com/marcus/sidecar/internal/filefind"
 	appmsg "github.com/marcus/sidecar/internal/msg"
+	"github.com/marcus/sidecar/internal/panelpref"
 	"github.com/marcus/sidecar/internal/uirequest"
 	"github.com/marcus/sidecar/internal/workspacecreate"
 	"github.com/marcus/sidecar/internal/workspaceops"
 )
 
-// notesPluginPresent mirrors assembly.NotesWanted, which this package cannot
-// import: the Note row exists exactly when the Notes plugin does.
+// notesPluginPresent asks the same function the Notes descriptor's own Enabled
+// does, so the Note row exists exactly when the Notes plugin does. It used to
+// restate the rule here, which is how a surface drifts from the descriptor.
 func (p *Plugin) notesPluginPresent() bool {
 	if p.ctx == nil || p.ctx.Config == nil {
 		return false
 	}
-	return p.ctx.Config.Plugins.TDMonitor.Enabled && features.IsEnabled(features.NotesPlugin.Name)
+	return panelpref.Notes(p.ctx.Config)
 }
 
 // configuredProviders is one kind row per enabled terminal-resource provider.

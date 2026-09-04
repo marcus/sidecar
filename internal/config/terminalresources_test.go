@@ -392,9 +392,11 @@ func TestSaveTerminalResourcesIsIdempotent(t *testing.T) {
 	}
 }
 
-// Removing the last provider must actually remove the section, not leave the
-// old one behind through unknown-key preservation.
-func TestSaveRemovesAnEmptiedTerminalResourcesSection(t *testing.T) {
+// terminalResources is a read-only alias, so clearing the providers in memory
+// changes nothing on disk. The section belongs to the user's file until the
+// release that rewrites its entries into plugins.external; Save neither writes
+// it nor deletes it, and a caller that wants it gone edits the file.
+func TestSaveKeepsTerminalResourcesEmptiedInMemory(t *testing.T) {
 	path := writeConfig(t, `{"terminalResources":{"providers":[{"id":"a","command":["a"],"enabled":true}]}}`)
 	SetTestConfigPath(path)
 	t.Cleanup(ResetTestConfigPath)
@@ -407,8 +409,15 @@ func TestSaveRemovesAnEmptiedTerminalResourcesSection(t *testing.T) {
 	if err := Save(cfg); err != nil {
 		t.Fatalf("Save: %v", err)
 	}
-	if _, ok := readRawConfig(t, path)["terminalResources"]; ok {
-		t.Fatal("an emptied section was resurrected from the old file")
+	if _, ok := readRawConfig(t, path)["terminalResources"]; !ok {
+		t.Fatal("Save deleted a section it does not own")
+	}
+	reloaded, err := Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if len(reloaded.TerminalResources.Providers) != 1 {
+		t.Fatalf("providers after the save = %+v", reloaded.TerminalResources.Providers)
 	}
 }
 
