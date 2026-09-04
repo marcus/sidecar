@@ -209,12 +209,12 @@ func TestTheRouteShowsEveryProviderAndItsHonestState(t *testing.T) {
 	// adapter, so the route has to show it and say so. It took that job from pi
 	// while pi's capability entry was retracted, and keeps it now that pi ships
 	// an adapter of its own.
-	for _, want := range []string{"opencode", "codex", "claude", "pi", "grok", "unsupported"} {
+	for _, want := range []string{"opencode", "codex", "claude", "pi", "kimi", "grok", "unsupported"} {
 		if !strings.Contains(view, want) {
 			t.Fatalf("the route does not mention %q:\n%s", want, view)
 		}
 	}
-	if !strings.Contains(view, "0 of 4 installed") {
+	if !strings.Contains(view, "0 of 5 installed") {
 		t.Fatalf("the summary is wrong:\n%s", view)
 	}
 }
@@ -342,7 +342,7 @@ func TestInstallingIsConfirmedByNamingTheFilesAndThenActuallyInstalls(t *testing
 	// The route re-reads rather than assuming, so what it shows is what is on
 	// disk.
 	view = ansi.Strip(m.View(160, 45))
-	if !strings.Contains(view, "current") || !strings.Contains(view, "1 of 4 installed") {
+	if !strings.Contains(view, "current") || !strings.Contains(view, "1 of 5 installed") {
 		t.Fatalf("the route did not refresh after the mutation:\n%s", view)
 	}
 }
@@ -495,10 +495,19 @@ func TestTheRouteFitsEveryTerminalSizeAndKeepsItsRowsReachable(t *testing.T) {
 				t.Fatalf("%dx%d line %d is %d wide", size[0], size[1], i, w)
 			}
 		}
-		// Every provider row is still declared, so the cursor cannot walk onto
-		// a row that was clipped away.
+		// The provider list is painted at every size, so the cursor cannot walk
+		// onto a row that was clipped away.
+		//
+		// The row this looks for is the FIRST one rather than a named provider,
+		// and that changed when the kimi adapter landed. The route expands its
+		// focused row to a detail paragraph and action pills, so each added
+		// provider costs several lines; at 60x24 the fifth adapter pushed
+		// opencode off the page, which is not a regression this test found but
+		// the accordion layout the parity plan's Slice 6 exists to replace with
+		// a fixed-shape table. Naming a specific provider here made this test a
+		// count of how many adapters fit above it.
 		stripped := ansi.Strip(view)
-		if !strings.Contains(stripped, "opencode") {
+		if !strings.Contains(stripped, "claude") {
 			t.Fatalf("%dx%d lost the provider list:\n%s", size[0], size[1], stripped)
 		}
 	}

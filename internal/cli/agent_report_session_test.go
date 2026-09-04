@@ -106,7 +106,7 @@ func TestAProviderWithNoOfficialIntegrationSaysSo(t *testing.T) {
 	// the source back. When the source came back this case did not, so the loop
 	// below skipped itself on pi and `go test` still printed ok -- a test that
 	// silently stopped testing anything.
-	for _, kind := range []string{"codex", "claude", "opencode", "pi"} {
+	for _, kind := range []string{"codex", "claude", "opencode", "pi", "kimi"} {
 		if agentsession.OfficialSourceFor(kind) == "" {
 			t.Fatalf("%s is expected to have an official source", kind)
 		}

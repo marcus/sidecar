@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/marcus/sidecar/internal/agentactivity"
+	"github.com/marcus/sidecar/internal/agentintegration"
 	"github.com/marcus/sidecar/internal/agentlifecycle"
 	"github.com/marcus/sidecar/internal/agentlifecycle/lifecyclestore"
 )
@@ -50,6 +51,7 @@ func TestBundledAssetsSpawnArgvTheShippedCLIAccepts(t *testing.T) {
 	}{
 		{name: "pi", run: runPiOrderingHarness},
 		{name: "opencode", run: runOpenCodeOrderingHarness},
+		{name: "kimi", run: runKimiHookCorpus},
 	} {
 		t.Run(provider.name, func(t *testing.T) {
 			argvs := provider.run(t, node, t.TempDir())
@@ -236,6 +238,24 @@ func runOpenCodeOrderingHarness(t *testing.T, node, dir string) [][]string {
 		argvs = append(argvs, result.Argv[k])
 	}
 	return argvs
+}
+
+// runKimiHookCorpus returns every argv Kimi's installed hooks can spawn.
+//
+// It runs no harness, and that is not a shortcut. The other two providers ship a
+// file of JavaScript, so the only honest way to learn what it spawns is to run
+// it; Kimi's integration is twelve command strings written into the user's
+// config.toml, and the table that renders them IS the shipped bytes -- the
+// asset's golden checksum is taken over the block those commands appear in. So
+// the corpus is read from the same place the installer writes from, which is
+// what makes this test about what is installed rather than about a copy of it.
+//
+// The store still sees them as one run in order, exactly as the loop above
+// requires, which is the property that matters here: twelve separate hook
+// processes with no sequence of their own must produce 1..12 and not a gap.
+func runKimiHookCorpus(t *testing.T, _, _ string) [][]string {
+	t.Helper()
+	return agentintegration.KimiHookArgvCorpus()
 }
 
 func runAssetHarness(t *testing.T, node, provider, dir string, args ...string) []byte {

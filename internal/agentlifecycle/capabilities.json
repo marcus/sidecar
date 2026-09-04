@@ -238,5 +238,30 @@
     "orderingGuaranteed": false,
     "sourceDoc": "https://dev.meta.ai/docs/muse-code/",
     "sourceVersionNote": "muse 1.0.1 on darwin/arm64, inspected 2026-08-31. No hook contract found; session storage verified via local JSONL and SQLite traces, and live TUI captured via private tmux socket (braille title spinner U+2800-FF, \u25c8 Thinking + esc to interrupt chrome, \u27e9 prompt idle)."
+  },
+  {
+    "schemaVersion": 1,
+    "provider": "kimi",
+    "source": "sidecar.kimi.hooks",
+    "assetVersion": "1",
+    "tier": "screen-fallback",
+    "evidence": "docs-only",
+    "minProviderVersion": "0.14.0",
+    "testedProviderRange": "",
+    "covered": [],
+    "knownGaps": [
+      "NOT TRACED. The adapter, the twelve hook entries and the installer ship, but no capture of a live Kimi Code CLI session backs any transition, so nothing is claimed and screen detection remains the sole authority. `covered` is empty on purpose: a tier is earned from traces of a released provider version and is never copied from Herdr's table, and Herdr gives kimi full lifecycle authority. Promoting this entry means capturing traces into testdata/traces/kimi and re-deriving each claim in hooktrace_test.go.",
+      "Session identity cannot be bound on this build, and the cause is in Sidecar rather than in Kimi. `sidecar agent report-session` canonicalises its --kind through agentcatalog.Lookup, which searches the launchable families and their aliases only; kimi is a detection-only family, so Lookup(\"kimi\") is false and the SessionStart hook is refused with unsupported_kind. State reports are unaffected, because `agent report` checks --provider against the pane's resolved occupant instead and agentactivity identifies a kimi process by name. The SessionStart entry ships anyway: it is correct, it is inert rather than wrong, and it starts working the moment kimi becomes a family the catalog can resolve, which is Slice 5 of the parity plan.",
+      "Kimi runs every hook matching an event in parallel, so two rows matching one event would be two report processes racing for a store sequence. Upstream's table avoids it by construction -- the only doubled event is PreToolUse and its two matchers are exact complements -- and a row added later without a complementary matcher would reintroduce the race silently. TestKimiFiresExactlyOneHookPerEvent is the guard.",
+      "The PreToolUse working row uses upstream's negative-lookahead matcher `^(?!AskUserQuestion$).*$`, which Kimi's own regular-expression engine has to support. Kimi's published hooks reference documents `matcher` as \"a regular expression\" without naming the engine, so whether a lookahead compiles is untested here. If it does not, the failure is one missing working report on ordinary tool use, not a broken configuration: UserPromptSubmit still starts the turn and Stop still ends it.",
+      "process_exit is not claimed and SessionEnd is deliberately not hooked. Upstream's twelve rows do not include it, and this port keeps the provider half verbatim rather than adding knowledge Herdr does not have. Kimi does publish SessionEnd (with an exit/archive matcher target), so a future version that hooked it could claim the transition; today Sidecar owns process liveness for every provider anyway.",
+      "cancelled is reported as a lane but is not a terminal outcome. Interrupt maps to idle with reason `cancelled`, matching upstream's idle action; no `sidecar agent end --outcome cancelled` is sent, because a turn interrupt is not a run ending. StopFailure, which Kimi publishes for a failed turn, is likewise not hooked by upstream and not hooked here.",
+      "Sub-agent activity is visible only as SubagentStart, which upstream maps to working, and there is no SubagentStop row, so a sub-agent cannot return the pane to idle on its own. The turn's own Stop does that. Whether a sub-agent's PreToolUse events are distinguishable from the pane conversation's is unknown without a trace.",
+      "The integration manages one file, $KIMI_CODE_HOME/config.toml or ~/.kimi-code/config.toml. Kimi also reads a project-local .kimi-code/local.toml; Sidecar deliberately does not install there, because a per-project copy would follow a checkout into other people's clones and report from panes Sidecar never set up.",
+      "config.toml is edited by a line editor that only ever replaces the region between its own two marker comments, with a TOML parser as a read-only oracle at both ends of every edit. A config.toml containing a structural multi-line string is refused outright -- install, repair and uninstall all decline rather than risk a marker comment inside a string body -- so the integration is unavailable to a user whose config uses one. That fails in the safe direction."
+    ],
+    "orderingGuaranteed": false,
+    "sourceDoc": "https://moonshotai.github.io/kimi-code/en/customization/hooks",
+    "sourceVersionNote": "Not traced. The event contract was read from Kimi Code CLI's own published hooks reference (twenty events; a four-field [[hooks]] schema of event, matcher, command and timeout, where any extra field makes the whole config fail to load; a stdin payload carrying hook_event_name, session_id, session_title, client_type and cwd; and fail-open exit-code semantics) and from Kimi's configuration reference for $KIMI_CODE_HOME and ~/.kimi-code/config.toml. The event-to-lane mapping is ported row for row from Herdr's kimi integration at HERDR_INTEGRATION_VERSION=7, whose minimum supported Kimi Code is 0.14.0; see internal/agentintegration/portedfrom.go."
   }
 ]

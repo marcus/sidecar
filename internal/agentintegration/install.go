@@ -355,6 +355,11 @@ type Env struct {
 	// can be run twice. Empty means "no override", which is also what a test
 	// that never sets it gets.
 	PiAgentDir string
+	// KimiCodeHome is $KIMI_CODE_HOME when set, and empty otherwise. It is Kimi
+	// Code CLI's own documented override for its whole data directory, so
+	// honouring it is what lets a relocated Kimi be found — and what lets a
+	// proof run redirect the provider away from the user's real ~/.kimi-code.
+	KimiCodeHome string
 	// LookPath finds a provider executable. Defaults to exec.LookPath.
 	LookPath func(file string) (string, error)
 	// ProviderVersion reports an installed provider's version string.
@@ -374,6 +379,7 @@ func OSEnv() Env {
 		Home:            os.Getenv("HOME"),
 		ConfigHome:      os.Getenv("XDG_CONFIG_HOME"),
 		PiAgentDir:      os.Getenv("PI_CODING_AGENT_DIR"),
+		KimiCodeHome:    os.Getenv("KIMI_CODE_HOME"),
 		LookPath:        exec.LookPath,
 		ProviderVersion: detectProviderVersion,
 		UID:             os.Getuid(),
@@ -509,7 +515,7 @@ type Adapter interface {
 
 // DefaultAdapters returns the adapters this build ships.
 func DefaultAdapters() []Adapter {
-	return []Adapter{OpenCodeAdapter{}, CodexAdapter{}, ClaudeAdapter{}, PiAdapter{}}
+	return []Adapter{OpenCodeAdapter{}, CodexAdapter{}, ClaudeAdapter{}, PiAdapter{}, KimiAdapter{}}
 }
 
 // Service is the application service behind the CLI and the Configuration
@@ -957,13 +963,21 @@ func parseMode(s string) fs.FileMode {
 	return fs.FileMode(n)
 }
 
+// markerToken is the ownership sentinel itself, without a comment syntax around
+// it. Every Sidecar-owned region in a provider's tree carries it, whatever that
+// file's comment character is: `//` for the JavaScript and TypeScript assets
+// below, `#` for the managed block in Kimi's TOML configuration. Naming it once
+// is what keeps "only ever remove what carries the sidecar-integration: marker"
+// a single rule rather than a string repeated per adapter.
+const markerToken = "sidecar-integration:"
+
 // markerPrefix introduces the one line that makes a file Sidecar's.
 //
 // The marker exists because ownership cannot be a filename. Without it, an
 // uninstall would delete whatever happened to be called sidecar-lifecycle.js
 // and an install would silently adopt someone else's script of the same name —
 // both of which the plan forbids in as many words.
-const markerPrefix = "// sidecar-integration:"
+const markerPrefix = "// " + markerToken
 
 // markerScanLines bounds how far into a file the marker is looked for. It is
 // near the top of every bundled asset, and scanning a whole file for it would

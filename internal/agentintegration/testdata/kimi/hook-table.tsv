@@ -1,0 +1,13 @@
+# event	matcher	verb	state	reason
+SessionStart	-	report-session	-	-
+UserPromptSubmit	-	report	working	turn_start
+PreToolUse	^(?!AskUserQuestion$).*$	report	working	tool_use
+PreToolUse	^AskUserQuestion$	report	blocked	question
+PostToolUse	^AskUserQuestion$	report	working	permission_resolved
+PostToolUseFailure	^AskUserQuestion$	report	working	permission_resolved
+SubagentStart	-	report	working	subagent_start
+PreCompact	-	report	working	compaction
+PermissionRequest	-	report	blocked	permission_request
+PermissionResult	-	report	working	permission_resolved
+Stop	-	report	idle	turn_complete
+Interrupt	-	report	idle	cancelled
