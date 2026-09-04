@@ -6,38 +6,30 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"reflect"
+	"strings"
 )
 
 // saveConfig is the JSON-marshaling intermediary that uses string durations.
+//
+// terminalResources is deliberately absent. It is a read-only alias: Sidecar
+// still reads it and still dispatches its entries on the frozen
+// sidecar.terminal-resource/v1 identifier, but nothing writes it, so a save
+// carries the section forward exactly as the user wrote it (see Save).
 type saveConfig struct {
-	Projects saveProjectsConfig `json:"projects"`
-	Plugins  savePluginsConfig  `json:"plugins"`
-	Keymap   KeymapConfig       `json:"keymap"`
-	UI       UIConfig           `json:"ui"`
-	Features FeaturesConfig     `json:"features,omitempty"`
-	// TerminalResources is written only when it has content; see Save.
-	TerminalResources saveTerminalResourcesConfig `json:"terminalResources,omitempty"`
-	Selection         saveSelectionConfig         `json:"selection"`
-	Notifications     NotificationsConfig         `json:"notifications"`
+	Projects      saveProjectsConfig  `json:"projects"`
+	Plugins       savePluginsConfig   `json:"plugins"`
+	Keymap        KeymapConfig        `json:"keymap"`
+	UI            UIConfig            `json:"ui"`
+	Features      FeaturesConfig      `json:"features,omitempty"`
+	Selection     saveSelectionConfig `json:"selection"`
+	Notifications NotificationsConfig `json:"notifications"`
 	// Hosts is written only when a machine is registered; see Save.
 	Hosts HostsConfig `json:"hosts,omitempty"`
 }
 
 type saveSelectionConfig struct {
 	CopyOnSelect *bool `json:"copyOnSelect,omitempty"`
-}
-
-type saveTerminalResourcesConfig struct {
-	Providers []saveTerminalResourceProviderConfig `json:"providers,omitempty"`
-}
-
-type saveTerminalResourceProviderConfig struct {
-	ID         string   `json:"id"`
-	Command    []string `json:"command"`
-	PassEnv    []string `json:"passEnv,omitempty"`
-	Enabled    bool     `json:"enabled"`
-	Timeout    string   `json:"timeout,omitempty"`
-	ClaimHosts []string `json:"claimHosts,omitempty"`
 }
 
 type saveProjectsConfig struct {
@@ -55,9 +47,9 @@ type savePluginsConfig struct {
 	Notes         saveNotesConfig         `json:"notes,omitempty"`
 	Tasks         saveTasksConfig         `json:"tasks,omitempty"`
 	// External is written whenever an instance is configured and omitted when
-	// the list is empty. Unlike terminalResources it needs no companion delete
-	// in Save: the whole plugins object is re-marshalled on every save, so an
-	// emptied list disappears with it rather than being carried forward.
+	// the list is empty. It needs no companion delete in Save:
+	// mergePluginsSection clears every key named here before writing the fresh
+	// ones, so an emptied list disappears rather than being carried forward.
 	External []savePluginInstanceConfig `json:"external,omitempty"`
 }
 
@@ -178,13 +170,12 @@ func toSaveConfig(cfg *Config) saveConfig {
 				SidebarDisplay:            &cfg.Plugins.Workspace.SidebarDisplay,
 			},
 		},
-		Keymap:            cfg.Keymap,
-		UI:                cfg.UI,
-		Features:          cfg.Features,
-		TerminalResources: toSaveTerminalResources(cfg.TerminalResources),
-		Selection:         saveSelectionConfig{CopyOnSelect: &cfg.Selection.CopyOnSelect},
-		Notifications:     cfg.Notifications,
-		Hosts:             cfg.Hosts,
+		Keymap:        cfg.Keymap,
+		UI:            cfg.UI,
+		Features:      cfg.Features,
+		Selection:     saveSelectionConfig{CopyOnSelect: &cfg.Selection.CopyOnSelect},
+		Notifications: cfg.Notifications,
+		Hosts:         cfg.Hosts,
 	}
 }
 
@@ -211,22 +202,59 @@ func toSavePluginInstances(entries []PluginInstanceConfig) []savePluginInstanceC
 	return out
 }
 
-func toSaveTerminalResources(cfg TerminalResourcesConfig) saveTerminalResourcesConfig {
-	out := saveTerminalResourcesConfig{}
-	for _, p := range cfg.Providers {
-		sp := saveTerminalResourceProviderConfig{
-			ID:         p.ID,
-			Command:    append([]string(nil), p.Command...),
-			PassEnv:    append([]string(nil), p.PassEnv...),
-			Enabled:    p.Enabled,
-			ClaimHosts: append([]string(nil), p.ClaimHosts...),
+// managedPluginKeys are the subkeys of "plugins" that savePluginsConfig owns.
+//
+// It is derived from the struct's own tags rather than written out, so adding a
+// section to savePluginsConfig cannot leave a stale key behind in
+// mergePluginsSection.
+func managedPluginKeys() []string {
+	t := reflect.TypeOf(savePluginsConfig{})
+	keys := make([]string, 0, t.NumField())
+	for i := 0; i < t.NumField(); i++ {
+		name, _, _ := strings.Cut(t.Field(i).Tag.Get("json"), ",")
+		if name == "" || name == "-" {
+			continue
 		}
-		if p.Timeout > 0 {
-			sp.Timeout = p.Timeout.String()
-		}
-		out.Providers = append(out.Providers, sp)
+		keys = append(keys, name)
 	}
-	return out
+	return keys
+}
+
+// mergePluginsSection folds the sections Sidecar manages into whatever the file
+// already had under "plugins", so a subsection it does not know about — a newer
+// release's key, a hand-written one — survives a save the way an unknown
+// top-level key does. Save used to rewrite the whole object, which dropped it.
+//
+// Managed keys are deleted before the fresh ones are written, so a section that
+// marshals away (an emptied plugins.external list) disappears rather than being
+// resurrected from the old file.
+//
+// The result is always built from a map, whatever the file held, so the key
+// order Save writes does not depend on whether a plugins section was there to
+// merge into. Two consecutive saves must produce the same bytes.
+func mergePluginsSection(existing json.RawMessage, managed savePluginsConfig) (json.RawMessage, error) {
+	encoded, err := json.Marshal(managed)
+	if err != nil {
+		return nil, err
+	}
+	merged := make(map[string]json.RawMessage)
+	if len(existing) > 0 {
+		if err := json.Unmarshal(existing, &merged); err != nil {
+			slog.Warn("config: plugins section is not an object, unmanaged subkeys will be lost", "error", err)
+			merged = make(map[string]json.RawMessage)
+		}
+	}
+	var fresh map[string]json.RawMessage
+	if err := json.Unmarshal(encoded, &fresh); err != nil {
+		return nil, err
+	}
+	for _, key := range managedPluginKeys() {
+		delete(merged, key)
+	}
+	for key, val := range fresh {
+		merged[key] = val
+	}
+	return json.Marshal(merged)
 }
 
 // Save writes the config to ~/.config/sidecar/config.json, preserving
@@ -254,27 +282,30 @@ func Save(cfg *Config) error {
 	sc := toSaveConfig(cfg)
 	fields := map[string]interface{}{
 		"projects":  sc.Projects,
-		"plugins":   sc.Plugins,
 		"keymap":    sc.Keymap,
 		"ui":        sc.UI,
 		"selection": sc.Selection,
 	}
+	// plugins is merged rather than replaced: the sections listed in
+	// savePluginsConfig are rewritten and everything else under the key is
+	// carried forward untouched.
+	plugins, err := mergePluginsSection(raw["plugins"], sc.Plugins)
+	if err != nil {
+		return fmt.Errorf("marshal plugins: %w", err)
+	}
+	raw["plugins"] = plugins
 	if len(sc.Features.Flags) > 0 {
 		fields["features"] = sc.Features
 	}
-	// terminalResources is a managed key: written when providers are
-	// configured, removed when the last one goes. Writing an empty section into
-	// every config file would be noise, but leaving the key untouched when it
-	// empties would resurrect a provider the user just deleted, because Save's
-	// unknown-key preservation would carry the old section forward.
+	// terminalResources is deliberately not in fields and deliberately not
+	// deleted. It is a read-only alias of the plugin protocol's own section:
+	// Sidecar reads it and dispatches its entries on the frozen resource
+	// identifier, and nothing writes it, so Save carries it forward exactly as
+	// the user wrote it. Emptying cfg.TerminalResources in memory therefore
+	// removes nothing from the file — the way to remove a provider is to edit
+	// the section, and the release that retires the alias rewrites the entries
+	// into plugins.external.
 	//
-	// Every read-modify-write helper reloads before saving, so "empty" here
-	// always means the user emptied it, never that the caller never read it.
-	if len(sc.TerminalResources.Providers) > 0 {
-		fields["terminalResources"] = sc.TerminalResources
-	} else {
-		delete(raw, "terminalResources")
-	}
 	// notifications is now a managed key. A targeted source save must preserve
 	// the validated global channel and quiet-hours policy it was based on.
 	fields["notifications"] = sc.Notifications
