@@ -1037,3 +1037,83 @@ func TestTheKiloAdapterReportsEveryPathItTouches(t *testing.T) {
 		}
 	}
 }
+
+// TestAnOutdatedKiloAssetIsUpdatedAndTheReplacedCopyIsRecoverable pins the
+// backup, which is the one branch of planConverge nothing else reaches.
+//
+// The suite drove install, repair over a tampered file, and the duplicate-copy
+// trap, and every one of them wrote over bytes that were either absent or
+// Sidecar's current version, so the OpBackup op existed and was never emitted.
+// A user updating from an older Sidecar is the ordinary case, and it is the only
+// case where an installed file that Sidecar wrote is about to be replaced by
+// different bytes.
+func TestAnOutdatedKiloAssetIsUpdatedAndTheReplacedCopyIsRecoverable(t *testing.T) {
+	svc, _, paths := kiloFixture(t)
+	if err := os.MkdirAll(paths.OwnedDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	old := "// sidecar-integration: id=" + KiloSource + " schema=1 version=0\n// an older asset\n"
+	if err := os.WriteFile(paths.Owned, []byte(old), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	st := kiloStatus(t, svc)
+	if st.Status != agentlifecycle.StatusOutdated {
+		t.Fatalf("an older version reports %s", st.Status)
+	}
+	if st.InstalledVersion != "0" {
+		t.Fatalf("the status reports installed version %q, want the one in the file", st.InstalledVersion)
+	}
+	if _, err := svc.Plan(KiloProvider, ActionInstall); refusalFrom(t, err).Code != RefuseAlreadyInstalled {
+		t.Fatal("install over an outdated asset was not refused in favour of update")
+	}
+
+	plan := kiloApply(t, svc, ActionUpdate)
+	if len(plan.Ops) != 2 || plan.Ops[0].Kind != OpBackup || plan.Ops[1].Kind != OpWrite {
+		t.Fatalf("update ops = %+v, want backup then write", plan.Ops)
+	}
+	backup, err := os.ReadFile(paths.Backup)
+	if err != nil {
+		t.Fatalf("the replaced asset is not recoverable: %v", err)
+	}
+	if string(backup) != old {
+		t.Fatal("the backup is not the asset that was replaced")
+	}
+	if kiloStatus(t, svc).Status != agentlifecycle.StatusCurrent {
+		t.Fatal("update did not converge on the bundled asset")
+	}
+
+	// And the backup Sidecar kept is Sidecar's to remove, unlike anything else
+	// in the directory.
+	kiloApply(t, svc, ActionUninstall)
+	if _, err := os.Stat(paths.Backup); !os.IsNotExist(err) {
+		t.Fatal("uninstall left behind the backup Sidecar itself wrote")
+	}
+}
+
+// TestASymlinkAtTheKiloAssetPathIsRefusedRatherThanFollowed pins the Lstat rule,
+// which every other adapter in this package states for itself. A symlink here
+// would make an ordinary Stat report a healthy regular file while the write
+// landed wherever the link pointed.
+func TestASymlinkAtTheKiloAssetPathIsRefusedRatherThanFollowed(t *testing.T) {
+	svc, _, paths := kiloFixture(t)
+	if err := os.MkdirAll(paths.OwnedDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	target := filepath.Join(t.TempDir(), "elsewhere.js")
+	if err := os.WriteFile(target, []byte("untouched\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(target, paths.Owned); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, act := range Actions() {
+		if _, err := svc.Plan(KiloProvider, act); err == nil {
+			t.Fatalf("%s followed a symlink at the asset path", act)
+		}
+	}
+	if got, _ := os.ReadFile(target); string(got) != "untouched\n" {
+		t.Fatal("a write landed outside the directory Sidecar owns")
+	}
+}

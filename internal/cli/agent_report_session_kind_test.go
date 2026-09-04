@@ -84,19 +84,31 @@ func TestAMistypedKindIsUnsupportedRatherThanAMismatch(t *testing.T) {
 // id, which is exactly why this one drives the whole detection catalog rather
 // than the single provider that exposed the bug. A family that becomes
 // launchable later still passes, through the Lookup branch.
+//
+// The named ids come first, and they are what keeps this a tripwire in a world
+// where DetectionFamilies is empty. Which side of the catalog a family sits on
+// is not this test's subject: a shipped integration's own --kind claim must
+// resolve, whether it resolves through Lookup or through FindDetection. Deriving
+// the whole list from DetectionFamilies alone would make the catalog gaining
+// launch configuration for every family turn this into either a vacuous loop or
+// a failure about nothing, and neither is a statement about binding a session.
 func TestADetectionOnlyFamilyCanStillBindItsSession(t *testing.T) {
-	families := agentcatalog.DetectionFamilies()
-	if len(families) == 0 {
-		t.Fatal("the detection catalog is empty, so this asserts nothing")
-	}
-	for _, family := range families {
-		got, err := resolveReportedKind(family.ID)
-		if err != nil {
-			t.Fatalf("resolveReportedKind(%q) = %v; a detection-only family's integration cannot bind "+
-				"the conversation in its own pane", family.ID, err)
+	// kilo is named because its plugin is the shipped integration that found the
+	// bug, and because it must keep resolving on the day kilo becomes launchable.
+	ids := []string{"kilo"}
+	for _, family := range agentcatalog.DetectionFamilies() {
+		if family.ID != "kilo" {
+			ids = append(ids, family.ID)
 		}
-		if got != family.ID {
-			t.Fatalf("resolveReportedKind(%q) = %q, want it unchanged", family.ID, got)
+	}
+	for _, id := range ids {
+		got, err := resolveReportedKind(id)
+		if err != nil {
+			t.Fatalf("resolveReportedKind(%q) = %v; a family Sidecar recognises in a pane cannot bind "+
+				"the conversation in it", id, err)
+		}
+		if got != id {
+			t.Fatalf("resolveReportedKind(%q) = %q, want it unchanged", id, got)
 		}
 	}
 }

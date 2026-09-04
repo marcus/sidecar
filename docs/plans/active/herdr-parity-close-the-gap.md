@@ -157,7 +157,7 @@ A second, smaller finding for the same audience: an asset spawns `$SIDECAR_BIN a
 
 `kimi`, `kilo`, `omp`, `mastracode`, in that order. Each follows Slice 1's shape. `omp` and `mastracode` also gain their first Sidecar identity here: an alias case and a catalog family, detection-only in the sense of Phase 4 except that their state comes from hooks rather than from a screen manifest, since upstream ships none for them.
 
-**Exit gate:** `TestHerdrAuthorityGaps` prints an empty list, or only providers Herdr added since the last sync.
+**Exit gate:** every provider in this slice ships a Sidecar source, and every row `TestHerdrAuthorityGaps` still prints is a provider sitting at the ceiling its own traces allow, with that ceiling named in its capability entry. An empty list is not the measure and was never reachable: the gap rule closes a row only at `full`, and a port that keeps upstream's provider half cannot reach `full` for a provider that emits no distinguishable cancellation and no exit signal.
 
 #### Result for `kilo`, 2026-09-03 (`td-16cbac`)
 

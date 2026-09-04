@@ -244,6 +244,12 @@ The provider was driven with `kilo run`, one short turn per trace, with a cheap 
 
 The error trace used a model id that does not exist, which is the cheapest way to reach `session.error` and is the path that shows a failed turn resolving rather than latching the pane on working.
 
+### Two traps, both found the hard way in this run
+
+**`KILO_CONFIG_DIR` is not isolation.** Kilo creates its XDG default config directory at startup whatever that variable says, so a run that relocates only `KILO_CONFIG_DIR` still writes into `~/.config/kilo`. This run put one zero-byte migration marker there before the mistake was caught; the file was removed and the directory restored to its previous contents, and nothing under `~/.local/share/kilo`, `~/.local/state/kilo` or `~/.cache/kilo` was touched. Move `HOME` and every `XDG_*` variable, which is what the wrapper described above ended up doing. A provider's own config-dir override is a statement about where it reads, not a promise about where it writes.
+
+**The `TMUX` trap recorded in the Pi section above is real, and this run rediscovered it.** A single `tmux` invocation made outside the env file every other command sourced created a short-lived session on the maintainer's default server. It ended on its own and nothing of theirs was touched. The rule is to put `unset TMUX` in the file every command sources, not to remember it at each call site.
+
 ### Sanitization
 
 Sanitization is by construction, as everywhere else in this directory: the tracer recorded event names and payload field **names**, and never had prompt text, response text, tool arguments, tool results, file contents, or environment values. Session identifiers were mapped to `session-N` placeholders inside the tracer process, so no real identifier ever reached a file. The tracer also dropped the per-token `message.part.delta` and `message.part.updated` streams and the startup catalog chatter, which carry no lifecycle information and would bury the fixture.
