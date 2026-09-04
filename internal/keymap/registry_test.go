@@ -401,3 +401,27 @@ func TestDefaultBindings_NotesCtrlYIsContextSpecific(t *testing.T) {
 		}
 	}
 }
+
+// TestConfigurationActionsAllHaveKeys keeps every page action Configuration
+// advertises reachable from the help modal and the palette, not only from the
+// pill that prints it. The Integrations table's four verbs joined this list
+// when the route became a table; the rest were already here.
+func TestConfigurationActionsAllHaveKeys(t *testing.T) {
+	bound := map[string]bool{}
+	for _, b := range DefaultBindings() {
+		if b.Context == "config" {
+			bound[b.Command] = true
+		}
+	}
+	for _, command := range []string{
+		"recheck", "copy-guidance", "open-file",
+		"add-project", "init-repo", "remove-project",
+		"edit-host", "enable-remote-hosts",
+		"use-global-theme", "test-notifications",
+		"install-integration", "update-integration", "repair-integration", "uninstall-integration",
+	} {
+		if !bound[command] {
+			t.Fatalf("%s has no key in the config context", command)
+		}
+	}
+}
