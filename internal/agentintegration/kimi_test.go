@@ -220,29 +220,6 @@ func kimiHookFor(t *testing.T, event, target string) KimiHook {
 	return KimiHook{}
 }
 
-// kimiAdvisory is a synthetic capability standing in for a tier this port has
-// not earned.
-//
-// The shipped entry is screen-fallback with docs-only evidence, so the resolver
-// correctly refuses to let a kimi report author anything, and a lane walk
-// against the real registry would prove only that. The ladder still has to be
-// provable: what a report says, and what the resolver would do with it once
-// traces exist, are separate questions, and this answers the second without
-// touching the first. TestTheShippedKimiTierAuthorsNothing below is the other
-// half, and the two together are the honest statement.
-func kimiAdvisory() agentlifecycle.Capability {
-	c, _ := agentlifecycle.CapabilityForSource(KimiSource)
-	c.Tier = agentlifecycle.TierAdvisory
-	c.Evidence = agentlifecycle.EvidenceRealTrace
-	c.Covered = []agentlifecycle.Transition{
-		agentlifecycle.TransitionWorkStart,
-		agentlifecycle.TransitionBlockedOnRequest,
-		agentlifecycle.TransitionUnblocked,
-		agentlifecycle.TransitionTurnComplete,
-	}
-	return c
-}
-
 // kimiEmit stores the report one hook would send, exactly as the installed
 // config entry would spawn it: no sequence of its own, so the store assigns.
 func kimiEmit(t *testing.T, rig *steelRig, h KimiHook) {
@@ -302,7 +279,14 @@ func kimiResolve(rig *steelRig, capability agentlifecycle.Capability) agentlifec
 // blocked lane would fail here rather than on a user's machine.
 func TestKimiLaneWalkDrivesEveryBranchOfTheLadder(t *testing.T) {
 	rig := newSteelRig(t)
-	capability := kimiAdvisory()
+	// The registry's own entry, not a synthetic one. The traces under
+	// internal/agentlifecycle/testdata/traces/kimi earned it `advisory`, which
+	// is a tier that authors state, so this walk is what the shipped build
+	// actually does rather than a rehearsal of what it might do later.
+	capability, ok := agentlifecycle.CapabilityForSource(KimiSource)
+	if !ok {
+		t.Fatal("no capability is registered for the kimi source, so its reports would be refused outright")
+	}
 
 	seenReasons := map[agentlifecycle.ReasonCode]bool{}
 	for i, row := range kimiFixtureRows(t, "lane-walk.tsv") {
@@ -345,34 +329,38 @@ func TestKimiLaneWalkDrivesEveryBranchOfTheLadder(t *testing.T) {
 	}
 }
 
-// TestTheShippedKimiTierAuthorsNothing is the other half of the statement above,
-// and it is the one that has to hold on this build.
+// TestTheShippedKimiTierIsTheCeilingItsTracesReach guards the boundary the lane
+// walk above sits on.
 //
-// The port ships untraced, so its capability entry is screen-fallback with
-// docs-only evidence and an empty covered set. A reader who saw only the lane
-// walk could reasonably conclude kimi drives panes today. It does not: the
-// reports are stored, and the resolver hands the lane straight back to screen
-// detection. This test is what makes promoting the tier a deliberate act — it
-// fails the moment the registry entry claims authority, which is exactly when
-// somebody should be looking at the traces that earned it.
-func TestTheShippedKimiTierAuthorsNothing(t *testing.T) {
+// `advisory` is what six traced transitions earn, and it is the ceiling rather
+// than a waypoint: `full` also needs session_identity and process_exit, and
+// neither is claimable today. Session identity is refused by agentcatalog.Lookup
+// because kimi is a detection-only family, measured live in the proof run as
+// `unsupported_kind`. Process exit is unclaimed by choice, because upstream's
+// twelve rows carry no SessionEnd and this port keeps the provider half
+// verbatim.
+//
+// So a build that claims more than advisory has either fixed one of those or
+// edited the registry, and only the first is honest. The test fails on both, and
+// its message says which change would make it legitimate.
+func TestTheShippedKimiTierIsTheCeilingItsTracesReach(t *testing.T) {
 	capability, ok := agentlifecycle.CapabilityForSource(KimiSource)
 	if !ok {
 		t.Fatal("no capability is registered for the kimi source, so its reports would be refused outright")
 	}
 	tier, _ := capability.TierFor(agentlifecycle.StatusCurrent, true)
-	if tier != agentlifecycle.TierScreenFallback {
-		t.Fatalf("the kimi capability now exercises %q. That is only honest if traces are checked in under "+
-			"internal/agentlifecycle/testdata/traces/kimi and hooktrace_test.go re-derives each covered "+
-			"transition from them; update this test in the same change that adds them.", tier)
+	if tier != agentlifecycle.TierAdvisory {
+		t.Fatalf("the kimi capability exercises %q, not advisory. Reaching full needs session_identity, which "+
+			"needs kimi to be a family agentcatalog.Lookup resolves, and process_exit, which needs a SessionEnd "+
+			"row this port deliberately does not have. Ship either and update this test in the same change.", tier)
 	}
-
-	rig := newSteelRig(t)
-	rig.advance(2 * time.Second)
-	kimiEmit(t, rig, kimiHookFor(t, "UserPromptSubmit", ""))
-	exp := kimiResolve(rig, capability)
-	if exp.Authority == agentlifecycle.AuthorityLifecycle {
-		t.Fatalf("an untraced source authored a pane's state: %+v", exp)
+	for _, unclaimed := range []agentlifecycle.Transition{
+		agentlifecycle.TransitionSessionIdentity,
+		agentlifecycle.TransitionProcessExit,
+	} {
+		if capability.Covers(unclaimed) {
+			t.Fatalf("the registry claims %s; nothing in testdata/traces/kimi shows Sidecar observing it", unclaimed)
+		}
 	}
 }
 

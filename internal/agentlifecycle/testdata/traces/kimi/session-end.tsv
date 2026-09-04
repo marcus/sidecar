@@ -1,0 +1,11 @@
+# ms	event	session	turn	tool	fields
+0	SessionEnd	session-1	-	-	client_type=kimi_code_cli,cwd,hook_event_name,reason=exit,session_id,session_title
+#
+# The same process again, after /quit.
+#
+# SessionEnd fires and carries reason=exit. It is recorded because the port does
+# NOT hook it: upstream's twelve rows do not include SessionEnd, and this port
+# keeps the provider half verbatim. So process_exit is unclaimed BY CHOICE
+# rather than for want of an event, and this trace is what makes that
+# distinction checkable. A future asset that released the lane on reason=exit
+# could claim the transition.

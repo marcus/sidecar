@@ -1,0 +1,16 @@
+# ms	event	session	turn	tool	fields
+0	SessionStart	session-1	-	-	client_type=kimi_code_cli,cwd,hook_event_name,model,profile,session_id,source=startup
+88	UserPromptSubmit	session-1	-	-	client_type=kimi_code_cli,cwd,hook_event_name,is_steer,prompt,session_id
+136	TurnStarted	session-1	turn-1	-	client_type=kimi_code_cli,cwd,hook_event_name,origin_kind,prompt,session_id,turn_id
+4529	PreToolUse	session-1	-	Bash	client_type=kimi_code_cli,cwd,hook_event_name,session_id,tool_call_id,tool_input,tool_name
+4565	PostToolUse	session-1	-	Bash	client_type=kimi_code_cli,cwd,hook_event_name,session_id,tool_call_id,tool_input,tool_name,tool_output
+6189	Stop	session-1	-	-	client_type=kimi_code_cli,cwd,hook_event_name,session_id,stop_hook_active
+#
+# The same Bash tool call under `kimi -p`, the non-interactive prompt mode.
+#
+# The absence here is the finding, and it is bounded by two rows a reader can
+# see rather than by a watch: PreToolUse is followed directly by PostToolUse,
+# with no PermissionRequest between them. A non-interactive run has nobody to
+# ask, so it approves and proceeds. The blocked lane is therefore reachable only
+# from an interactive session, which is why the capture above had to drive a
+# real TUI.

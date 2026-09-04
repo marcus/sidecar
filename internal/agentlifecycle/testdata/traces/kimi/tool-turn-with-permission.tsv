@@ -1,0 +1,29 @@
+# ms	event	session	turn	tool	fields
+0	SessionStart	session-1	-	-	client_type=kimi_code_cli,cwd,hook_event_name,model,profile,session_id,source=startup
+840	UserPromptSubmit	session-1	-	-	client_type=kimi_code_cli,cwd,hook_event_name,is_steer,prompt,session_id,session_title
+1053	TurnStarted	session-1	turn-1	-	client_type=kimi_code_cli,cwd,hook_event_name,origin_kind,prompt,session_id,session_title,turn_id
+3359	PreToolUse	session-1	-	Bash	client_type=kimi_code_cli,cwd,hook_event_name,session_id,session_title,tool_call_id,tool_input,tool_name
+3459	PermissionRequest	session-1	turn-1	Bash	action,agent_id,client_type=kimi_code_cli,cwd,display,hook_event_name,id,session_id,session_title,tool_call_id,tool_input,tool_name,turn_id
+20971	PermissionResult	session-1	turn-1	Bash	action,agent_id,client_type=kimi_code_cli,cwd,decision,display,hook_event_name,id,session_id,session_title,tool_call_id,tool_input,tool_name,turn_id
+20975	PostToolUse	session-1	-	Bash	client_type=kimi_code_cli,cwd,hook_event_name,session_id,session_title,tool_call_id,tool_input,tool_name,tool_output
+22106	Stop	session-1	-	-	client_type=kimi_code_cli,cwd,hook_event_name,session_id,session_title,stop_hook_active
+#
+# One TUI turn in a Sidecar-managed shell, from process start to turn end, with
+# a Bash tool call that needed approval. This is the whole ladder Herdr's twelve
+# rows describe, in one capture.
+#
+# SessionStart carries source=startup and a session_id, so the conversation is
+# identifiable. UserPromptSubmit is work start. PreToolUse carries tool_name, so
+# the two complementary matchers upstream installs are evaluable. Then the two
+# events that make the blocked lane first-class rather than inferred:
+# PermissionRequest is the last event before the pane blocks, and
+# PermissionResult is what resolves it.
+#
+# PermissionResult fires on approval AND on denial -- it carries a `decision`
+# field, recorded here as a name only -- so a Kimi pane cannot latch on blocked
+# the way a Claude pane does. That single fact is why the blocked lane is
+# claimed at all.
+#
+# TurnStarted appears between UserPromptSubmit and the first tool call and is
+# NOT hooked by the port: upstream's table does not use it, and it would report
+# working a second time for a lane UserPromptSubmit has already opened.

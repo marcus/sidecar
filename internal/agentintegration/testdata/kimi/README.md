@@ -28,8 +28,12 @@ successful turn never reaches: a question, a permission request, a compaction,
 a sub-agent, and an interrupt. It is fed through the real lifecycle store, the
 real `StoreSource`, and the real resolver.
 
-Nothing here is a trace. No capture of a live Kimi Code CLI session backs any of
-it, which is why `capabilities.json` records this source at `screen-fallback`
-with `evidence: docs-only` and an empty `covered` set. Traces, when they are
-captured, go in `internal/agentlifecycle/testdata/traces/kimi/` and are what
-promotes the tier.
+Nothing here is a trace. These two files say what the port *does*; they are
+translations of upstream's tests and of Sidecar's own report shape, and no
+capture is involved in either. The evidence that a released Kimi really emits
+these events, in this order, is separate and lives in
+`internal/agentlifecycle/testdata/traces/kimi/` — four sanitized captures of
+kimi-code 0.40.1 which are what earned this source its `advisory` tier.
+
+The division is deliberate and worth keeping. A fixture here failing means the
+port changed. A trace there failing means somebody re-measured the provider.
