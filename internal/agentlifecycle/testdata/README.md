@@ -339,7 +339,7 @@ fired, was already allowlisted.
 
 The fourth needs its own paragraph, because unlike every other allowlisted key it
 names a field whose real value is an identifier. **`session_id` records only the
-word `placeholder` or the word `thread`** — never an id — in the way
+word `placeholder` or the word `thread`**, never an id, in the way
 `ctx.sessionFile` records only present or absent. The distinction is the whole
 evidence for this port's one correction to upstream's mapping: Mastra Code's
 `SessionStart` and, on a first session, its `UserPromptSubmit` both carry the
@@ -351,9 +351,9 @@ name could not show that the event upstream binds on names no conversation.
 mastracode 0.38.0 was installed with `npm install --prefix` into a scratch
 directory, so nothing reached the user's `PATH`, global npm tree, or shell rc.
 Mastra Code reads **no environment variable at all** for its configuration
-directory — `configDirName` is a constructor argument defaulting to
+directory: `configDirName` is a constructor argument defaulting to
 `.mastracode`, validated to be a single directory name, and the TUI entry point
-passes neither it nor `homeDir` — so the only lever is `HOME`, and the run moved
+passes neither it nor `homeDir`, so the only lever is `HOME`, and the run moved
 it. The user's `~/.mastracode` did not exist before the run and does not exist
 after it. `XDG_CONFIG_HOME`, `XDG_DATA_HOME`, `XDG_STATE_HOME` and
 `XDG_CACHE_HOME` were moved as well, per the kilo lane's finding, and the run
@@ -371,8 +371,8 @@ created, and `PATH` and `SIDECAR_BIN` re-exported inside the pane against the
 `path_helper` trap recorded above.
 
 Two capture facts that cost time here. The tracer is a **capture-only** project
-hook — `<cwd>/.mastracode/hooks.json`, which Mastra Code appends after the global
-file — that tees stdin to a log and reports nothing. It has to be a separate hook
+hook at `<cwd>/.mastracode/hooks.json`, which Mastra Code appends after the global
+file, and it tees stdin to a log and reports nothing. It has to be a separate hook
 rather than a wrapper around Sidecar's, for the reason the Kimi section records:
 a wrapper reports alongside Sidecar's own. And the placeholder in
 `session-start-carries-no-thread.tsv` is only visible from a project with **no

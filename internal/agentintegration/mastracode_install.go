@@ -167,7 +167,7 @@ func mastracodeHomeDir(home string) string {
 // 0.38.0 package that creates it unasked is the TUI's analytics writer, which
 // mkdirs it to drop analytics.json and which the user can turn off. So it exists
 // after a TUI run, does not exist after headless use, and does not exist before
-// the first launch -- which is exactly when somebody installing an integration is
+// the first launch, which is exactly when somebody installing an integration is
 // likely to be standing. Refusing on its absence would have meant the integration
 // could not be installed until the agent had been launched once, for a directory
 // that carries no state Sidecar would be inventing.
