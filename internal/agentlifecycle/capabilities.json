@@ -208,6 +208,7 @@
       "The entry is the minimal documented shape, a lone `command` member, which is what Herdr writes. Cursor's own generator emits `{type, command}`, so both forms exist in the wild and the scan accepts a handler with no `type`.",
       "cursor-agent also loads hooks from ~/.claude/settings.json and the project-local Claude settings, so Sidecar's Claude entry fires inside cursor sessions too. It is refused there rather than bound, because report-session verifies the claimed kind against the pane's own occupant.",
       "The `version` member at the top of hooks.json is written only into a file Sidecar creates. 2026.08.25's hook loader never reads it, so adding it to a user's existing file would edit bytes outside Sidecar's entry for no effect. Herdr adds it unconditionally.",
+      "One case is undecidable and is resolved rather than hidden: a hooks.json that was already exactly `{\"version\": 1}` and nothing else ends, after an install, at bytes identical to the file Sidecar creates from nothing, so uninstall cannot tell the two apart and removes it. A file carrying anything of the user's still comes back byte for byte. TestCursorCannotTellItsOwnHeaderFromTheUsers pins both halves.",
       "Sidecar's asset registers nothing else, so the full registry present in the bundle -- beforeSubmitPrompt, the tool events, stop carrying status \"aborted\", postToolUseFailure.is_interrupt, subagentStart/Stop and sessionEnd -- is a ceiling rather than a claim. A fuller asset could reach `full` on paper once traced."
     ],
     "orderingGuaranteed": false,
@@ -305,7 +306,7 @@
     ],
     "orderingGuaranteed": false,
     "sourceDoc": "https://dev.meta.ai/docs/muse-code/",
-    "sourceVersionNote": "muse 1.0.1 on darwin/arm64, inspected 2026-08-31. No hook contract found; session storage verified via local JSONL and SQLite traces, and live TUI captured via private tmux socket (braille title spinner U+2800-FF, ◈ Thinking + esc to interrupt chrome, ⟩ prompt idle)."
+    "sourceVersionNote": "muse 1.0.1 on darwin/arm64, inspected 2026-08-31. No hook contract found; session storage verified via local JSONL and SQLite traces, and live TUI captured via private tmux socket (braille title spinner U+2800-FF, \u25c8 Thinking + esc to interrupt chrome, \u27e9 prompt idle)."
   },
   {
     "schemaVersion": 1,

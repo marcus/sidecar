@@ -141,3 +141,47 @@ func TestCursorAddsItsVersionHeaderOnlyToAFileItCreates(t *testing.T) {
 		}
 	})
 }
+
+// TestCursorCannotTellItsOwnHeaderFromTheUsers pins the one case the rule above
+// does not cover, so it is a decision on the record rather than a surprise.
+//
+// A user whose hooks.json is exactly `{"version": 1}` and nothing else -- the
+// shape cursor-agent's own writer produces before any hook is added -- gets that
+// file removed by uninstall rather than handed back. The reason is that the two
+// files are the same file: installing into `{"version": 1}` and creating one
+// from nothing both end at the identical bytes, in the identical order, so no
+// reading of the file can say which happened. Uninstall has to pick one, and it
+// picks removal, because leaving a header behind with nothing under it is the
+// more confusing of the two outcomes and the backup written beside it holds the
+// original either way.
+//
+// The narrower promise still holds and is tested above: a file carrying
+// anything of the user's, including a hook of their own, comes back byte for
+// byte.
+func TestCursorCannotTellItsOwnHeaderFromTheUsers(t *testing.T) {
+	svc, _, paths := cursorFixture(t)
+	const before = "{\n  \"version\": 1\n}\n"
+	writeFileForTest(t, paths.File, before)
+
+	applyTo(t, svc, CursorProvider, ActionInstall)
+	// The header was already there, so install did not add one, and the result
+	// is byte-identical to the file Sidecar creates in an empty tree. That
+	// equality is the whole reason the case is undecidable.
+	if got, want := readFileForTest(t, paths.File), string(NewCursorAdapter().integration.canonicalFile()); got != want {
+		t.Fatalf("installing into a bare version header did not converge on the canonical file\n got: %s\nwant: %s", got, want)
+	}
+
+	applyTo(t, svc, CursorProvider, ActionUninstall)
+	if _, err := readFileMaybe(paths.File); err == nil {
+		t.Fatal("uninstall kept the file; the recorded decision is that it goes")
+	}
+	// What the backup holds is the installed file, not the user's original:
+	// uninstall backs up what it is about to remove, over the copy install made
+	// of what it was about to rewrite. So the header is recoverable by reading
+	// the backup and deleting the hooks member, and not by restoring the backup.
+	// Pinned because it is the second half of the same undecidability, and a
+	// reader who assumes the backup is the pre-install file would be wrong.
+	if got := readFileForTest(t, paths.Backup); got != string(NewCursorAdapter().integration.canonicalFile()) {
+		t.Fatalf("the backup does not hold the file uninstall removed\n got: %s", got)
+	}
+}
