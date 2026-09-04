@@ -22,8 +22,10 @@ import (
 // Both halves of the catalog are covered. A launchable family is checked
 // through its launch command, which is the spelling its own panes report; a
 // detection-only family has no command, so it is checked through its id and
-// every alias it records — which for those ten is the whole of their Sidecar
-// code, so a missing case here is the entire feature missing.
+// every alias it records. Aliases are not asserted for launchable families
+// here, because some of them are conversation adapter ids ("cursor-cli",
+// "pi-agent") rather than process spellings; the process spellings are asserted
+// against Herdr's own table by TestUpstreamAliasesResolveForClaimedFamilies.
 func TestTheProcessNameVocabularyMatchesTheAgentCatalog(t *testing.T) {
 	for _, family := range agentcatalog.Families() {
 		t.Run(family.ID, func(t *testing.T) {
@@ -55,23 +57,49 @@ func TestTheProcessNameVocabularyMatchesTheAgentCatalog(t *testing.T) {
 	}
 }
 
-// The two spellings of the detection-only set — agentcatalog's list and this
-// package's detectionOnly switch — are what Supports and processGate are built
-// on. They are separate so that agentactivity's hot path does not import the
+// aliasGatedFamilies are the ten families whose process gate is the alias table
+// rather than a hand-written predicate, spelled here so the tests that cover
+// that whole path keep covering it.
+//
+// They used to be reachable as agentcatalog.DetectionFamilies(), and that
+// stopped being true when the catalog moved to TOML and every one of them
+// gained a launch command. Reading them from the catalog now would silently
+// cover nothing, which is the failure this list exists to prevent: what these
+// ten have in common is a gate, not a missing command.
+var aliasGatedFamilies = []string{
+	"cline", "devin", "droid", "hermes", "kilo",
+	"kimi", "kiro", "maki", "qodercli", "qwen",
+}
+
+// The two spellings of the alias-gated set, the list above and this package's
+// aliasGatedFamily switch, are what Supports and processGate are built on.
+// They are separate so that agentactivity's hot path does not import the
 // catalog, which makes them exactly the kind of pair that drifts.
-func TestDetectionOnlySetMatchesTheCatalog(t *testing.T) {
-	for _, family := range agentcatalog.DetectionFamilies() {
-		if !detectionOnly(family.ID) {
-			t.Errorf("agentcatalog has detection-only family %q and detectionOnly() does not; its panes refuse with %s.process-mismatch",
-				family.ID, family.ID)
+func TestAliasGatedSetMatchesTheCatalog(t *testing.T) {
+	for _, id := range aliasGatedFamilies {
+		if !aliasGatedFamily(id) {
+			t.Errorf("%q is alias-gated here and aliasGatedFamily() does not know it; its panes refuse with %s.process-mismatch", id, id)
 		}
-		if !Supports(family.ID) {
-			t.Errorf("Supports(%q) = false; Detect would answer \"unsupported-agent\" for every pane running it", family.ID)
+		if !Supports(id) {
+			t.Errorf("Supports(%q) = false; Detect would answer \"unsupported-agent\" for every pane running it", id)
+		}
+		if _, ok := agentcatalog.Lookup(id); !ok {
+			t.Errorf("%q is not a catalog family at all", id)
 		}
 	}
+	gated := map[string]bool{}
+	for _, id := range aliasGatedFamilies {
+		gated[id] = true
+	}
+	// Every other launchable family owes the engine a hand-written gate, and
+	// commandGate refuses anything it has no case for. A family added to the
+	// catalog with neither is a pane that is never evaluated.
 	for _, family := range agentcatalog.Families() {
-		if detectionOnly(family.ID) {
-			t.Errorf("launchable family %q is also in detectionOnly(); one of the two lists is wrong", family.ID)
+		if gated[family.ID] || Supports(family.ID) {
+			continue
+		}
+		if _, declared := familiesWithNoScreenManifest[family.ID]; !declared {
+			t.Errorf("launchable family %q has no hand-written gate, is not alias-gated, and is not declared as having no screen manifest", family.ID)
 		}
 	}
 }
@@ -84,10 +112,15 @@ func TestDetectionOnlyAliasesMatchTheUpstreamTable(t *testing.T) {
 	if err != nil {
 		t.Fatalf("load aliases.upstream.json: %v", err)
 	}
-	for _, family := range agentcatalog.DetectionFamilies() {
+	for _, id := range aliasGatedFamilies {
+		family, ok := agentcatalog.Lookup(id)
+		if !ok {
+			t.Errorf("%q is not a catalog family", id)
+			continue
+		}
 		upstream, ok := table.Agents[family.ID]
 		if !ok {
-			t.Errorf("detection-only family %q has no entry in the upstream alias table", family.ID)
+			t.Errorf("alias-gated family %q has no entry in the upstream alias table", family.ID)
 			continue
 		}
 		recorded := append([]string{family.ID}, family.Aliases...)
@@ -183,26 +216,19 @@ func upstreamAliases(t *testing.T) map[string][]string {
 	return out
 }
 
-// claimedFamilies are the ten providers Sidecar can launch and has screen
-// detection for.
-var claimedFamilies = []string{
+// handGatedFamilies are the ten providers with a hand-written process gate.
+var handGatedFamilies = []string{
 	"claude", "codex", "grok", "antigravity", "pi",
 	"copilot", "cursor", "opencode", "amp", "muse",
 }
 
-// detectionOnlyFamilies are the ten Herdr screen-manifest agents Sidecar
-// detects and cannot launch (Phase 4, Decision 4).
-var detectionOnlyFamilies = []string{
-	"cline", "devin", "droid", "hermes", "kilo",
-	"kimi", "kiro", "maki", "qodercli", "qwen",
-}
-
-// sidecarFamilies is every family Sidecar has an identity for, in either half of
-// the catalog. Twenty of Herdr's twenty-three agents; the three missing are
-// gemini and omp, both excluded by Decision 4, and mastracode, which upstream
-// has an integration for but no screen manifest.
+// sidecarFamilies is every family Sidecar has an identity for and a vendored
+// screen manifest for: twenty of Herdr's twenty-three agents. The three missing
+// are gemini, excluded by Decision 4, and omp and mastracode, which upstream
+// ships hooks-only with no screen rules to inherit; those two are catalog
+// families with no manifest and are declared in familiesWithNoScreenManifest.
 func sidecarFamilies() []string {
-	return append(append([]string(nil), claimedFamilies...), detectionOnlyFamilies...)
+	return append(append([]string(nil), handGatedFamilies...), aliasGatedFamilies...)
 }
 
 // A pane running an agent under a spelling upstream knows and Sidecar does not
@@ -223,21 +249,52 @@ func TestUpstreamAliasesResolveForClaimedFamilies(t *testing.T) {
 	}
 }
 
-// Every family in either half of the catalog must be in the list above, so the
-// alias assertion cannot quietly stop covering one.
+// Every family in either half of the catalog must be in the list above, or
+// declared as having no screen manifest, so the alias assertion cannot quietly
+// stop covering one.
 func TestUpstreamAliasTableCoversEveryCatalogFamily(t *testing.T) {
-	claimed := make(map[string]bool, len(claimedFamilies)+len(detectionOnlyFamilies))
+	claimed := make(map[string]bool, len(handGatedFamilies)+len(aliasGatedFamilies))
 	for _, family := range sidecarFamilies() {
 		claimed[family] = true
 	}
-	for _, family := range agentcatalog.Families() {
-		if !claimed[family.ID] {
-			t.Errorf("catalog family %q is not in claimedFamilies; add it there and to Supports, or it has no upstream alias record", family.ID)
+	check := func(kind string, families []agentcatalog.Family) {
+		for _, family := range families {
+			if claimed[family.ID] {
+				continue
+			}
+			if _, declared := familiesWithNoScreenManifest[family.ID]; declared {
+				continue
+			}
+			t.Errorf("%s family %q is in neither handGatedFamilies nor aliasGatedFamilies and is not declared "+
+				"in familiesWithNoScreenManifest; add it to one, or its upstream aliases go unasserted", kind, family.ID)
 		}
 	}
-	for _, family := range agentcatalog.DetectionFamilies() {
-		if !claimed[family.ID] {
-			t.Errorf("detection-only family %q is not in detectionOnlyFamilies; add it there, or its upstream aliases go unasserted", family.ID)
+	check("catalog", agentcatalog.Families())
+	check("detection-only", agentcatalog.DetectionFamilies())
+}
+
+// The two families with no screen manifest still have an upstream alias record,
+// and it still has to resolve: a hook report from one of them is checked against
+// the pane's process name by VerifyReportedKind, so a spelling this resolver
+// cannot name is a legitimate report refused.
+func TestUpstreamAliasesResolveForFamiliesWithNoScreenManifest(t *testing.T) {
+	table, err := manifests.LoadAliases()
+	if err != nil {
+		t.Fatalf("load aliases.upstream.json: %v", err)
+	}
+	for id := range familiesWithNoScreenManifest {
+		aliases, ok := table.Agents[id]
+		if !ok {
+			t.Errorf("%q has no upstream alias entry", id)
+			continue
+		}
+		for _, alias := range aliases {
+			if got := identifyProcessName(alias); got != id {
+				t.Errorf("identifyProcessName(%q) = %q, want %q", alias, got, id)
+			}
+		}
+		if Supports(id) {
+			t.Errorf("Supports(%q) = true, but no manifest is vendored for it; its rows would carry a chip that can never leave unknown", id)
 		}
 	}
 }

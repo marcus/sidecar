@@ -1,0 +1,22 @@
+# Droid, the Factory AI CLI.
+#
+# Sources, read 2026-09-03:
+#   command, install, flags, resume  https://docs.factory.ai/droid-cli/cli-reference
+#   resume                           also Herdr agent_resume.rs, `droid --resume <id>`
+#
+# `--skip-permissions-unsafe` is the real bypass. `--auto <low|medium|high>` is
+# an autonomy tier rather than a bypass and takes a value, so it is not what the
+# auto-approve checkbox means here.
+#
+# The resume recorded is the interactive one. `droid exec` spells resume
+# `-s, --session-id` and gives `-r` a different meaning entirely
+# (`--reasoning-effort`); Sidecar launches the interactive agent, so the
+# interactive spelling is the one that belongs in this file.
+id = "droid"
+order = 130
+name = "Droid"
+short = "Droid"
+command = "droid"
+skip_permissions_arg = "--skip-permissions-unsafe"
+resume_args = ["--resume"]
+resume_kinds = ["id"]

@@ -174,7 +174,16 @@ func ResolveAgentCommandFromConfig(agentType string, configured map[string]strin
 		if !ok {
 			return ""
 		}
-		command = family.Command
+		// LaunchArgs are part of the command, not arguments to it: for a family
+		// whose bare command is not its agent, dropping them starts a program
+		// that prints help and exits. They are joined bare rather than quoted
+		// because a catalog family's subcommand is a plain word by construction,
+		// which TestBundledFamilyArgumentsAreBareArgvEntries holds it to.
+		//
+		// Only the catalog default gets them. A configured command is the whole
+		// line the user wrote, and splicing a subcommand into it would run
+		// something they did not ask for.
+		command = strings.TrimSpace(strings.Join(append([]string{family.Command}, family.LaunchArgs...), " "))
 	}
 	return finishAgentCommand(command, agentType, skipPerms)
 }

@@ -118,10 +118,21 @@ func TestDetectionOnlyReportsExactlyTheSecondList(t *testing.T) {
 	}
 }
 
+// Sidecar ships no detection-only family today, so this drives the accessor
+// through an overlay rather than through the bundled set. The property is the
+// same one every accessor here owes: a caller cannot reach into catalog storage
+// by mutating what it was handed.
 func TestDetectionFamiliesReturnsACopy(t *testing.T) {
+	dir := t.TempDir()
+	writeOverlay(t, dir, "watcher.toml", "name = \"Watcher\"\nshort = \"Watcher\"\n")
+	if problems := LoadOverlay(dir); len(problems) != 0 {
+		t.Fatalf("overlay problems: %v", problems)
+	}
+	t.Cleanup(resetForTest)
+
 	first := DetectionFamilies()
-	if len(first) == 0 {
-		t.Fatal("no detection-only families")
+	if len(first) != 1 || first[0].ID != "watcher" {
+		t.Fatalf("detection families = %+v", first)
 	}
 	first[0].Name = "mutated"
 	if DetectionFamilies()[0].Name == "mutated" {
@@ -169,10 +180,21 @@ func TestLabelAndShortLabelNameBothHalvesOfTheCatalog(t *testing.T) {
 // owns the data, rather than discovered when a chip silently renames itself.
 func TestLaunchableShortNamesLowercaseToTheirIDs(t *testing.T) {
 	for _, family := range Families() {
-		if got := strings.ToLower(family.Short); got != family.ID {
-			t.Errorf("family %q has Short %q, which lowercases to %q; the agent chip renders that token, "+
-				"so this renames the chip on every row showing this provider. Either keep Short a lowercase "+
-				"spelling of the id or decide deliberately that the chip changes.", family.ID, family.Short, got)
+		got := strings.ToLower(family.Short)
+		if got == family.ID || got == family.Command {
+			continue
 		}
+		t.Errorf("family %q launches %q and has Short %q, which lowercases to %q; the agent chip renders "+
+			"that token, so this renames the chip on every row showing this provider. Keep Short a lowercase "+
+			"spelling of either the id or the command, or decide deliberately that the chip changes.",
+			family.ID, family.Command, family.Short, got)
+	}
+	// Qoder is the one family where the two answers differ, and the chip takes
+	// the command. Its id is `qodercli` because that is Herdr's label and the
+	// name of the vendored manifest file; the program a user installs and types
+	// is `qoder`, so a chip reading `qodercli` would name a manifest rather than
+	// a provider. Pinned here so the exception stays a decision.
+	if got := strings.ToLower(ShortLabel("qodercli")); got != "qoder" {
+		t.Errorf("qodercli chip token = %q, want qoder", got)
 	}
 }

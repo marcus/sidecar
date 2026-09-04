@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/marcus/sidecar/internal/agentcatalog"
 	"github.com/marcus/sidecar/internal/config"
 	"github.com/marcus/sidecar/internal/shellstate"
 	"github.com/marcus/sidecar/internal/tty"
@@ -55,6 +56,16 @@ func Run(args []string, stdout, stderr io.Writer) (handled bool, exitCode int) {
 		// Before defaultEnv, and before any command resolves a path: -config
 		// moves state.json and the config directory together (td-8d18de).
 		config.SetConfigPath(configPath)
+	}
+
+	// The user's agent catalog overlay, before any command resolves an agent
+	// kind: `create shell --agent`, `create worktree` and `agent start` all
+	// launch out of the catalog, and a family the user added has to be in it by
+	// then. -config has already been applied above, so the overlay directory
+	// moves with the config file. A malformed file is a warning on stderr and
+	// is skipped; it never stops a command from running.
+	for _, problem := range agentcatalog.LoadOverlay(config.AgentCatalogDir()) {
+		_, _ = fmt.Fprintf(stderr, "sidecar: agent catalog overlay file skipped: %v\n", problem)
 	}
 
 	env := defaultEnv(stdout, stderr)

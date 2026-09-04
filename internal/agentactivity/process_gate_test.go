@@ -15,6 +15,13 @@ func everyRegisteredFamily(t *testing.T) []string {
 	t.Helper()
 	var ids []string
 	for _, family := range agentcatalog.Families() {
+		// A family with no vendored screen manifest has no gate to assert:
+		// Supports is false for it, so Detect answers unsupported-agent before
+		// any gate runs. They are declared in familiesWithNoScreenManifest and
+		// covered by the hooks lane instead.
+		if _, hooksOnly := familiesWithNoScreenManifest[family.ID]; hooksOnly {
+			continue
+		}
 		ids = append(ids, family.ID)
 	}
 	for _, family := range agentcatalog.DetectionFamilies() {

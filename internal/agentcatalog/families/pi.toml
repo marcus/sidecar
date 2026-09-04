@@ -1,0 +1,15 @@
+# Pi Agent. Unchanged from the Go literal.
+#
+# No auto-approve flag, and that is a fact rather than an omission: Pi ships no
+# permission system at all, which is the same finding that makes its blocked
+# lane unreachable (see the Slice 1 result in
+# docs/plans/active/herdr-parity-close-the-gap.md).
+id = "pi"
+order = 70
+name = "Pi Agent"
+short = "Pi"
+command = "pi"
+aliases = ["pi-agent"]
+adapter_id = "pi-agent"
+resume_args = ["--session"]
+resume_kinds = ["id"]

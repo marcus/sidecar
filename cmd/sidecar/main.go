@@ -29,6 +29,7 @@ import (
 	_ "github.com/marcus/sidecar/internal/adapter/pi"
 	_ "github.com/marcus/sidecar/internal/adapter/piagent"
 	_ "github.com/marcus/sidecar/internal/adapter/warp"
+	"github.com/marcus/sidecar/internal/agentcatalog"
 	"github.com/marcus/sidecar/internal/app"
 	"github.com/marcus/sidecar/internal/buildinfo"
 	"github.com/marcus/sidecar/internal/cli"
@@ -180,6 +181,25 @@ func main() {
 		startupfail.Print(os.Stderr, startupfail.ConfigLoad(config.ConfigPath(), err))
 		os.Exit(1)
 	}
+
+	// Fold the user's agent catalog overlay in before anything reads the
+	// catalog: the creation pickers, Configuration and the workspace plugin all
+	// read it, and a family added here has to be there before the first of them
+	// asks. It is filesystem work, so it is here on the startup path rather
+	// than in a plugin's Init, and a malformed file is a warning rather than a
+	// refusal to start.
+	startuptrace.Track("agentcatalog.LoadOverlay", func() {
+		for _, problem := range agentcatalog.LoadOverlay(config.AgentCatalogDir()) {
+			logger.Warn("agent catalog overlay file skipped", "error", problem)
+		}
+	})
+
+	// Which provider commands are installed is what the creation pickers filter
+	// on. It is one PATH walk per family, so it runs once, here, off every
+	// render path, and in the background: nothing on the first frame needs the
+	// answer, and a picker that opens before it lands offers everything rather
+	// than nothing.
+	go agentcatalog.PrimeInstalled()
 
 	// Initialize feature flags
 	features.Init(cfg)

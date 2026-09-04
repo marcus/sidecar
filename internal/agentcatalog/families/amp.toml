@@ -1,0 +1,10 @@
+# Amp. Unchanged from the Go literal. The resume is a chain of subcommands,
+# `amp threads continue <id>`, which is why resume_args is a list.
+id = "amp"
+order = 80
+name = "Amp"
+short = "Amp"
+command = "amp"
+skip_permissions_arg = "--dangerously-allow-all"
+resume_args = ["threads", "continue"]
+resume_kinds = ["id"]

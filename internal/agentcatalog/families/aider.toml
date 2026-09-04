@@ -1,0 +1,12 @@
+# Aider, the one legacy family.
+#
+# `legacy = true` keeps it launchable for a persisted or configured creation
+# setting while leaving it out of Families() and out of every picker. It is not
+# an ordinary family that happens to be hidden: unknown ids never fall back to
+# it, and nothing offers it as a choice.
+id = "aider"
+legacy = true
+name = "Aider"
+short = "Aider"
+command = "aider"
+skip_permissions_arg = "--yes"

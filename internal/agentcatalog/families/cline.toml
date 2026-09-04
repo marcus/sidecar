@@ -1,0 +1,22 @@
+# Cline CLI.
+#
+# Sources, read 2026-09-03:
+#   command, resume  https://docs.cline.bot/cli/cli-reference
+#   install          https://docs.cline.bot/cli/overview  (npm i -g cline)
+#
+# No auto-approve flag, and not because Cline has no such mode. `--auto-approve`
+# takes a boolean value, so the switch is two argv entries rather than one, and
+# it already defaults to true in ordinary act mode. Recording a one-entry
+# `--auto-approve` would emit a command line the provider rejects, and recording
+# the two-entry form would need a field this catalog does not have. Cline
+# auto-approves by default; Sidecar's checkbox has nothing to add.
+#
+# Resume is `--id`, not `--resume`. Herdr's agent_resume.rs has no Cline entry at
+# all, so this is from Cline's own reference rather than from upstream.
+id = "cline"
+order = 110
+name = "Cline"
+short = "Cline"
+command = "cline"
+resume_args = ["--id"]
+resume_kinds = ["id"]

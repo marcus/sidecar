@@ -122,10 +122,8 @@ func TestSnapshotJSONContract(t *testing.T) {
 // Supports saying yes to it would make Detect answer manifest-unavailable rather
 // than change a verdict.
 func TestSupportedProviderSetIsFrozen(t *testing.T) {
-	launchable := []string{"codex", "claude", "grok", "antigravity", "pi", "copilot", "cursor", "opencode", "amp", "muse"}
-	detectionOnly := []string{"cline", "devin", "droid", "hermes", "kilo", "kimi", "kiro", "maki", "qodercli", "qwen"}
 	frozen := map[string]bool{}
-	for _, agent := range append(append([]string(nil), launchable...), detectionOnly...) {
+	for _, agent := range sidecarFamilies() {
 		if !Supports(agent) {
 			t.Fatalf("Supports(%q) = false", agent)
 		}
@@ -134,11 +132,17 @@ func TestSupportedProviderSetIsFrozen(t *testing.T) {
 
 	// Closure one: the frozen twenty are exactly the catalog's two lists. A
 	// family added to either one is supported the moment it lands -- Supports
-	// reads the launchable ten by name and the detection-only ten through
-	// detectionOnly, which TestDetectionOnlySetMatchesTheCatalog ties to the
+	// reads the hand-gated ten by name and the alias-gated ten through
+	// aliasGatedFamily, which TestAliasGatedSetMatchesTheCatalog ties to the
 	// catalog -- so this is where a twenty-first name has to be argued for.
 	catalog := map[string]bool{}
-	for _, family := range append(agentcatalog.Families(), agentcatalog.DetectionFamilies()...) {
+	for _, family := range append(agentcatalog.Families(), agentcatalog.DetectionFamilies()...) { //nolint:gocritic // one combined pass over both halves
+		if _, hooksOnly := familiesWithNoScreenManifest[family.ID]; hooksOnly {
+			// Registered in the catalog, deliberately unsupported by this lane:
+			// upstream ships no screen manifest for it, so there is nothing to
+			// execute. Declared once, in detection_only_test.go.
+			continue
+		}
 		catalog[family.ID] = true
 		if !frozen[family.ID] {
 			t.Errorf("agentcatalog registers %q, which Supports answers %v for, and the frozen list above does not name it.\n"+

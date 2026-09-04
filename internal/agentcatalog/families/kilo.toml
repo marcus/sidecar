@@ -1,0 +1,21 @@
+# Kilo Code CLI.
+#
+# Sources, read 2026-09-03:
+#   command, install, flags, resume  https://kilo.ai/docs/code-with-ai/platforms/cli-reference
+#   resume                           also Herdr agent_resume.rs, `kilo --session <id>`
+#
+# `--auto` is Kilo's own wording for auto-approve: it approves what the config
+# has not explicitly denied, so it is a weaker bypass than the other providers'
+# and cannot override a deny rule. That is the provider's behaviour, not a
+# Sidecar choice; there is no stronger flag to record.
+#
+# There is no `--resume`. The flag is `--session`.
+id = "kilo"
+order = 150
+name = "Kilo Code CLI"
+short = "Kilo"
+command = "kilo"
+skip_permissions_arg = "--auto"
+aliases = ["kilo code", "kilo-code"]
+resume_args = ["--session"]
+resume_kinds = ["id"]
