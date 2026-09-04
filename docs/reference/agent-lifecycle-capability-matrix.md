@@ -32,6 +32,7 @@ This is enforced rather than documented. `Capability.TierFor` polices every tier
 | Claude Code | 2.1.220 | real-trace | `session-identity` | session only | shipped hook is SessionStart only. The provider's ceiling is `advisory`: no cancellation event exists. |
 | Pi | 0.84.3 | real-trace | `advisory` | lifecycle authority | blocking is structurally impossible; `advisory` is the ceiling and is reached |
 | Kilo Code | 7.5.9 | real-trace | `advisory` | lifecycle authority | cancellation is indistinguishable and the shipped asset releases nothing on exit, so `advisory` is the ceiling and is reached |
+| Kimi Code | 0.40.1 | real-trace | `advisory` | lifecycle authority | session identity is refused by Sidecar's own catalog, and process exit is unclaimed by choice; `full` needs both |
 
 Pi's row went out of `capabilities.json` when nothing could produce a report for it, came back at `session-identity` when `PiAdapter` and `assets/pi/sidecar-lifecycle.js` shipped, and is now at `advisory` on `real-trace` evidence because a live Pi 0.84.3 session has been traced. It is the only row here that has reached its own ceiling: `advisory` is as high as Pi can ever go, because `full` needs `blocked_on_request` and `unblocked` and Pi ships no permission system to produce either. See "Why the Pi entry was retracted, and what brought it back".
 
@@ -43,17 +44,17 @@ Two columns are doing different jobs here and it is worth being explicit about w
 
 `YES` means an official event exists and, where marked traced, was observed. `PARTIAL` means it must be inferred. `NO` means no event exists.
 
-| Transition | OpenCode | Codex | Claude Code | Pi | Kilo Code |
-| --- | --- | --- | --- | --- | --- |
-| work start | YES (traced) | YES (traced) | YES (traced) | YES | YES (traced) |
-| tool use | YES (traced) | YES (traced) | YES (traced) | YES | NO (on the plugin event stream) |
-| blocked on request | YES (traced) | YES (traced) | YES (traced) | NO | YES (traced) |
-| unblocked | YES (traced) | YES (traced) | PARTIAL (traced) | NO | YES (traced) |
-| turn complete | YES (traced) | YES (traced) | PARTIAL (traced) | YES | YES (traced) |
-| cancellation | YES (traced) | YES (traced) | NO (confirmed) | PARTIAL | PARTIAL |
-| session identity | YES (traced) | YES (traced) | YES (traced) | YES | YES (traced) |
-| subagent | PARTIAL | YES | YES | NO | PARTIAL |
-| process exit | YES (traced) | YES (traced) | YES (traced) | YES | YES (not consumed) |
+| Transition | OpenCode | Codex | Claude Code | Pi | Kilo Code | Kimi Code |
+| --- | --- | --- | --- | --- | --- | --- |
+| work start | YES (traced) | YES (traced) | YES (traced) | YES | YES (traced) | YES (traced) |
+| tool use | YES (traced) | YES (traced) | YES (traced) | YES | NO (on the plugin event stream) | YES (traced) |
+| blocked on request | YES (traced) | YES (traced) | YES (traced) | NO | YES (traced) | YES (traced) |
+| unblocked | YES (traced) | YES (traced) | PARTIAL (traced) | NO | YES (traced) | YES (traced) |
+| turn complete | YES (traced) | YES (traced) | PARTIAL (traced) | YES | YES (traced) | YES (traced) |
+| cancellation | YES (traced) | YES (traced) | NO (confirmed) | PARTIAL | PARTIAL | YES (traced) |
+| session identity | YES (traced) | YES (traced) | YES (traced) | YES | YES (traced) | YES, provider side (traced); refused by Sidecar |
+| subagent | PARTIAL | YES | YES | NO | PARTIAL | PARTIAL |
+| process exit | YES (traced) | YES (traced) | YES (traced) | YES | YES (not consumed) | YES (traced), not hooked |
 
 Claude Code's `unblocked` and `turn complete` are marked PARTIAL *after* tracing rather than before: both events exist and both fire on the ordinary path, and both go missing on exactly the paths where they would matter most. See the Claude Code section.
 
@@ -273,6 +274,43 @@ Two things the proof found that no offline test could:
 - **`agent report-session --kind kilo` was refused on every turn.** `resolveReportedKind` resolved a `--kind` claim through `agentcatalog.Lookup`, which searches the launchable families and their aliases only. Kilo is detection-only today, so every binding failed with exit 5 while the state reports, which take no `--kind`, were accepted. Every test in the tree passed a launchable id, which is why nothing caught it. The lookup now falls back to the detection catalog, which is the right rule for a verb that answers a question about a pane rather than about a launch.
 - **`KILO_CONFIG_DIR` is not enough to isolate a proof run.** Kilo still creates its XDG default config directory at startup whatever that variable says, and this run wrote one zero-byte migration marker into the maintainer's real `~/.config/kilo` before the mistake was caught. The file was removed and the directory restored. Move `XDG_CONFIG_HOME` as well.
 
+## Kimi Code
+
+**Source:** Kimi Code CLI's own published hooks reference and configuration reference, then traced against kimi-code 0.40.1. The event-to-lane mapping is ported from Herdr's kimi integration at `HERDR_INTEGRATION_VERSION=7`.
+
+Kimi has the broadest hook surface Sidecar has integrated with: twenty events, configured as a `[[hooks]]` array of tables in `~/.kimi-code/config.toml` (or `$KIMI_CODE_HOME/config.toml`), each entry taking exactly `event`, `matcher`, `command` and `timeout` — any extra field makes the whole configuration fail to load. The payload arrives on stdin carrying `hook_event_name`, `session_id`, `session_title`, `client_type` and `cwd`, plus per-event fields. Exit codes fail open: 0 allows, 2 blocks on a blockable event, anything else allows.
+
+**The port ships twelve of the twenty events**, which is upstream's table row for row. Sidecar's asset is not a script: Herdr's is a shell shim whose only jobs are gating on `HERDR_ENV`, shelling out to `python3` for `session_id`, and writing a JSON-RPC frame to a socket. Every one of those disappears when the transport is a CLI verb — `sidecar agent report` is itself the gate, and `report-session --hook-stdin` reads the payload with a bounded reader — so the twelve config entries invoke the CLI directly, exactly as the Claude and Codex adapters already do against the same upstream shape.
+
+### The finding that makes the blocked lane claimable
+
+**One event resolves a block, whichever way it goes.** `PermissionResult` fires on approval and on denial and carries the outcome in a `decision` field. That is the contrast the whole matrix is for: Claude Code caps below `full` because a denied permission emits *nothing* and a hook-driven pane latches on blocked forever; Codex escapes the same trap only because denial takes a *different* event (`Interrupt`) from approval, which an adapter has to know about in advance. Kimi needs neither workaround, so upstream's single unblocking row is sufficient and the lane is claimed.
+
+There is a second blocked path with its own resolver pair, and it is why upstream's table has four `AskUserQuestion` rows rather than one. A `PreToolUse` on the `AskUserQuestion` tool means the model is asking the human something, so it blocks; `PostToolUse` and `PostToolUseFailure` on the same tool both unblock, because a question that ended without an answer is still a question that is over. Sidecar records that as `question` and `permission_resolved` rather than reusing the permission codes, because Kimi has a separate `PermissionRequest` and the vocabulary distinguishes them.
+
+### One hook per event, by construction
+
+Kimi runs **every** hook matching an event in parallel. Two rows matching one event would be two `sidecar agent report` processes racing for a store sequence, and which lane the pane ended in would depend on the scheduler — a defect invisible in every offline test and intermittent in the field. Upstream's table avoids it by construction: the only doubled event is `PreToolUse`, and its two matchers are exact complements (`^AskUserQuestion$` and `^(?!AskUserQuestion$).*$`). `TestKimiFiresExactlyOneHookPerEvent` pins the property so a row added later without a complementary matcher fails rather than shipping.
+
+The negative lookahead is a provider-side regular expression, and Go's own `regexp` is RE2 and cannot even parse it — which is worth knowing, because it means no Sidecar test can evaluate the shipped matcher directly. What the live proof establishes is that Kimi *loads* it: `kimi doctor` reported the config Sidecar wrote as valid, and one Bash `PreToolUse` produced exactly one working report. What is still untraced is the other side of the complement, because no captured turn used the `AskUserQuestion` tool.
+
+### What the traces measured, and the two gaps that cap it at advisory
+
+Four captures are in `internal/agentlifecycle/testdata/traces/kimi/`, taken 2026-09-03 from a live Kimi TUI in a Sidecar-managed shell on a private tmux server, with the provider installed into a scratch prefix and its whole data directory redirected with `KIMI_CODE_HOME`. Five tests in `hooktrace_test.go` re-derive each claim from the fixture that earned it.
+
+`work_start`, `tool_use`, `blocked_on_request`, `unblocked`, `turn_complete` and `cancelled` are covered. Cancellation is first-class: `Interrupt` fires carrying `reason=cancelled`, no `Stop` follows it, and upstream's `Interrupt`-to-idle row is therefore load-bearing rather than redundant. That is five of the seven transitions `FullLifecycleTransitions()` names, plus `tool_use`, which the covered list carries but that function does not name. The two it does name and this port does not reach are why the tier is `advisory` rather than `full`:
+
+- **`session_identity` is refused by Sidecar, not by Kimi.** `SessionStart` carries a `session_id` and the shipped table has a row passing it to `sidecar agent report-session --hook-stdin`. That command canonicalises `--kind` through `agentcatalog.Lookup`, which searches the launchable families and their aliases only; `kimi` is a *detection-only* family, so the lookup fails. Measured live: exit 5, `unsupported_kind: "kimi" is not an agent kind Sidecar knows`. State reports are unaffected, because `agent report` checks `--provider` against the pane's resolved occupant instead. The row ships anyway — it is correct and inert rather than wrong — and it starts working the moment `kimi` becomes a family the catalog resolves, which is Slice 5 of the parity plan.
+- **`process_exit` is unclaimed by choice.** `SessionEnd` fires and carries `reason=exit`, captured by typing `/quit`. Upstream's twelve rows do not include it and this port keeps the provider half verbatim, so the gap and `covered` move together if a future version subscribes.
+
+Two further limits belong here. **The blocked lane is reachable only from an interactive session**: under `kimi -p` the same Bash call runs with no permission pair at all between `PreToolUse` and `PostToolUse`, because there is nobody to ask. And **sub-agent isolation is unknown**: `SubagentStart` maps to working and there is no `SubagentStop` row, so only the turn's own `Stop` returns the pane to idle, and no captured turn spawned a sub-agent. `PermissionRequest` does carry an `agent_id`, which suggests they are separable, but that is a field name in a fixture rather than a measurement.
+
+### What the live proof showed about ownership
+
+The installer owns one region of `config.toml`, delimited by two marker comments carrying the shared `sidecar-integration:` sentinel, and the proof ran it against a file that already held twenty hooks of the user's own. Install appended; uninstall left the file **byte-identical** to what it started from.
+
+One hole in the ownership rule is worth recording because it is a real limit rather than a bug. Ownership reads the first word of a hook's command, so a copy of Sidecar's own command placed outside the managed block is detected and every mutation refuses. A hook that *wraps* that command in a script of the user's is not: a wrapper is not the `sidecar` binary. That fails in the documented direction — their entry is never adopted or deleted — but such a duplicate reports alongside Sidecar's own and is invisible to `integration status`. It was observed during the proof run, where a debug wrapper produced a second `idle` report for one `Stop`.
+
 ## Catalog agents evaluated but not built
 
 These are recorded rather than omitted so that "evaluated, and deliberately not built" is distinguishable from "never looked at". All are `screen-fallback` with `evidence: none`: **none is trace-backed**, so each selects a candidate rather than earning a tier, and `TierFor` would refuse them anything else regardless.
@@ -323,7 +361,7 @@ The third is the dangerous one, because nothing in a Sidecar release notices it.
 
 ### When Sidecar changes an asset
 
-1. Bump the asset version constant (`OpenCodeAssetVersion`, `CodexAssetVersion`, `ClaudeAssetVersion`).
+1. Bump the asset version constant (`OpenCodeAssetVersion`, `CodexAssetVersion`, `ClaudeAssetVersion`, `PiAssetVersion`, `KimiAssetVersion`).
 2. Append the superseded entry to that adapter's canonical history, so an installed copy of the old version reads as `outdated` rather than as damage.
 3. Move `assetVersion` in `capabilities.json` to match.
 4. Requalify against the traces — a new asset consuming the same events still needs to be shown to consume them correctly.

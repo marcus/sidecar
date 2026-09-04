@@ -113,6 +113,15 @@ var valueBearingTraceKeys = map[string]bool{
 	"error":           true,
 	"info.id":         true,
 	"info.parentID":   true,
+	// Kimi's two. `source` is SessionStart's own discriminator, startup or
+	// resume, and `client_type` names which client produced the payload; both
+	// are enumerations in Kimi's published hooks reference. Kimi's `reason`,
+	// which distinguishes a cancelled Interrupt from an exiting SessionEnd, is
+	// covered by the `reason` entry above. Kimi's tool name is deliberately NOT
+	// here: it already has a column of its own, and recording it twice would
+	// widen this set for nothing.
+	"client_type": true,
+	"source":      true,
 }
 
 // TestNoHookTraceCarriesAValue is the privacy gate over the fixtures
@@ -127,7 +136,7 @@ var valueBearingTraceKeys = map[string]bool{
 // every test in the tree. So the allowlist above is enforced here: a `=` on any
 // key outside it fails, whatever the value looks like.
 func TestNoHookTraceCarriesAValue(t *testing.T) {
-	for _, provider := range []string{"codex", "claude", "pi", "kilo"} {
+	for _, provider := range []string{"codex", "claude", "pi", "kilo", "kimi"} {
 		entries, err := os.ReadDir(filepath.Join("testdata", "traces", provider))
 		if err != nil {
 			t.Fatalf("%s has no traces but its capability entry claims real evidence: %v", provider, err)
@@ -783,6 +792,88 @@ func TestNoKiloTraceRecordsASubagent(t *testing.T) {
 	}
 }
 
+// --- Kimi Code CLI ---
+//
+// Kimi's traces are the first here whose provider half is a table of config
+// entries rather than a script, so what they have to prove is slightly
+// different: not that an asset's state machine is right, but that every event
+// upstream's twelve rows depend on really fires, in the order the ladder
+// assumes, on a released Kimi.
+
+// TestKimiTraceProvesTheLadderItsHookTableAssumes reads the one capture that
+// walks the whole ladder and asserts the ordered event sequence each of
+// upstream's rows rests on.
+func TestKimiTraceProvesTheLadderItsHookTableAssumes(t *testing.T) {
+	rows := readHookTrace(t, "kimi", "tool-turn-with-permission.tsv")
+	assertEvents(t, eventsOf(rows),
+		"SessionStart", "UserPromptSubmit", "TurnStarted",
+		"PreToolUse", "PermissionRequest", "PermissionResult", "PostToolUse", "Stop")
+
+	// SessionStart identifies the conversation, which is what the session hook
+	// exists to bind. The id itself is never in the fixture; its presence is.
+	if !contains(rows[0].fields, "session_id") {
+		t.Fatalf("SessionStart no longer carries a session_id: %v", rows[0].fields)
+	}
+	if !contains(rows[0].fields, "source=startup") {
+		t.Fatalf("SessionStart no longer carries its own source discriminator: %v", rows[0].fields)
+	}
+
+	// The matcher target the two complementary PreToolUse rows are evaluated
+	// against. Without a tool name on the payload, upstream's whole
+	// AskUserQuestion split would be unimplementable.
+	var sawTool bool
+	for _, r := range rows {
+		if r.event == "PreToolUse" {
+			sawTool = r.tool != "-" && r.tool != ""
+		}
+	}
+	if !sawTool {
+		t.Fatal("PreToolUse no longer carries a tool name, so the matcher rows cannot fire")
+	}
+}
+
+// TestKimiResolvesABlockedPaneWithOneEvent is the finding that decides whether
+// the blocked lane can be claimed at all, and it is the direct contrast with
+// Codex and Claude Code.
+//
+// Claude Code caps below full authority because a denied permission emits
+// nothing, so a hook-driven pane latches on blocked. Codex escapes that only
+// because denial takes a *different* event from approval, which an adapter has
+// to know about. Kimi has a single PermissionResult that fires either way and
+// carries the outcome in a `decision` field, so upstream's one unblocking row
+// is sufficient and no denial-specific handling is needed.
+func TestKimiResolvesABlockedPaneWithOneEvent(t *testing.T) {
+	rows := readHookTrace(t, "kimi", "tool-turn-with-permission.tsv")
+	request, result := -1, -1
+	for i, r := range rows {
+		switch r.event {
+		case "PermissionRequest":
+			request = i
+		case "PermissionResult":
+			result = i
+		}
+	}
+	if request < 0 || result < 0 {
+		t.Fatalf("the fixture no longer contains the permission pair: %v", eventsOf(rows))
+	}
+	if result <= request {
+		t.Fatal("PermissionResult no longer follows PermissionRequest")
+	}
+	if !contains(rows[result].fields, "decision") {
+		t.Fatalf("PermissionResult no longer carries the field that says how it was resolved: %v", rows[result].fields)
+	}
+
+	capability, ok := CapabilityForSource("sidecar.kimi.hooks")
+	if !ok {
+		t.Fatal("no capability registered for sidecar.kimi.hooks")
+	}
+	for _, want := range []Transition{TransitionBlockedOnRequest, TransitionUnblocked} {
+		if !capability.Covers(want) {
+			t.Fatalf("the trace shows %s and the registry does not claim it", want)
+		}
+	}
+}
+
 func indexOf(xs []string, want string) int {
 	for i, x := range xs {
 		if x == want {
@@ -790,4 +881,60 @@ func indexOf(xs []string, want string) int {
 		}
 	}
 	return -1
+}
+
+// TestKimiCancellationIsFirstClassAndCarriesItsReason pins the transition that
+// is inferred on OpenCode and absent on Claude Code.
+func TestKimiCancellationIsFirstClassAndCarriesItsReason(t *testing.T) {
+	rows := readHookTrace(t, "kimi", "cancelled-turn.tsv")
+	assertEvents(t, eventsOf(rows), "UserPromptSubmit", "TurnStarted", "Interrupt")
+
+	last := rows[len(rows)-1]
+	if !contains(last.fields, "reason=cancelled") {
+		t.Fatalf("Interrupt no longer records why it fired: %v", last.fields)
+	}
+	// No Stop follows it, which is what makes upstream's Interrupt-to-idle row
+	// load-bearing rather than redundant.
+	for _, e := range eventsOf(rows) {
+		if e == "Stop" {
+			t.Fatal("the cancelled turn now contains a Stop; the recorded finding is that it does not")
+		}
+	}
+}
+
+// TestKimiProcessExitIsUnclaimedByChoice is the same shape as Pi's
+// session_shutdown gap: the event exists, it is readable, and the port does not
+// subscribe because upstream's table does not.
+func TestKimiProcessExitIsUnclaimedByChoice(t *testing.T) {
+	rows := readHookTrace(t, "kimi", "session-end.tsv")
+	assertEvents(t, eventsOf(rows), "SessionEnd")
+	if !contains(rows[0].fields, "reason=exit") {
+		t.Fatalf("SessionEnd no longer records reason=exit: %v", rows[0].fields)
+	}
+
+	capability, ok := CapabilityForSource("sidecar.kimi.hooks")
+	if !ok {
+		t.Fatal("no capability registered for sidecar.kimi.hooks")
+	}
+	if capability.Covers(TransitionProcessExit) {
+		t.Fatal("kimi claims process_exit; the shipped hook table does not carry a SessionEnd row")
+	}
+}
+
+// TestKimiNonInteractiveRunsSkipThePermissionPair records why the blocked
+// evidence had to come from a real TUI.
+//
+// The absence is bounded by two rows a reader can see rather than by a watch:
+// PreToolUse is followed directly by PostToolUse. A `kimi -p` run has nobody to
+// ask, so it approves and proceeds, and no capture taken that way could ever
+// show the blocked lane.
+func TestKimiNonInteractiveRunsSkipThePermissionPair(t *testing.T) {
+	events := eventsOf(readHookTrace(t, "kimi", "exec-turn-auto-approves.tsv"))
+	assertEvents(t, events,
+		"SessionStart", "UserPromptSubmit", "TurnStarted", "PreToolUse", "PostToolUse", "Stop")
+	for _, e := range events {
+		if e == "PermissionRequest" || e == "PermissionResult" {
+			t.Fatalf("the non-interactive trace now contains %s; the recorded finding is that it contains neither", e)
+		}
+	}
 }

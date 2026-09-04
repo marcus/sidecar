@@ -41,6 +41,7 @@ func OfficialSources() []string {
 		"sidecar.opencode.plugin",
 		"sidecar.pi.extension",
 		"sidecar.kilo.plugin",
+		"sidecar.kimi.hooks",
 	}
 }
 
@@ -69,6 +70,8 @@ func OfficialSourceFor(kind string) string {
 		return "sidecar.pi.extension"
 	case "kilo":
 		return "sidecar.kilo.plugin"
+	case "kimi":
+		return "sidecar.kimi.hooks"
 	default:
 		return ""
 	}

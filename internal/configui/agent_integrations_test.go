@@ -212,12 +212,12 @@ func TestTheRouteShowsEveryProviderAndItsHonestState(t *testing.T) {
 	// adapter, so the route has to show it and say so. It took that job from pi
 	// while pi's capability entry was retracted, and keeps it now that pi ships
 	// an adapter of its own.
-	for _, want := range []string{"opencode", "codex", "claude", "pi", "kilo", "grok"} {
+	for _, want := range []string{"opencode", "codex", "claude", "pi", "kilo", "kimi", "grok"} {
 		if !strings.Contains(view, want) {
 			t.Fatalf("the route does not mention %q:\n%s", want, view)
 		}
 	}
-	if !strings.Contains(view, "0 of 5 installed") {
+	if want := fmt.Sprintf("0 of %d installed", len(agentintegration.DefaultAdapters())); !strings.Contains(view, want) {
 		t.Fatalf("the summary is wrong:\n%s", view)
 	}
 	// The table names its columns in the CLI's own words.
@@ -571,7 +571,8 @@ func TestInstallingIsConfirmedByNamingTheFilesAndThenActuallyInstalls(t *testing
 	// The route re-reads rather than assuming, so what it shows is what is on
 	// disk.
 	view = ansi.Strip(m.View(160, 45))
-	if !strings.Contains(view, "current") || !strings.Contains(view, "1 of 5 installed") {
+	want := fmt.Sprintf("1 of %d installed", len(agentintegration.DefaultAdapters()))
+	if !strings.Contains(view, "current") || !strings.Contains(view, want) {
 		t.Fatalf("the route did not refresh after the mutation:\n%s", view)
 	}
 }
@@ -724,6 +725,14 @@ func TestTheRouteFitsEveryTerminalSizeAndKeepsItsRowsReachable(t *testing.T) {
 				t.Fatalf("%dx%d line %d is %d wide", size[0], size[1], i, w)
 			}
 		}
+		// The provider list is sorted, so the adapters read claude, codex,
+		// kilo, kimi, opencode, pi. No single one of those names can be
+		// asserted to be on screen at every size: a pane too short to hold
+		// six rows windows them, so which names are painted depends on where
+		// the cursor is -- opencode was third until the kilo and kimi adapters
+		// sorted ahead of it and pushed it off a 60x24 page. The reachability
+		// walk below is what replaces a name check, and it is stronger: it
+		// requires every row in turn, whatever the window is showing.
 		// Every provider is reachable: put the cursor on it and its row is
 		// painted, with a hit region on the line it was painted on. A pane too
 		// short to hold every row at once windows them (see

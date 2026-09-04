@@ -1,0 +1,14 @@
+# ms	event	session	turn	tool	fields
+0	UserPromptSubmit	session-1	-	-	client_type=kimi_code_cli,cwd,hook_event_name,is_steer,prompt,session_id,session_title
+81	TurnStarted	session-1	turn-1	-	client_type=kimi_code_cli,cwd,hook_event_name,origin_kind,prompt,session_id,session_title,turn_id
+6026	Interrupt	session-1	turn-1	-	client_type=kimi_code_cli,cwd,hook_event_name,reason=cancelled,session_id,session_title,turn_id
+#
+# A second turn in the same process, interrupted with Escape while the model was
+# streaming.
+#
+# Interrupt fires and carries reason=cancelled. Cancellation is therefore
+# first-class in Kimi, unlike OpenCode (which needs an error class name to tell
+# a cancelled turn from a failed one) and unlike Claude Code (which emits
+# nothing at all). No Stop follows it, so Interrupt is the only event that
+# returns the pane to idle on this path -- which is exactly why upstream's table
+# maps it to idle and why dropping that row would latch the pane on working.

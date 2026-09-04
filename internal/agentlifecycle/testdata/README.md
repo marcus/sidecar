@@ -75,6 +75,10 @@ Captured 2026-08-30 on darwin/arm64.
 | `traces/kilo/tool-turn.tsv` | kilo | 7.5.9 | openrouter z-ai/glm-5.3-flash | success, one bash tool call | Slice 2 |
 | `traces/kilo/blocked-turn.tsv` | kilo | 7.5.9 | openrouter z-ai/glm-5.3-flash | success, one permission ask and reply | Slice 2 |
 | `traces/kilo/error-turn.tsv` | kilo | 7.5.9 | openrouter (nonexistent model id) | provider error | Slice 2 |
+| `traces/kimi/tool-turn-with-permission.tsv` | kimi-code | 0.40.1 | openrouter openai/gpt-4.1-mini | success, one Bash call, approved | Slice 2 |
+| `traces/kimi/cancelled-turn.tsv` | kimi-code | 0.40.1 | openrouter openai/gpt-4.1-mini | user cancellation | Slice 2 |
+| `traces/kimi/session-end.tsv` | kimi-code | 0.40.1 | openrouter openai/gpt-4.1-mini | /quit | Slice 2 |
+| `traces/kimi/exec-turn-auto-approves.tsv` | kimi-code | 0.40.1 | openrouter openai/gpt-4.1-mini | success under `kimi -p`, no permission pair | Slice 2 |
 
 The Pi traces were captured 2026-09-02 on darwin/arm64; the four rows above are
 one Pi 0.84.3 process each for the first three and a second process for the
@@ -262,6 +266,57 @@ Four keys carry a value, under the same narrow rule the Pi section states, and e
 | `error` | A bounded error class name, truncated to 64 bytes, never the message or the payload |
 | `info.id` | `present` only, never an identifier |
 | `info.parentID` | `present` or `absent` only, which is what records that no trace here contains a subagent |
+
+## Kimi Code CLI
+
+Kimi's traces use the same six-column hook layout. They are the first here whose
+provider half is a *table of configuration entries* rather than a script, so what
+they have to prove is slightly different: not that a state machine is right, but
+that every event upstream's twelve rows depend on really fires, in the order the
+ladder assumes, on a released Kimi.
+
+Two values are recorded that no earlier trace carried, both added to
+`valueBearingTraceKeys` deliberately. `source` is `SessionStart`'s own
+discriminator (`startup` or `resume`) and `client_type` names which client
+produced the payload; both are enumerations in Kimi's published hooks reference.
+Kimi's `reason` — which is what distinguishes a cancelled `Interrupt` from an
+exiting `SessionEnd` — was already allowlisted. The tool name is deliberately
+*not* recorded as a field value even though the payload carries `tool_name`: it
+already has a column of its own, and recording it twice would widen the
+allowlist for nothing.
+
+### How they were captured, and what was not touched
+
+kimi-code 0.40.1 was installed into a scratch prefix with the vendor's own
+`KIMI_INSTALL_DIR` and `KIMI_NO_MODIFY_PATH=1`, so nothing reached the user's
+`PATH` or shell rc. Its whole data directory was redirected with
+`KIMI_CODE_HOME`; the user has no `~/.kimi-code` and one was never created. The
+provider was pointed at OpenRouter through a `type = "openai"` entry in the
+scratch `config.toml`, using a credential the environment already exported, with
+`telemetry = false`.
+
+Sidecar's own block was installed with `sidecar agent integration install kimi`
+rather than by hand, so the run proves the installer too, and `kimi doctor`
+reported the resulting file valid — which is what shows Kimi accepts the
+negative-lookahead matcher upstream's table uses. Kimi was then driven in a real
+TUI inside a Sidecar-managed shell on a **private tmux server**, with
+`XDG_STATE_HOME`, `-config` and `SIDECAR_ISOLATED_STATE=1` under a scratch tree.
+
+One trap beyond the `TMUX` one recorded above, and it is the same shape. This
+harness ran inside the maintainer's own Sidecar shell, and `SIDECAR_TMUX_SERVER`
+leaked from that environment into the shell the run created: the new pane's
+environment claimed server 87110 while its private server was 91044, and every
+hook report was refused with `lifecycle_invalid_context`. The private socket was
+never at risk — the session really was on the private server — but the evidence
+was, and the failure is silent from the provider's side because a hook surface
+fails open. **Scrub every `SIDECAR_*` variable, not only `TMUX`, before creating
+a shell in a proof run.**
+
+A second, smaller one: a macOS login shell re-runs `path_helper`, which puts
+`/etc/paths.d` entries ahead of an inherited `PATH`. A `SIDECAR_BIN` shim placed
+first in the harness's `PATH` therefore lost to the Homebrew-installed `sidecar`
+inside the created pane. Export the `PATH` again *in the pane* before starting
+the provider, and check `command -v sidecar` before trusting a run.
 
 ## Re-capturing
 

@@ -1,0 +1,23 @@
+# One turn that touches every branch of the ladder, in the order the events
+# would arrive. `lane` is what the pane reports after the row's hook has fired.
+#
+# The two rows a successful turn never produces are here on purpose. A question
+# and a permission request are the only two things that put a Kimi pane in the
+# blocked lane, and each has its own resolving event; if either resolver were
+# dropped the pane would latch on blocked, which is the failure this file exists
+# to make visible.
+#
+# event	matcher_target	lane	reason
+UserPromptSubmit	-	working	turn_start
+PreToolUse	Shell	working	tool_use
+PreCompact	auto	working	compaction
+SubagentStart	reviewer	working	subagent_start
+PermissionRequest	Shell	blocked	permission_request
+PermissionResult	Shell	working	permission_resolved
+PreToolUse	AskUserQuestion	blocked	question
+PostToolUse	AskUserQuestion	working	permission_resolved
+PreToolUse	AskUserQuestion	blocked	question
+PostToolUseFailure	AskUserQuestion	working	permission_resolved
+Stop	-	idle	turn_complete
+UserPromptSubmit	-	working	turn_start
+Interrupt	-	idle	cancelled

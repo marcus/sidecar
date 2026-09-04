@@ -152,6 +152,25 @@ var portedFrom = []PortedFrom{
 			"not do and Herdr's opencode asset does. NOT copied: opencode v10's child-session tracking, which " +
 			"the kilo asset has never had.",
 	},
+	{
+		Provider:    KimiProvider,
+		UpstreamID:  "kimi",
+		UpstreamDir: "kimi",
+		Version:     "7",
+		Commit:      herdrVendoredCommit,
+		Evidence: "Ported from Herdr's kimi integration at that commit, where the vendored " +
+			"upstream/kimi/herdr-agent-state.sh carries HERDR_INTEGRATION_VERSION=7. The provider half of that " +
+			"integration is NOT in the vendored asset: the shell script is pure transport, and the knowledge is " +
+			"the twelve (event, matcher, action) rows of KIMI_HOOK_EVENTS in src/integration/mod.rs, which are " +
+			"kept row for row in kimiHooks including both PreToolUse matchers and their AskUserQuestion " +
+			"complement. Every event name was re-checked against Kimi Code CLI's own published hooks reference " +
+			"(the twenty-event table, the four-field [[hooks]] schema, and the stdin payload's session_id) rather " +
+			"than taken on trust. Three deliberate differences, each with its reason in kimi.go: the transport is " +
+			"Sidecar's, so the dropped shell script and its python3 dependency are gone and the twelve config " +
+			"entries invoke the CLI directly, exactly as Sidecar's claude and codex adapters already do with the " +
+			"same upstream shape; no --seq is sent, because Sidecar's store assigns; and each row carries a " +
+			"bounded Sidecar reason code, which Herdr's wire has no vocabulary for.",
+	},
 }
 
 // PortedFromRecords returns the provenance of every Sidecar integration asset.
