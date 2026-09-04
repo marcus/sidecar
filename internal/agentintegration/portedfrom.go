@@ -171,6 +171,32 @@ var portedFrom = []PortedFrom{
 			"same upstream shape; no --seq is sent, because Sidecar's store assigns; and each row carries a " +
 			"bounded Sidecar reason code, which Herdr's wire has no vocabulary for.",
 	},
+	{
+		Provider:    MastracodeProvider,
+		UpstreamID:  "mastracode",
+		UpstreamDir: "mastracode",
+		Version:     "2",
+		Commit:      herdrVendoredCommit,
+		Evidence: "Ported from Herdr's mastracode integration at that commit, where the vendored " +
+			"upstream/mastracode/herdr-agent-state.sh carries HERDR_INTEGRATION_VERSION=2. The provider half of " +
+			"that integration is NOT in the vendored asset: the shell script is pure transport, and the knowledge " +
+			"is the eleven (event, action) rows of MASTRACODE_HOOK_EVENTS in src/integration/mod.rs, which are " +
+			"kept row for row and in order in mastracodeHooks. Every event name, the hooks.json shape, the " +
+			"millisecond timeout unit and the stdin payload's session_id were re-checked against Mastra Code " +
+			"0.38.0's own published package (@mastra/code-sdk/dist/hooks/config.js, manager.js, executor.js and " +
+			"types.d.ts) rather than taken on trust, and four sanitized captures of that version back the mapping. " +
+			"Four deliberate differences, each with its reason in mastracode.go: the transport is Sidecar's, so " +
+			"the dropped shell script and its python3 dependency are gone and the eleven config entries invoke the " +
+			"CLI directly, exactly as Sidecar's claude, codex and kimi adapters already do with the same upstream " +
+			"shape; no --seq is sent, because Sidecar's store assigns; each row carries a bounded Sidecar reason " +
+			"code, which Herdr's wire has no vocabulary for; and the three rows on Mastra Code's BLOCKING events " +
+			"(PreToolUse, Stop, UserPromptSubmit) end in `|| true`, because that provider reads exit code 2 on " +
+			"those three as a refusal of the agent's own work and `sidecar agent report` exits 2 on a usage error, " +
+			"where Herdr's shell asset has the same property by construction. NOT copied: " +
+			"MASTRACODE_REMOVED_HOOK_EVENTS, upstream's hand-written list of two superseded rows, because Sidecar " +
+			"identifies its own entries by the source their command names rather than by an (event, command) pair " +
+			"and therefore strips a stale row of any version without a list to keep current.",
+	},
 }
 
 // PortedFromRecords returns the provenance of every Sidecar integration asset.

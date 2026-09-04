@@ -60,6 +60,15 @@ var assetGoldens = []assetGolden{
 	// does. A change to any of them lands here, which is the intent: the
 	// event-to-lane mapping is the part a tier is granted against.
 	{provider: KimiProvider, name: "config.toml", version: "1", checksum: "438867d8dc4b6406dd28bb2829438221f0c96e5b57c7d840819e7a729196bd39"},
+	// Mastra Code's asset is not a file either: it is the eleven entries the
+	// installer writes into the user's hooks.json, rendered from mastracodeHooks.
+	// So this checksum covers the eleven event keys, the exact CLI command each
+	// one spawns -- including the `|| true` guard on the three events Mastra Code
+	// reads exit code 2 from as a refusal -- the millisecond timeout, and the
+	// description its own `/hooks` command prints back. A change to any of them
+	// lands here, which is the intent: the event-to-lane mapping is the part a
+	// tier is granted against.
+	{provider: MastracodeProvider, name: "hooks.json", version: "1", checksum: "eda0988d55e4e4f51d42846ce04aad779eb3f1d05bbff3655b96e3388b3764b6"},
 }
 
 // bumpInstructions is the whole point of the guard: a failure here has to tell
@@ -69,7 +78,8 @@ const bumpInstructions = `
 An asset's bytes changed. Before updating the golden below, do this in order:
 
   1. Bump the asset's version constant (OpenCodeAssetVersion, CodexAssetVersion,
-     ClaudeAssetVersion, PiAssetVersion, KiloAssetVersion, or KimiAssetVersion) if it has not already moved. An installed copy is
+     ClaudeAssetVersion, PiAssetVersion, KiloAssetVersion, KimiAssetVersion, or
+     MastracodeAssetVersion) if it has not already moved. An installed copy is
      recognised as outdated by its version, so without this every existing
      install keeps reporting itself current while running different code.
   2. Update the matching AssetVersion in internal/agentlifecycle/capabilities.json,

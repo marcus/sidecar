@@ -1,0 +1,16 @@
+# The provider half, as it is shipped. `blocking` records whether Mastra Code
+# reads exit code 2 from this row's command as a refusal of the agent's own work,
+# which is what decides whether the installed command carries the `|| true` guard.
+#
+# event	blocking	verb	state	reason
+SessionStart	no	report-session	-	-
+UserPromptSubmit	yes	report	working	turn_start
+AgentStart	no	report	working	turn_start
+PreToolUse	yes	report	working	tool_use
+PermissionRequest	no	report	blocked	permission_request
+PermissionResult	no	report	working	permission_resolved
+SubagentStart	no	report	working	subagent_start
+SubagentEnd	no	report	working	subagent_stop
+Interrupt	no	report	idle	cancelled
+AgentEnd	no	report	idle	turn_complete
+Stop	yes	report	idle	turn_complete
