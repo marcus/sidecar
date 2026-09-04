@@ -184,7 +184,7 @@ var portedFrom = []PortedFrom{
 			"kept row for row and in order in mastracodeHooks. Every event name, the hooks.json shape, the " +
 			"millisecond timeout unit and the stdin payload's session_id were re-checked against Mastra Code " +
 			"0.38.0's own published package (@mastra/code-sdk/dist/hooks/config.js, manager.js, executor.js and " +
-			"types.d.ts) rather than taken on trust, and four sanitized captures of that version back the mapping. " +
+			"types.d.ts) rather than taken on trust, and five sanitized captures of that version back the mapping. " +
 			"Four deliberate differences, each with its reason in mastracode.go: the transport is Sidecar's, so " +
 			"the dropped shell script and its python3 dependency are gone and the eleven config entries invoke the " +
 			"CLI directly, exactly as Sidecar's claude, codex and kimi adapters already do with the same upstream " +

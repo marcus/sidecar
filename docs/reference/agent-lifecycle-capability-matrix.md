@@ -337,6 +337,8 @@ That was measured rather than inferred. The first proof run installed upstream's
 
 A session **resumed** into an existing thread does carry the real id on `SessionStart`, because the restore fires `thread_changed` during `init()`. That is why the placeholder is invisible unless a capture starts from a project with no history, and why a binding on `SessionStart` alone would have looked correct in casual testing.
 
+It is also the one thing the move costs, and it is worth naming rather than leaving to be discovered. On a resumed session Herdr's binding names the conversation before the first prompt and Sidecar's does not, so a resumed Mastra Code pane carries no conversation reference until its first `AgentStart`. A cold restore of a pane that was resumed and never prompted can therefore offer the shell rather than the conversation. That is the side to err on: the alternative binds, on every machine and in every project, a placeholder that names no conversation at all.
+
 ### What the traces measured, and the one gap that caps it at advisory
 
 Five captures are in `internal/agentlifecycle/testdata/traces/mastracode/`, taken 2026-09-04 from a live Mastra Code TUI in a Sidecar-managed shell on a private tmux server, with the provider installed into a scratch npm prefix and `HOME` moved, which is the only lever there is, since Mastra Code reads no environment variable for its configuration directory. Six tests in `hooktrace_test.go` re-derive each claim from the fixture that earned it.
