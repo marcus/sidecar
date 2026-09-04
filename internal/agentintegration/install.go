@@ -367,6 +367,12 @@ type Env struct {
 	// honouring it is what lets a relocated Kimi be found — and what lets a
 	// proof run redirect the provider away from the user's real ~/.kimi-code.
 	KimiCodeHome string
+	// ClaudeConfigDir is $CLAUDE_CONFIG_DIR when set, and empty otherwise. It
+	// is Claude Code's own override for its whole configuration home: the
+	// binary resolves that home as the variable's value, falling back to
+	// $HOME/.claude, so an installer that reads only $HOME writes into a
+	// directory a relocated Claude never reads.
+	ClaudeConfigDir string
 	// LookPath finds a provider executable. Defaults to exec.LookPath.
 	LookPath func(file string) (string, error)
 	// ProviderVersion reports an installed provider's version string.
@@ -388,6 +394,7 @@ func OSEnv() Env {
 		PiAgentDir:      os.Getenv("PI_CODING_AGENT_DIR"),
 		KiloConfigDir:   os.Getenv("KILO_CONFIG_DIR"),
 		KimiCodeHome:    os.Getenv("KIMI_CODE_HOME"),
+		ClaudeConfigDir: os.Getenv("CLAUDE_CONFIG_DIR"),
 		LookPath:        exec.LookPath,
 		ProviderVersion: detectProviderVersion,
 		UID:             os.Getuid(),
