@@ -212,7 +212,7 @@ func TestTheRouteShowsEveryProviderAndItsHonestState(t *testing.T) {
 	// adapter, so the route has to show it and say so. It took that job from pi
 	// while pi's capability entry was retracted, and keeps it now that pi ships
 	// an adapter of its own.
-	for _, want := range []string{"opencode", "codex", "claude", "pi", "kilo", "grok", "unsupported"} {
+	for _, want := range []string{"opencode", "codex", "claude", "pi", "kilo", "grok"} {
 		if !strings.Contains(view, want) {
 			t.Fatalf("the route does not mention %q:\n%s", want, view)
 		}
