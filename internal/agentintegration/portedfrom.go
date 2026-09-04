@@ -214,6 +214,28 @@ var portedFrom = []PortedFrom{
 			"to prevent. NOT traced: no capture of a live Droid session backs any of it, which is why the capability " +
 			"entry is docs-only at screen-fallback.",
 	},
+	{
+		Provider:    QoderCLIProvider,
+		UpstreamID:  "qodercli",
+		UpstreamDir: "qodercli",
+		Version:     "3",
+		Commit:      herdrVendoredCommit,
+		Evidence: "Ported from Herdr's qodercli integration at that commit, where the vendored " +
+			"upstream/qodercli/herdr-agent-state.sh carries HERDR_INTEGRATION_VERSION=3. The provider half is one " +
+			"row: QODERCLI_HOOK_EVENTS in src/integration/mod.rs is [(\"SessionStart\", \"session\")] and nothing " +
+			"else, because upstream REMOVED its twelve lifecycle rows at that version; the file the entry goes in " +
+			"(~/.qoder/settings.json), the \"*\" matcher, which is what install_qodercli's " +
+			"ensure_command_hook(.., Some(\"*\")) writes where the devin and droid installers pass None, and the " +
+			"$QODER_CONFIG_DIR override are the rest of it. All of that is kept verbatim. Every fact was re-checked " +
+			"against Qoder's own published hooks reference rather than taken on trust: the settings.json schema is " +
+			"Claude's nested group shape, timeout is in SECONDS with a default of 600, and the SessionStart payload " +
+			"carries session_id and hook_event_name. One thing that reference does NOT carry is QODER_CONFIG_DIR, so " +
+			"honouring it follows Herdr rather than a published contract, and the capability entry says so. Two " +
+			"deliberate differences, each with its reason in qodercli_install.go: the transport is Sidecar's, so the " +
+			"dropped shell script and its python3 dependency are gone; and no --seq is sent, because Sidecar's store " +
+			"assigns. NOT traced: no capture of a live Qoder session backs any of it, which is why the capability " +
+			"entry is docs-only at screen-fallback.",
+	},
 }
 
 // PortedFromRecords returns the provenance of every Sidecar integration asset.

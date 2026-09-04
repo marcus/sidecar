@@ -281,6 +281,16 @@ Answer open question 3 first. Then port in order of live use, confirming for eac
 
 **Droid has no configuration-directory override, and the absence is asserted.** Herdr's `droid_dir` consults nothing and Factory documents nothing, so a proof run can redirect Droid only by moving `HOME`. `TestDroidLivesUnderTheFactoryDirectoryWithNoOverride` fails if one is invented later, which is the cheapest way to stop Sidecar writing somewhere Droid does not read.
 
+#### Result for `qodercli`, 2026-09-04 (`td-73c4ff`)
+
+**Shipped untraced, at `screen-fallback` on `docs-only` evidence.** One `SessionStart` entry in `~/.qoder/settings.json`, which is upstream's whole table at version 3: its twelve lifecycle rows were removed at that version.
+
+**Two details come from Qoder's own reference rather than from Herdr, and both would have been wrong if taken on trust.** The group carries a `"*"` matcher, because `install_qodercli` passes `Some("*")` where the devin and droid installers pass `None`, and an entry under a changed matcher now reads as needs-repair rather than as current. And `timeout` is in seconds, documented with a default of 600, which is the same unit Claude, Codex and Droid use and not the unit Qwen uses; one field name with two meanings across this group is exactly the kind of thing a port transcribes wrongly, so each adapter states its unit at the constant.
+
+**The id and the command are different words, and the adapter uses each for what it is.** `qodercli` is Herdr's label and Sidecar's id, `qoder` is the binary. `PATH` lookup and the version probe use the command; the hook entry claims `--kind qodercli`, because that is what the catalog resolves. `TestTheProviderIdAndTheCommandDifferOnPurpose` resolves only the command in its fixture, so an adapter that looked up the id would report a missing provider on a machine that has one.
+
+**`QODER_CONFIG_DIR` is honoured on Herdr's word.** Qoder's reference names three settings files and no variable that relocates them. Honouring the override is what finds a relocated install and what lets a proof run redirect the provider, and the capability entry records that it is Herdr's reading rather than a published contract.
+
 ### Slice 5 — The launch catalog moves to TOML and grows to every recognised agent (medium)
 
 Today `internal/agentcatalog` holds ten launchable families as a Go slice and ten detection-only families as a second slice. The knowledge in the first is small and flat: a command, an auto-approve flag, resume arguments, aliases, an adapter id. That is configuration, and it belongs in data a user or an agent can read and extend without a rebuild.

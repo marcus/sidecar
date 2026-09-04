@@ -357,5 +357,27 @@
     "orderingGuaranteed": false,
     "sourceDoc": "https://docs.factory.ai/reference/hooks-reference",
     "sourceVersionNote": "Not run. The contract is read from Herdr's droid integration at HERDR_INTEGRATION_VERSION=3 (DROID_HOOK_EVENTS and install_droid in src/integration, plus the vendored upstream/droid/herdr-agent-state.sh, whose python3 half reads session_id from the SessionStart payload) and from Factory's own hooks reference and settings reference, which give the file precedence rule, the entry schema, the timeout unit (seconds, defaulting to 60) and the SessionStart payload's session_id field. No released Droid was executed for this port and no trace backs any claim in it; see internal/agentintegration/portedfrom.go."
+  },
+  {
+    "schemaVersion": 1,
+    "provider": "qodercli",
+    "source": "sidecar.qodercli.hooks",
+    "assetVersion": "1",
+    "tier": "screen-fallback",
+    "evidence": "docs-only",
+    "minProviderVersion": "",
+    "testedProviderRange": "",
+    "covered": [],
+    "knownGaps": [
+      "NOT TRACED, and that is why the tier is screen-fallback rather than session-identity. The Qoder CLI is not installed on the machine this port was written on and it requires an account, so no released version fired the hook here. session-identity is the tier this asset is built to hold: one SessionStart carrying a session id, sanitized into testdata/traces/qodercli, promotes this entry and nothing else has to change.",
+      "The shipped asset is a session-identity hook entry and nothing else, which is upstream's whole table. Herdr's qodercli integration at version 3 has one row, SessionStart to session, and its TWELVE lifecycle rows were REMOVED at that version rather than kept. State comes from the screen lane in Sidecar and in Herdr alike, which is what Herdr's own authority table records for qodercli.",
+      "QODER_CONFIG_DIR is honoured, and it is NOT in Qoder's published documentation. That reference names ~/.qoder/settings.json, a project-level .qoder/settings.json and a .qoder/settings.local.json, and no variable that relocates any of them; the override comes from Herdr's qodercli_dir. Honouring it is what finds a relocated Qoder and what lets a proof run redirect the provider, and the failure direction if the variable turns out to mean something else is that Sidecar writes a settings file Qoder never reads and reports the integration as current. Untraced either way.",
+      "Qoder merges hooks from three files: the user-level ~/.qoder/settings.json, a project-level .qoder/settings.json and .qoder/settings.local.json. Sidecar installs into the user-level file only, deliberately, because a per-project copy would follow a checkout into other people's clones and report from panes Sidecar never set up. So Sidecar owns its own entry and can never own the effective hook set.",
+      "The entry's timeout is 10 SECONDS. Qoder documents timeout in seconds with a default of 600, which is the same unit Claude, Codex and Droid use and not the unit Qwen uses; the two are one field name with two meanings across this group, and reading the wrong one is a hook that either never times out or times out instantly.",
+      "Ownership is by the report-session command and nothing else, so an entry of the user's that WRAPS that command in a script of their own is never adopted, overwritten or deleted -- and is also invisible to `integration status`. That fails in the documented direction and is the same limitation every entry integration has."
+    ],
+    "orderingGuaranteed": false,
+    "sourceDoc": "https://docs.qoder.com/cli/hooks",
+    "sourceVersionNote": "Not run. The contract is read from Herdr's qodercli integration at HERDR_INTEGRATION_VERSION=3 (QODERCLI_HOOK_EVENTS and install_qodercli in src/integration, plus the vendored upstream/qodercli/herdr-agent-state.sh, whose python3 half reads session_id from the stdin payload) and from Qoder's own published hooks reference, which gives the settings.json schema, the twenty-event table, the timeout unit (seconds, defaulting to 600) and the SessionStart payload's session_id and hook_event_name fields. No released Qoder CLI was executed for this port and no trace backs any claim in it; see internal/agentintegration/portedfrom.go."
   }
 ]

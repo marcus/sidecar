@@ -35,6 +35,7 @@ This is enforced rather than documented. `Capability.TierFor` polices every tier
 | Kimi Code | 0.40.1 | real-trace | `advisory` | lifecycle authority | session identity is refused by Sidecar's own catalog, and process exit is unclaimed by choice; `full` needs both |
 | Devin CLI | not run | docs-only | `screen-fallback` | session only | not traced; one capture carrying a session id promotes it to `session-identity` and nothing else has to change |
 | Droid | not run | docs-only | `screen-fallback` | session only | not traced; and a `~/.factory/hooks.json`, if you have one, shadows the entry entirely |
+| Qoder CLI | not run | docs-only | `screen-fallback` | session only | not traced; `QODER_CONFIG_DIR` is honoured on Herdr's word rather than a published contract |
 
 Pi's row went out of `capabilities.json` when nothing could produce a report for it, came back at `session-identity` when `PiAdapter` and `assets/pi/sidecar-lifecycle.js` shipped, and is now at `advisory` on `real-trace` evidence because a live Pi 0.84.3 session has been traced. It is the only row here that has reached its own ceiling: `advisory` is as high as Pi can ever go, because `full` needs `blocked_on_request` and `unblocked` and Pi ships no permission system to produce either. See "Why the Pi entry was retracted, and what brought it back".
 
@@ -355,6 +356,24 @@ Factory's hooks reference is explicit: Droid reads hook declarations from `hooks
 
 Droid is the only provider in this group without one. Herdr's `droid_dir` is `home_dir()?.join(".factory")` with nothing consulted, and Factory's settings reference names `~/.factory/settings.json` and documents no variable that relocates it. So a proof run can only redirect Droid's configuration by moving `HOME`, which is stated here rather than worked around with a variable nobody promised to honour. `TestDroidLivesUnderTheFactoryDirectoryWithNoOverride` asserts the absence, so an override invented later has to be justified rather than assumed.
 
+## Qoder CLI
+
+**Source:** Herdr's qodercli integration at `HERDR_INTEGRATION_VERSION=3`, then Qoder's own published hooks reference for everything Herdr does not record. **Not traced.** The Qoder CLI is not installed on this machine and requires an account, so the entry is `screen-fallback` on `docs-only` evidence.
+
+Qoder keeps hooks in `~/.qoder/settings.json` in Claude Code's nested group shape, and Sidecar adds one session-identity entry under `SessionStart`. That is upstream's whole table: version 3 has one row, and its twelve lifecycle rows were removed at that version rather than kept.
+
+Two details differ from the Droid entry above, and both come from Qoder's reference rather than from Herdr. The group carries a matcher of `"*"`, because `install_qodercli` passes `Some("*")` where `install_devin` and `install_droid` pass `None`; `"*"` is the every-source spelling in Qoder's schema exactly as it is in Claude's. And `timeout` is in seconds, documented with a default of 600 — the same unit Claude, Codex and Droid use, and *not* the unit Qwen uses. One field name, two meanings across this group, which is why each adapter states its unit at the constant.
+
+### The id and the command are different words
+
+`qodercli` is Herdr's label and therefore Sidecar's id everywhere; `qoder` is what the npm package installs and what every official example types. The adapter looks up `qoder` on `PATH` and asks *it* for a version, while the hook entry claims `--kind qodercli`, because that is what the catalog resolves and what a report carries. Looking up the id would report the provider missing on a machine that has it, so `TestTheProviderIdAndTheCommandDifferOnPurpose` drives the two apart deliberately.
+
+### `QODER_CONFIG_DIR` is honoured on Herdr's word
+
+Qoder's published reference names `~/.qoder/settings.json`, a project-level `.qoder/settings.json` and a `.qoder/settings.local.json`, and no variable that relocates any of them. The override comes from Herdr's `qodercli_dir`, and honouring it is what finds a relocated Qoder and what lets a proof run redirect the provider. It is recorded as untraced in the capability entry rather than presented as a contract, because the failure direction if the variable means something else is that Sidecar writes a settings file Qoder never reads and reports the integration as current.
+
+Sidecar installs into the user-level file only. A per-project copy would follow a checkout into other people's clones and report from panes Sidecar never set up, which is the same rule the Kimi port applies to `.kimi-code/local.toml`.
+
 ## Catalog agents evaluated but not built
 
 These are recorded rather than omitted so that "evaluated, and deliberately not built" is distinguishable from "never looked at". All are `screen-fallback` with `evidence: none`: **none is trace-backed**, so each selects a candidate rather than earning a tier, and `TierFor` would refuse them anything else regardless.
@@ -405,7 +424,7 @@ The third is the dangerous one, because nothing in a Sidecar release notices it.
 
 ### When Sidecar changes an asset
 
-1. Bump the asset version constant (`OpenCodeAssetVersion`, `CodexAssetVersion`, `ClaudeAssetVersion`, `PiAssetVersion`, `KimiAssetVersion`, `DevinAssetVersion`, `DroidAssetVersion`).
+1. Bump the asset version constant (`OpenCodeAssetVersion`, `CodexAssetVersion`, `ClaudeAssetVersion`, `PiAssetVersion`, `KimiAssetVersion`, `DevinAssetVersion`, `DroidAssetVersion`, `QoderCLIAssetVersion`).
 2. Append the superseded entry to that adapter's canonical history, so an installed copy of the old version reads as `outdated` rather than as damage.
 3. Move `assetVersion` in `capabilities.json` to match.
 4. Requalify against the traces — a new asset consuming the same events still needs to be shown to consume them correctly.

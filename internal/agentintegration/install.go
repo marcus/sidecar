@@ -367,6 +367,13 @@ type Env struct {
 	// honouring it is what lets a relocated Kimi be found — and what lets a
 	// proof run redirect the provider away from the user's real ~/.kimi-code.
 	KimiCodeHome string
+	// QoderConfigDir is $QODER_CONFIG_DIR when set, and empty otherwise. It is
+	// the variable Herdr's qodercli_dir consults, and Qoder's own published
+	// hooks reference does not name it, so honouring it is a courtesy to a
+	// relocated install rather than a proved lever. The capability entry says
+	// so. Empty means "no override", which is also what a test that never sets
+	// it gets.
+	QoderConfigDir string
 	// LookPath finds a provider executable. Defaults to exec.LookPath.
 	LookPath func(file string) (string, error)
 	// ProviderVersion reports an installed provider's version string.
@@ -388,6 +395,7 @@ func OSEnv() Env {
 		PiAgentDir:      os.Getenv("PI_CODING_AGENT_DIR"),
 		KiloConfigDir:   os.Getenv("KILO_CONFIG_DIR"),
 		KimiCodeHome:    os.Getenv("KIMI_CODE_HOME"),
+		QoderConfigDir:  os.Getenv("QODER_CONFIG_DIR"),
 		LookPath:        exec.LookPath,
 		ProviderVersion: detectProviderVersion,
 		UID:             os.Getuid(),
@@ -523,7 +531,7 @@ type Adapter interface {
 
 // DefaultAdapters returns the adapters this build ships.
 func DefaultAdapters() []Adapter {
-	return []Adapter{OpenCodeAdapter{}, CodexAdapter{}, ClaudeAdapter{}, PiAdapter{}, KiloAdapter{}, KimiAdapter{}, NewDevinAdapter(), NewDroidAdapter()}
+	return []Adapter{OpenCodeAdapter{}, CodexAdapter{}, ClaudeAdapter{}, PiAdapter{}, KiloAdapter{}, KimiAdapter{}, NewDevinAdapter(), NewDroidAdapter(), NewQoderCLIAdapter()}
 }
 
 // Service is the application service behind the CLI and the Configuration

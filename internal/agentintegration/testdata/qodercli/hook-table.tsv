@@ -1,0 +1,15 @@
+# The events Sidecar's Qoder CLI session-identity entry is installed under.
+#
+# This is a translation of QODERCLI_HOOK_EVENTS in Herdr's src/integration/mod.rs
+# at HERDR_INTEGRATION_VERSION=3, and it is one row on purpose. Upstream REMOVED
+# its twelve lifecycle rows at that version -- QODERCLI_REMOVED_LIFECYCLE_HOOK_EVENTS
+# is what went away, and install_qodercli still strips them -- so a table with
+# more rows in it would be reinstating something upstream withdrew.
+#
+# `matcher` is `*` here, not `-`: install_qodercli calls ensure_command_hook with
+# Some("*") where the devin and droid installers pass None. Qoder's schema
+# documents matcher as a match condition on the group, so "*" is the every-source
+# spelling, exactly as it is for Claude.
+#
+# event	matcher	verb
+SessionStart	*	report-session
