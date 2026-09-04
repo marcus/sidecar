@@ -157,7 +157,9 @@ A second, smaller finding for the same audience: an asset spawns `$SIDECAR_BIN a
 
 `kimi`, `kilo`, `omp`, `mastracode`, in that order. Each follows Slice 1's shape. `omp` and `mastracode` also gain their first Sidecar identity here: an alias case and a catalog family, detection-only in the sense of Phase 4 except that their state comes from hooks rather than from a screen manifest, since upstream ships none for them.
 
-**Exit gate:** `TestHerdrAuthorityGaps` prints an empty list, or only providers Herdr added since the last sync.
+**Exit gate:** every provider Herdr drives from hooks has a Sidecar adapter registered in `DefaultAdapters()` and a capability entry at the tier its own traces reach, and `TestHerdrAuthorityGaps` lists no provider with `sidecar=(none)` except ones Herdr added since the last sync.
+
+The gate was originally written as "`TestHerdrAuthorityGaps` prints an empty list", and that was never a gate this slice could pass. The test closes a row only at `full`, and `full` needs `Evidence == real-trace` **and** every transition in `FullLifecycleTransitions()` covered; a provider whose own ceiling is `advisory` therefore stays on that list forever however good the port is. Pi is already there for exactly that reason after Slice 1, and kimi is there after this one. The test's rank rule is right and is deliberately not tuned to make the gate go green: what changed is the gate, which now measures what a port can actually deliver: an adapter exists, and its tier is the one its traces earned.
 
 #### Result for `kimi`, 2026-09-03 (`td-b0e19a`)
 
@@ -169,7 +171,7 @@ A second, smaller finding for the same audience: an asset spawns `$SIDECAR_BIN a
 
 **One finding decides the blocked lane, and it is the contrast the matrix exists for.** `PermissionResult` fires on approval *and* on denial, carrying the outcome in a `decision` field. Claude Code caps below `full` because a denial emits nothing and the pane latches; Codex escapes that only because denial takes a different event from approval. Kimi needs neither workaround, so upstream's single unblocking row is sufficient and the lane is claimed on evidence.
 
-**`advisory` is the ceiling, and both missing transitions are recorded rather than deferred.** Six of the seven transitions `FullLifecycleTransitions()` names are covered. The two that are not:
+**`advisory` is the ceiling, and both missing transitions are recorded rather than deferred.** Five of the seven transitions `FullLifecycleTransitions()` names are covered, plus `tool_use`, which the covered list carries but that function does not name. The two it does name and this port does not reach:
 
 - **`session_identity` is refused by Sidecar, not by Kimi.** `SessionStart` carries a `session_id`, and the shipped table has a row passing it to `report-session --hook-stdin`. That verb canonicalises `--kind` through `agentcatalog.Lookup`, which searches the launchable families and their aliases only; `kimi` is detection-only, so it fails. Measured live: exit 5, `unsupported_kind: "kimi" is not an agent kind Sidecar knows`. State reports are unaffected, because `agent report` checks `--provider` against the pane's resolved occupant instead. **This closes when Slice 5 makes `kimi` a family the catalog resolves**, and the row ships now because it is inert rather than wrong.
 - **`process_exit` is unclaimed by choice.** `SessionEnd` fires carrying `reason=exit`, captured by `/quit` and checked in. Upstream's twelve rows do not include it and this port keeps the provider half verbatim, so the gap and `covered` move together if a future version subscribes.
@@ -182,7 +184,7 @@ A second, smaller finding for the same audience: an asset spawns `$SIDECAR_BIN a
 
 **Two proof-run hazards for the next lane, both the same shape as Slice 1's `TMUX` trap.** First: this harness ran inside the maintainer's own Sidecar shell, and **`SIDECAR_TMUX_SERVER` leaked from that environment into the shell the run created**. The new pane's environment claimed server 87110 while its private server was 91044, and every hook report was refused with `lifecycle_invalid_context` — silently, because a hook surface fails open. The private socket was never at risk; the evidence was. Scrub every `SIDECAR_*` variable, not only `TMUX`. Second: a macOS login shell re-runs `path_helper`, which puts `/etc/paths.d` entries ahead of an inherited `PATH`, so a `SIDECAR_BIN` shim placed first in the harness's `PATH` lost to the Homebrew-installed `sidecar` inside the created pane. Export `PATH` again *in the pane* and check `command -v sidecar` before trusting a run. Both are recorded in `internal/agentlifecycle/testdata/README.md`.
 
-**`TestHerdrAuthorityGaps` still lists kimi**, because its rank rule closes a row only at `full`, and this port cannot reach `full` while `session_identity` is refused by the catalog. That is the honest reading and it is left alone rather than tuned.
+**`TestHerdrAuthorityGaps` still lists kimi**, because its rank rule closes a row only at `full`, and this port cannot reach `full` while `session_identity` is refused by the catalog. That is the honest reading and it is left alone rather than tuned; the slice's exit gate above was rewritten instead, since as first written it demanded a green the rank rule can never give an `advisory` port.
 
 ### Slice 3 — Process-tree scoring and the launch hint (medium)
 

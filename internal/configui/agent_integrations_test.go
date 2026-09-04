@@ -495,17 +495,22 @@ func TestTheRouteFitsEveryTerminalSizeAndKeepsItsRowsReachable(t *testing.T) {
 				t.Fatalf("%dx%d line %d is %d wide", size[0], size[1], i, w)
 			}
 		}
-		// The provider list is painted at every size, so the cursor cannot walk
-		// onto a row that was clipped away.
+		// The provider list is painted at every size.
 		//
-		// The row this looks for is the FIRST one rather than a named provider,
-		// and that changed when the kimi adapter landed. The route expands its
-		// focused row to a detail paragraph and action pills, so each added
-		// provider costs several lines; at 60x24 the fifth adapter pushed
-		// opencode off the page, which is not a regression this test found but
-		// the accordion layout the parity plan's Slice 6 exists to replace with
-		// a fixed-shape table. Naming a specific provider here made this test a
-		// count of how many adapters fit above it.
+		// It looks for `claude`, which is the FIRST row: the list is sorted, so
+		// the adapters read claude, codex, kimi, opencode, pi. It used to look
+		// for `opencode`, which was third until the kimi adapter sorted ahead of
+		// it and pushed it to fourth and off a 60x24 page.
+		//
+		// Read what this asserts narrowly. The route expands its focused row to
+		// a detail paragraph and action pills, so each provider costs several
+		// lines and at 60x24 only the first few fit; the list does not scroll to
+		// a focused row, so a row below the fold is already unreachable there,
+		// and was before this adapter landed (`muse`, last of eleven, has never
+		// been reachable at that size). That is the accordion layout the parity
+		// plan's Slice 6 exists to replace with a fixed-shape table, and it is
+		// not something this test can be made to catch by naming a provider.
+		// What it does catch is the list vanishing entirely.
 		stripped := ansi.Strip(view)
 		if !strings.Contains(stripped, "claude") {
 			t.Fatalf("%dx%d lost the provider list:\n%s", size[0], size[1], stripped)
