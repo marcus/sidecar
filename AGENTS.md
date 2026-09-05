@@ -251,6 +251,16 @@ binary refuse to start rather than touch the real tree). Note that
 `XDG_CONFIG_HOME` moves nothing — config and `state.json` are `$HOME`-based, so
 `-config` is the only lever for them.
 
+**`$TMUX` overrides `TMUX_TMPDIR`.** Inside a Sidecar shell the environment carries
+`TMUX`, and tmux resolves its socket from that variable before it looks at
+`TMUX_TMPDIR`. A proof that only sets `TMUX_TMPDIR` is therefore talking to the
+default server, and `TMUX_TMPDIR=$SOCK tmux kill-server` kills every live shell
+(this happened on 2026-09-04; see
+`docs/plans/active/session-restore-resume-conversations.md`). Every tmux command
+in a proof runs after `unset TMUX TMUX_PANE`, or passes `-S` with the private
+socket path. `tmux-drive.sh` does this for you; a hand-rolled proof must do it
+itself, and must do it on the cleanup line too, not only on the setup line.
+
 Note that the embedded terminal's cursor is a **native** cursor drawn by the host
 terminal, so `capture-pane` cannot see it; checking cursor placement needs an
 attached viewer client. See `docs/guides/active/headless-testing.md` for that, for the

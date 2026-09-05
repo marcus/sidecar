@@ -12,6 +12,8 @@ Related plans:
 - [Deterministic agent lifecycle hooks](notification-agent-lifecycle-hooks.md) owns lifecycle reporting, authority arbitration, provider integration installation/status, and screen fallback. This plan owns the session-identity and resume semantics that use the same reporting envelope without claiming lifecycle authority.
 - [Native Agent Orchestration in Sidecar](../deprecated/agent-orchestration-integration.md) remains deprecated. This plan deliberately exposes small coordination primitives and does not revive a Sidecar-owned plan/build/review engine, task policy, validator topology, or merge loop.
 
+**Follow-on:** the restore work that remains after M3 and M4, including typed resume commands under the `ask` policy, candidates for shells whose conversation was never reported, worktree sessions, and a stuck-server diagnosis, is planned in [Session restore: resume the conversation, not only the shell](session-restore-resume-conversations.md).
+
 ## Decision first
 
 Close the useful Herdr gaps in three bounded pieces:
