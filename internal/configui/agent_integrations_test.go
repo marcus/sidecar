@@ -1266,3 +1266,61 @@ func TestEveryPillRegionLandsOnThePillItWasPaintedFrom(t *testing.T) {
 		}
 	}
 }
+
+// TestTheRowsGiveWayToTheirFloorOnAPaneTooShortForAnyWindow is the case the
+// window's first rule got wrong, and it only became reachable when the shipped
+// adapter count passed fifteen.
+//
+// The window used to be taken only where hiding rows made the whole page fit,
+// on the reasoning that hiding rows and still truncating is worse than
+// truncating alone. That is true of the page and false of the cursor: with
+// fifteen providers on a 60x24 pane the row block alone runs past the bottom
+// edge, so declining the window left the cursor on a row painted below the last
+// line and a live hit region over a line nobody painted. The rows now give way
+// down to the floor whatever the height, and the rest of the page truncates as
+// it always did.
+//
+// The counts here are the shipped ones rather than round numbers: fifteen is
+// what registering the eight session-identity providers took the list to, and
+// sixteen is that plus Mastra Code.
+func TestTheRowsGiveWayToTheirFloorOnAPaneTooShortForAnyWindow(t *testing.T) {
+	for _, providers := range []int{15, 16} {
+		for _, size := range [][2]int{{60, 24}, {80, 30}} {
+			width, height := size[0], size[1]
+			t.Run(fmt.Sprintf("%d providers at %dx%d", providers, width, height), func(t *testing.T) {
+				m, _, _ := integrationsFixture(t)
+				openIntegrations(t, m)
+				fakeIntegrations(t, m, providers)
+
+				state := m.agentIntegrations()
+				rows, _ := splitIntegrations(state.list)
+				for _, index := range rows {
+					focusIntegrationRow(t, m, index, width, height)
+					painted := strings.Split(m.View(width, height), "\n")
+					if len(painted) != height {
+						t.Fatalf("painted %d lines, want %d", len(painted), height)
+					}
+					live := integrationRegionRows(m)
+					if !live[index] {
+						t.Fatalf("row %d has no region with the cursor on it", index)
+					}
+					if got := len(live); got < integrationRowsFloor {
+						t.Fatalf("%d rows survived the window, below the floor of %d", got, integrationRowsFloor)
+					}
+					// Nothing anywhere on the page may claim a line the frame
+					// did not paint: that is a click on something invisible,
+					// which is the whole failure.
+					for _, r := range m.mouse.HitMap.Regions() {
+						if r.Rect.Y+r.Rect.H > len(painted) {
+							t.Fatalf("region %q ends at line %d of %d painted, with the cursor on row %d",
+								r.ID, r.Rect.Y+r.Rect.H, len(painted), index)
+						}
+						if r.Rect.X+r.Rect.W > width {
+							t.Fatalf("region %q runs to column %d of %d", r.ID, r.Rect.X+r.Rect.W, width)
+						}
+					}
+				}
+			})
+		}
+	}
+}
