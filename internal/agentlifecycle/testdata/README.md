@@ -512,3 +512,17 @@ capture hook of the "user's" was placed beside Sidecar's entry — in the same
 and `integration uninstall` removed exactly Sidecar's entry and left the other
 untouched in both files. A provider that will not start still exercises the
 installer, which is most of what an entry-in-config port can get wrong.
+
+## The tmux rule, corrected 2026-09-04 after a server was destroyed
+
+Every section above says "a private tmux server" and several say "the tmux server was killed at the end of the run". **That wording is now wrong and this section replaces it.** A lane agent working on this plan ran `tmux kill-server`, and because `$TMUX` was inherited from the shell it was started in, the socket that command reached was the machine's default server. It destroyed the maintainer's live Sidecar and agent sessions. `TMUX_TMPDIR` did nothing to stop it, for the same reason Slice 1's `TMUX` trap exists: a variable that names a default cannot override a socket a command was handed.
+
+The rule every future capture follows:
+
+- **Never run `tmux kill-server`. Not on any socket, not ever.** There is no proof run that needs it. A server with no sessions on it exits by itself.
+- **`unset TMUX` at the top of every script that touches tmux**, and in the env file every command sources. Not at each call site, where it will eventually be forgotten; the kilo and kimi runs both rediscovered that.
+- **Every tmux invocation carries an explicit `-S <absolute socket path>`.** Not `-L`, which resolves against a directory, and never an inherited default.
+- **Clean up with `tmux -S <socket> kill-session -t <name>`**, after `tmux -S <socket> list-sessions` has shown you what is on that socket and confirmed it is only what this run created.
+- Unix socket paths are capped near 104 bytes on macOS and a scratchpad path is too long for one. Use a short private directory such as `/private/tmp/sc-<lane>-$(id -u)` for the socket alone; state and config still live under the scratchpad. Remove that directory when the run ends.
+
+The captures already checked in are unaffected: they were taken on private sockets and their evidence stands. What changed is how the next one is taken.

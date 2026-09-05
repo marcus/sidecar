@@ -27,23 +27,27 @@ import (
 
 // sessionHookAdapters is every registered adapter built on the shared
 // session-identity implementation.
+//
+// Discovery is by sessionHookIntegrationOf, the same promoted method the
+// shipped code discovers this group with, rather than by a type switch. The
+// switch this replaced named four providers and the group had grown to eight,
+// so Devin, Droid, Qoder and Qwen were silently outside every assertion in this
+// file: the ownership rules, the symlink refusal and the preview-matches-apply
+// guard all passed without ever being run against them. A list of concrete
+// types goes stale the first time somebody adds a provider, and it did.
 func sessionHookAdapters(t *testing.T) []sessionHookAdapter {
 	t.Helper()
 	var out []sessionHookAdapter
 	for _, a := range DefaultAdapters() {
-		switch v := a.(type) {
-		case AntigravityAdapter:
-			out = append(out, v.sessionHookAdapter)
-		case CopilotAdapter:
-			out = append(out, v.sessionHookAdapter)
-		case CursorAdapter:
-			out = append(out, v.sessionHookAdapter)
-		case GrokAdapter:
-			out = append(out, v.sessionHookAdapter)
+		if integration, ok := sessionHookIntegrationOf(a); ok {
+			out = append(out, sessionHookAdapter{integration: integration})
 		}
 	}
 	if len(out) == 0 {
 		t.Fatal("no session-identity adapters are registered, so this file asserts nothing")
+	}
+	if want := len(SessionHookProviders()); len(out) != want {
+		t.Fatalf("discovery found %d session-identity adapters; SessionHookProviders names %d", len(out), want)
 	}
 	return out
 }
@@ -69,7 +73,19 @@ func sessionHookFixture(t *testing.T, a sessionHookAdapter, opts ...func(*Env)) 
 	for _, o := range opts {
 		o(&env)
 	}
-	return Service{Env: env, Adapters: DefaultAdapters()}, env, a.integration.pathsFor(env)
+	paths := a.integration.pathsFor(env)
+	// A provider carrying a setupHint refuses to install into a configuration
+	// directory that does not exist, rather than conjuring one an override could
+	// have pointed anywhere. So its fixture is a machine where the provider has
+	// been run once, which is the only state its installer has anything to say
+	// about. The providers with no hint keep the empty tree they were written
+	// against, so nothing about their existing coverage moves.
+	if a.integration.setupHint != "" && paths.Dir != "" {
+		if err := os.MkdirAll(paths.Dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return Service{Env: env, Adapters: DefaultAdapters()}, env, paths
 }
 
 // TestASessionHookInstallsAndUninstallsCleanly is the round trip: an empty tree
@@ -99,8 +115,22 @@ func TestASessionHookInstallsAndUninstallsCleanly(t *testing.T) {
 			if st.Status != agentlifecycle.StatusCurrent {
 				t.Fatalf("after install the status is %s, want current", st.Status)
 			}
-			if st.EffectiveTier != agentlifecycle.TierSessionIdentity {
-				t.Fatalf("tier %q after install, want session-identity", st.EffectiveTier)
+			// The tier a working install reaches is the one this source's own
+			// capability entry earned, not a constant. Devin, Droid and the
+			// Qoder CLI each ship at screen-fallback because no released build
+			// of them could be started in this environment to trace, and
+			// asserting session-identity across the group would either be a
+			// claim their evidence does not support or a reason to leave them
+			// out of this file. Reading the registry keeps both honest, and it
+			// still fails if an install stops moving the tier at all.
+			entry, ok := agentlifecycle.CapabilityForSource(a.Source())
+			if !ok {
+				t.Fatalf("no capability entry for source %q", a.Source())
+			}
+			want, _ := entry.TierFor(agentlifecycle.StatusCurrent, true)
+			if st.EffectiveTier != want {
+				t.Fatalf("tier %q after install, want %q from the capability entry",
+					st.EffectiveTier, want)
 			}
 
 			// Installing again is a no-op rather than a second entry. The
@@ -110,8 +140,10 @@ func TestASessionHookInstallsAndUninstallsCleanly(t *testing.T) {
 			if p := applyTo(t, svc, a.Provider(), ActionInstall); !p.Unchanged {
 				t.Fatalf("a second install produced %d operations, want none", len(p.Ops))
 			}
-			if scan := scanHookTree(true, []byte(readFileForTest(t, paths.File)), a.integration.spec); len(scan.owned) != 1 {
-				t.Fatalf("after two installs the file holds %d Sidecar entries, want one", len(scan.owned))
+			wantEntries := len(a.integration.spec.eventNames())
+			if scan := scanHookTree(true, []byte(readFileForTest(t, paths.File)), a.integration.spec); len(scan.owned) != wantEntries {
+				t.Fatalf("after two installs the file holds %d Sidecar entries, want one per subscribed event (%d)",
+					len(scan.owned), wantEntries)
 			}
 
 			if p := applyTo(t, svc, a.Provider(), ActionUninstall); p.Unchanged {
@@ -148,25 +180,44 @@ func TestASessionHookEntryClaimsItsOwnProviderKind(t *testing.T) {
 
 // sessionHookInstalledCommand digs the command out of the canonical asset, so
 // it is read from the bytes an install writes rather than from a copy of them.
+//
+// A provider registers one entry per event it subscribes to, and Devin's six
+// are the reason this counts against the spec's event set rather than against
+// one. Every entry spawns the identical command -- the event name never reaches
+// the CLI, the payload on stdin is the whole difference -- so a provider whose
+// entries disagreed would be installing two different integrations under one
+// name, and that is asserted here rather than assumed.
 func sessionHookInstalledCommand(t *testing.T, a sessionHookAdapter) string {
 	t.Helper()
 	scan := scanHookTree(true, []byte(a.asset().Content), a.integration.spec)
 	if scan.parseErr != "" {
 		t.Fatalf("the canonical asset does not survive its own scan: %s", scan.parseErr)
 	}
-	if len(scan.owned) != 1 {
-		t.Fatalf("the canonical asset scans as %d Sidecar entries, want exactly one", len(scan.owned))
+	if want := len(a.integration.spec.eventNames()); len(scan.owned) != want {
+		t.Fatalf("the canonical asset scans as %d Sidecar entries, want one per subscribed event (%d)",
+			len(scan.owned), want)
 	}
-	if !scan.owned[0].groupCanonical {
-		t.Fatal("the canonical asset's own entry does not read as canonically placed")
-	}
-	entry, err := parseJSONObject(scan.owned[0].raw)
-	if err != nil {
-		t.Fatal(err)
-	}
-	command, ok := entryCommand(entry, a.integration.spec)
-	if !ok {
-		t.Fatal("the canonical entry carries no command")
+	var command string
+	for i, owned := range scan.owned {
+		if !owned.groupCanonical {
+			t.Fatalf("the canonical asset's entry %d does not read as canonically placed", i)
+		}
+		entry, err := parseJSONObject(owned.raw)
+		if err != nil {
+			t.Fatal(err)
+		}
+		got, ok := entryCommand(entry, a.integration.spec)
+		if !ok {
+			t.Fatalf("canonical entry %d carries no command", i)
+		}
+		if i == 0 {
+			command = got
+			continue
+		}
+		if got != command {
+			t.Fatalf("canonical entry %d spawns %q where entry 0 spawns %q; every event has to spawn the same command",
+				i, got, command)
+		}
 	}
 	return command
 }
@@ -346,8 +397,9 @@ func TestASessionHookRepairsADuplicateOrTamperedEntry(t *testing.T) {
 			}
 			applyTo(t, svc, a.Provider(), ActionRepair)
 			scan := scanHookTree(true, []byte(readFileForTest(t, paths.File)), a.integration.spec)
-			if len(scan.owned) != 1 {
-				t.Fatalf("repair left %d Sidecar entries, want exactly one", len(scan.owned))
+			if want := len(a.integration.spec.eventNames()); len(scan.owned) != want {
+				t.Fatalf("repair left %d Sidecar entries, want one per subscribed event (%d)",
+					len(scan.owned), want)
 			}
 		})
 

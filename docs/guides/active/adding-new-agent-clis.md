@@ -209,6 +209,10 @@ While new code queries `internal/agentcatalog`, the workspace plugin maintains s
 
 When an agent CLI supports telemetry/lifecycle hooks, Sidecar can track exact sessions, state transitions, and process exits.
 
+> **If Herdr already ships an integration for this provider, do not write this step from scratch.** Seventeen of them are vendored under `internal/agentintegration/upstream/`, and porting one is a procedure rather than a design task: `.claude/skills/port-herdr-integration/SKILL.md` covers which upstream files hold the provider half, how the transport half is swapped, the three port shapes and their reference adapters, every registry the port has to appear in, how a tier is earned rather than copied, the trace-capture procedure, and the proof-run hazards. Check `internal/agentactivity/manifests/report.md` for whether your provider has an upstream integration and at which version. The rest of this step is what to do when it does not.
+
+
+
 ### 4.1 Record Capability in `internal/agentlifecycle/capabilities.json`
 
 Add an entry to `internal/agentlifecycle/capabilities.json`. Muse Spark 1.0.1 has **no published lifecycle hook** (extension surface is skills/MCP/MSP wire, not `hooks.json`); set `screen-fallback` until hooks are shipped:
@@ -260,9 +264,11 @@ The actual implementation checks `MUSE_HOME` first, then `XDG_DATA_HOME`, then `
 ### 4.3 Automated Integration Installer (Optional)
 
 If Sidecar bundles an automatic hook or plugin installer for this CLI:
-1. Implement `agentintegration.Adapter` in `internal/agentintegration/muse_install.go`.
+1. Implement `agentintegration.Adapter` in `internal/agentintegration/muse_install.go`. A session-identity entry is not a new adapter: it is a `sessionHookIntegration` descriptor in `internal/agentintegration/sessionhook.go`, which eight providers already share.
 2. Register the adapter in `agentintegration.DefaultAdapters()` in `internal/agentintegration/install.go`.
 3. This exposes `sidecar agent integration install muse`, `status`, `update`, and `uninstall`, as well as the UI in **Configuration → Agents → Integrations**.
+
+Registering the adapter is the first of ten registries a port has to appear in, and the others are what a review catches late. `.claude/skills/port-herdr-integration/SKILL.md` lists all of them with the test that guards each.
 
 ---
 
