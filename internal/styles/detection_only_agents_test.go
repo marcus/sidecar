@@ -13,7 +13,7 @@ import (
 // as detection-only, and its whole scope argument is that they cost no
 // presentation work: no curated colour in twenty themes, no website palette
 // entry, no icon that has to match a conversation adapter. Slice 5 of
-// docs/plans/active/herdr-parity-close-the-gap.md gave all ten a launch command
+// docs/plans/implemented/herdr-parity-close-the-gap.md gave all ten a launch command
 // and added two more, and the scope argument did not change: what makes them
 // free is that this package degrades gracefully for a provider it has never
 // heard of, not that they cannot be started.

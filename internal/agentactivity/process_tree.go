@@ -23,7 +23,7 @@ import (
 // identified here and was refused one step later, by the gate — which is why
 // `sidecar agent start --kind pi` ran to its full timeout, and why widening this
 // resolver alone would not have fixed it. See
-// docs/plans/active/herdr-parity-close-the-gap.md, Slice 3's result, for both
+// docs/plans/implemented/herdr-parity-close-the-gap.md, Slice 3's result, for both
 // measurements.
 //
 // The shape of the fix is upstream's: when a process is a generic runtime,

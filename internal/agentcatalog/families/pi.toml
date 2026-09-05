@@ -3,7 +3,7 @@
 # No auto-approve flag, and that is a fact rather than an omission: Pi ships no
 # permission system at all, which is the same finding that makes its blocked
 # lane unreachable (see the Slice 1 result in
-# docs/plans/active/herdr-parity-close-the-gap.md).
+# docs/plans/implemented/herdr-parity-close-the-gap.md).
 id = "pi"
 order = 70
 name = "Pi Agent"
