@@ -83,6 +83,7 @@ Captured 2026-08-30 on darwin/arm64.
 | `traces/omp/simple-turn.tsv` | omp | 18.1.8 | openai/gpt-4.1-mini | success, no tool | Slice 2 |
 | `traces/omp/tool-turn-with-approval.tsv` | omp | 18.1.8 | openai/gpt-4.1-mini | success, one bash call, approved | Slice 2 |
 | `traces/omp/denied-tool-and-quit.tsv` | omp | 18.1.8 | openai/gpt-4.1-mini | one bash call denied, then /quit | Slice 2 |
+| `traces/hermes/session-start-and-turn.tsv` | hermes | 0.17.0 | openrouter openai/gpt-4o-mini | one non-interactive turn, `hermes -z` | Slice 4 |
 
 The Pi traces were captured 2026-09-02 on darwin/arm64; the four rows above are
 one Pi 0.84.3 process each for the first three and a second process for the
@@ -446,3 +447,85 @@ capture hook of the "user's" was placed beside Sidecar's entry — in the same
 and `integration uninstall` removed exactly Sidecar's entry and left the other
 untouched in both files. A provider that will not start still exercises the
 installer, which is most of what an entry-in-config port can get wrong.
+
+## The Hermes port's proof run, 2026-09-04
+
+`hermes` is the first provider here whose trace was captured by a **probe plugin
+registering every hook the provider has**, rather than by the shipped asset
+alone. The reason is worth carrying forward, because it changed the port.
+
+Reading hermes 0.17.0's own source, no `invoke_hook("on_session_start")` and no
+`invoke_hook("pre_llm_call")` is greppable anywhere in the tree. Two of the three
+hooks upstream's asset registers therefore read as dead, and the port was one
+decision away from being written around that. They are not dead: both fire, and
+`on_session_start` fires first, before the model call, with `platform` and
+`session_id` on the payload. The call sites reach them by a path a grep for the
+literal hook name does not show.
+
+So the probe: a plugin registering every name in `VALID_HOOKS` and recording, per
+invocation, the hook, the platform, whether a session id was present, and the
+payload's field NAMES. It ran beside Sidecar's own asset through one live turn.
+That is what backs every gap the Hermes capability entry claims about hooks the
+shipped asset does not subscribe to, and it is the technique to reuse for any
+provider whose plugin API dispatches by name.
+
+The `platform` key is the one value this directory's allowlist gained for it. Its
+vocabulary is closed by Hermes's own source — `cli`, `tui`, `desktop`, `acp`, and
+the gateway names — and it is the field the asset's whole gate is built on, so a
+bare field name would have made "every terminal payload says cli" and "the field
+exists" the same row.
+
+### Two facts the run measured that no test could have
+
+**Python leaves a `__pycache__` behind inside the directory Sidecar owns.**
+Importing the plugin writes `__pycache__/__init__.cpython-NN.pyc`, so an
+uninstall that removed only the files Sidecar wrote left a stale compiled copy of
+the plugin it had just deleted, in a directory that then could not be removed
+because it was not empty. The adapter now removes the compiled form of its own
+file by name, and only when it is removing that file. Nothing in the unit suite
+could find this, because no test imports the asset from the directory it is
+installed into.
+
+**`hermes --version` prints a sentence, not a version.** The first line is
+`Hermes Agent v0.17.0 (2026.6.19) · upstream d6269da7`, and
+`detectProviderVersion` records the whole line, so the tested-range gate can
+never match and `integration status` says "outside the proved range" for a
+provider that is exactly the version recorded. It costs nothing today — the range
+only demotes the `full` tier — and it will matter to whoever takes Hermes above
+`session-identity`.
+
+### The hazard this run created, and the rule that replaces it
+
+**This lane's live proof destroyed the maintainer's default tmux server.** The
+proof ran `tmux kill-server` believing it was tearing down the private server it
+had started. It was not. The `tmux` client resolves its target from the inherited
+`$TMUX` before it looks at anything else, and the shell the proof ran in was
+itself a Sidecar pane on the machine's default server, so the kill went there and
+took every live agent session on it. `TMUX_TMPDIR` did not prevent it, because
+`TMUX_TMPDIR` only decides where a socket is *created*; it has no effect on a
+client that already has a socket named in its environment.
+
+The rule that replaces it, and it is four parts rather than one:
+
+- **Never run `kill-server`, under any flags, for any reason.** There is no
+  invocation of it that is worth the failure mode. It is not needed: a session
+  killed by name leaves an empty server that exits on its own.
+- **Every tmux invocation carries an explicit `-S <absolute socket path>`.**
+  Not `-L`, not a `TMUX_TMPDIR` export and a bare `tmux`. The socket path is the
+  only argument that overrides `$TMUX`, so it is the only thing that makes a
+  command provably local to the server the run created.
+- **`unset TMUX` at the top of every script or command chain that touches
+  tmux**, before the first tmux call rather than somewhere in the middle. The
+  Pi lane already recorded this for the `sidecar` CLI, which dispatches before
+  `main` unsets `TMUX`; this run is the same trap one level down, in the tmux
+  client itself.
+- **Clean up with `kill-session -t <name>` on the private socket, and only after
+  listing it.** Run `tmux -S <socket> ls`, confirm the output is exactly the
+  sessions this run created, and then kill them by name. A list that shows
+  anything unexpected means the socket is not the one you think it is, and the
+  right response is to stop rather than to kill.
+
+Socket paths are capped near 104 bytes on macOS, so the private socket lives in
+a short directory such as `/private/tmp/sc-<lane>-$(id -u)` and is removed after
+the run. That directory holds the socket and nothing else; state and config still
+go under the scratchpad.

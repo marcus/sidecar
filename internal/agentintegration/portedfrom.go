@@ -320,7 +320,14 @@ var portedFrom = []PortedFrom{
 			"and takes no such argument. NOT copied: Herdr's uninstall, which removes its plugin directory with " +
 			"remove_dir_all and strips its config line without checking that either is still its own. Sidecar removes " +
 			"only files carrying its marker, refuses a foreign file at its own asset path, and leaves the user's " +
-			"`plugins` and `enabled` keys behind when its line was all they held.",
+			"`plugins` and `enabled` keys behind when its line was all they held. It does remove one thing Sidecar " +
+			"did not write, and the live proof is what found it: Python's own " +
+			"__pycache__/__init__.cpython-NN.pyc compiled from Sidecar's plugin, by name, and only in the plan that " +
+			"removes that plugin. ALSO NOT COPIED: Herdr's handling of two further `plugins` shapes -- a flow " +
+			"sequence, and a `plugins` key holding a bare list. hermes_cli/plugins.py requires `plugins` to be a " +
+			"mapping with an `enabled` list and ignores anything else, so Herdr's flat-list branch writes into a key " +
+			"Hermes never reads; Sidecar reports both shapes as needs-repair and says what to do rather than " +
+			"rewriting bytes outside its own entry.",
 	},
 }
 
