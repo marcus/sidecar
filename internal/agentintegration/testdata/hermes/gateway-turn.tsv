@@ -1,0 +1,9 @@
+# hook	platform	session
+# Hermes runs the same agent behind a messaging gateway, and every payload names
+# the platform that produced it. None of these binds: a Telegram conversation is
+# not the pane's own work. Constructed from Hermes's platform vocabulary rather
+# than captured, because driving a gateway needs a bot token.
+on_session_start	telegram	session-1
+pre_llm_call	discord	session-2
+on_session_reset	slack	session-3
+pre_llm_call	whatsapp	session-4

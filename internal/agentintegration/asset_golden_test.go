@@ -89,6 +89,16 @@ var assetGoldens = []assetGolden{
 	// user's file: the matcher group with no matcher key, the SessionStart
 	// event, the command and the timeout.
 	{provider: GrokProvider, name: "sidecar.json", version: "1", checksum: "b228a059c0cb7ad1fec2cec8d9e3884f24231c1343915cfdbc0aa4442143f943"},
+	// Hermes is the first provider needing both ownership shapes at once, so it
+	// has three goldens rather than one. The two plugin files are bytes Sidecar
+	// writes whole, and Hermes skips a plugin directory holding one without the
+	// other, so a change to either is a change to the whole integration. The
+	// third is the enable line Sidecar adds to the user's config.yaml, rendered
+	// as the file Sidecar would create in an empty tree; its checksum covers the
+	// plugin name Hermes matches on and the marker comment beside it.
+	{provider: HermesProvider, name: "__init__.py", version: "1", checksum: "88a2ec8cecbd7a1223b8bc988b4e37657581c9f391ab51f47152d27e667d2a95"},
+	{provider: HermesProvider, name: "plugin.yaml", version: "1", checksum: "96513c3a9999d4f05e24151ff3bff274a13118c2bd6790709a07401e8058410d"},
+	{provider: HermesProvider, name: "config.yaml", version: "1", checksum: "889f6e26c9f4876d8b8df672cccd3eb868de4713ce3f3574887acb95f6e33b4b"},
 }
 
 // bumpInstructions is the whole point of the guard: a failure here has to tell

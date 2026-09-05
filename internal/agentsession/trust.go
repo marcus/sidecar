@@ -48,6 +48,7 @@ func OfficialSources() []string {
 		"sidecar.copilot.hooks",
 		"sidecar.cursor.hooks",
 		"sidecar.grok.hooks",
+		"sidecar.hermes.plugin",
 	}
 }
 
@@ -88,6 +89,8 @@ func OfficialSourceFor(kind string) string {
 		return "sidecar.cursor.hooks"
 	case "grok":
 		return "sidecar.grok.hooks"
+	case "hermes":
+		return "sidecar.hermes.plugin"
 	default:
 		return ""
 	}

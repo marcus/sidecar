@@ -1,0 +1,7 @@
+# hook	platform	session
+# The measured sequence. A hermes 0.17.0 CLI turn fires on_session_start before
+# the first model call and pre_llm_call a few milliseconds later, both carrying
+# platform=cli and the SAME session id. Upstream binds twice; this asset binds
+# once and suppresses the repeat.
+on_session_start	cli	session-1
+pre_llm_call	cli	session-1

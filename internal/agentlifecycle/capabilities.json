@@ -380,5 +380,33 @@
     "orderingGuaranteed": false,
     "sourceDoc": "https://github.com/can1357/oh-my-pi",
     "sourceVersionNote": "omp 18.1.8 on darwin/arm64, traced 2026-09-04 against openai/gpt-4.1-mini. The contract was first read from the released package's own shipped TypeScript -- src/extensibility/extensions/types.ts for the event registry, ctx.hasUI, ctx.isIdle and sessionManager.getSessionFile/getSessionId; src/extensibility/shared-events.ts for SessionStartEvent (which, unlike Pi's, carries no reason), SessionSwitchEvent and AgentEndEvent.willContinue; src/main.ts for hasUI = isInteractive || mode === \"rpc-ui\"; src/discovery/builtin.ts and src/extensibility/extensions/loader.ts for the <agentDir>/extensions scan and the bare .ts/.js file rule; and @oh-my-pi/pi-utils/src/dirs.ts for PI_CONFIG_DIR, PI_CODING_AGENT_DIR, the profile rules and the sessions directory -- and every load-bearing claim in it is now backed by a capture. The traces were taken from a live OMP TUI in a Sidecar-managed shell on a private tmux server, with HOME, every XDG directory, -config and SIDECAR_ISOLATED_STATE=1 under a scratch tree; the CLI was installed into a scratch npm prefix and never onto the maintainer's PATH, and no ~/.omp was created in their home. Sidecar's own asset was installed by `sidecar agent integration install omp` rather than by hand, so the run proves the installer, and uninstall removed only Sidecar's file and left a neighbouring extension and the directory holding it untouched. HERDR_ENV was never set: with it set, Herdr's extension and Sidecar's would both claim the pane. The event mapping is ported from Herdr's omp integration at HERDR_INTEGRATION_VERSION=9; see internal/agentintegration/portedfrom.go."
+  },
+  {
+    "schemaVersion": 1,
+    "provider": "hermes",
+    "source": "sidecar.hermes.plugin",
+    "assetVersion": "1",
+    "tier": "session-identity",
+    "evidence": "real-trace",
+    "minProviderVersion": "0.17.0",
+    "testedProviderRange": "0.17.0",
+    "covered": [
+      "session_identity"
+    ],
+    "knownGaps": [
+      "The shipped asset registers three hooks and reports one thing: Hermes's own session id. That is session identity only, by design, and it is what the tier reflects. Hermes has one of the widest hook surfaces in the catalog and this asset asks for almost none of it.",
+      "Hermes will not load a plugin it has found. A directory plugin is inert until its name appears in `plugins.enabled` in the user's config.yaml, so the integration is two files Sidecar owns outright plus one line inside a file the user owns. An install that wrote only the files would look present and report nothing, which is why a partial state is needs-repair rather than a lesser install.",
+      "Ownership of that config line is the item's own value rather than a marker comment, and the reason is measured: `hermes config set`, `hermes plugins enable` and the setup wizard all round-trip config.yaml through yaml.dump, which drops every comment in the file. A marker on Sidecar's line would survive until the next unrelated Hermes command and no longer. Sidecar writes the marker anyway, so a user reading their own config knows who added the line, and depends on nothing about it surviving.",
+      "The binding lands at process start, not one turn in. on_session_start fires before the first model call and carries platform and session_id, which is the earliest any provider in this catalog binds; grok and Antigravity both bind one turn into a pane's life. Measured: traces/hermes/session-start-and-turn.tsv.",
+      "on_session_start and pre_llm_call fire a few milliseconds apart with the SAME session id, so upstream's asset spawns the identical binding twice per turn. Sidecar suppresses an exact repeat, because each report here is a subprocess taking a file lock rather than a socket write.",
+      "The interactive-platform gate is upstream's and is load-bearing rather than defensive. Hermes runs the same agent behind Telegram, Slack, Discord and WhatsApp gateways as behind a terminal, and every hook payload carries the platform that produced it. Binding a gateway session would offer to resume somebody's chat message as the pane's own work.",
+      "pre_tool_call and post_tool_call carry a session id and no platform at all, so they are refused by that same gate. That is upstream's behaviour and is kept: a hook that cannot say which surface it came from cannot be shown to be the pane's.",
+      "Only session identity is traced. Hermes's own contract would support far more -- pre_tool_call/post_tool_call, pre_approval_request/post_approval_response for the blocked lane, api_request_error, on_session_end, subagent_start/subagent_stop, and the transform_* hooks -- and every one of them was observed firing in the capture run. The ceiling is a target, not a claim; the asset subscribes to none of them.",
+      "HERMES_HOME relocates the whole home and is honoured, because hermes_constants.get_hermes_home reads it and calls itself the single source of truth for that path. Herdr honours the same variable. Nothing else moves it: XDG_CONFIG_HOME is not read by Hermes at all.",
+      "Hermes also loads bundled plugins from its own installation tree, project plugins from ./.hermes/plugins when HERMES_ENABLE_PROJECT_PLUGINS is set, and pip plugins through an entry-point group. Sidecar installs into none of them. A per-project copy would follow a checkout into other people's clones and would report from panes Sidecar never set up."
+    ],
+    "orderingGuaranteed": false,
+    "sourceDoc": "https://hermes.nousresearch.com/docs/user-guide/features/plugins",
+    "sourceVersionNote": "PLACEHOLDER"
   }
 ]

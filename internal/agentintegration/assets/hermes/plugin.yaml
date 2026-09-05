@@ -1,0 +1,17 @@
+# sidecar-integration: id=sidecar.hermes.plugin schema=1 version=1
+#
+# The line above is what makes this file Sidecar's. The installer identifies an
+# asset it may replace or remove by that marker and by nothing else, not by its
+# name and not by where it sits.
+#
+# Hermes requires a plugin.yaml beside every directory plugin's __init__.py; a
+# directory holding one without the other is skipped by the loader with no
+# error, so the two files are one asset in two parts and are installed and
+# removed together.
+name: sidecar-agent-state
+version: "1"
+description: Report the Hermes Agent session identifier to the Sidecar pane running it
+provides_hooks:
+  - on_session_start
+  - on_session_reset
+  - pre_llm_call
