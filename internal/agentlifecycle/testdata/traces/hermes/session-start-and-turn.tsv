@@ -1,0 +1,45 @@
+# ms	event	session	turn	tool	fields
+0	on_session_start	session-1	-	-	model,platform=cli,session_id,telemetry_schema_version
+544	pre_llm_call	session-1	turn-1	-	conversation_history,is_first_turn,model,platform=cli,sender_id,session_id,task_id,telemetry_schema_version,turn_id,user_message
+551	pre_api_request	session-1	turn-1	-	api_call_count,api_mode,api_request_id,approx_input_tokens,base_url,conversation_history,max_tokens,message_count,middleware_trace,model,platform=cli,provider,request,request_char_count,request_messages,session_id,started_at,task_id,telemetry_schema_version,tool_count,turn_id,user_message
+1743	post_api_request	session-1	turn-1	-	api_call_count,api_duration,api_mode,api_request_id,assistant_content_chars,assistant_message,assistant_tool_call_count,base_url,ended_at,finish_reason,message_count,model,platform=cli,provider,response,response_model,session_id,started_at,task_id,telemetry_schema_version,turn_id,usage
+1746	transform_llm_output	session-1	-	-	model,platform=cli,response_text,session_id,telemetry_schema_version
+1746	post_llm_call	session-1	turn-1	-	assistant_response,conversation_history,model,platform=cli,session_id,task_id,telemetry_schema_version,turn_id,user_message
+1746	on_session_end	session-1	turn-1	-	completed,interrupted,model,platform=cli,session_id,task_id,telemetry_schema_version,turn_id
+# hermes 0.17.0, captured 2026-09-04 in a Sidecar-managed shell on a private
+# tmux server, with HERMES_HOME, XDG_STATE_HOME and -config all under a scratch
+# tree. One non-interactive turn: `hermes -z "reply with the single word ok"`.
+#
+# HOW IT WAS CAPTURED. A probe plugin registering every name in Hermes's
+# VALID_HOOKS ran beside Sidecar's own asset and recorded, per invocation, the
+# hook name, the platform, whether a session id was present, and the payload's
+# field NAMES. The shipped asset subscribes to three of these; the rest are here
+# because what a provider DOES fire is the evidence behind every gap the
+# capability entry claims, and reading the call sites alone had got two of them
+# wrong.
+#
+# THREE FINDINGS.
+#
+# 1. on_session_start fires BEFORE the first model call, carrying platform and
+# session_id. That is the earliest binding any provider in this catalog offers:
+# grok's SessionStart and Antigravity's PreInvocation both arrive one turn into a
+# pane's life. Reading hermes_cli/plugins.py's call sites suggested the opposite
+# -- no invoke_hook("on_session_start") is greppable in the tree -- which is
+# exactly why this was measured.
+#
+# 2. on_session_start and pre_llm_call arrive half a second apart with the SAME
+# session id. Upstream's asset reports the binding on both; Sidecar's suppresses
+# the repeat, because each report here is a process spawn taking a file lock.
+#
+# 3. Every payload in a terminal session carries platform=cli, and the field is
+# what the interactive-platform gate reads. pre_tool_call and post_tool_call did
+# not fire in this turn (nothing used a tool) and carry no platform kwarg at all
+# at their call sites in model_tools.py, which is why the asset's gate refuses
+# them even though they carry a session id.
+#
+# NOT CAPTURED: on_session_reset, which needs an interactive TUI and /new. Its
+# call site in cli.py passes session_id, platform and reason, and the asset
+# treats it exactly as it treats a start.
+#
+# The binding this run produced was corroborated from Hermes's own side:
+# `hermes sessions list` printed the same session id Sidecar had recorded.
