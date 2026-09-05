@@ -786,6 +786,50 @@ func TestHermesRecognisesAQuotedEnableLine(t *testing.T) {
 	}
 }
 
+// TestASymlinkAtAHermesAssetPathIsRefusedRatherThanFollowed pins the Lstat rule
+// at all three of this adapter's paths, which is what every other adapter in
+// this package states for itself.
+//
+// Hermes is the reason it is worth stating three times rather than once. Two of
+// its paths are files Sidecar writes whole and the third is a file full of the
+// user's own settings, and a symlink at any of them would make an ordinary Stat
+// report a healthy regular file while the write landed wherever the link
+// pointed. The config.yaml case is the one with no equivalent anywhere else
+// here: an entry adapter reads that file, edits one line of it, and writes it
+// back, so following a link there would rewrite somebody else's file rather than
+// merely creating one.
+func TestASymlinkAtAHermesAssetPathIsRefusedRatherThanFollowed(t *testing.T) {
+	for name, at := range map[string]func(hermesPaths) string{
+		"the plugin":   func(p hermesPaths) string { return p.Init },
+		"the manifest": func(p hermesPaths) string { return p.Manifest },
+		"config.yaml":  func(p hermesPaths) string { return p.Config },
+	} {
+		t.Run(name, func(t *testing.T) {
+			svc, _, paths := hermesFixture(t)
+			if err := os.MkdirAll(paths.PluginDir, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			target := filepath.Join(t.TempDir(), "elsewhere")
+			writeForTest(t, target, "untouched\n")
+			if err := os.Symlink(target, at(paths)); err != nil {
+				t.Fatal(err)
+			}
+
+			for _, act := range Actions() {
+				if _, err := svc.Plan(HermesProvider, act); err == nil {
+					t.Fatalf("%s followed a symlink at %s", act, at(paths))
+				}
+			}
+			if st := hermesStatus(t, svc); st.Status != agentlifecycle.StatusNeedsRepair {
+				t.Fatalf("status is %s; a symlink at an asset path is needs-repair", st.Status)
+			}
+			if got := readHermesFile(t, target); got != "untouched\n" {
+				t.Fatalf("a write landed outside the paths Sidecar owns:\n%s", got)
+			}
+		})
+	}
+}
+
 // TestHermesPathsAreTheOnesTheAdapterReports keeps the three assets and the
 // three reported paths in step, which is what a surface renders before asking
 // for confirmation.
