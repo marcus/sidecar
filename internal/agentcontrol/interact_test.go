@@ -31,6 +31,7 @@ type stageTerminal struct {
 	processIdentity string
 	inspects        int
 	onInspect       func(t *stageTerminal, n int)
+	inspectErr      error
 	// beforeWrite runs once, inside the mutating path and under the lock, just
 	// after the service handed over its pinned snapshot and just before the
 	// adapter re-proves it. That gap is the real race a replacement wins.
@@ -70,6 +71,9 @@ func (t *stageTerminal) Inspect(context.Context, Target) (Snapshot, error) {
 	}
 	t.mu.Lock()
 	defer t.mu.Unlock()
+	if t.inspectErr != nil {
+		return Snapshot{}, t.inspectErr
+	}
 	target := t.target
 	target.PanePID = t.panePID
 	return Snapshot{
@@ -205,7 +209,67 @@ func TestPromptRefusesEveryUnpromptableTargetWithoutWritingBytes(t *testing.T) {
 			if wrote := terminal.wrote(); len(wrote) != 0 {
 				t.Fatalf("refusal wrote %q to the pane", wrote)
 			}
+			var typed *Error
+			if !AsError(err, &typed) || typed.Receipt == nil || typed.Receipt.Submission != SubmissionNotSubmitted || typed.Receipt.Wait != PromptWaitNotStarted {
+				t.Fatalf("refusal receipt = %+v, want not_submitted/not_started", typed)
+			}
 		})
+	}
+}
+
+func TestPromptWriteFailureKeepsSubmissionUnknown(t *testing.T) {
+	terminal := newStage("fake:idle")
+	terminal.submitErr = errors.New("connection dropped during write")
+	_, err := stageService(terminal).Prompt(context.Background(), PromptRequest{Target: terminal.target, Text: "go"})
+	if got := codeOf(t, err); got != ErrTransport {
+		t.Fatalf("code = %s, want %s", got, ErrTransport)
+	}
+	var typed *Error
+	if !AsError(err, &typed) || typed.Receipt == nil || typed.Receipt.Submission != SubmissionUnknown {
+		t.Fatalf("write failure receipt = %+v, want unknown", typed)
+	}
+}
+
+func TestPromptObservationFailureKeepsTheSubmittedTargetPin(t *testing.T) {
+	terminal := newStage("fake:idle")
+	want := terminal.target
+	want.PanePID = terminal.panePID
+	terminal.onInspect = func(s *stageTerminal, n int) {
+		if n >= 2 {
+			s.mu.Lock()
+			s.inspectErr = &Error{Code: ErrTransport, Message: "observer disconnected"}
+			s.mu.Unlock()
+		}
+	}
+	_, err := stageService(terminal).Prompt(context.Background(), PromptRequest{Target: terminal.target, Text: "go"})
+	if got := codeOf(t, err); got != ErrTransport {
+		t.Fatalf("code = %s, want %s", got, ErrTransport)
+	}
+	var typed *Error
+	if !AsError(err, &typed) || typed.Receipt == nil || typed.Receipt.Submission != SubmissionSubmitted || typed.Receipt.Target != want {
+		t.Fatalf("observation failure receipt = %+v, want submitted target %+v", typed, want)
+	}
+}
+
+func TestPromptPostWriteReplacementReportsSubmittedUnderOriginalPin(t *testing.T) {
+	terminal := newStage("fake:idle")
+	want := terminal.target
+	want.PanePID = terminal.panePID
+	terminal.onInspect = func(s *stageTerminal, n int) {
+		if n >= 2 {
+			s.set("other:idle")
+		}
+	}
+	_, err := stageService(terminal).Prompt(context.Background(), PromptRequest{Target: terminal.target, Text: "go"})
+	if got := codeOf(t, err); got != ErrReplaced {
+		t.Fatalf("code = %s, want %s", got, ErrReplaced)
+	}
+	var typed *Error
+	if !AsError(err, &typed) || typed.Receipt == nil || typed.Receipt.Submission != SubmissionSubmitted || typed.Receipt.Wait != PromptWaitNotRequested || typed.Receipt.Target != want {
+		t.Fatalf("replacement receipt = %+v, want submitted original target %+v", typed, want)
+	}
+	if wrote := terminal.wrote(); len(wrote) != 1 || wrote[0] != "go" {
+		t.Fatalf("submitted = %q", wrote)
 	}
 }
 
@@ -219,6 +283,10 @@ func TestPromptReportsStalledWhenTheLifecycleNeverMoves(t *testing.T) {
 	// that nothing was written.
 	if wrote := terminal.wrote(); len(wrote) != 1 || wrote[0] != "review the diff" {
 		t.Fatalf("submitted = %q", wrote)
+	}
+	var typed *Error
+	if !AsError(err, &typed) || typed.Receipt == nil || typed.Receipt.Submission != SubmissionSubmitted || typed.Receipt.Wait != PromptWaitNotRequested {
+		t.Fatalf("stall receipt = %+v", typed)
 	}
 }
 
@@ -328,6 +396,9 @@ func TestPromptWaitRunsSubmissionAndSettleUnderOnePin(t *testing.T) {
 	if got.Agent.Status != StatusDone || got.Target.PaneID != "%1" {
 		t.Fatalf("agent = %+v", got)
 	}
+	if got.Receipt.Submission != SubmissionSubmitted || got.Receipt.Wait != PromptWaitSettled || got.Receipt.Target != got.Target {
+		t.Fatalf("receipt = %+v, target = %+v", got.Receipt, got.Target)
+	}
 }
 
 // The documented caveat path: `--wait` from an already-working agent. There is
@@ -362,6 +433,11 @@ func TestPromptWaitFromAWorkingAgentIsSatisfiedByTheRunningTurn(t *testing.T) {
 	if _, err := stageService(terminal2).Prompt(context.Background(),
 		PromptRequest{Target: terminal2.target, Text: "again", Wait: true, Timeout: 200 * time.Millisecond}); codeOf(t, err) != ErrTimeout {
 		t.Fatalf("a never-finishing turn = %v, want a timeout rather than a stall", err)
+	} else {
+		var typed *Error
+		if !AsError(err, &typed) || typed.Receipt == nil || typed.Receipt.Submission != SubmissionSubmitted || typed.Receipt.Wait != PromptWaitTimeout || typed.Receipt.Target.PaneID != "%1" {
+			t.Fatalf("timeout receipt = %+v", typed)
+		}
 	}
 }
 

@@ -46,6 +46,8 @@ To start a catalog family with provider arguments in the same step, both `create
 
 From inside a worktree shell, `create shell --tab --agent KIND` inherits your own worktree's directory (the workspace row is placed there, not in the main checkout) — no `--worktree`/`--cwd` flag is needed.
 
+When the managed shell should belong to one project but start elsewhere, pass both facts explicitly: `sidecar create shell --project sidecar --cwd ~/code/tui --name publisher --json`. `--cwd` never chooses project ownership and always creates a managed workspace row, even inside an existing Sidecar shell. It is refused with `--split` because a live terminal split has no durable shell record. Relative paths resolve from the caller's directory, `~` and `~/path` resolve from the caller's home, and the directory must exist before Sidecar creates tmux or durable state. The resolved path is the shell's live cwd, recorded `workDir`, provider launch cwd, and cold-restore cwd.
+
 Creating a shell does not steal the user's focus. Do not rearrange panes the user set up, and never close a target you did not create.
 
 ### 3. Start the provider
@@ -72,7 +74,9 @@ sidecar agent prompt "$target" "Review the current diff and report only actionab
 
 `--wait` submits and waits as one operation, so no second command can race a replacement occupant into the gap. Things to know:
 
-- **Refusals happen before any byte is written.** A blocked target gets `agent_blocked`; an unidentified or stale one gets `agent_not_ready`; a replaced one gets `agent_replaced`; and a dead pane, a pane in copy mode, or a session that no longer holds exactly one pane gets `agent_pane_busy`. Nothing is sent in any of them.
+- **Read the receipt before retrying.** Prompt JSON adds `receipt.submission` (`submitted`, `not_submitted`, or `unknown`), `receipt.wait`, and the exact pinned `receipt.target`. The receipt is present on success and inside the error envelope on failure. A timeout after delivery remains exit 1 with error code `timeout`, plus `submission: "submitted"` and `wait: "timeout"`; do not send the prompt again. `unknown` means a write or transport may have landed and is equally unsafe to retry automatically.
+
+- **Refusals happen before any byte is written.** Feature-disabled, unknown-host, missing-target, not-found, and ambiguous-target failures carry `submission: "not_submitted"` and `wait: "not_started"` too, without inventing a pane identity. A blocked target gets `agent_blocked`; an unidentified or stale one gets `agent_not_ready`; a replaced one gets `agent_replaced`; and a dead pane, a pane in copy mode, or a session that no longer holds exactly one pane gets `agent_pane_busy`. Nothing is sent in any of them.
 - **There is no implicit timeout.** `--wait` requires `--timeout`, and so does `agent wait`.
 - **Settled means `idle`, `done`, or `blocked`** by default. Narrow it with repeated `--until done`, or widen it with `--until working`.
 - **A prompt that goes nowhere is reported, not hidden.** If the lifecycle does not move within 5 seconds of a prompt sent from idle or done, you get `agent_prompt_stalled`. The bytes were written; the agent did not react. Read the screen before you send anything else.
@@ -118,7 +122,7 @@ With two or more positional arguments the first is the target. With exactly one,
 
 ## Reading the output
 
-Every verb takes `--json`. Success writes one object on stdout; failure writes `{"error":{"code":...,"message":...,"target":{...}}}` on stderr. Exit codes:
+Every verb takes `--json`. Success writes one object on stdout; failure writes `{"error":{"code":...,"message":...,"target":{...}}}` on stderr. Prompt adds its receipt to the success object or error object without changing those codes. Exit codes:
 
 | Exit | Meaning |
 | --- | --- |

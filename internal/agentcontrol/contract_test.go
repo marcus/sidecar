@@ -49,4 +49,14 @@ func TestStatusAndErrorCodeVocabularyIsFrozen(t *testing.T) {
 	if !reflect.DeepEqual(codes, wantCodes) {
 		t.Fatalf("error codes = %#v", codes)
 	}
+	submissions := []SubmissionStatus{SubmissionNotSubmitted, SubmissionSubmitted, SubmissionUnknown}
+	wantSubmissions := []SubmissionStatus{"not_submitted", "submitted", "unknown"}
+	if !reflect.DeepEqual(submissions, wantSubmissions) {
+		t.Fatalf("submission statuses = %#v", submissions)
+	}
+	waits := []PromptWaitOutcome{PromptWaitNotRequested, PromptWaitNotStarted, PromptWaitSettled, PromptWaitTimeout, PromptWaitCancelled, PromptWaitReplaced, PromptWaitStalled, PromptWaitFailed}
+	wantWaits := []PromptWaitOutcome{"not_requested", "not_started", "settled", "timeout", "cancelled", "replaced", "stalled", "failed"}
+	if !reflect.DeepEqual(waits, wantWaits) {
+		t.Fatalf("prompt wait outcomes = %#v", waits)
+	}
 }

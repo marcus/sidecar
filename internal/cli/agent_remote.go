@@ -23,14 +23,14 @@ var newRemoteRunner = productionRemoteRunner
 // no stream to be healthy: see hosts.OneShotClient. Reading the config here,
 // once, is also what makes "no such host" a refusal with the registered names
 // in it instead of a connection attempt to a name nobody registered.
-func productionRemoteRunner(env Env, hostID string) (agentremote.Runner, int) {
+func productionRemoteRunner(env Env, hostID string) (agentremote.Runner, error) {
 	cfg, err := config.Load()
 	if err != nil {
-		return nil, emitAgentError(env, true, err)
+		return nil, err
 	}
 	if !remoteHostsEnabled(env, cfg) {
-		return nil, remoteRefusal(env, agentcontrol.ErrFeatureDisabled,
-			fmt.Sprintf("remote hosts are disabled; enable the %s feature", features.SidecarRemoteHosts.Name))
+		return nil, &agentcontrol.Error{Code: agentcontrol.ErrFeatureDisabled,
+			Message: fmt.Sprintf("remote hosts are disabled; enable the %s feature", features.SidecarRemoteHosts.Name)}
 	}
 	registered := hostsFromConfigForCLI(cfg)
 	for _, host := range registered {
@@ -40,9 +40,9 @@ func productionRemoteRunner(env Env, hostID string) (agentremote.Runner, int) {
 		client := hosts.OneShotClient(host, hosts.ClientOptions{})
 		return func(ctx context.Context, _ string, args []string, out any) error {
 			return client.RunSidecar(ctx, args, out)
-		}, -1
+		}, nil
 	}
-	return nil, remoteRefusal(env, agentcontrol.ErrHostUnavailable, unknownHostMessage(hostID, registered))
+	return nil, &agentcontrol.Error{Code: agentcontrol.ErrHostUnavailable, Message: unknownHostMessage(hostID, registered)}
 }
 
 // remoteHostsEnabled answers whether this run may reach a registered host.
@@ -113,20 +113,15 @@ func unknownHostMessage(hostID string, registered []hosts.Host) string {
 	return fmt.Sprintf("no host is registered as %q; registered hosts are %s", hostID, strings.Join(names, ", "))
 }
 
-// remoteRefusal is used before flags are known to be JSON or not, so it always
-// writes the machine envelope. Every caller here has already parsed --json;
-// the helper takes it explicitly where that matters.
-func remoteRefusal(env Env, code agentcontrol.ErrorCode, message string) int {
-	return emitAgentError(env, true, &agentcontrol.Error{Code: code, Message: message})
-}
-
-// remoteClient builds the addressed host's client, or returns a CLI exit code.
-func remoteClient(env Env, f agentFlags) (agentremote.Client, int) {
-	runner, code := newRemoteRunner(env, f.host)
-	if code >= 0 {
-		return agentremote.Client{}, code
+// remoteClient builds the addressed host's client without writing output, so
+// prompt can attach a proved not-submitted receipt to failures that happen
+// before any transport is opened.
+func remoteClient(env Env, f agentFlags) (agentremote.Client, error) {
+	runner, err := newRemoteRunner(env, f.host)
+	if err != nil {
+		return agentremote.Client{}, err
 	}
-	return agentremote.Client{HostID: f.host, Run: runner, Project: f.project}, -1
+	return agentremote.Client{HostID: f.host, Run: runner, Project: f.project}, nil
 }
 
 // remoteTarget applies the one target rule that differs from the local path: a
@@ -138,14 +133,14 @@ func remoteClient(env Env, f agentFlags) (agentremote.Client, int) {
 // that happens to carry the same generated name on the other machine. Two
 // Sidecars started in the same-named project produce the same session names by
 // construction, so this is a realistic collision rather than a theoretical one.
-func remoteTarget(env Env, f agentFlags, target string, explicit bool) (string, int) {
+func remoteTarget(f agentFlags, target string, explicit bool) (string, error) {
 	if !explicit || strings.TrimSpace(target) == "" {
-		return "", emitAgentError(env, f.json, &agentcontrol.Error{
+		return "", &agentcontrol.Error{
 			Code:    agentcontrol.ErrNotFound,
 			Message: "--host requires an explicit target: the current shell is on this machine, not on " + f.host,
-		})
+		}
 	}
-	return target, -1
+	return target, nil
 }
 
 // remoteContext returns the caller's context.
@@ -162,9 +157,9 @@ func remoteContext(env Env) context.Context {
 // ---------------------------------------------------------------------------
 
 func runRemoteAgentList(env Env, f agentFlags) int {
-	client, code := remoteClient(env, f)
-	if code >= 0 {
-		return code
+	client, err := remoteClient(env, f)
+	if err != nil {
+		return emitAgentError(env, true, err)
 	}
 	agents, err := client.List(remoteContext(env))
 	if err != nil {
@@ -174,13 +169,13 @@ func runRemoteAgentList(env Env, f agentFlags) int {
 }
 
 func runRemoteAgentGet(env Env, f agentFlags, target string, explicit bool) int {
-	client, code := remoteClient(env, f)
-	if code >= 0 {
-		return code
+	client, err := remoteClient(env, f)
+	if err != nil {
+		return emitAgentError(env, true, err)
 	}
-	session, code := remoteTarget(env, f, target, explicit)
-	if code >= 0 {
-		return code
+	session, err := remoteTarget(f, target, explicit)
+	if err != nil {
+		return emitAgentError(env, f.json, err)
 	}
 	agent, err := client.Get(remoteContext(env), session, f.includeSession)
 	if err != nil {
@@ -190,13 +185,13 @@ func runRemoteAgentGet(env Env, f agentFlags, target string, explicit bool) int 
 }
 
 func runRemoteAgentStart(env Env, f agentFlags, target, kind string, explicit bool, providerArgs []string) int {
-	client, code := remoteClient(env, f)
-	if code >= 0 {
-		return code
+	client, err := remoteClient(env, f)
+	if err != nil {
+		return emitAgentError(env, true, err)
 	}
-	session, code := remoteTarget(env, f, target, explicit)
-	if code >= 0 {
-		return code
+	session, err := remoteTarget(f, target, explicit)
+	if err != nil {
+		return emitAgentError(env, f.json, err)
 	}
 	agent, err := client.Start(remoteContext(env), session, kind, f.timeout, providerArgs)
 	if err != nil {
@@ -206,29 +201,33 @@ func runRemoteAgentStart(env Env, f agentFlags, target, kind string, explicit bo
 }
 
 func runRemoteAgentPrompt(env Env, f agentFlags, target, text string, explicit bool) int {
-	client, code := remoteClient(env, f)
-	if code >= 0 {
-		return code
+	requested := agentcontrol.Target{Host: f.host, Project: f.project}
+	if explicit {
+		requested.Session = target
 	}
-	session, code := remoteTarget(env, f, target, explicit)
-	if code >= 0 {
-		return code
-	}
-	agent, err := client.Prompt(remoteContext(env), session, text, f.wait, f.until, f.timeout)
+	client, err := remoteClient(env, f)
 	if err != nil {
-		return emitAgentError(env, f.json, err)
+		return emitPromptError(env, f.json, agentcontrol.WithPromptReceipt(err, requested, agentcontrol.SubmissionNotSubmitted, agentcontrol.PromptWaitNotStarted))
 	}
-	return emitAgent(env, f.json, agent)
+	session, err := remoteTarget(f, target, explicit)
+	if err != nil {
+		return emitPromptError(env, f.json, agentcontrol.WithPromptReceipt(err, requested, agentcontrol.SubmissionNotSubmitted, agentcontrol.PromptWaitNotStarted))
+	}
+	result, err := client.Prompt(remoteContext(env), session, text, f.wait, f.until, f.timeout)
+	if err != nil {
+		return emitPromptError(env, f.json, err)
+	}
+	return emitPromptResult(env, f.json, result)
 }
 
 func runRemoteAgentWait(env Env, f agentFlags, target string, explicit bool) int {
-	client, code := remoteClient(env, f)
-	if code >= 0 {
-		return code
+	client, err := remoteClient(env, f)
+	if err != nil {
+		return emitAgentError(env, true, err)
 	}
-	session, code := remoteTarget(env, f, target, explicit)
-	if code >= 0 {
-		return code
+	session, err := remoteTarget(f, target, explicit)
+	if err != nil {
+		return emitAgentError(env, f.json, err)
 	}
 	agent, err := client.Wait(remoteContext(env), session, f.until, f.timeout)
 	if err != nil {
@@ -238,13 +237,13 @@ func runRemoteAgentWait(env Env, f agentFlags, target string, explicit bool) int
 }
 
 func runRemoteAgentRead(env Env, f agentFlags, target string, explicit bool) int {
-	client, code := remoteClient(env, f)
-	if code >= 0 {
-		return code
+	client, err := remoteClient(env, f)
+	if err != nil {
+		return emitAgentError(env, true, err)
 	}
-	session, code := remoteTarget(env, f, target, explicit)
-	if code >= 0 {
-		return code
+	session, err := remoteTarget(f, target, explicit)
+	if err != nil {
+		return emitAgentError(env, f.json, err)
 	}
 	result, err := client.Read(remoteContext(env), session, f.source, f.lines, f.ansi)
 	if err != nil {
@@ -254,13 +253,13 @@ func runRemoteAgentRead(env Env, f agentFlags, target string, explicit bool) int
 }
 
 func runRemoteAgentSendKeys(env Env, f agentFlags, target string, explicit bool, keys []string) int {
-	client, code := remoteClient(env, f)
-	if code >= 0 {
-		return code
+	client, err := remoteClient(env, f)
+	if err != nil {
+		return emitAgentError(env, true, err)
 	}
-	session, code := remoteTarget(env, f, target, explicit)
-	if code >= 0 {
-		return code
+	session, err := remoteTarget(f, target, explicit)
+	if err != nil {
+		return emitAgentError(env, f.json, err)
 	}
 	agent, err := client.SendKeys(remoteContext(env), session, keys)
 	if err != nil {
@@ -281,9 +280,9 @@ func runRemoteAgentSendKeys(env Env, f agentFlags, target string, explicit bool,
 // directory still exists, whether a provider binary is installed — are all
 // facts about the host and none of them is knowable from here.
 func runRemoteSessionDocument(env Env, hostID string, jsonOutput bool, build func(agentremote.Client) ([]string, error)) int {
-	runner, code := newRemoteRunner(env, hostID)
-	if code >= 0 {
-		return code
+	runner, err := newRemoteRunner(env, hostID)
+	if err != nil {
+		return emitAgentError(env, true, err)
 	}
 	client := agentremote.Client{HostID: hostID, Run: runner}
 	args, err := build(client)

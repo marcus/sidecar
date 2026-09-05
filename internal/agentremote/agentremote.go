@@ -257,13 +257,49 @@ func (c Client) Start(ctx context.Context, session, kind string, timeout time.Du
 }
 
 // Prompt submits prompt text, optionally waiting for the host to settle.
-func (c Client) Prompt(ctx context.Context, session, text string, wait bool, until []agentcontrol.Status, timeout time.Duration) (agentcontrol.Agent, error) {
+func (c Client) Prompt(ctx context.Context, session, text string, wait bool, until []agentcontrol.Status, timeout time.Duration) (agentcontrol.PromptResult, error) {
 	if wait {
 		var cancel context.CancelFunc
 		ctx, cancel = c.deadline(ctx, timeout)
 		defer cancel()
 	}
-	return c.one(ctx, c.PromptArgs(session, text, wait, until, timeout))
+	var result agentcontrol.PromptResult
+	if err := c.run(ctx, c.PromptArgs(session, text, wait, until, timeout), &result); err != nil {
+		// A newer host returns its exact receipt in the error envelope. With an
+		// older host or a severed transport, Sidecar cannot know whether the
+		// remote write landed, so say unknown rather than manufacturing retry
+		// safety.
+		var typed *agentcontrol.Error
+		if agentcontrol.AsError(err, &typed) && typed.Receipt == nil {
+			copy := *typed
+			outcome := agentcontrol.PromptWaitNotStarted
+			if wait {
+				outcome = agentcontrol.PromptWaitFailed
+			}
+			copy.Receipt = &agentcontrol.PromptReceipt{
+				Submission: agentcontrol.SubmissionUnknown,
+				Wait:       outcome,
+				Target:     agentcontrol.Target{Host: c.HostID, Project: c.Project, Session: session},
+			}
+			return agentcontrol.PromptResult{}, &copy
+		}
+		return agentcontrol.PromptResult{}, err
+	}
+	result.Target.Host = c.HostID
+	result.Receipt.Target.Host = c.HostID
+	// A successful old-host Agent response decodes into the compatible leading
+	// fields but has no receipt. Success still proves the prompt call completed,
+	// so fill the additive fields locally.
+	if result.Receipt.Submission == "" {
+		result.Receipt.Submission = agentcontrol.SubmissionSubmitted
+		if wait {
+			result.Receipt.Wait = agentcontrol.PromptWaitSettled
+		} else {
+			result.Receipt.Wait = agentcontrol.PromptWaitNotRequested
+		}
+		result.Receipt.Target = result.Target
+	}
+	return result, nil
 }
 
 // Wait blocks until the host reports a settled state or its own timeout
@@ -413,6 +449,12 @@ func TranslateError(hostID string, err error) error {
 		return &agentcontrol.Error{Code: agentcontrol.ErrTransport, Message: err.Error(), Err: err}
 	}
 	if hosted := hostedError(runErr); hosted != nil {
+		if hosted.Target != nil {
+			hosted.Target.Host = hostID
+		}
+		if hosted.Receipt != nil {
+			hosted.Receipt.Target.Host = hostID
+		}
 		hosted.Err = err
 		return hosted
 	}

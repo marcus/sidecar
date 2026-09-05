@@ -44,16 +44,19 @@ func TestAgentPromptSendsWaitsAndReportsUnderOnePinnedTarget(t *testing.T) {
 	if code != 0 || errOut != "" {
 		t.Fatalf("prompt = %d stdout=%q stderr=%q", code, out, errOut)
 	}
-	var agent agentcontrol.Agent
-	if err := json.Unmarshal([]byte(out), &agent); err != nil {
+	var result agentcontrol.PromptResult
+	if err := json.Unmarshal([]byte(out), &result); err != nil {
 		t.Fatalf("prompt JSON %q: %v", out, err)
 	}
-	if agent.Target.Session != "sidecar-sh-demo-2" || agent.Target.PaneID != "%11" || agent.Agent.Kind != "codex" {
-		t.Fatalf("prompt agent = %+v", agent)
+	if result.Target.Session != "sidecar-sh-demo-2" || result.Target.PaneID != "%11" || result.Agent.Kind != "codex" {
+		t.Fatalf("prompt agent = %+v", result)
 	}
-	settled := agent.Agent.Status == agentcontrol.StatusDone || agent.Agent.Status == agentcontrol.StatusIdle || agent.Agent.Status == agentcontrol.StatusBlocked
+	settled := result.Agent.Status == agentcontrol.StatusDone || result.Agent.Status == agentcontrol.StatusIdle || result.Agent.Status == agentcontrol.StatusBlocked
 	if !settled {
-		t.Fatalf("prompt returned at %s, which is not a settled state", agent.Agent.Status)
+		t.Fatalf("prompt returned at %s, which is not a settled state", result.Agent.Status)
+	}
+	if result.Receipt.Submission != agentcontrol.SubmissionSubmitted || result.Receipt.Wait != agentcontrol.PromptWaitSettled || result.Receipt.Target != result.Target {
+		t.Fatalf("prompt receipt = %+v", result.Receipt)
 	}
 	if terminal.inspects < 3 {
 		t.Fatalf("inspected %d times; --wait returned without observing the turn", terminal.inspects)
@@ -74,12 +77,15 @@ func TestAgentPromptUsesTheCurrentShellWhenNoTargetIsNamed(t *testing.T) {
 	if code != 0 || errOut != "" {
 		t.Fatalf("prompt = %d stdout=%q stderr=%q", code, out, errOut)
 	}
-	var agent agentcontrol.Agent
-	if err := json.Unmarshal([]byte(out), &agent); err != nil {
+	var result agentcontrol.PromptResult
+	if err := json.Unmarshal([]byte(out), &result); err != nil {
 		t.Fatal(err)
 	}
-	if agent.Target.Session != "sidecar-sh-demo-1" {
-		t.Fatalf("target = %+v, want the current shell", agent.Target)
+	if result.Target.Session != "sidecar-sh-demo-1" {
+		t.Fatalf("target = %+v, want the current shell", result.Target)
+	}
+	if result.Receipt.Submission != agentcontrol.SubmissionSubmitted || result.Receipt.Wait != agentcontrol.PromptWaitNotRequested {
+		t.Fatalf("receipt = %+v", result.Receipt)
 	}
 	if len(terminal.submitted) != 1 || terminal.submitted[0] != "look at the failing test" {
 		t.Fatalf("submitted = %q; the single positional is the prompt, not a target", terminal.submitted)
@@ -99,6 +105,141 @@ func TestAgentPromptRefusesABlockedTargetWithoutWritingBytes(t *testing.T) {
 	if len(terminal.submitted) != 0 {
 		t.Fatalf("a refusal wrote %q", terminal.submitted)
 	}
+	var envelope agentcontrol.ErrorEnvelope
+	if err := json.Unmarshal([]byte(errOut), &envelope); err != nil || envelope.Error == nil || envelope.Error.Receipt == nil || envelope.Error.Receipt.Submission != agentcontrol.SubmissionNotSubmitted {
+		t.Fatalf("blocked receipt = %+v, decode err %v", envelope, err)
+	}
+}
+
+func TestAgentPromptPreServiceRefusalsReportNotSubmitted(t *testing.T) {
+	assertReceipt := func(t *testing.T, code int, out, errOut string, wantCode agentcontrol.ErrorCode) {
+		t.Helper()
+		if out != "" {
+			t.Fatalf("stdout = %q, want empty", out)
+		}
+		var envelope agentcontrol.ErrorEnvelope
+		if err := json.Unmarshal([]byte(errOut), &envelope); err != nil {
+			t.Fatalf("stderr %q: %v", errOut, err)
+		}
+		if envelope.Error == nil || envelope.Error.Code != wantCode || envelope.Error.Receipt == nil || envelope.Error.Receipt.Submission != agentcontrol.SubmissionNotSubmitted || envelope.Error.Receipt.Wait != agentcontrol.PromptWaitNotStarted {
+			t.Fatalf("exit %d envelope = %+v, want %s not_submitted/not_started", code, envelope, wantCode)
+		}
+	}
+
+	t.Run("feature disabled", func(t *testing.T) {
+		targetProject(t)
+		var out, errOut bytes.Buffer
+		_, code := Run([]string{"agent", "prompt", "sidecar-sh-demo-2", "go", "--json"}, &out, &errOut)
+		assertReceipt(t, code, out.String(), errOut.String(), agentcontrol.ErrFeatureDisabled)
+	})
+
+	t.Run("target not found", func(t *testing.T) {
+		targetProject(t)
+		code, out, errOut := runAgentCLI(t, "agent", "prompt", "missing", "go", "--json")
+		assertReceipt(t, code, out, errOut, agentcontrol.ErrNotFound)
+	})
+
+	t.Run("ambiguous target", func(t *testing.T) {
+		_, stateDir := setupIsolatedCLI(t)
+		alpha, beta := t.TempDir(), t.TempDir()
+		writeProjectMeta(t, stateDir, "alpha", alpha)
+		writeProjectMeta(t, stateDir, "beta", beta)
+		writeProjectShells(t, stateDir, "alpha", shellstate.Definition{TmuxName: "sidecar-sh-alpha-1", DisplayName: "reviewer", WorkDir: alpha})
+		writeProjectShells(t, stateDir, "beta", shellstate.Definition{TmuxName: "sidecar-sh-beta-1", DisplayName: "reviewer", WorkDir: beta})
+		t.Chdir(t.TempDir())
+		code, out, errOut := runAgentCLI(t, "agent", "prompt", "reviewer", "go", "--json")
+		assertReceipt(t, code, out, errOut, agentcontrol.ErrTransport)
+	})
+}
+
+func TestRemoteAgentPromptPreTransportRefusalsReportNotSubmitted(t *testing.T) {
+	run := func(t *testing.T, configBody string, args ...string) *agentcontrol.Error {
+		t.Helper()
+		stateHome, _ := setupIsolatedCLI(t)
+		cfgPath := filepath.Join(stateHome, "config.json")
+		if err := os.WriteFile(cfgPath, []byte(configBody), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		var out, errOut bytes.Buffer
+		full := append([]string{"-config", cfgPath, "agent", "prompt"}, args...)
+		handled, _ := Run(full, &out, &errOut)
+		if !handled || out.Len() != 0 {
+			t.Fatalf("Run(%v) handled=%v stdout=%q stderr=%q", full, handled, out.String(), errOut.String())
+		}
+		var envelope agentcontrol.ErrorEnvelope
+		if err := json.Unmarshal(errOut.Bytes(), &envelope); err != nil {
+			t.Fatalf("stderr %q: %v", errOut.String(), err)
+		}
+		if envelope.Error == nil || envelope.Error.Receipt == nil || envelope.Error.Receipt.Submission != agentcontrol.SubmissionNotSubmitted || envelope.Error.Receipt.Wait != agentcontrol.PromptWaitNotStarted {
+			t.Fatalf("envelope = %+v, want not_submitted/not_started", envelope)
+		}
+		return envelope.Error
+	}
+
+	const enabled = `{"features":{"flags":{"agent_control":true,"sidecar_remote_hosts":true}},"hosts":{"list":[{"id":"book","target":"book"}]}}`
+	t.Run("missing explicit target", func(t *testing.T) {
+		got := run(t, enabled, "go", "--host", "book", "--json")
+		if got.Code != agentcontrol.ErrNotFound || got.Receipt.Target.Host != "book" || got.Receipt.Target.Session != "" {
+			t.Fatalf("error = %+v", got)
+		}
+	})
+	t.Run("unknown host", func(t *testing.T) {
+		got := run(t, enabled, "reviewer", "go", "--host", "missing", "--json")
+		if got.Code != agentcontrol.ErrHostUnavailable || got.Receipt.Target.Host != "missing" || got.Receipt.Target.Session != "reviewer" {
+			t.Fatalf("error = %+v", got)
+		}
+	})
+	t.Run("remote feature disabled", func(t *testing.T) {
+		got := run(t, `{"features":{"flags":{"agent_control":true,"sidecar_remote_hosts":false}}}`, "reviewer", "go", "--host", "book", "--json")
+		if got.Code != agentcontrol.ErrFeatureDisabled || got.Receipt.Target.Host != "book" || got.Receipt.Target.Session != "reviewer" {
+			t.Fatalf("error = %+v", got)
+		}
+	})
+}
+
+func TestAgentPromptWaitTimeoutReportsSubmittedReceipt(t *testing.T) {
+	working := agentFixture(t, "working.txt")
+	targetProject(t)
+	terminal := &cliAgentTerminal{launched: true, screen: working}
+	useCLIAgentTerminal(t, terminal)
+
+	code, out, errOut := runAgentCLI(t, "agent", "prompt", "sidecar-sh-demo-2", "keep going", "--wait", "--timeout", "20ms", "--json")
+	if code != 1 || out != "" {
+		t.Fatalf("timeout = %d stdout=%q stderr=%q", code, out, errOut)
+	}
+	var envelope agentcontrol.ErrorEnvelope
+	if err := json.Unmarshal([]byte(errOut), &envelope); err != nil {
+		t.Fatal(err)
+	}
+	if envelope.Error == nil || envelope.Error.Code != agentcontrol.ErrTimeout || envelope.Error.Receipt == nil || envelope.Error.Receipt.Submission != agentcontrol.SubmissionSubmitted || envelope.Error.Receipt.Wait != agentcontrol.PromptWaitTimeout || envelope.Error.Receipt.Target.PaneID != "%11" {
+		t.Fatalf("timeout envelope = %+v", envelope)
+	}
+	if len(terminal.submitted) != 1 || terminal.submitted[0] != "keep going" {
+		t.Fatalf("submitted = %q", terminal.submitted)
+	}
+}
+
+func TestAgentPromptHumanOutputDistinguishesTimeoutFromRefusal(t *testing.T) {
+	working := agentFixture(t, "working.txt")
+	blocked := agentFixture(t, "blocked.txt")
+	t.Run("submitted but not settled", func(t *testing.T) {
+		targetProject(t)
+		terminal := &cliAgentTerminal{launched: true, screen: working}
+		useCLIAgentTerminal(t, terminal)
+		code, out, errOut := runAgentCLI(t, "agent", "prompt", "sidecar-sh-demo-2", "keep going", "--wait", "--timeout", "20ms")
+		if code != 1 || out != "" || !strings.Contains(errOut, "Prompt submitted") || !strings.Contains(errOut, "did not settle") {
+			t.Fatalf("timeout = %d stdout=%q stderr=%q", code, out, errOut)
+		}
+	})
+	t.Run("refused before submission", func(t *testing.T) {
+		targetProject(t)
+		terminal := &cliAgentTerminal{launched: true, screen: blocked}
+		useCLIAgentTerminal(t, terminal)
+		code, out, errOut := runAgentCLI(t, "agent", "prompt", "sidecar-sh-demo-2", "do it anyway")
+		if code != 5 || out != "" || !strings.Contains(errOut, "was not submitted") {
+			t.Fatalf("refusal = %d stdout=%q stderr=%q", code, out, errOut)
+		}
+	})
 }
 
 func TestAgentWaitAndPromptRefuseAnImplicitTimeout(t *testing.T) {

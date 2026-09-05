@@ -79,6 +79,50 @@ type Agent struct {
 	Agent  AgentState `json:"agent"`
 }
 
+// SubmissionStatus is the certainty Sidecar has about a prompt crossing the
+// terminal boundary. Unknown is deliberate: a transport or terminal write can
+// fail after applying input, and reporting either submitted or not_submitted in
+// that case would invite an unsafe automatic retry.
+type SubmissionStatus string
+
+const (
+	SubmissionNotSubmitted SubmissionStatus = "not_submitted"
+	SubmissionSubmitted    SubmissionStatus = "submitted"
+	SubmissionUnknown      SubmissionStatus = "unknown"
+)
+
+// PromptWaitOutcome describes the second half of `agent prompt --wait` without
+// changing the command's established error code or exit status.
+type PromptWaitOutcome string
+
+const (
+	PromptWaitNotRequested PromptWaitOutcome = "not_requested"
+	PromptWaitNotStarted   PromptWaitOutcome = "not_started"
+	PromptWaitSettled      PromptWaitOutcome = "settled"
+	PromptWaitTimeout      PromptWaitOutcome = "timeout"
+	PromptWaitCancelled    PromptWaitOutcome = "cancelled"
+	PromptWaitReplaced     PromptWaitOutcome = "replaced"
+	PromptWaitStalled      PromptWaitOutcome = "stalled"
+	PromptWaitFailed       PromptWaitOutcome = "failed"
+)
+
+// PromptReceipt is the additive prompt contract carried on success and error.
+// Target is the identity pinned before submission; callers can decide whether
+// a retry is safe without reconstructing identity from prose.
+type PromptReceipt struct {
+	Submission SubmissionStatus  `json:"submission"`
+	Wait       PromptWaitOutcome `json:"wait"`
+	Target     Target            `json:"target"`
+}
+
+// PromptResult preserves Agent's top-level target/agent shape and adds the
+// receipt, so existing JSON readers keep decoding the fields they know.
+type PromptResult struct {
+	Target  Target        `json:"target"`
+	Agent   AgentState    `json:"agent"`
+	Receipt PromptReceipt `json:"receipt"`
+}
+
 type ErrorCode string
 
 const (
@@ -121,7 +165,10 @@ type Error struct {
 	Code    ErrorCode `json:"code"`
 	Message string    `json:"message"`
 	Target  *Target   `json:"target,omitempty"`
-	Err     error     `json:"-"`
+	// Receipt is present for agent prompt failures. Other verbs keep their
+	// existing envelope unchanged.
+	Receipt *PromptReceipt `json:"receipt,omitempty"`
+	Err     error          `json:"-"`
 }
 
 func (e *Error) Error() string {

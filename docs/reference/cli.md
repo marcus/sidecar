@@ -464,6 +464,15 @@ or the command reports agent_prompt_stalled. A prompt sent to an agent that is
 already working makes no claim about which turn is which: completion of the turn
 already in flight may satisfy --wait.
 
+Every prompt result carries a receipt with submission, wait, and the pinned target.
+submission is submitted, not_submitted, or unknown; unknown means a transport/write
+failure may have landed and must not be retried automatically. wait is settled,
+timeout, cancelled, replaced, stalled, failed, not_started, or not_requested. The
+same receipt is included in the error envelope, so a timeout keeps exit 1 and code
+timeout while proving the prompt was submitted and only the wait expired. Feature,
+host, and target-resolution refusals report not_submitted/not_started before a write;
+they may carry only the requested host/session until a physical pane is resolved.
+
 ```
 Usage: sidecar agent prompt [TARGET] TEXT [--wait] [--until STATUS]... [--timeout DURATION] [--json]
 ```
@@ -1066,7 +1075,17 @@ workspace row: the result's session is a sidecar-tp-… terminal split, not a
 managed shell, so it is invisible to `shell list`, refused by the agent verbs,
 and closable only with `shell delete --target` (nothing else names it).
 Handing a shell to a second agent (coordinate-agents) needs a workspace row, so
-use --tab rather than the default placement.
+use --tab or --cwd rather than the default placement.
+
+--cwd chooses the new shell's initial working directory without changing which
+project owns it. Relative paths resolve from the caller's directory; ~ and ~/path
+resolve from the caller's home. The path must already be a directory and is resolved
+before tmux, shells.json, or a UI request is changed. JSON, provider start, and cold
+restore all use the resolved effective directory. --cwd always creates a managed
+workspace row and is refused with --split, whose live terminal has no durable shell
+record. Without --cwd, the current shell or
+worktree inheritance is unchanged. Use --project or --shell when the destination is
+outside the project and ownership would otherwise be ambiguous.
 
 --agent records which agent family the shell is for, in the same durable field
 the TUI's Create Shell writes. That record is what keeps the shell on the
@@ -1098,6 +1117,7 @@ Usage: sidecar create shell [options]
 **Options:**
 
 - `--name NAME`: Display name (default: the next Shell N)
+- `--cwd PATH`: Start in PATH without changing project ownership
 - `--agent TYPE`: Record the agent family (claude, codex, …), and start it when agent_control is on
 - `-- ARGS`: Provider arguments appended to --agent's launch command
 - `--skip-permissions`: Pass the selected provider's auto-approve flag
@@ -1118,12 +1138,14 @@ Usage: sidecar create shell [options]
 - `2`: usage error, or this directory is not in a registered project
 - `3`: no running instance (split mode)
 - `4`: instance declined (cap, too small, or feature off)
-- `5`: a value was rejected: --name, --agent, an unknown --project / --shell, or provider arguments with agent_control off
+- `5`: a value was rejected: --name, --cwd, --agent, an unknown --project / --shell, or provider arguments with agent_control off
 
 **Examples:**
 
 ```bash
 sidecar create shell --name reviewer --agent codex --json
+# a Sidecar-owned shell that starts elsewhere
+sidecar create shell --project sidecar --cwd ~/code/tui --name publisher --json
 sidecar create shell --name "dev server" --run "python3 -m http.server"
 # an agent shell the board knows is one
 sidecar create shell --agent claude --run claude
