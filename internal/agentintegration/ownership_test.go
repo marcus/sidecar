@@ -386,6 +386,61 @@ func TestAPreviewsAfterStateMatchesWhatTheOpActuallyDoes(t *testing.T) {
 			t.Fatalf("uninstall predicted a Sidecar version %q on the user's hooks.json", after.Version)
 		}
 	})
+
+	// Hermes is the fourth OwnsEntry adapter and the first whose entry is one
+	// item in a YAML block sequence rather than a key in a document or a fenced
+	// region of a file. It is also the only adapter here whose config file the
+	// user keeps their OWN entries in, so the after-state has two ways to be
+	// wrong rather than one: it can claim Sidecar's entry is still there after
+	// the op that takes it out, and it can claim the file stops being the user's
+	// once Sidecar has no line in it. The user's own plugin is in the fixture so
+	// that uninstall has a file to write rather than one to remove; an OpRemove
+	// carries no after-state to get wrong.
+	t.Run("hermes config.yaml", func(t *testing.T) {
+		svc, _, paths := hermesFixture(t)
+		writeHermesConfig(t, paths, "plugins:\n  enabled:\n    - disk-cleanup\n")
+
+		install, err := svc.Plan(HermesProvider, ActionInstall)
+		if err != nil {
+			t.Fatal(err)
+		}
+		after, ok := afterFor(t, install, paths.Config)
+		if !ok {
+			t.Fatal("install planned no write to config.yaml")
+		}
+		if !after.Owned || after.Ownership != OwnsEntry || after.Version != HermesAssetVersion {
+			t.Fatalf("install predicted %+v; wanted an owned entry at version %s", after, HermesAssetVersion)
+		}
+
+		applyTo(t, svc, HermesProvider, ActionInstall)
+		uninstall, err := svc.Plan(HermesProvider, ActionUninstall)
+		if err != nil {
+			t.Fatal(err)
+		}
+		after, ok = afterFor(t, uninstall, paths.Config)
+		if !ok {
+			t.Fatal("uninstall planned no write to config.yaml")
+		}
+		if after.Owned || after.Ownership == OwnsEntry {
+			t.Fatalf("uninstall predicted %+v for config.yaml; it removes Sidecar's enable line, so what it leaves is the user's file", after)
+		}
+		if after.Version != "" {
+			t.Fatalf("uninstall predicted a Sidecar version %q on the user's config.yaml", after.Version)
+		}
+
+		// The two plugin files are Sidecar's own, so their install after-state
+		// is the other direction of the same rule: an OwnsFile asset the plan
+		// writes must be predicted owned at the bundled version.
+		for _, path := range []string{paths.Init, paths.Manifest} {
+			after, ok := afterFor(t, install, path)
+			if !ok {
+				t.Fatalf("install planned no write to %s", path)
+			}
+			if !after.Owned || after.Ownership != OwnsFile || after.Version != HermesAssetVersion {
+				t.Fatalf("install predicted %+v for %s; wanted an owned file at version %s", after, path, HermesAssetVersion)
+			}
+		}
+	})
 }
 
 // TestASymlinkedSessionIdentitySettingsFileIsRefusedUnwritten pins the Lstat

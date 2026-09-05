@@ -1,0 +1,9 @@
+# hook	platform	session
+# The interactive set, and the one asymmetry inside it. on_session_start and
+# on_session_reset accept cli, tui, desktop and acp; pre_llm_call accepts cli
+# alone, which is upstream's narrowing and is kept verbatim. So the tui rows
+# below bind on start and are refused on the turn.
+on_session_start	tui	session-1
+pre_llm_call	tui	session-2
+on_session_start	acp	session-3
+on_session_start	desktop	session-4

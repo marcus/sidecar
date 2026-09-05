@@ -420,6 +420,42 @@ var portedFrom = []PortedFrom{
 			"their command names rather than by an (event, command) pair and therefore strips a stale row of any " +
 			"version without a list to keep current.",
 	},
+	{
+		Provider:    HermesProvider,
+		UpstreamID:  "hermes",
+		UpstreamDir: "hermes",
+		Version:     "5",
+		Commit:      herdrVendoredCommit,
+		Evidence: "Ported line by line from the vendored upstream/hermes/__init__.py and upstream/hermes/plugin.yaml at " +
+			"that commit, where the plugin carries HERDR_INTEGRATION_VERSION=5. The provider half is kept verbatim in " +
+			"behaviour: the three hook registrations (on_session_start, on_session_reset, pre_llm_call), the " +
+			"interactive-platform gate over cli, tui, desktop and acp, pre_llm_call's narrower cli-only restriction, " +
+			"the isinstance-and-non-empty session-id check, and the decision to swallow every exception rather than " +
+			"let a reporting failure reach the agent loop. Every hook name, kwarg and payload shape was re-checked " +
+			"against hermes 0.17.0's own shipped source (hermes_cli/plugins.py's VALID_HOOKS and PluginManager, " +
+			"hermes_constants.get_hermes_home, hermes_cli/plugins_cmd.py's _save_enabled_set) and then MEASURED with a " +
+			"probe plugin registering every valid hook through one live turn, rather than taken on trust. The " +
+			"measurement is why the port kept upstream's three: on_session_start really does fire before the first " +
+			"model call with platform=cli and a session id, which reading the call sites alone did not show. Three " +
+			"deliberate differences, each with its reason in the asset: the transport is Sidecar's, so the spawn is " +
+			"`sidecar agent report-session` and the one-second bound becomes five, because Sidecar's verb takes an " +
+			"exclusive lock on the managed-shell record where Herdr's writes to a socket; an exact repeat of the " +
+			"binding is suppressed, because on_session_start and pre_llm_call fire milliseconds apart with the same " +
+			"id and each report here is a process spawn rather than a socket frame, exactly as Herdr's own opencode " +
+			"asset at version 10 already suppresses; and the session start source (startup, new, resume) is dropped, " +
+			"which is forced rather than chosen, because report-session records which conversation a pane is running " +
+			"and takes no such argument. NOT copied: Herdr's uninstall, which removes its plugin directory with " +
+			"remove_dir_all and strips its config line without checking that either is still its own. Sidecar removes " +
+			"only files carrying its marker, refuses a foreign file at its own asset path, and leaves the user's " +
+			"`plugins` and `enabled` keys behind when its line was all they held. It does remove one thing Sidecar " +
+			"did not write, and the live proof is what found it: Python's own " +
+			"__pycache__/__init__.cpython-NN.pyc compiled from Sidecar's plugin, by name, and only in the plan that " +
+			"removes that plugin. ALSO NOT COPIED: Herdr's handling of two further `plugins` shapes -- a flow " +
+			"sequence, and a `plugins` key holding a bare list. hermes_cli/plugins.py requires `plugins` to be a " +
+			"mapping with an `enabled` list and ignores anything else, so Herdr's flat-list branch writes into a key " +
+			"Hermes never reads; Sidecar reports both shapes as needs-repair and says what to do rather than " +
+			"rewriting bytes outside its own entry.",
+	},
 }
 
 // PortedFromRecords returns the provenance of every Sidecar integration asset.

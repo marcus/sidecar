@@ -60,6 +60,7 @@ func TestBundledAssetsSpawnArgvTheShippedCLIAccepts(t *testing.T) {
 		{name: "omp", run: runOmpOrderingHarness},
 		{name: "session-identity", run: runSessionHookCorpus},
 		{name: "mastracode", run: runMastracodeHookCorpus},
+		{name: "hermes", run: runHermesArgvHarness},
 	} {
 		t.Run(provider.name, func(t *testing.T) {
 			argvs := provider.run(t, node, t.TempDir())
@@ -353,6 +354,46 @@ func runSessionHookCorpus(t *testing.T, _, _ string) [][]string {
 func runMastracodeHookCorpus(t *testing.T, _, _ string) [][]string {
 	t.Helper()
 	return agentintegration.MastracodeHookArgvCorpus()
+}
+
+// runHermesArgvHarness returns every argv the Hermes plugin really spawns.
+//
+// It is the same shape as the Pi and Kilo runners and a different interpreter:
+// the Hermes asset is Python, so the harness beside it is Python, and a machine
+// without python3 skips this provider rather than passing vacuously. The corpus
+// is small by construction -- the asset sends one verb and suppresses an exact
+// repeat -- and it is exactly the seam the Kilo port found the hard way, where
+// `--kind kilo` parsed cleanly and was then refused with exit 5.
+func runHermesArgvHarness(t *testing.T, _, dir string) [][]string {
+	t.Helper()
+	python, err := exec.LookPath("python3")
+	if err != nil {
+		if os.Getenv("SIDECAR_REQUIRE_PYTHON") == "1" {
+			t.Fatal("SIDECAR_REQUIRE_PYTHON=1 but python3 is not on PATH; the Hermes asset argv seam cannot be checked")
+		}
+		t.Skip("python3 is not installed; skipping the Hermes asset argv seam check")
+	}
+	cmd := exec.Command(python, "argv-harness.py",
+		filepath.Join(dir, "sidecar-stub"), filepath.Join(dir, "order.log"), filepath.Join(dir, "argv"))
+	cmd.Dir = filepath.Join("..", "agentintegration", "assets", "hermes")
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("running the hermes argv harness: %v\n%s", err, stderr.String())
+	}
+	var result struct {
+		Order []string            `json:"order"`
+		Argv  map[string][]string `json:"argv"`
+	}
+	if err := json.Unmarshal(out, &result); err != nil {
+		t.Fatalf("the hermes argv harness output is not JSON: %q (%v)", out, err)
+	}
+	argvs := make([][]string, 0, len(result.Order))
+	for _, label := range result.Order {
+		argvs = append(argvs, result.Argv[label])
+	}
+	return argvs
 }
 
 func runAssetHarness(t *testing.T, node, provider, dir string, args ...string) []byte {

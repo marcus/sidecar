@@ -156,6 +156,13 @@ var valueBearingTraceKeys = map[string]bool{
 	"decision":        true,
 	"permission_kind": true,
 	"session_id":      true,
+	// Hermes's one. `platform` is the surface that produced a payload, and its
+	// vocabulary is closed by Hermes's own source -- cli, tui, desktop, acp, and
+	// the gateway names telegram, slack, discord and whatsapp. Recording it is
+	// what makes the trace evidence for the gate the shipped asset is built on:
+	// with a bare field name, "every payload in a terminal session says cli" and
+	// "the field exists" are the same row.
+	"platform": true,
 }
 
 // TestNoHookTraceCarriesAValue is the privacy gate over the fixtures
@@ -170,7 +177,7 @@ var valueBearingTraceKeys = map[string]bool{
 // every test in the tree. So the allowlist above is enforced here: a `=` on any
 // key outside it fails, whatever the value looks like.
 func TestNoHookTraceCarriesAValue(t *testing.T) {
-	for _, provider := range []string{"codex", "claude", "pi", "kilo", "kimi", "omp", "grok", "qwen", "mastracode"} {
+	for _, provider := range []string{"codex", "claude", "pi", "kilo", "kimi", "omp", "grok", "qwen", "mastracode", "hermes"} {
 		entries, err := os.ReadDir(filepath.Join("testdata", "traces", provider))
 		if err != nil {
 			t.Fatalf("%s has no traces but its capability entry claims real evidence: %v", provider, err)
@@ -1622,5 +1629,134 @@ func TestQwenSessionStartFiresBeforeAuthentication(t *testing.T) {
 	}
 	if capability.TestedProviderRange != "0.23.0" {
 		t.Fatalf("testedProviderRange = %q, want the version the capture was taken from", capability.TestedProviderRange)
+	}
+}
+
+// The Hermes traces.
+//
+// Hermes is the only provider here whose trace was captured by a probe plugin
+// registering every hook the provider has, rather than by the shipped asset
+// alone. That is deliberate: the asset subscribes to three hooks and the
+// capability entry makes claims about a dozen, and a claim about a hook nothing
+// recorded is a claim nobody checked.
+
+// TestHermesBindsBeforeTheFirstModelCall is the finding that decides what the
+// Hermes entry can honestly say, and it is the opposite of what reading the
+// source suggested.
+//
+// No invoke_hook("on_session_start") appears anywhere in hermes 0.17.0's tree,
+// so the call sites read as though the hook the asset depends on never fires.
+// It does, first, before the model call, carrying the platform and the session
+// id. That makes Hermes the earliest binding in the catalog: grok's SessionStart
+// and Antigravity's PreInvocation both arrive one turn in.
+func TestHermesBindsBeforeTheFirstModelCall(t *testing.T) {
+	rows := readHookTrace(t, "hermes", "session-start-and-turn.tsv")
+	if len(rows) == 0 {
+		t.Fatal("the hermes trace is empty")
+	}
+	if rows[0].event != "on_session_start" {
+		t.Fatalf("the first event is %q; the binding is claimed to land before anything else", rows[0].event)
+	}
+	var apiAt = -1
+	for i, r := range rows {
+		if r.event == "pre_api_request" {
+			apiAt = i
+			break
+		}
+	}
+	if apiAt <= 0 {
+		t.Fatalf("the trace has no pre_api_request, so nothing shows the binding precedes the model call: %v", eventsOf(rows))
+	}
+	have := map[string]bool{}
+	for _, f := range rows[0].fields {
+		have[f] = true
+	}
+	if !have["session_id"] || !have["platform=cli"] {
+		t.Fatalf("on_session_start carries %v; the gate reads session_id and platform", rows[0].fields)
+	}
+}
+
+// TestHermesRepeatsTheSameSessionOnTheNextHook is the measured reason the port
+// suppresses an exact repeat where upstream does not.
+//
+// on_session_start and pre_llm_call both fire, both carry a session id, and in a
+// single turn it is the same one. Upstream reports the binding on each; on a
+// subprocess transport that is a second process spawn taking a file lock to say
+// nothing new.
+func TestHermesRepeatsTheSameSessionOnTheNextHook(t *testing.T) {
+	rows := readHookTrace(t, "hermes", "session-start-and-turn.tsv")
+	subscribed := map[string]bool{"on_session_start": true, "pre_llm_call": true, "on_session_reset": true}
+	seen := map[string]string{}
+	for _, r := range rows {
+		if !subscribed[r.event] {
+			continue
+		}
+		seen[r.event] = r.session
+	}
+	if len(seen) < 2 {
+		t.Fatalf("only %d of the asset's hooks fired, so the repeat is not shown: %v", len(seen), seen)
+	}
+	if seen["on_session_start"] != seen["pre_llm_call"] {
+		t.Fatalf("on_session_start bound %q and pre_llm_call %q; the recorded finding is that they are the same",
+			seen["on_session_start"], seen["pre_llm_call"])
+	}
+}
+
+// TestHermesNamesASessionOnEveryHookSidecarSubscribesTo is the tier's own
+// evidence: the entry claims session_identity and nothing else, so the one thing
+// that has to be true is that each hook the asset registers names a session.
+func TestHermesNamesASessionOnEveryHookSidecarSubscribesTo(t *testing.T) {
+	subscribed := map[string]bool{"on_session_start": true, "pre_llm_call": true, "on_session_reset": true}
+	fired := 0
+	for _, r := range readHookTrace(t, "hermes", "session-start-and-turn.tsv") {
+		if !subscribed[r.event] {
+			continue
+		}
+		fired++
+		named := false
+		for _, f := range r.fields {
+			if f == "session_id" {
+				named = true
+			}
+		}
+		if !named {
+			t.Fatalf("%s carries no session identifier, so nothing could be bound from it: %v", r.event, r.fields)
+		}
+		if r.session == "-" {
+			t.Fatalf("%s recorded no session at all", r.event)
+		}
+	}
+	if fired == 0 {
+		t.Fatal("none of the hooks the asset subscribes to appears in the trace")
+	}
+}
+
+// TestHermesLifecycleHooksAreACeilingRatherThanAClaim keeps the capability
+// entry's largest gap honest. Hermes fires a full turn's worth of hooks that
+// would support far more than session identity, and the shipped asset subscribes
+// to none of them; the trace is what makes that a measured ceiling rather than a
+// guess, and the covered list is what says the port has not claimed it.
+func TestHermesLifecycleHooksAreACeilingRatherThanAClaim(t *testing.T) {
+	events := map[string]bool{}
+	for _, r := range readHookTrace(t, "hermes", "session-start-and-turn.tsv") {
+		events[r.event] = true
+	}
+	for _, want := range []string{"pre_api_request", "post_api_request", "post_llm_call", "on_session_end"} {
+		if !events[want] {
+			t.Fatalf("the trace does not record %s, so the gap that names it is unbacked: %v", want, events)
+		}
+	}
+
+	capability, ok := CapabilityForSource("sidecar.hermes.plugin")
+	if !ok {
+		t.Fatal("no capability entry for the hermes source")
+	}
+	if !capability.Covers(TransitionSessionIdentity) {
+		t.Fatal("the entry does not claim session_identity, which is the whole of what it ships")
+	}
+	for _, unclaimed := range []Transition{TransitionWorkStart, TransitionTurnComplete, TransitionProcessExit, TransitionToolUse} {
+		if capability.Covers(unclaimed) {
+			t.Fatalf("the entry claims %s, which the shipped asset does not subscribe to", unclaimed)
+		}
 	}
 }

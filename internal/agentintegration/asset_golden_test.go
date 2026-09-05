@@ -119,6 +119,16 @@ var assetGoldens = []assetGolden{
 	// session binding moving from SessionStart, whose payload carries the literal
 	// "session-init", to AgentStart, which carries the real thread id.
 	{provider: MastracodeProvider, name: "hooks.json", version: "1", checksum: "e2ee505ac99b886e89f36c265bb12235e01d5eb9df7b868710088f294e5e8494"},
+	// Hermes is the first provider needing both ownership shapes at once, so it
+	// has three goldens rather than one. The two plugin files are bytes Sidecar
+	// writes whole, and Hermes skips a plugin directory holding one without the
+	// other, so a change to either is a change to the whole integration. The
+	// third is the enable line Sidecar adds to the user's config.yaml, rendered
+	// as the file Sidecar would create in an empty tree; its checksum covers the
+	// plugin name Hermes matches on and the marker comment beside it.
+	{provider: HermesProvider, name: "__init__.py", version: "1", checksum: "88a2ec8cecbd7a1223b8bc988b4e37657581c9f391ab51f47152d27e667d2a95"},
+	{provider: HermesProvider, name: "plugin.yaml", version: "1", checksum: "96513c3a9999d4f05e24151ff3bff274a13118c2bd6790709a07401e8058410d"},
+	{provider: HermesProvider, name: "config.yaml", version: "1", checksum: "889f6e26c9f4876d8b8df672cccd3eb868de4713ce3f3574887acb95f6e33b4b"},
 }
 
 // bumpInstructions is the whole point of the guard: a failure here has to tell
@@ -131,8 +141,8 @@ An asset's bytes changed. Before updating the golden below, do this in order:
      ClaudeAssetVersion, PiAssetVersion, KiloAssetVersion, KimiAssetVersion,
      OmpAssetVersion, AntigravityAssetVersion, CopilotAssetVersion,
      CursorAssetVersion, GrokAssetVersion, DevinAssetVersion, DroidAssetVersion,
-     QoderCLIAssetVersion, QwenAssetVersion, or MastracodeAssetVersion) if it has
-     not already moved. An installed copy is
+     QoderCLIAssetVersion, QwenAssetVersion, MastracodeAssetVersion, or
+     HermesAssetVersion) if it has not already moved. An installed copy is
      recognised as outdated by its version, so without this every existing
      install keeps reporting itself current while running different code.
   2. Update the matching AssetVersion in internal/agentlifecycle/capabilities.json,

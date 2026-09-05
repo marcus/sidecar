@@ -1,0 +1,11 @@
+# hook	platform	session
+# Everything the gate refuses before it looks at a lane. A hook Hermes invokes
+# with no platform kwarg at all -- pre_tool_call and post_tool_call are the two
+# that carry a session id and no platform, and both were observed in the capture
+# run -- and a payload whose session id is missing or empty.
+pre_tool_call	-	session-1
+post_tool_call	-	session-1
+on_session_start	cli	-
+pre_llm_call	cli	-
+on_session_end	cli	session-1
+subagent_stop	-	session-1

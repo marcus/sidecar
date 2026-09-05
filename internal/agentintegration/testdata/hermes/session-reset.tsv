@@ -1,0 +1,8 @@
+# hook	platform	session
+# /new and /clear rotate the session in place. Hermes fires on_session_reset with
+# the NEW id, so the pane's binding has to move with it: this is the case the
+# repeat suppression must not swallow.
+on_session_start	cli	session-1
+pre_llm_call	cli	session-1
+on_session_reset	cli	session-2
+pre_llm_call	cli	session-2

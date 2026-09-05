@@ -320,6 +320,17 @@ type Asset struct {
 	Version string `json:"version"`
 	// Ownership is what installing this asset does to the file at its path.
 	Ownership Ownership `json:"ownership"`
+	// CommentPrefix is the comment syntax the marker line is written in, for
+	// an [OwnsFile] asset whose file is not JavaScript. Empty means "//",
+	// which is what every asset shipped before a Python one existed uses.
+	//
+	// It is a property of the asset rather than a per-adapter rule for the
+	// same reason [Ownership] is: [inspectFile] decides ownership for every
+	// provider through one code path, and a second marker syntax reached by
+	// asking which adapter is calling would be a rule that lives in the
+	// caller. The sentinel itself never changes; only the characters that
+	// make it a comment in that file's language do.
+	CommentPrefix string `json:"commentPrefix,omitempty"`
 	// Content is the exact bytes installed for [OwnsFile]. For [OwnsEntry] it
 	// is the canonical file Sidecar would create in an empty tree, which is a
 	// description of the entry rather than something ever written verbatim over
@@ -400,6 +411,13 @@ type Env struct {
 	// honouring it is what puts Sidecar's hook file where a relocated grok
 	// reads, and what lets a proof run redirect the provider.
 	GrokHome string
+	// HermesHome is $HERMES_HOME when set, and empty otherwise. It is Hermes
+	// Agent's own override for its whole home directory: hermes_constants.py's
+	// get_hermes_home reads the variable and falls back to ~/.hermes, and every
+	// other copy in that codebase imports it, so honouring it is what puts the
+	// plugin where a relocated Hermes reads and what lets a proof run redirect
+	// the provider away from the maintainer's real tree.
+	HermesHome string
 	// ClaudeConfigDir is $CLAUDE_CONFIG_DIR when set, and empty otherwise. It
 	// is Claude Code's own override for its whole configuration home: the
 	// binary resolves that home as the variable's value, falling back to
@@ -448,6 +466,7 @@ func OSEnv() Env {
 		PiProfile:       os.Getenv("PI_PROFILE"),
 		CopilotHome:     os.Getenv("COPILOT_HOME"),
 		GrokHome:        os.Getenv("GROK_HOME"),
+		HermesHome:      os.Getenv("HERMES_HOME"),
 		ClaudeConfigDir: os.Getenv("CLAUDE_CONFIG_DIR"),
 		QoderConfigDir:  os.Getenv("QODER_CONFIG_DIR"),
 		QwenHome:        os.Getenv("QWEN_HOME"),
@@ -590,7 +609,7 @@ func DefaultAdapters() []Adapter {
 		OpenCodeAdapter{}, CodexAdapter{}, ClaudeAdapter{}, PiAdapter{}, KiloAdapter{}, KimiAdapter{}, OmpAdapter{},
 		NewAntigravityAdapter(), NewCopilotAdapter(), NewCursorAdapter(), NewGrokAdapter(),
 		NewDevinAdapter(), NewDroidAdapter(), NewQoderCLIAdapter(), NewQwenAdapter(),
-		MastracodeAdapter{},
+		MastracodeAdapter{}, HermesAdapter{},
 	}
 }
 
@@ -949,7 +968,7 @@ func inspectFile(env Env, path string, want Asset) FileState {
 	if want.Ownership != OwnsFile {
 		return st
 	}
-	if id, schema, version, ok := parseMarker(string(b)); ok && id == want.Source && schema == want.SchemaVersion {
+	if id, schema, version, ok := parseMarkerAt(string(b), markerPrefixFor(want)); ok && id == want.Source && schema == want.SchemaVersion {
 		st.Owned, st.Version = true, version
 	}
 	return st
@@ -1060,18 +1079,37 @@ const markerPrefix = "// " + markerToken
 // mean a large unrelated file was read in full before being rejected.
 const markerScanLines = 128
 
-// Marker renders the line an asset carries.
-func Marker(a Asset) string {
-	return fmt.Sprintf("%s id=%s schema=%d version=%s", markerPrefix, a.Source, a.SchemaVersion, a.Version)
+// markerPrefixFor is the marker introducer for one asset's own file language.
+//
+// The token is the same everywhere; only the comment characters differ, which
+// is why this is a lookup rather than a second marker format.
+func markerPrefixFor(a Asset) string {
+	if prefix := strings.TrimSpace(a.CommentPrefix); prefix != "" {
+		return prefix + " " + markerToken
+	}
+	return markerPrefix
 }
 
-// parseMarker extracts the integration identity a file declares.
+// Marker renders the line an asset carries.
+func Marker(a Asset) string {
+	return fmt.Sprintf("%s id=%s schema=%d version=%s", markerPrefixFor(a), a.Source, a.SchemaVersion, a.Version)
+}
+
+// parseMarker extracts the integration identity a JavaScript-commented file
+// declares. It is the `//` case of [parseMarkerAt], which is every asset
+// Sidecar shipped before one written in Python.
 func parseMarker(content string) (id string, schema int, version string, ok bool) {
+	return parseMarkerAt(content, markerPrefix)
+}
+
+// parseMarkerAt extracts the integration identity a file declares, given the
+// marker introducer that file's language spells the sentinel with.
+func parseMarkerAt(content, prefix string) (id string, schema int, version string, ok bool) {
 	for i, line := range strings.SplitN(content, "\n", markerScanLines+1) {
 		if i >= markerScanLines {
 			break
 		}
-		rest, found := strings.CutPrefix(strings.TrimSpace(line), markerPrefix)
+		rest, found := strings.CutPrefix(strings.TrimSpace(line), prefix)
 		if !found {
 			continue
 		}

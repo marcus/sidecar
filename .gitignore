@@ -76,3 +76,10 @@ screenshots/
 
 # Grok session scratch (reviews, local agent artifacts)
 .grok/
+
+# Python bytecode. The Hermes asset and its two harnesses are Python, and
+# running either harness leaves a __pycache__ beside the asset. Sidecar embeds
+# the source files by name, so a compiled copy is never shipped and never
+# belongs in a commit.
+__pycache__/
+*.pyc

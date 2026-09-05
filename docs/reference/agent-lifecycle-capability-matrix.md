@@ -42,6 +42,7 @@ This is enforced rather than documented. `Capability.TierFor` polices every tier
 | Droid | not run | docs-only | `screen-fallback` | session only | not traced; and a `~/.factory/hooks.json`, if you have one, shadows the entry entirely |
 | Qoder CLI | not run | docs-only | `screen-fallback` | session only | not traced; `QODER_CONFIG_DIR` is honoured on Herdr's word rather than a published contract |
 | Qwen Code | 0.23.0 | real-trace | `session-identity` | session only | none; session identity is this asset's ceiling by construction and it is reached |
+| Hermes Agent | 0.17.0 | real-trace | `session-identity` | session only | shipped plugin registers three session hooks. The provider's ceiling is `full` on paper and every hook that would earn it was observed firing, so what is missing is subscription, not evidence of the events. |
 
 Pi's row went out of `capabilities.json` when nothing could produce a report for it, came back at `session-identity` when `PiAdapter` and `assets/pi/sidecar-lifecycle.js` shipped, and is now at `advisory` on `real-trace` evidence because a live Pi 0.84.3 session has been traced. It is the only row here that has reached its own ceiling: `advisory` is as high as Pi can ever go, because `full` needs `blocked_on_request` and `unblocked` and Pi ships no permission system to produce either. See "Why the Pi entry was retracted, and what brought it back".
 
@@ -651,6 +652,58 @@ Three further findings belong here.
 **`Notification` and `PostToolUse` fire and are not hooked**, by upstream or here. `Notification` carries a `reason` of `tool_approval`, `ask_question`, `plan_approval`, `sandbox_access` or `agent_done`, and it is traced firing immediately before `PermissionRequest` and again before `AgentEnd`. It is the only event that would let a hooks lane tell a question from a tool approval, and the only one that fires when the TUI waits for input for some other reason; both are unreached today.
 
 **Mastra Code ships no version flag**, so Sidecar records no provider version for it and `testedProviderRange` can never be confirmed against a running binary. `mastracode --version` is not a headless flag, so with no TTY the CLI falls through to headless mode and prints its usage banner; the banner's first line is what a version probe would record and every surface would then render as this provider's version. The adapter leaves the field empty instead, which is true where the banner would be false. It costs nothing at this tier, because `TierFor` gates on the tested range only at `full`. The version in the entry was read from the TUI's own start banner.
+
+## Hermes Agent
+
+**Source:** hermes 0.17.0's own shipped Python -- `hermes_cli/plugins.py`, `hermes_constants.get_hermes_home`, `hermes_cli/plugins_cmd.py` -- cross-read against Herdr's `hermes` integration at `HERDR_INTEGRATION_VERSION=5`, then **measured** against a live hermes 0.17.0 session with a probe plugin registering every hook the provider has.
+
+Hermes is the only provider in this document that needs both shapes of ownership at once. A directory plugin is two files Sidecar writes whole -- `__init__.py` and the `plugin.yaml` Hermes refuses to load a plugin without -- dropped into `<hermes home>/plugins/sidecar-agent-state/`. And a plugin Hermes has found is inert until its name appears in `plugins.enabled` in the user's `config.yaml`, so there is a third asset that is one line inside a file Sidecar must otherwise leave alone. Half an install therefore reports nothing while looking present, which is why a partial state is `needs-repair` rather than a lesser install.
+
+### Reading the source got two of three hooks wrong, and the probe corrected it
+
+No `invoke_hook("on_session_start")` and no `invoke_hook("pre_llm_call")` is greppable anywhere in hermes 0.17.0's tree. Two of the three hooks upstream's asset registers therefore read as dead, and this port was one decision away from being written around that.
+
+They are not dead. Both fire, and `on_session_start` fires **first, before the first model call**, carrying `platform` and `session_id`. That makes Hermes the earliest binding in this document: grok's `SessionStart` and Antigravity's `PreInvocation` both arrive one turn into a pane's life, and Hermes's arrives at process start. A pane opened and walked away from is bound.
+
+The technique is worth reusing for any provider whose plugin API dispatches by name: a probe plugin registering every name in the provider's own hook vocabulary, recording the hook, the platform, whether a session id was present, and the payload's field **names**. It is what backs every gap the capability entry claims about hooks the shipped asset does not subscribe to.
+
+### The platform gate is upstream's and is load-bearing
+
+Hermes runs the same agent behind Telegram, Slack, Discord and WhatsApp gateways as it does behind a terminal, and every hook payload names the platform that produced it. Upstream binds only on `cli`, `tui`, `desktop` and `acp`, and the port keeps that: binding a gateway session would offer to resume somebody's chat message as the pane's own work. `pre_tool_call` and `post_tool_call` carry a session id and no platform at all, so the same gate refuses them; that is upstream's behaviour and is kept, because a hook that cannot say which surface it came from cannot be shown to be the pane's.
+
+`pre_llm_call` is narrowed further, to `cli` alone. That is upstream's asymmetry rather than an editorial choice, and it is kept verbatim.
+
+### One binding per session, where upstream sends two
+
+`on_session_start` and `pre_llm_call` arrive about half a second apart with the **same** session id. Upstream reports the binding on both; on a socket transport that is a few bytes, and here it is a second process spawn taking a file lock to say nothing new. Sidecar suppresses an exact repeat, which is what Herdr's own OpenCode asset at version 10 already does against a remembered id.
+
+### Ownership of the config line is its value, not a marker comment
+
+Every other file-owning asset Sidecar ships proves ownership from a marker comment in its own bytes. That rule cannot hold in `config.yaml`: `hermes config set`, `hermes plugins enable` and the setup wizard all round-trip the file through `yaml.dump`, which drops every comment in it and rewrites the sequence indentless. A marker on Sidecar's line would survive exactly until the next unrelated Hermes command, and after that an uninstall could not find its own entry.
+
+So the line is owned by its value. `sidecar-agent-state` names the plugin directory Sidecar installs and nothing else, and Hermes matches the enable list against a plugin's directory key or its manifest name -- both Sidecar's own asset. This is the same rule the Antigravity, Copilot and Cursor entries use. A marker comment is still written, so a user reading their own configuration knows which tool added the line; nothing depends on it surviving, and the suite drives both a file that has it and a file Hermes has since stripped.
+
+### Two shapes Herdr edits and Sidecar refuses
+
+Herdr's `update_hermes_enabled_plugin` also handles a flow sequence (`plugins: [a, b]`) and a `plugins` key holding a bare list. `_get_enabled_plugins` requires `plugins` to be a mapping with an `enabled` list in it and ignores anything else, so Herdr's flat-list branch writes into a key Hermes never reads. Sidecar reports both shapes as `needs-repair`, names them, and says what to do -- rather than rewriting bytes outside its own entry to produce a key that does nothing.
+
+`HERMES_HOME` relocates the whole home and is honoured, because `get_hermes_home` reads it and its own docstring calls itself the single source of truth for that path. That is the same rule applied to grok's `GROK_HOME` and withheld from Cursor's `CURSOR_CONFIG_DIR`: follow the code path that reads the file.
+
+### What the proof run measured
+
+One capture is in `internal/agentlifecycle/testdata/traces/hermes/`, taken 2026-09-04 from a live `hermes -z` turn in a Sidecar-managed shell on a private tmux server, with `HERMES_HOME` redirecting the whole provider tree into a scratch home. Sidecar's plugin was installed by `sidecar agent integration install hermes`, so the run proves the installer too.
+
+**The binding is corroborated by Hermes itself.** The pane bound to source `sidecar.hermes.plugin`, marked resumable, and `hermes sessions list` then printed that exact session id. A session-identity port's whole claim is that a cold restore would offer the right conversation, and that is the provider stating the same id from the other side.
+
+**Ownership was proved live.** A plugin of the "user's own" sat beside Sidecar's in the same `plugins.enabled` list and in the same plugins directory. `integration uninstall` removed Sidecar's two files, Sidecar's enable line and nothing else; the user's line kept its place, its indentation and its trailing comment, and their plugin directory was untouched.
+
+**Python leaves a `__pycache__` behind, and the uninstall now takes it.** Importing the plugin writes `__pycache__/__init__.cpython-NN.pyc` inside the directory Sidecar owns, so an uninstall that removed only what Sidecar wrote left a stale compiled copy of the plugin it had just deleted, in a directory that could then not be removed because it was not empty. The adapter removes the compiled form of its own file, by name, and only in the plan that removes that file; a `.pyc` for anything else stays, and so does the directory holding it. Nothing in the unit suite could have found this, because no test imports the asset from the directory it is installed into.
+
+**`hermes --version` prints a sentence, not a version.** The first line is `Hermes Agent v0.17.0 (2026.6.19) · upstream d6269da7`, and `detectProviderVersion` records the whole line, so the tested-range gate can never match and `integration status` reads "outside the proved range" for exactly the version recorded here. It costs nothing at this tier -- the range only demotes `full` -- and it will matter to whoever takes Hermes higher.
+
+### Why `session-identity` is what is claimed
+
+The capture shows a full turn's worth of hooks firing that would support far more: `pre_api_request`, `post_api_request`, `post_llm_call`, `on_session_end`, and beside them a vocabulary that includes `pre_tool_call`/`post_tool_call`, `pre_approval_request`/`post_approval_response` for the blocked lane, `api_request_error`, `subagent_start`/`subagent_stop` and the `transform_*` hooks. That is `full` on paper. It is not claimed, because the shipped asset subscribes to none of them: the ceiling is measured, and the claim is what the asset asks for.
 
 ## Catalog agents evaluated but not built
 
