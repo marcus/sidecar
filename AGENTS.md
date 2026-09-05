@@ -149,6 +149,12 @@ Sidecar supports tmux 3.4 and newer and continuously tests the manifest roles `m
 
 Prefer capability probes over tmux version branches. Every compatibility proof must use private sockets, and changing or upgrading a client never authorizes restarting the default server.
 
+## Porting an agent integration from Herdr
+
+Sidecar installs its own hook, plugin and extension assets into other agents' configuration so those agents report lifecycle state and session identity back. The knowledge comes from Herdr, vendored read-only under `internal/agentintegration/upstream/` and pinned by `upstream.lock.json`. Porting one is a procedure, not a design task: see `.claude/skills/port-herdr-integration/SKILL.md` for the three port shapes and their reference adapters, the transport swap, the ownership rules, every registry a port has to appear in, how a capability tier is earned from traces rather than copied, and the proof-run hazards.
+
+Two rules worth knowing before you touch anything there. `go run ./internal/tools/herdrsync` performs a **real** sync and rewrites the vendored tree, so name that package explicitly and never glob `./internal/tools/...`. And a tier is proved by traces from a released provider version and is never copied from Herdr's authority table.
+
 ## Keyboard Shortcut Parity
 
 See .agents/skills/ui-features/SKILL.md
