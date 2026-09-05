@@ -2,6 +2,7 @@ package agentcontrol
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -65,16 +66,19 @@ type KeysRequest struct {
 
 // Prompt submits text to a pinned managed agent, refusing before it writes any
 // bytes if the target is not in a state that may receive input.
-func (s Service) Prompt(ctx context.Context, req PromptRequest) (Agent, error) {
+func (s Service) Prompt(ctx context.Context, req PromptRequest) (PromptResult, error) {
 	s = s.defaults()
+	notSubmitted := func(err error) (PromptResult, error) {
+		return PromptResult{}, withPromptReceipt(err, req.Target, SubmissionNotSubmitted, PromptWaitNotStarted)
+	}
 	if s.Terminal == nil {
-		return Agent{}, &Error{Code: ErrTransport, Message: "terminal adapter is unavailable"}
+		return notSubmitted(&Error{Code: ErrTransport, Message: "terminal adapter is unavailable"})
 	}
 	if strings.TrimSpace(req.Text) == "" {
-		return Agent{}, &Error{Code: ErrNotReady, Message: "prompt text is required", Target: &req.Target}
+		return notSubmitted(&Error{Code: ErrNotReady, Message: "prompt text is required", Target: &req.Target})
 	}
 	if req.Wait && req.Timeout <= 0 {
-		return Agent{}, &Error{Code: ErrNotReady, Message: "--wait requires an explicit --timeout", Target: &req.Target}
+		return notSubmitted(&Error{Code: ErrNotReady, Message: "--wait requires an explicit --timeout", Target: &req.Target})
 	}
 
 	// One tracker serves the preflight and every later observation.
@@ -91,38 +95,105 @@ func (s Service) Prompt(ctx context.Context, req PromptRequest) (Agent, error) {
 	var tracker agentactivity.Tracker
 	snap, state, err := s.observeOnce(ctx, req.Target, &tracker)
 	if err != nil {
-		return Agent{}, err
+		return notSubmitted(err)
 	}
 	if err := promptable(snap, state); err != nil {
-		return Agent{}, err
+		return notSubmitted(err)
 	}
 	pinnedKind, before := state.Kind, state.Status
+	submissionTarget := snap.Target
 
 	if err := s.Terminal.Submit(ctx, snap, req.Text); err != nil {
-		return Agent{}, transport(snap.Target, err)
+		status := SubmissionUnknown
+		var typed *Error
+		if AsError(err, &typed) && promptWriteRefusal(typed.Code) {
+			// Terminal's mutating contract uses semantic refusals only for its
+			// revalidation before the first write. Generic/transport errors can
+			// land after any step and therefore remain unknown.
+			status = SubmissionNotSubmitted
+		}
+		return PromptResult{}, WithPromptReceipt(transport(snap.Target, err), submissionTarget, status, PromptWaitNotStarted)
 	}
 
 	if before != StatusWorking {
 		snap, state, err = s.awaitPromptLanded(ctx, snap, state, &tracker, pinnedKind, before)
 		if err != nil {
-			return Agent{}, err
+			outcome := PromptWaitNotRequested
+			if req.Wait {
+				outcome = promptWaitOutcome(err)
+			}
+			return PromptResult{}, WithPromptReceipt(err, submissionTarget, SubmissionSubmitted, outcome)
 		}
 		if !req.Wait {
-			return Agent{Target: snap.Target, Agent: state}, nil
+			return promptResult(snap.Target, submissionTarget, state, PromptWaitNotRequested), nil
 		}
 	} else if !req.Wait {
 		// A prompt into an already-working agent cannot be attributed to a new
 		// turn, so there is nothing honest to observe and nothing to wait for.
-		return Agent{Target: snap.Target, Agent: state}, nil
+		return promptResult(snap.Target, submissionTarget, state, PromptWaitNotRequested), nil
 	}
 
 	waitCtx, cancel := context.WithTimeout(ctx, req.Timeout)
 	defer cancel()
 	snap, state, err = s.awaitSettled(waitCtx, snap, state, &tracker, pinnedKind, req.Until)
 	if err != nil {
-		return Agent{}, err
+		return PromptResult{}, WithPromptReceipt(err, submissionTarget, SubmissionSubmitted, promptWaitOutcome(err))
 	}
-	return Agent{Target: snap.Target, Agent: state}, nil
+	return promptResult(snap.Target, submissionTarget, state, PromptWaitSettled), nil
+}
+
+func promptWriteRefusal(code ErrorCode) bool {
+	switch code {
+	case ErrReplaced, ErrPaneBusy, ErrBlocked, ErrNotReady:
+		return true
+	default:
+		return false
+	}
+}
+
+func promptResult(target, submissionTarget Target, state AgentState, wait PromptWaitOutcome) PromptResult {
+	return PromptResult{Target: target, Agent: state, Receipt: PromptReceipt{
+		Submission: SubmissionSubmitted, Wait: wait, Target: submissionTarget,
+	}}
+}
+
+// WithPromptReceipt attaches the prompt's independently useful submission
+// outcome to an existing operational error. target is the identity pinned for
+// the write; an observation error may carry a different or absent target, but
+// it cannot rewrite which occupant received the prompt.
+func WithPromptReceipt(err error, target Target, submission SubmissionStatus, wait PromptWaitOutcome) error {
+	var typed *Error
+	if !AsError(err, &typed) {
+		typed = &Error{Code: ErrTransport, Message: err.Error(), Err: err}
+	}
+	copy := *typed
+	if copy.Target == nil {
+		copy.Target = &target
+	}
+	copy.Receipt = &PromptReceipt{Submission: submission, Wait: wait, Target: target}
+	return &copy
+}
+
+func withPromptReceipt(err error, target Target, submission SubmissionStatus, wait PromptWaitOutcome) error {
+	return WithPromptReceipt(err, target, submission, wait)
+}
+
+func promptWaitOutcome(err error) PromptWaitOutcome {
+	var typed *Error
+	if AsError(err, &typed) {
+		switch typed.Code {
+		case ErrTimeout:
+			return PromptWaitTimeout
+		case ErrReplaced:
+			return PromptWaitReplaced
+		case ErrPromptStalled:
+			return PromptWaitStalled
+		}
+	}
+	if errors.Is(err, context.Canceled) {
+		return PromptWaitCancelled
+	}
+	return PromptWaitFailed
 }
 
 // Wait observes an already-running agent until it reaches one of the accepted

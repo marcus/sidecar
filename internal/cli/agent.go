@@ -52,7 +52,15 @@ func agentCommand() *Command {
 			"A prompt sent from idle or done must produce an observed lifecycle change within " + agentcontrol.PromptStallWindow.String() + "\n" +
 			"or the command reports agent_prompt_stalled. A prompt sent to an agent that is\n" +
 			"already working makes no claim about which turn is which: completion of the turn\n" +
-			"already in flight may satisfy --wait.",
+			"already in flight may satisfy --wait.\n\n" +
+			"Every prompt result carries a receipt with submission, wait, and the pinned target.\n" +
+			"submission is submitted, not_submitted, or unknown; unknown means a transport/write\n" +
+			"failure may have landed and must not be retried automatically. wait is settled,\n" +
+			"timeout, cancelled, replaced, stalled, failed, not_started, or not_requested. The\n" +
+			"same receipt is included in the error envelope, so a timeout keeps exit 1 and code\n" +
+			"timeout while proving the prompt was submitted and only the wait expired. Feature,\n" +
+			"host, and target-resolution refusals report not_submitted/not_started before a write;\n" +
+			"they may carry only the requested host/session until a physical pane is resolved.",
 		Flags:     promptFlags,
 		Args:      ArgSpec{Min: 1, Max: 2},
 		ExitCodes: agentExitCodes(),
@@ -328,14 +336,29 @@ func splitAgentTarget(positional []string, wantArgs int) (target string, rest []
 // managed targets — `agent prompt`, checking whether its lone positional names
 // one — reuse that scan instead of walking every project's worktrees again.
 func resolveAgentTarget(env Env, lookup *shellTargetLookup, target string, f agentFlags, explicit bool) (agentcontrol.Target, int) {
+	resolved, err := resolveAgentTargetError(env, lookup, target, f, explicit)
+	if err != nil {
+		return agentcontrol.Target{}, emitAgentError(env, f.json, err)
+	}
+	return resolved, 0
+}
+
+func resolveAgentTargetError(env Env, lookup *shellTargetLookup, target string, f agentFlags, explicit bool) (agentcontrol.Target, error) {
 	if target == "" {
-		return agentcontrol.Target{}, emitAgentError(env, f.json, &agentcontrol.Error{Code: agentcontrol.ErrNotFound, Message: "target is required outside a managed shell"})
+		return agentcontrol.Target{}, &agentcontrol.Error{Code: agentcontrol.ErrNotFound, Message: "target is required outside a managed shell"}
 	}
-	tgt, code := resolveAgentShellTarget(env, lookup, target, f.shell, f.project, explicit && f.shell == "" && f.project == "", f.json)
-	if code != 0 {
-		return agentcontrol.Target{}, code
+	if lookup == nil {
+		lookup = &shellTargetLookup{}
 	}
-	return targetFromShell(tgt), 0
+	tgt, code, err := lookup.find(env, target, f.shell, f.project, explicit && f.shell == "" && f.project == "")
+	if err != nil {
+		typed := &agentcontrol.Error{Code: agentcontrol.ErrTransport, Message: err.Error(), Err: err}
+		if code == shellTargetUnregistered || code == exitInputRejected {
+			typed.Code = agentcontrol.ErrNotFound
+		}
+		return agentcontrol.Target{}, typed
+	}
+	return targetFromShell(tgt), nil
 }
 
 // agentService builds the service and the cleanup its terminal needs. The
@@ -432,24 +455,31 @@ func runAgentPrompt(env Env, args []string) int {
 		cliErrf(env.Stderr, "agent prompt TEXT must not be empty\n\n%s", help)
 		return 2
 	}
-	if code = requireAgentControl(env, f.json); code >= 0 {
-		return code
-	}
 	name, rest, explicit := splitAgentTarget(f.positional, 1)
+	requestedTarget := agentcontrol.Target{Host: "local", Project: f.project}
+	if explicit {
+		requestedTarget.Session = name
+	}
+	if f.host != "" {
+		requestedTarget.Host = f.host
+	}
+	if err := agentControlError(env); err != nil {
+		return emitPromptError(env, f.json, agentcontrol.WithPromptReceipt(err, requestedTarget, agentcontrol.SubmissionNotSubmitted, agentcontrol.PromptWaitNotStarted))
+	}
 	if f.host != "" {
 		return runRemoteAgentPrompt(env, f, name, rest[0], explicit)
 	}
-	target, code := resolveAgentTarget(env, &guard, name, f, explicit)
-	if code != 0 {
-		return code
+	target, err := resolveAgentTargetError(env, &guard, name, f, explicit)
+	if err != nil {
+		return emitPromptError(env, f.json, agentcontrol.WithPromptReceipt(err, requestedTarget, agentcontrol.SubmissionNotSubmitted, agentcontrol.PromptWaitNotStarted))
 	}
 	svc, release, ctx := agentService(env)
 	defer release()
-	agent, err := svc.Prompt(ctx, agentcontrol.PromptRequest{Target: target, Text: rest[0], Wait: f.wait, Until: f.until, Timeout: f.timeout})
+	result, err := svc.Prompt(ctx, agentcontrol.PromptRequest{Target: target, Text: rest[0], Wait: f.wait, Until: f.until, Timeout: f.timeout})
 	if err != nil {
-		return emitAgentError(env, f.json, err)
+		return emitPromptError(env, f.json, err)
 	}
-	return emitAgent(env, f.json, agent)
+	return emitPromptResult(env, f.json, result)
 }
 
 func runAgentWait(env Env, args []string) int {
@@ -575,20 +605,27 @@ func agentControlEnabled(env Env) (bool, error) {
 }
 
 func requireAgentControl(env Env, jsonOutput bool) int {
-	if enabled, ok := env.FeatureOverrides[features.AgentControl.Name]; ok && enabled {
-		return -1
+	if err := agentControlError(env); err != nil {
+		return emitAgentError(env, jsonOutput, err)
 	}
-	if enabled, ok := env.FeatureOverrides[features.AgentControl.Name]; ok && !enabled {
-		return emitAgentError(env, jsonOutput, &agentcontrol.Error{Code: agentcontrol.ErrFeatureDisabled, Message: "agent control is disabled"})
+	return -1
+}
+
+func agentControlError(env Env) error {
+	if enabled, ok := env.FeatureOverrides[features.AgentControl.Name]; ok {
+		if enabled {
+			return nil
+		}
+		return &agentcontrol.Error{Code: agentcontrol.ErrFeatureDisabled, Message: "agent control is disabled"}
 	}
 	enabled, err := agentControlEnabled(env)
 	if err != nil {
-		return emitAgentError(env, jsonOutput, err)
+		return err
 	}
 	if !enabled {
-		return emitAgentError(env, jsonOutput, &agentcontrol.Error{Code: agentcontrol.ErrFeatureDisabled, Message: "agent control is disabled; enable the agent_control feature"})
+		return &agentcontrol.Error{Code: agentcontrol.ErrFeatureDisabled, Message: "agent control is disabled; enable the agent_control feature"}
 	}
-	return -1
+	return nil
 }
 
 func runAgentList(env Env, args []string) int {
@@ -899,6 +936,56 @@ func emitAgent(env Env, jsonOutput bool, a agentcontrol.Agent) int {
 	}
 	return 0
 }
+
+func emitPromptResult(env Env, jsonOutput bool, result agentcontrol.PromptResult) int {
+	if jsonOutput {
+		return writeAgentJSON(env, result)
+	}
+	name := result.Target.Name
+	if name == "" {
+		name = result.Target.Session
+	}
+	if result.Receipt.Wait == agentcontrol.PromptWaitSettled {
+		_, _ = fmt.Fprintf(env.Stdout, "Prompt submitted to %s; agent settled as %s.\n", name, result.Agent.Status)
+	} else {
+		_, _ = fmt.Fprintf(env.Stdout, "Prompt submitted to %s.\n", name)
+	}
+	return 0
+}
+
+func emitPromptError(env Env, jsonOutput bool, err error) int {
+	if jsonOutput {
+		return emitAgentError(env, true, err)
+	}
+	var typed *agentcontrol.Error
+	if !agentcontrol.AsError(err, &typed) || typed.Receipt == nil {
+		return emitAgentError(env, false, err)
+	}
+	name := typed.Receipt.Target.Name
+	if name == "" {
+		name = typed.Receipt.Target.Session
+	}
+	destination := ""
+	if name != "" {
+		destination = " to " + name
+	}
+	switch typed.Receipt.Submission {
+	case agentcontrol.SubmissionSubmitted:
+		if typed.Receipt.Wait == agentcontrol.PromptWaitTimeout || typed.Receipt.Wait == agentcontrol.PromptWaitCancelled || typed.Receipt.Wait == agentcontrol.PromptWaitFailed {
+			cliErrf(env.Stderr, "Prompt submitted%s, but the agent did not settle: %s\n", destination, typed.Error())
+		} else {
+			cliErrf(env.Stderr, "Prompt submitted%s: %s\n", destination, typed.Error())
+		}
+	case agentcontrol.SubmissionNotSubmitted:
+		cliErrf(env.Stderr, "Prompt was not submitted%s: %s\n", destination, typed.Error())
+	default:
+		if name != "" {
+			destination = " for " + name
+		}
+		cliErrf(env.Stderr, "Prompt submission outcome is unknown%s: %s\n", destination, typed.Error())
+	}
+	return agentErrorExitCode(typed.Code)
+}
 func writeAgentJSON(env Env, v any) int {
 	if err := json.NewEncoder(env.Stdout).Encode(v); err != nil {
 		cliErrln(env.Stderr, err)
@@ -916,7 +1003,11 @@ func emitAgentError(env Env, jsonOutput bool, err error) int {
 	} else {
 		cliErrln(env.Stderr, typed.Error())
 	}
-	switch typed.Code {
+	return agentErrorExitCode(typed.Code)
+}
+
+func agentErrorExitCode(code agentcontrol.ErrorCode) int {
+	switch code {
 	case agentcontrol.ErrNotFound:
 		return 3
 	case agentcontrol.ErrTransport, agentcontrol.ErrTimeout, agentcontrol.ErrHostUnavailable:

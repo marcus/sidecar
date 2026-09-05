@@ -122,6 +122,55 @@ func TestResultsAreStampedWithTheHostThatAnsweredThem(t *testing.T) {
 	}
 }
 
+func TestPromptReceiptCrossesTheRemoteVerbAndIsHostStamped(t *testing.T) {
+	target := agentcontrol.Target{Host: "local", Project: "sidecar", Session: "reviewer", PaneID: "%7", PanePID: 42, ServerPID: 9}
+	r := &recorder{result: agentcontrol.PromptResult{
+		Target: target,
+		Agent:  agentcontrol.AgentState{Kind: "codex", Status: agentcontrol.StatusDone},
+		Receipt: agentcontrol.PromptReceipt{
+			Submission: agentcontrol.SubmissionSubmitted,
+			Wait:       agentcontrol.PromptWaitSettled,
+			Target:     target,
+		},
+	}}
+	got, err := client(r).Prompt(context.Background(), "reviewer", "go", true, nil, time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Target.Host != "mac-mini" || got.Receipt.Target.Host != "mac-mini" || got.Receipt.Submission != agentcontrol.SubmissionSubmitted || got.Receipt.Wait != agentcontrol.PromptWaitSettled {
+		t.Fatalf("prompt result = %+v", got)
+	}
+}
+
+func TestPromptTransportFailureKeepsSubmissionUnknown(t *testing.T) {
+	r := &recorder{err: &hosts.RunError{Failure: hosts.FailTimeout, HostID: "mac-mini", Detail: "connection closed"}}
+	_, err := client(r).Prompt(context.Background(), "reviewer", "go", true, nil, time.Minute)
+	var typed *agentcontrol.Error
+	if !errors.As(err, &typed) || typed.Receipt == nil || typed.Receipt.Submission != agentcontrol.SubmissionUnknown || typed.Receipt.Wait != agentcontrol.PromptWaitFailed || typed.Receipt.Target.Host != "mac-mini" || typed.Receipt.Target.Session != "reviewer" {
+		t.Fatalf("prompt transport error = %+v", typed)
+	}
+}
+
+func TestPromptHostTimeoutReceiptIsRelayedAndStamped(t *testing.T) {
+	target := agentcontrol.Target{Host: "local", Project: "sidecar", Session: "reviewer", PaneID: "%7", PanePID: 42, ServerPID: 9}
+	envelope := agentcontrol.ErrorEnvelope{Error: &agentcontrol.Error{
+		Code:    agentcontrol.ErrTimeout,
+		Message: "timed out waiting for the agent to settle",
+		Target:  &target,
+		Receipt: &agentcontrol.PromptReceipt{Submission: agentcontrol.SubmissionSubmitted, Wait: agentcontrol.PromptWaitTimeout, Target: target},
+	}}
+	encoded, err := json.Marshal(envelope)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := &recorder{err: &hosts.RunError{Failure: hosts.FailTimeout, HostID: "mac-mini", ExitCode: 1, Stderr: string(encoded)}}
+	_, err = client(r).Prompt(context.Background(), "reviewer", "go", true, nil, time.Minute)
+	var typed *agentcontrol.Error
+	if !errors.As(err, &typed) || typed.Code != agentcontrol.ErrTimeout || typed.Receipt == nil || typed.Receipt.Submission != agentcontrol.SubmissionSubmitted || typed.Receipt.Wait != agentcontrol.PromptWaitTimeout || typed.Receipt.Target.Host != "mac-mini" || typed.Target == nil || typed.Target.Host != "mac-mini" {
+		t.Fatalf("host timeout = %+v", typed)
+	}
+}
+
 func TestAnEmptyRemoteAgentListIsAnAnswerRatherThanADecodeFailure(t *testing.T) {
 	// hosts.decodeRemoteResult rejects a zero-valued decode because a login
 	// banner that happens to be JSON is the usual cause. "No live managed

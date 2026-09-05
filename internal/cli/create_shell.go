@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/marcus/sidecar/internal/agentcatalog"
@@ -20,6 +22,7 @@ func runCreateShell(env Env, args []string) int {
 	usage := newUsageReporter(env, wantsJSON(args), help)
 	flags := createCommonFlags{wait: createWaitDefault}
 	nameFlag := ""
+	cwdFlag := ""
 	runCmd := ""
 	typeCmd := ""
 	agentKind := ""
@@ -56,6 +59,13 @@ func runCreateShell(env Env, args []string) int {
 				return usage("--name requires a display name")
 			}
 			nameFlag = val
+			i = next
+		case arg == "--cwd" || strings.HasPrefix(arg, "--cwd="):
+			val, next, ok := takeFlagArg(arg, args, i, "--cwd")
+			if !ok || strings.TrimSpace(val) == "" {
+				return usage("--cwd requires a directory")
+			}
+			cwdFlag = val
 			i = next
 		case arg == "--run" || strings.HasPrefix(arg, "--run="):
 			val, next, ok := takeFlagArg(arg, args, i, "--run")
@@ -110,6 +120,27 @@ func runCreateShell(env Env, args []string) int {
 	}
 	if len(extra) > 0 && (runCmd != "" || typeCmd != "") {
 		return usage("provider arguments after -- extend --agent's launch; put them in the --run or --type command instead")
+	}
+	if flags.splitSet && flags.tab {
+		return usage("--split and --tab name different placements")
+	}
+	// An explicit working directory belongs to a managed workspace shell: its
+	// durable row is what keeps the live pane, JSON result, provider start, and
+	// cold restore on one directory. A terminal-panel split has no such row, so
+	// refuse the combination before destination resolution can register a
+	// project or write a UI request.
+	if cwdFlag != "" && flags.splitSet {
+		return usage("--cwd creates a managed workspace shell and cannot be used with --split")
+	}
+	var explicitWorkDir string
+	if cwdFlag != "" {
+		var cwdErr error
+		explicitWorkDir, cwdErr = resolveCreateShellCWD(cwdFlag)
+		if cwdErr != nil {
+			return emitAgentError(env, flags.jsonOutput, &agentcontrol.Error{
+				Code: agentcontrol.ErrNotReady, Message: cwdErr.Error(), Err: cwdErr,
+			})
+		}
 	}
 
 	// One flag, two layers. The floor is the durable record: --agent always
@@ -177,8 +208,13 @@ func runCreateShell(env Env, args []string) int {
 		cliErrln(env.Stderr, err)
 		return createDestExitCode(err)
 	}
-	if flags.splitSet && flags.tab {
-		return usage("--split and --tab name different placements")
+	// --cwd changes where the new shell starts, not which project owns it. It was
+	// validated before project resolution, then applied only after ownership was
+	// independently resolved from --project/--shell/the caller. Using an
+	// arbitrary destination directory as project evidence would bind an
+	// unregistered checkout to whichever project happened to be ambient.
+	if explicitWorkDir != "" {
+		dest.Origin.WorkDir = explicitWorkDir
 	}
 	// --agent writes a field of a workspace shell's durable record, and a
 	// beside-the-session split adds no such record ("do not add a workspace
@@ -204,7 +240,7 @@ func runCreateShell(env Env, args []string) int {
 	// with --split: it names a field only a workspace row has. It is not
 	// spelled --tab because the caller did not ask where the shell goes; it
 	// asked for something only one placement can carry.
-	if flags.splitSet || (!flags.tab && agentKind == "" && dest.Origin.TmuxSession != "") {
+	if flags.splitSet || (!flags.tab && cwdFlag == "" && agentKind == "" && dest.Origin.TmuxSession != "") {
 		if dest.Origin.TmuxSession == "" {
 			return usage("%s", createSplitNeedsShell)
 		}
@@ -231,6 +267,49 @@ func runCreateShell(env Env, args []string) int {
 	}
 
 	return runCreateShellWorkspace(env, dest, flags, nameFlag, runCmd, typeCmd, agentKind, skipPerms, startAgent, extra)
+}
+
+// resolveCreateShellCWD resolves an explicit shell destination before any
+// tmux session, manifest row, or UI request is created. Relative paths are
+// relative to the caller's current directory. A leading ~ names the caller's
+// home directory; named-user expansion is intentionally refused rather than
+// delegated to a shell whose rules would differ across platforms.
+func resolveCreateShellCWD(value string) (string, error) {
+	if strings.TrimSpace(value) == "" {
+		return "", fmt.Errorf("invalid --cwd: directory must not be empty")
+	}
+	raw := value
+	if raw == "~" || strings.HasPrefix(raw, "~/") {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", fmt.Errorf("resolve --cwd %q: %w", value, err)
+		}
+		if raw == "~" {
+			raw = home
+		} else {
+			raw = filepath.Join(home, strings.TrimPrefix(raw, "~/"))
+		}
+	} else if strings.HasPrefix(raw, "~") {
+		return "", fmt.Errorf("invalid --cwd %q: only ~ and ~/path home expansion are supported", value)
+	}
+	abs, err := filepath.Abs(raw)
+	if err != nil {
+		return "", fmt.Errorf("resolve --cwd %q: %w", value, err)
+	}
+	info, err := os.Stat(abs)
+	if err != nil {
+		return "", fmt.Errorf("invalid --cwd %q: %w", value, err)
+	}
+	if !info.IsDir() {
+		return "", fmt.Errorf("invalid --cwd %q: not a directory", value)
+	}
+	// tmux chdirs before starting the shell, so its effective directory is the
+	// filesystem target rather than a symlink spelling. Persist that same path
+	// so JSON, provider start, and cold restore all agree with the live pane.
+	if resolved, err := filepath.EvalSymlinks(abs); err == nil {
+		abs = resolved
+	}
+	return filepath.Clean(abs), nil
 }
 
 func runCreateShellWorkspace(env Env, dest openDestination, flags createCommonFlags, nameFlag, runCmd, typeCmd, agentKind string, skipPerms, startAgent bool, extra []string) int {

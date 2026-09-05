@@ -337,7 +337,16 @@ func RootCommand() *Command {
 			"managed shell, so it is invisible to `shell list`, refused by the agent verbs,\n" +
 			"and closable only with `shell delete --target` (nothing else names it).\n" +
 			"Handing a shell to a second agent (coordinate-agents) needs a workspace row, so\n" +
-			"use --tab rather than the default placement.\n\n" +
+			"use --tab or --cwd rather than the default placement.\n\n" +
+			"--cwd chooses the new shell's initial working directory without changing which\n" +
+			"project owns it. Relative paths resolve from the caller's directory; ~ and ~/path\n" +
+			"resolve from the caller's home. The path must already be a directory and is resolved\n" +
+			"before tmux, shells.json, or a UI request is changed. JSON, provider start, and cold\n" +
+			"restore all use the resolved effective directory. --cwd always creates a managed\n" +
+			"workspace row and is refused with --split, whose live terminal has no durable shell\n" +
+			"record. Without --cwd, the current shell or\n" +
+			"worktree inheritance is unchanged. Use --project or --shell when the destination is\n" +
+			"outside the project and ownership would otherwise be ambiguous.\n\n" +
 			"--agent records which agent family the shell is for, in the same durable field\n" +
 			"the TUI's Create Shell writes. That record is what keeps the shell on the\n" +
 			"Activity board while the agent is booting and whenever live screen\n" +
@@ -360,6 +369,7 @@ func RootCommand() *Command {
 			"The result carries `project`, the slug every other verb's --project accepts.",
 		Flags: []Flag{
 			{Name: "--name", Arg: "NAME", Summary: "Display name (default: the next Shell N)"},
+			{Name: "--cwd", Arg: "PATH", Summary: "Start in PATH without changing project ownership"},
 			{Name: "--agent", Arg: "TYPE", Summary: "Record the agent family (claude, codex, …), and start it when agent_control is on"},
 			{Name: "--", Arg: "ARGS", Summary: "Provider arguments appended to --agent's launch command"},
 			{Name: "--skip-permissions", Summary: "Pass the selected provider's auto-approve flag", Bool: true},
@@ -380,10 +390,11 @@ func RootCommand() *Command {
 			{Code: 2, Summary: "usage error, or this directory is not in a registered project"},
 			{Code: 3, Summary: "no running instance (split mode)"},
 			{Code: 4, Summary: "instance declined (cap, too small, or feature off)"},
-			{Code: 5, Summary: "a value was rejected: --name, --agent, an unknown --project / --shell, or provider arguments with agent_control off"},
+			{Code: 5, Summary: "a value was rejected: --name, --cwd, --agent, an unknown --project / --shell, or provider arguments with agent_control off"},
 		},
 		Examples: []Example{
 			{Command: "sidecar create shell --name reviewer --agent codex --json"},
+			{Command: "sidecar create shell --project sidecar --cwd ~/code/tui --name publisher --json", Description: "a Sidecar-owned shell that starts elsewhere"},
 			{Command: "sidecar create shell --name \"dev server\" --run \"python3 -m http.server\""},
 			{Command: "sidecar create shell --agent claude --run claude", Description: "an agent shell the board knows is one"},
 			{Command: "sidecar create shell --tab --name orchestrator --agent claude -- --model fable", Description: "the catalog command with provider arguments"},
@@ -392,8 +403,8 @@ func RootCommand() *Command {
 			{Command: "sidecar create shell --type \"go test ./...\"", Description: "type a command for the user to review"},
 		},
 		Agent: AgentDoc{
-			Invocation: "sidecar create shell [--name NAME] [--agent TYPE [-- ARGS...]] [--run COMMAND | --type COMMAND] [--split auto|right|below | --tab]",
-			Summary:    "Create a shell beside the current session (default) or as a workspace tab (--tab)",
+			Invocation: "sidecar create shell [--name NAME] [--cwd PATH] [--agent TYPE [-- ARGS...]] [--run COMMAND | --type COMMAND] [--split auto|right|below | --tab]",
+			Summary:    "Create a shell beside the current session, or a managed workspace shell with --tab, --cwd, or --agent",
 		},
 		Mutates: true,
 		Run:     runCreateShell,

@@ -146,6 +146,145 @@ func TestCreateShellJSONNoAckNonFatal(t *testing.T) {
 	}
 }
 
+func TestCreateShellExplicitCWDKeepsProjectOwnershipAndPersistsEffectiveDirectory(t *testing.T) {
+	_, stateDir := setupIsolatedCLI(t)
+	projectRoot := t.TempDir()
+	destination := filepath.Join(t.TempDir(), "agent work")
+	if err := os.MkdirAll(destination, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if resolved, err := filepath.EvalSymlinks(destination); err == nil {
+		destination = resolved
+	}
+	writeProjectMeta(t, stateDir, "demo", projectRoot)
+	t.Chdir(projectRoot)
+	tmuxDir, err := os.MkdirTemp("/tmp", "sidecar-cwd-test-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(tmuxDir) })
+	t.Setenv("TMUX_TMPDIR", tmuxDir)
+
+	var out, errOut bytes.Buffer
+	handled, code := Run([]string{"create", "shell", "--project", "demo", "--cwd", destination, "--agent", "codex", "--run", "pwd", "--json", "--wait", "0"}, &out, &errOut)
+	if !handled || code != 0 {
+		t.Fatalf("create = handled %v code %d stderr %q stdout %q", handled, code, errOut.String(), out.String())
+	}
+	var result createShellResult
+	if err := json.Unmarshal(out.Bytes(), &result); err != nil {
+		t.Fatal(err)
+	}
+	if result.Project != "demo" || result.Shell.WorkDir != destination || result.Placement != createPlacementWorkspace {
+		t.Fatalf("result = %+v, want demo owned shell in %q", result, destination)
+	}
+	t.Cleanup(func() {
+		cmd := exec.Command("tmux", "kill-server")
+		cmd.Env = append(scrubTmuxIdentity(os.Environ()), "TMUX_TMPDIR="+tmuxDir)
+		_ = cmd.Run()
+	})
+
+	cmd := exec.Command("tmux", "display-message", "-p", "-t", result.Shell.Session, "#{pane_current_path}")
+	cmd.Env = append(scrubTmuxIdentity(os.Environ()), "TMUX_TMPDIR="+tmuxDir)
+	current, err := cmd.Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.TrimSpace(string(current)); got != destination {
+		t.Fatalf("pane cwd = %q, want %q", got, destination)
+	}
+	listed, err := shellstate.ListAtPath(filepath.Join(stateDir, "projects", "demo", "shells.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(listed) != 1 || listed[0].WorkDir != destination || listed[0].AgentType != "codex" {
+		t.Fatalf("manifest = %+v", listed)
+	}
+}
+
+func TestCreateShellCWDValidationHappensBeforeMutation(t *testing.T) {
+	_, stateDir := setupIsolatedCLI(t)
+	projectRoot := t.TempDir()
+	writeProjectMeta(t, stateDir, "demo", projectRoot)
+	t.Chdir(projectRoot)
+	file := filepath.Join(projectRoot, "file")
+	if err := os.WriteFile(file, []byte("x"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, value := range []string{filepath.Join(t.TempDir(), "missing"), file, "~somebody/work"} {
+		var out, errOut bytes.Buffer
+		handled, code := Run([]string{"create", "shell", "--project", "demo", "--cwd", value, "--json", "--wait", "0"}, &out, &errOut)
+		if !handled || code != 5 || out.Len() != 0 || !strings.Contains(errOut.String(), `"code":"agent_not_ready"`) {
+			t.Fatalf("--cwd %q = handled %v code %d stdout %q stderr %q", value, handled, code, out.String(), errOut.String())
+		}
+	}
+	listed, err := shellstate.ListAtPath(filepath.Join(stateDir, "projects", "demo", "shells.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(listed) != 0 {
+		t.Fatalf("invalid cwd created records: %+v", listed)
+	}
+
+	// Resolving a configured-only project registers it on first use. Invalid
+	// --cwd must be rejected before even that project-state mutation.
+	_, isolatedState := setupIsolatedCLI(t)
+	repo, cfgPath := configuredOnlyProject(t)
+	var out, errOut bytes.Buffer
+	handled, code := Run([]string{"-config", cfgPath, "create", "shell", "--project", repo, "--cwd", filepath.Join(t.TempDir(), "missing"), "--json", "--wait", "0"}, &out, &errOut)
+	if !handled || code != 5 {
+		t.Fatalf("configured-only invalid cwd = handled %v code %d stderr %q", handled, code, errOut.String())
+	}
+	entries, err := os.ReadDir(filepath.Join(isolatedState, "projects"))
+	if err != nil || len(entries) != 0 {
+		t.Fatalf("invalid cwd registered configured project: %v %v", entries, err)
+	}
+}
+
+func TestResolveCreateShellCWDRelativeAndHomePaths(t *testing.T) {
+	base := t.TempDir()
+	relative := filepath.Join(base, "relative")
+	spaced := filepath.Join(base, " spaced ")
+	home := t.TempDir()
+	homeDir := filepath.Join(home, "home-dir")
+	for _, dir := range []string{relative, spaced, homeDir} {
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Chdir(base)
+	t.Setenv("HOME", home)
+	for _, tc := range []struct {
+		value string
+		want  string
+	}{
+		{"relative", relative},
+		{" spaced ", spaced},
+		{"~/home-dir", homeDir},
+		{"~", home},
+	} {
+		got, err := resolveCreateShellCWD(tc.value)
+		if err != nil {
+			t.Fatalf("resolve %q: %v", tc.value, err)
+		}
+		want, _ := filepath.EvalSymlinks(tc.want)
+		if got != want {
+			t.Fatalf("resolve %q = %q, want %q", tc.value, got, want)
+		}
+	}
+}
+
+func scrubTmuxIdentity(env []string) []string {
+	out := env[:0]
+	for _, item := range env {
+		if strings.HasPrefix(item, "TMUX=") || strings.HasPrefix(item, "TMUX_PANE=") || strings.HasPrefix(item, "SIDECAR_") {
+			continue
+		}
+		out = append(out, item)
+	}
+	return out
+}
+
 func TestCreateShellSplitRequiresCurrentShell(t *testing.T) {
 	_, stateDir := setupIsolatedCLI(t)
 	workDir := t.TempDir()
@@ -165,6 +304,30 @@ func TestCreateShellSplitRequiresCurrentShell(t *testing.T) {
 	}
 	if strings.Contains(errOut.String(), "terminal-splits Phase A") {
 		t.Fatalf("still the Phase A refusal: %q", errOut.String())
+	}
+}
+
+func TestCreateShellExplicitCWDRefusesSplitBeforeRequest(t *testing.T) {
+	stateHome, socket := setupShellCLI(t, "active task")
+	destination := t.TempDir()
+	if resolved, err := filepath.EvalSymlinks(destination); err == nil {
+		destination = resolved
+	}
+	t.Setenv("XDG_STATE_HOME", stateHome)
+	t.Setenv("SIDECAR_ISOLATED_STATE", "1")
+	t.Setenv("TMUX", socket+",1,0")
+	t.Setenv("TMUX_PANE", "%1")
+
+	var out, errOut bytes.Buffer
+	handled, code := Run([]string{"create", "shell", "--split", "right", "--cwd", destination, "--json", "--wait", "0"}, &out, &errOut)
+	if !handled || code != 2 || out.Len() != 0 || !strings.Contains(errOut.String(), `"code":"usage"`) || !strings.Contains(errOut.String(), "managed workspace shell") {
+		t.Fatalf("split = handled %v code %d stdout %q stderr %q", handled, code, out.String(), errOut.String())
+	}
+	requestDir := filepath.Join(stateHome, "sidecar", "requests")
+	if entries, err := os.ReadDir(requestDir); err == nil && len(entries) != 0 {
+		t.Fatalf("refused split wrote requests: %v", entries)
+	} else if err != nil && !os.IsNotExist(err) {
+		t.Fatal(err)
 	}
 }
 

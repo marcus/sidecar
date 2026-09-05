@@ -101,7 +101,7 @@ func TestTwoIsolatedAgentsPromptWaitReadAndKeysInvolveOnlyTheirOwnShell(t *testi
 	}
 
 	type outcome struct {
-		agent Agent
+		agent PromptResult
 		err   error
 	}
 	results := make([]outcome, 2)
