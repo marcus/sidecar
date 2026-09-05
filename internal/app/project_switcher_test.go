@@ -10,6 +10,7 @@ import (
 
 	"github.com/marcus/sidecar/internal/config"
 	"github.com/marcus/sidecar/internal/hosts"
+	"github.com/marcus/sidecar/internal/modal"
 	"github.com/marcus/sidecar/internal/mouse"
 	"github.com/marcus/sidecar/internal/overview"
 	"github.com/marcus/sidecar/internal/projectlist"
@@ -399,4 +400,128 @@ func mustModel(out tea.Model, cmd tea.Cmd) (Model, tea.Cmd) {
 		return *v, cmd
 	}
 	panic("unexpected model type")
+}
+
+func TestProjectSwitcherSortDropdownMouseInteraction(t *testing.T) {
+	m := projectSwitcherFixture(t)
+	m.openProjectSwitcherSort()
+
+	// Initial render registers hit regions into handler
+	_ = m.renderProjectSwitcherOverlay("")
+	h := m.projectSwitcherMouseHandler
+	if h == nil {
+		t.Fatal("mouse handler not initialized")
+	}
+
+	// Locate regions: backdrop, sort options, order option, and first project card
+	var backdropRegion, opt0Region, opt1Region, orderRegion, card0Region *mouse.Region
+	for _, reg := range h.HitMap.Regions() {
+		switch {
+		case reg.ID == modal.RegionOverlayBackdrop:
+			r := reg
+			backdropRegion = &r
+		case reg.ID == projectSwitcherSortOptionIDFor(0):
+			r := reg
+			opt0Region = &r
+		case reg.ID == projectSwitcherSortOptionIDFor(1):
+			r := reg
+			opt1Region = &r
+		case reg.ID == projectSwitcherSortOrderID:
+			r := reg
+			orderRegion = &r
+		case reg.ID == projectSwitcherItemID(0):
+			r := reg
+			card0Region = &r
+		}
+	}
+
+	if backdropRegion == nil {
+		t.Fatal("missing RegionOverlayBackdrop hit region")
+	}
+	if opt0Region == nil {
+		t.Fatal("missing sort option 0 hit region")
+	}
+	if opt1Region == nil {
+		t.Fatal("missing sort option 1 hit region")
+	}
+	if orderRegion == nil {
+		t.Fatal("missing sort order hit region")
+	}
+	if card0Region == nil {
+		t.Fatal("missing card 0 hit region")
+	}
+
+	// 1. Hover on overlay backdrop (the title / border row of the sort popover):
+	// Must NOT hover card 0 (no hover bleed-through!)
+	m.handleProjectSwitcherMouse(tea.MouseMotionMsg{X: backdropRegion.Rect.X, Y: backdropRegion.Rect.Y})
+	if m.projectSwitcherModal.HoveredID() != "" {
+		t.Fatalf("hover on overlay backdrop = %q, want empty (must not bleed to background items)",
+			m.projectSwitcherModal.HoveredID())
+	}
+
+	// 2. Hover on sort option 1:
+	m.handleProjectSwitcherMouse(tea.MouseMotionMsg{X: opt1Region.Rect.X + 1, Y: opt1Region.Rect.Y})
+	if got := m.projectSwitcherModal.HoveredID(); got != opt1Region.ID {
+		t.Fatalf("hover on sort option 1 = %q, want %q", got, opt1Region.ID)
+	}
+
+	// 3. Click sort option 1:
+	// Applies sort mode 1 (Name), closes the sort dropdown.
+	_, cmd := m.handleProjectSwitcherMouse(tea.MouseClickMsg{
+		X:      opt1Region.Rect.X + 1,
+		Y:      opt1Region.Rect.Y,
+		Button: tea.MouseLeft,
+	})
+	if cmd != nil {
+		cmd()
+	}
+	if m.projectSwitcherSort != projectlist.SortModes[1] {
+		t.Fatalf("sort = %v, want %v", m.projectSwitcherSort, projectlist.SortModes[1])
+	}
+	if m.projectSwitcherSortOpen {
+		t.Fatal("clicking sort option should close the sort popover")
+	}
+
+	// 4. Reopen sort dropdown and click order toggle:
+	m.openProjectSwitcherSort()
+	_ = m.renderProjectSwitcherOverlay("")
+	orderRegion = nil
+	for _, reg := range m.projectSwitcherMouseHandler.HitMap.Regions() {
+		if reg.ID == projectSwitcherSortOrderID {
+			r := reg
+			orderRegion = &r
+			break
+		}
+	}
+	if orderRegion == nil {
+		t.Fatal("missing sort order region after reopening sort")
+	}
+	orderBefore := m.projectSwitcherOrder
+	_, cmd = m.handleProjectSwitcherMouse(tea.MouseClickMsg{
+		X:      orderRegion.Rect.X + 1,
+		Y:      orderRegion.Rect.Y,
+		Button: tea.MouseLeft,
+	})
+	if cmd != nil {
+		cmd()
+	}
+	if m.projectSwitcherOrder == orderBefore {
+		t.Fatalf("clicking order did not toggle order from %v", orderBefore)
+	}
+}
+
+func TestProjectSwitcherSortDropdownClickOutsideDismisses(t *testing.T) {
+	m := projectSwitcherFixture(t)
+	m.openProjectSwitcherSort()
+	_ = m.renderProjectSwitcherOverlay("")
+
+	// Click at (0, 0) outside the sort popover
+	m.handleProjectSwitcherMouse(tea.MouseClickMsg{
+		X:      0,
+		Y:      0,
+		Button: tea.MouseLeft,
+	})
+	if m.projectSwitcherSortOpen {
+		t.Fatal("clicking outside sort popover should dismiss it")
+	}
 }

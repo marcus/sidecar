@@ -187,6 +187,24 @@ func (m *Modal) buildLayout(screenW, screenH int, handler *mouse.Handler) string
 	if actualContentHeight <= maxViewportHeight {
 		viewportHeight = max(1, actualContentHeight)
 		padToHeight = false
+		// If any section has an overlay, ensure the viewport is tall enough to
+		// show the overlay without clipping its rows off the bottom.
+		overlayNeeded := 0
+		secY := 0
+		for _, r := range visible {
+			if r.overlay != nil && r.overlay.Content != "" {
+				oh := measureHeight(r.overlay.Content)
+				bottom := secY + r.overlay.OffsetY + oh
+				if bottom > overlayNeeded {
+					overlayNeeded = bottom
+				}
+			}
+			secY += r.height
+		}
+		if overlayNeeded > viewportHeight {
+			viewportHeight = min(maxViewportHeight, overlayNeeded)
+			padToHeight = true
+		}
 	}
 	m.lastViewportH = viewportHeight
 
@@ -226,6 +244,14 @@ func (m *Modal) buildLayout(screenW, screenH int, handler *mouse.Handler) string
 	overlays := placeOverlays(visible, m.scrollOffset, viewportHeight)
 	for _, ov := range overlays {
 		viewport = compositeOverlay(viewport, ov.content, ov.x, ov.y)
+		for _, f := range ov.focusables {
+			if f.ID != "" {
+				m.focusPositions[f.ID] = focusablePos{
+					y:      ov.y + f.OffsetY,
+					height: f.Height,
+				}
+			}
+		}
 	}
 
 	// 6. Build modal content
@@ -286,11 +312,25 @@ func (m *Modal) buildLayout(screenW, screenH int, handler *mouse.Handler) string
 
 		// Overlay regions last so they win HitMap.Test over covered fields.
 		for _, ov := range overlays {
+			ow := measureWidth(ov.content)
+			oh := measureHeight(ov.content)
+			absX := contentX + ov.x
+			absY := contentY + ov.y
+			topY := max(contentY, absY)
+			bottomY := min(contentY+viewportHeight, absY+oh)
+			if bottomY > topY && ow > 0 {
+				handler.HitMap.AddRect(RegionOverlayBackdrop, absX, topY, ow, bottomY-topY, nil)
+			}
 			for _, f := range ov.focusables {
-				absY := contentY + ov.y + f.OffsetY
-				if intersectsViewport(absY, f.Height, contentY, viewportHeight) {
-					absX := contentX + ov.x + f.OffsetX
-					handler.HitMap.AddRect(f.ID, absX, absY, f.Width, f.Height, f.ID)
+				if f.ID == "" {
+					continue
+				}
+				absFY := absY + f.OffsetY
+				topFY := max(contentY, absFY)
+				bottomFY := min(contentY+viewportHeight, absFY+f.Height)
+				if bottomFY > topFY {
+					absFX := absX + f.OffsetX
+					handler.HitMap.AddRect(f.ID, absFX, topFY, f.Width, bottomFY-topFY, f.ID)
 				}
 			}
 		}
@@ -512,4 +552,18 @@ func clamp(v, minVal, maxVal int) int {
 		return maxVal
 	}
 	return v
+}
+
+// measureWidth returns the maximum cell width among all lines in content.
+func measureWidth(content string) int {
+	if content == "" {
+		return 0
+	}
+	w := 0
+	for _, line := range strings.Split(content, "\n") {
+		if lw := ansi.StringWidth(line); lw > w {
+			w = lw
+		}
+	}
+	return w
 }

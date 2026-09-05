@@ -375,6 +375,9 @@ func (s *comboSection) commitHighlight() {
 }
 
 func (s *comboSection) handleItemClick(id string) (string, tea.Cmd) {
+	if id == comboOverlayID(s.id) {
+		return actionOverlayIdle, nil
+	}
 	idx, ok := parseComboItemID(s.id, id)
 	if !ok {
 		return "", nil

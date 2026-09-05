@@ -214,11 +214,11 @@ func (m *Model) projectSwitcherToolbarSection() modal.Section {
 				Focused: m.projectSwitcherFocus == switcherFocusAdd,
 			},
 		}
-		row := modal.ControlRow(m.projectSwitcherCountText(), controls, func(anchors []int) *modal.Overlay {
+		row := modal.ControlRow(m.projectSwitcherCountText(), controls, func(anchors []int, hoverID string) *modal.Overlay {
 			if !m.projectSwitcherSortOpen || len(anchors) == 0 {
 				return nil
 			}
-			return m.projectSwitcherSortPopover(anchors[0])
+			return m.projectSwitcherSortPopover(anchors[0], hoverID)
 		})
 		return row.Render(contentWidth, focusID, hoverID)
 	}, nil)
@@ -254,7 +254,7 @@ func countProjectDestinations(destinations []projectSwitcherDestination) int {
 // offers the three modes and the direction they read in, and states the one
 // rule a user cannot see from the rows in front of them: a project with no
 // recorded date stays at the end either way.
-func (m *Model) projectSwitcherSortPopover(anchorX int) *modal.Overlay {
+func (m *Model) projectSwitcherSortPopover(anchorX int, hoverID string) *modal.Overlay {
 	const width = 30
 	lines := make([]string, 0, len(projectlist.SortModes)+4)
 	focusables := make([]modal.FocusableInfo, 0, len(projectlist.SortModes)+1)
@@ -266,31 +266,40 @@ func (m *Model) projectSwitcherSortPopover(anchorX int) *modal.Overlay {
 			mark = "✓ "
 		}
 		label := " " + mark + mode.Label()
-		style := lipgloss.NewStyle().Foreground(styles.TextPrimary)
-		if i == m.projectSwitcherSortIdx {
+		optionID := fmt.Sprintf("%s%d", projectSwitcherSortOptionID, i)
+		focused := i == m.projectSwitcherSortIdx
+		hovered := hoverID == optionID
+		switch {
+		case focused:
 			label = ui.SelectedRowBackground(lipgloss.NewStyle().Bold(true).Render(label), width)
-		} else {
-			label = style.Render(fitCell(label, width))
+		case hovered:
+			label = ui.RowBackground(label, width, styles.SurfaceRaised)
+		default:
+			label = lipgloss.NewStyle().Foreground(styles.TextPrimary).Render(fitCell(label, width))
 		}
 		lines = append(lines, label)
 		focusables = append(focusables, modal.FocusableInfo{
-			ID:      fmt.Sprintf("%s%d", projectSwitcherSortOptionID, i),
-			OffsetX: 0, OffsetY: len(lines) - 1, Width: width, Height: 1,
+			ID:      optionID,
+			OffsetX: 1, OffsetY: len(lines), Width: width, Height: 1,
 			MouseOnly: true,
 		})
 	}
 	lines = append(lines, styles.Subtle.Render(strings.Repeat("─", width)))
 
 	order := " Order: " + projectlist.OrderLabel(m.projectSwitcherSort, m.projectSwitcherOrder)
-	orderStyle := lipgloss.NewStyle().Foreground(styles.TextPrimary)
-	if m.projectSwitcherSortIdx == len(projectlist.SortModes) {
+	orderFocused := m.projectSwitcherSortIdx == len(projectlist.SortModes)
+	orderHovered := hoverID == projectSwitcherSortOrderID
+	switch {
+	case orderFocused:
 		lines = append(lines, ui.SelectedRowBackground(lipgloss.NewStyle().Bold(true).Render(order), width))
-	} else {
-		lines = append(lines, orderStyle.Render(fitCell(order, width)))
+	case orderHovered:
+		lines = append(lines, ui.RowBackground(order, width, styles.SurfaceRaised))
+	default:
+		lines = append(lines, lipgloss.NewStyle().Foreground(styles.TextPrimary).Render(fitCell(order, width)))
 	}
 	focusables = append(focusables, modal.FocusableInfo{
 		ID:      projectSwitcherSortOrderID,
-		OffsetX: 0, OffsetY: len(lines) - 1, Width: width, Height: 1,
+		OffsetX: 1, OffsetY: len(lines), Width: width, Height: 1,
 		MouseOnly: true,
 	})
 	lines = append(lines, styles.Muted.Render(fitCell(" "+projectlist.UnknownLabel+" dates appear last", width)))

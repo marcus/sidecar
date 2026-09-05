@@ -169,8 +169,8 @@ func (m *Modal) HandleMouse(msg tea.MouseMsg, handler *mouse.Handler) string {
 			return ""
 		}
 
-		// Body clicks absorb but don't trigger actions.
-		if id == "modal-body" {
+		// Body and overlay background clicks absorb but don't trigger actions.
+		if id == "modal-body" || id == RegionOverlayBackdrop {
 			return ""
 		}
 
@@ -226,7 +226,8 @@ func (m *Modal) HandleMouse(msg tea.MouseMsg, handler *mouse.Handler) string {
 		barHovered := m.isViewportBarRegion(action.Region)
 		m.barHover = barHovered
 		if action.Region != nil && !barHovered &&
-			action.Region.ID != BackdropRegionID && action.Region.ID != "modal-body" {
+			action.Region.ID != BackdropRegionID && action.Region.ID != "modal-body" &&
+			action.Region.ID != RegionOverlayBackdrop {
 			m.hoverID = action.Region.ID
 		} else {
 			m.hoverID = ""

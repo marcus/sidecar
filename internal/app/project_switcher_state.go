@@ -362,14 +362,17 @@ func (m *Model) applyProjectSwitcherToolbarAction(action string) (bool, tea.Cmd)
 		}
 		return true, nil
 	case projectSwitcherViewListID:
+		m.closeProjectSwitcherSort()
 		m.projectSwitcherFocus = switcherFocusView
 		return true, m.setProjectSwitcherView(projectlist.ViewList)
 	case projectSwitcherViewGridID:
+		m.closeProjectSwitcherSort()
 		m.projectSwitcherFocus = switcherFocusView
 		return true, m.setProjectSwitcherView(projectlist.ViewGrid)
 	case projectSwitcherSortOrderID:
 		return true, m.toggleProjectSwitcherOrder()
 	case projectSwitcherAddButtonID:
+		m.closeProjectSwitcherSort()
 		m.projectSwitcherFocus = switcherFocusFilter
 		m.initProjectAdd()
 		return true, nil

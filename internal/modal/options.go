@@ -195,6 +195,11 @@ const (
 	// absorbs clicks.
 	BackdropRegionID = "modal-backdrop"
 
+	// RegionOverlayBackdrop names the region a modal registers over the whole
+	// rectangle an overlay occupies, so clicks and hovers on the overlay's
+	// chrome or empty cells do not bleed through to the content underneath it.
+	RegionOverlayBackdrop = "modal-overlay-backdrop"
+
 	DefaultWidth  = 50
 	MinModalWidth = 30
 	MaxModalWidth = 120

@@ -16,6 +16,7 @@ import (
 	"github.com/marcus/sidecar/internal/issueview"
 	"github.com/marcus/sidecar/internal/keymap"
 	"github.com/marcus/sidecar/internal/livepanes"
+	"github.com/marcus/sidecar/internal/modal"
 	"github.com/marcus/sidecar/internal/mouse"
 	"github.com/marcus/sidecar/internal/noteview"
 	"github.com/marcus/sidecar/internal/notify"
@@ -2626,6 +2627,16 @@ func (m *Model) handleProjectSwitcherMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd
 	}
 
 	action := m.projectSwitcherModal.HandleMouse(msg, m.projectSwitcherMouseHandler)
+
+	// Dismiss the open sort popover on a click outside of it.
+	if m.projectSwitcherSortOpen && msg.Mouse().Button == tea.MouseLeft && action == "" {
+		if _, isClick := msg.(tea.MouseClickMsg); isClick {
+			hit := m.projectSwitcherMouseHandler.HitMap.Test(msg.Mouse().X, msg.Mouse().Y)
+			if hit == nil || hit.ID != modal.RegionOverlayBackdrop {
+				m.closeProjectSwitcherSort()
+			}
+		}
+	}
 
 	// Check if action is a project item click
 	if strings.HasPrefix(action, projectSwitcherItemPrefix) {

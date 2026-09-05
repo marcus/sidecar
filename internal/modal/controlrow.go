@@ -35,8 +35,9 @@ type Control struct {
 
 // ControlRowOverlay lets a caller hang a popover off one of the controls. It
 // receives each control's x offset within the section, in the order they were
-// given, and returns nil when nothing is open.
-type ControlRowOverlay func(anchors []int) *Overlay
+// given, and the ID of the currently hovered element, and returns nil when
+// nothing is open.
+type ControlRowOverlay func(anchors []int, hoverID string) *Overlay
 
 // ControlRow renders lead on the left and controls on the right, all on one
 // line. Controls that do not fit keep their order and their regions; the
@@ -99,7 +100,7 @@ func ControlRow(lead string, controls []Control, overlay ControlRowOverlay) Sect
 
 		section := RenderedSection{Content: row.String(), Focusables: focusables}
 		if overlay != nil {
-			section.Overlay = overlay(anchors)
+			section.Overlay = overlay(anchors, hoverID)
 		}
 		return section
 	}, nil)
