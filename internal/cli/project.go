@@ -21,6 +21,11 @@ type projectJSONItem struct {
 	Key    string `json:"key"`
 	Theme  string `json:"theme,omitempty"`
 	OpenIn string `json:"openIn,omitempty"`
+	// AddedAt is when the project was registered with Sidecar, absent for a
+	// project registered before Sidecar recorded it. It is a registration date,
+	// not a creation date, and it is reported rather than computed: an agent
+	// reading this gets the same fact the switcher's "Date added" column shows.
+	AddedAt string `json:"addedAt,omitempty"`
 }
 
 type projectCurrentJSON struct {
@@ -1144,12 +1149,17 @@ func makeProjectJSONItem(stateDir string, p config.ProjectConfig) *projectJSONIt
 	if p.Theme != nil {
 		themeName = p.Theme.Name
 	}
+	addedAt := ""
+	if p.AddedAt != nil {
+		addedAt = p.AddedAt.UTC().Format(time.RFC3339)
+	}
 	return &projectJSONItem{
-		Name:   p.Name,
-		Path:   expanded,
-		Key:    projKey(stateDir, expanded),
-		Theme:  themeName,
-		OpenIn: p.OpenIn,
+		Name:    p.Name,
+		Path:    expanded,
+		Key:     projKey(stateDir, expanded),
+		Theme:   themeName,
+		OpenIn:  p.OpenIn,
+		AddedAt: addedAt,
 	}
 }
 

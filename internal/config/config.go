@@ -185,6 +185,17 @@ type ProjectConfig struct {
 	LastOpenInApp string               `json:"lastOpenInApp,omitempty"` // last app used to open this project (e.g. "vscode", "goland")
 	OpenIn        string               `json:"openIn,omitempty"`        // preferred "open in" app for this project; last-used is the fallback
 	WorktreeSetup *WorktreeSetupConfig `json:"worktreeSetup,omitempty"` // optional per-project setup policy
+	// AddedAt is when this project was registered with Sidecar, written once by
+	// AddProject. It is a registration date and nothing else: Sidecar does not
+	// know when the directory or the repository came into being, so the project
+	// switcher labels it "Date added" rather than "created".
+	//
+	// It is a pointer so a project registered before Sidecar recorded this
+	// serializes no key at all, and absent stays honestly unknown. Nothing
+	// backfills it — not the upgrade time, not the directory's birth time (which
+	// changes on a clone or a restore), not the first commit (which is
+	// repository history, not local registration).
+	AddedAt *time.Time `json:"addedAt,omitempty"`
 }
 
 // WorktreeSetupForProject returns the project override when present, otherwise

@@ -305,8 +305,17 @@ func TestProjectSwitcherLinkedWorktreeCursorFlagParity(t *testing.T) {
 	}
 	m.overview = overview.New(workspaceinventory.Collector{Runner: &countingOverviewRunner{}})
 	m.initProjectSwitcher()
-	if m.projectSwitcherCursor != 2 {
-		t.Fatalf("enabled linked-worktree cursor = %d, want configured main after pinned Overview", m.projectSwitcherCursor)
+	// The cursor is asserted by identity, not position: the collection is
+	// ordered by the user's chosen sort, so "the configured main checkout" is
+	// the fact under test and its row index is not.
+	if m.projectSwitcherCursor <= 0 || m.projectSwitcherCursor >= len(m.projectSwitcherFiltered) {
+		t.Fatalf("enabled linked-worktree cursor = %d, want a project after pinned Overview", m.projectSwitcherCursor)
+	}
+	if got := m.projectSwitcherFiltered[m.projectSwitcherCursor]; got.Path != "/repo/main" {
+		t.Fatalf("enabled linked-worktree cursor landed on %q, want the configured main checkout", got.Path)
+	}
+	if m.projectSwitcherFiltered[0].Kind != destinationOverview {
+		t.Fatal("Overview must stay pinned ahead of the collection")
 	}
 	m.scope = ScopeGlobal
 	m.initProjectSwitcher()

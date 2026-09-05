@@ -223,15 +223,23 @@ func (m *Model) themeSwitcherDerivedOffset() int {
 // setProjectSwitcherScroll clamps a viewport scroll and keeps the cursor
 // inside the visible window, so Enter after a drag still acts on a shown row.
 func (m *Model) setProjectSwitcherScroll(off int) {
-	projects := m.projectSwitcherFiltered
-	visible := min(projectSwitcherMaxVisible, len(projects))
-	maxOff := max(0, len(projects)-visible)
+	// The bar scrolls the collection, and pinned rows are not part of it, so
+	// every offset here is collection-relative and the cursor is converted in
+	// and out of that space rather than compared across the two.
+	pinned := m.projectSwitcherPinnedCount()
+	count := max(0, len(m.projectSwitcherFiltered)-pinned)
+	visible := min(m.projectSwitcherVisibleRows(), count)
+	maxOff := max(0, count-visible)
 	next := min(max(off, 0), maxOff)
 	if next != m.projectSwitcherScroll {
 		m.projectSwitcherBar.moved = true
 		m.projectSwitcherScroll = next
 	}
-	m.projectSwitcherCursor = keepSwitcherCursorInWindow(m.projectSwitcherCursor, next, visible)
+	if count == 0 {
+		return
+	}
+	cursor := max(0, m.projectSwitcherCursor-pinned)
+	m.projectSwitcherCursor = keepSwitcherCursorInWindow(cursor, next, visible) + pinned
 }
 
 // setWorktreeSwitcherScroll clamps an item-unit scroll and keeps the cursor in

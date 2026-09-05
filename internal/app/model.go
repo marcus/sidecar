@@ -34,6 +34,7 @@ import (
 	"github.com/marcus/sidecar/internal/panereposition"
 	"github.com/marcus/sidecar/internal/plugin"
 	"github.com/marcus/sidecar/internal/projectdir"
+	"github.com/marcus/sidecar/internal/projectlist"
 	"github.com/marcus/sidecar/internal/startuptrace"
 	"github.com/marcus/sidecar/internal/state"
 	"github.com/marcus/sidecar/internal/styles"
@@ -234,8 +235,23 @@ type Model struct {
 	projectSwitcherModal        *modal.Modal
 	projectSwitcherModalWidth   int
 	projectSwitcherMouseHandler *mouse.Handler
-	projectSwitcherAddFocused   bool // the + (add project) button holds focus
 	projectSwitcherBar          switcherBarState
+	// projectSwitcherRows is the presentation form of projectSwitcherFiltered,
+	// index-aligned with it: the destinations answer activation, the items
+	// answer drawing and ordering.
+	projectSwitcherRows []projectlist.Item
+	// The switcher's view controls. Sort and view are remembered across
+	// launches; which control has focus is not.
+	projectSwitcherSort     projectlist.Sort
+	projectSwitcherOrder    projectlist.Order
+	projectSwitcherView     projectlist.View
+	projectSwitcherFocus    switcherFocus
+	projectSwitcherSortOpen bool
+	projectSwitcherSortIdx  int
+	// projectSwitcherContentW is the width the modal library handed the
+	// collection section on its last render. Key handling reads it so the
+	// grid's arrows and the list's window agree with what was drawn.
+	projectSwitcherContentW int
 	// boundDestination is the host-qualified project this TUI is currently
 	// bound to. Empty HostID means a local project (today's path identity).
 	boundDestination Destination
@@ -742,6 +758,16 @@ func (m Model) Init() tea.Cmd {
 		tea.RequestBackgroundColor,
 	}
 	cmds = append(cmds, m.productCheckCmds(false)...)
+	// The project Sidecar launched into is being used now. Without this it
+	// would stay unrecorded until the user happened to switch back to it, so
+	// the switcher would report the project they just left as Unknown. It is a
+	// command, not inline work: it writes state.json, and nothing that touches
+	// the filesystem belongs on the path to the first frame.
+	if !m.inGlobalScope() {
+		if cmd := m.recordProjectActivityCmd(m.ui.WorkDir); cmd != nil {
+			cmds = append(cmds, cmd)
+		}
+	}
 	if cmd := defaultThemeNoticeCmd(m.cfg); cmd != nil {
 		cmds = append(cmds, cmd)
 	}
@@ -974,7 +1000,9 @@ func (m *Model) resetProjectSwitcher() tea.Cmd {
 	m.projectSwitcherCursor = 0
 	m.projectSwitcherScroll = 0
 	m.projectSwitcherFiltered = nil
-	m.projectSwitcherAddFocused = false
+	m.projectSwitcherRows = nil
+	m.projectSwitcherFocus = switcherFocusFilter
+	m.projectSwitcherSortOpen = false
 	m.clearProjectSwitcherModal()
 	m.resetProjectAdd()
 	// Restore current project's theme (undo any live preview)
@@ -999,15 +1027,17 @@ func (m *Model) clearProjectSwitcherModal() {
 func (m *Model) initProjectSwitcher() {
 	m.clearProjectSwitcherModal()
 	ti := textinput.New()
-	ti.Placeholder = "Filter projects..."
+	ti.Placeholder = "Filter by name or path…"
 	ti.Focus()
 	ti.CharLimit = 50
 	ti.SetWidth(40)
 	m.projectSwitcherInput = ti
-	m.projectSwitcherFiltered = m.projectSwitcherDestinations("")
+	m.projectSwitcherFocus = switcherFocusFilter
+	m.projectSwitcherSortOpen = false
+	m.restoreProjectSwitcherPreferences()
+	m.setProjectSwitcherCollection("")
 	m.projectSwitcherCursor = 0
 	m.projectSwitcherScroll = 0
-	m.projectSwitcherAddFocused = false
 
 	// Set cursor to current project if found
 	for i, destination := range m.projectSwitcherFiltered {
@@ -1020,6 +1050,7 @@ func (m *Model) initProjectSwitcher() {
 			break
 		}
 	}
+	m.projectSwitcherEnsureCursorVisible()
 	// Preview the initially-selected project's theme
 	m.previewProjectTheme()
 }
@@ -1028,6 +1059,9 @@ func (m *Model) projectSwitcherDestinations(query string) []projectSwitcherDesti
 	projects := filterProjects(m.cfg.Projects.List, query)
 	result := make([]projectSwitcherDestination, 0, len(projects)+1)
 	if m.globalScopeAvailable() {
+		// Overview is pinned ahead of the collection and stays through a
+		// filter: it is the way out of a search that found nothing, so it is
+		// the last row that should disappear when nothing matches.
 		result = append(result, projectSwitcherDestination{Kind: destinationOverview, Name: "Overview"})
 	}
 	for i := range projects {
@@ -1133,33 +1167,10 @@ func (m *Model) refreshOpenProjectSwitcher() {
 	if !m.showProjectSwitcher {
 		return
 	}
-	var highlighted projectSwitcherDestination
-	if m.projectSwitcherCursor >= 0 && m.projectSwitcherCursor < len(m.projectSwitcherFiltered) {
-		highlighted = m.projectSwitcherFiltered[m.projectSwitcherCursor]
-	}
-	m.projectSwitcherFiltered = m.projectSwitcherDestinations(m.projectSwitcherInput.Value())
-	m.projectSwitcherCursor = indexOfSwitcherDestination(m.projectSwitcherFiltered, highlighted)
-	if m.projectSwitcherCursor < 0 {
-		m.projectSwitcherCursor = 0
-	}
-	m.projectSwitcherScroll = projectSwitcherEnsureCursorVisible(m.projectSwitcherCursor, m.projectSwitcherScroll, 8)
+	selected := m.selectedProjectSwitcherID()
+	m.setProjectSwitcherCollection(m.projectSwitcherInput.Value())
+	m.restoreProjectSwitcherSelection(selected)
 	m.clearProjectSwitcherModal()
-}
-
-func indexOfSwitcherDestination(destinations []projectSwitcherDestination, target projectSwitcherDestination) int {
-	if target.identityKey() == "" && target.Kind == "" {
-		return 0
-	}
-	key := target.identityKey()
-	for i, destination := range destinations {
-		if destination.identityKey() == key {
-			return i
-		}
-	}
-	if len(destinations) == 0 {
-		return 0
-	}
-	return 0
 }
 
 // filterProjects filters projects by name or path using a case-insensitive substring match.
@@ -1186,7 +1197,7 @@ func (m *Model) updateProjectSwitcherFilter(msg tea.Msg) tea.Cmd {
 
 	var cmd tea.Cmd
 	m.projectSwitcherInput, cmd = m.projectSwitcherInput.Update(msg)
-	m.projectSwitcherFiltered = m.projectSwitcherDestinations(m.projectSwitcherInput.Value())
+	m.setProjectSwitcherCollection(m.projectSwitcherInput.Value())
 	m.clearProjectSwitcherModal()
 
 	if m.projectSwitcherCursor >= len(m.projectSwitcherFiltered) {
@@ -1195,7 +1206,8 @@ func (m *Model) updateProjectSwitcherFilter(msg tea.Msg) tea.Cmd {
 	if m.projectSwitcherCursor < 0 {
 		m.projectSwitcherCursor = 0
 	}
-	m.projectSwitcherScroll = projectSwitcherEnsureCursorVisible(m.projectSwitcherCursor, 0, 8)
+	m.projectSwitcherScroll = 0
+	m.projectSwitcherEnsureCursorVisible()
 	return tea.Batch(cmd, m.previewProjectTheme())
 }
 
@@ -1615,6 +1627,12 @@ func (m *Model) switchProjectWithSelection(projectPath string, inventory []Workt
 		return nil
 	}
 
+	// Binding a project is the activity the switcher's "Last activity" column
+	// reports. It is recorded here rather than in the switcher so every route
+	// in — the modal, a `sidecar project switch` request, a restored target —
+	// records the same event once.
+	activityCmd := m.recordProjectActivityCmd(projectPath)
+
 	// A caller-supplied selection is a hand-off like any other, so it goes
 	// through the one slot rather than beside it. It supersedes a target parked
 	// by an earlier jump: this switch is the newer request.
@@ -1761,6 +1779,7 @@ func (m *Model) switchProjectWithSelection(projectPath string, inventory []Workt
 	// Return batch of start commands plus a toast notification
 	return tea.Batch(
 		tea.Batch(startCmds...),
+		activityCmd,
 		// Configuration stays open across a project switch, so it is told where
 		// it now is rather than left describing the project the user left.
 		m.refreshConfigContext(),
@@ -2092,7 +2111,7 @@ func (m *Model) saveProjectAdd() tea.Cmd {
 	m.cfg.Projects.List = cfg.Projects.List
 
 	// Refresh the filtered list
-	m.projectSwitcherFiltered = m.projectSwitcherDestinations("")
+	m.setProjectSwitcherCollection("")
 
 	// The new row in the switcher is the confirmation (audit row 26), and a
 	// live global catalog picks the project up immediately instead of waiting

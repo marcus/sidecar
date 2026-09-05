@@ -23,6 +23,7 @@ import (
 	"github.com/marcus/sidecar/internal/palette"
 	"github.com/marcus/sidecar/internal/panelayout"
 	"github.com/marcus/sidecar/internal/plugin"
+	"github.com/marcus/sidecar/internal/projectlist"
 	"github.com/marcus/sidecar/internal/resourceview"
 	"github.com/marcus/sidecar/internal/styles"
 	"github.com/marcus/sidecar/internal/termpreview"
@@ -1153,12 +1154,19 @@ func (m *Model) handleKeyMsg(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 				m.resetProjectAdd()
 				return m, nil
 			}
+			// An open sort menu is the innermost thing Esc can dismiss, so it
+			// goes before the filter and before the modal itself.
+			if m.projectSwitcherSortOpen {
+				m.closeProjectSwitcherSort()
+				return m, nil
+			}
 			// Esc: clear filter if set, otherwise close
 			if m.projectSwitcherInput.Value() != "" {
 				m.projectSwitcherInput.SetValue("")
-				m.projectSwitcherFiltered = m.projectSwitcherDestinations("")
+				m.setProjectSwitcherCollection("")
 				m.projectSwitcherCursor = 0
 				m.projectSwitcherScroll = 0
+				m.clearProjectSwitcherModal()
 				return m, nil
 			}
 			cmd := m.resetProjectSwitcher()
@@ -1594,36 +1602,37 @@ func (m *Model) handleKeyMsg(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 
 		projects := m.projectSwitcherFiltered
 
-		// The + button takes focus from the filter input via tab or right
-		// arrow; enter or space then opens add-project.
-		if m.projectSwitcherAddFocused {
-			switch msg.String() {
-			case "enter", " ", "space":
-				m.projectSwitcherAddFocused = false
-				m.initProjectAdd()
-				return m, nil
-			case "tab", "shift+tab", "left", "backtab":
-				m.projectSwitcherAddFocused = false
-				return m, nil
-			case "up", "down", "ctrl+n", "ctrl+p":
-				m.projectSwitcherAddFocused = false
-				// fall through to the normal handling below
-			default:
-				// Typing returns to the filter input.
-				m.projectSwitcherAddFocused = false
+		// An open sort menu owns the keyboard until it is dismissed: the
+		// collection must not move underneath a menu the user is reading.
+		if handled, cmd := m.handleProjectSwitcherSortKey(msg); handled {
+			return m, cmd
+		}
+
+		// Tab walks the controls: filter, sort, view, add. It is the only way
+		// to leave the filter, because every printable key belongs to the
+		// filter and no control may claim one.
+		switch msg.String() {
+		case "tab":
+			m.cycleProjectSwitcherFocus(1)
+			return m, nil
+		case "shift+tab", "backtab":
+			m.cycleProjectSwitcherFocus(-1)
+			return m, nil
+		}
+
+		// A focused control answers the keys that are its own; everything else
+		// falls through, and a printable key returns focus to the filter.
+		if m.projectSwitcherFocus != switcherFocusFilter {
+			if handled, cmd := m.handleProjectSwitcherControlKey(msg); handled {
+				return m, cmd
 			}
-		} else {
 			switch msg.String() {
-			case "tab":
-				m.projectSwitcherAddFocused = true
-				return m, nil
-			case "right":
-				// Only when the caret is already at the end, so right arrow
-				// still moves through filter text.
-				if m.projectSwitcherInput.Position() >= len(m.projectSwitcherInput.Value()) {
-					m.projectSwitcherAddFocused = true
-					return m, nil
-				}
+			case "up", "down", "left", "right", "ctrl+n", "ctrl+p", "enter":
+				// Navigation belongs to the collection wherever focus sits, so
+				// the arrows keep working without a trip back to the filter.
+			default:
+				m.projectSwitcherFocus = switcherFocusFilter
+				m.clearProjectSwitcherModal()
 			}
 		}
 
@@ -1636,45 +1645,31 @@ func (m *Model) handleKeyMsg(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 
 		case tea.KeyUp:
-			m.projectSwitcherCursor--
-			if m.projectSwitcherCursor < 0 {
-				m.projectSwitcherCursor = 0
-			}
-			m.projectSwitcherScroll = projectSwitcherEnsureCursorVisible(m.projectSwitcherCursor, m.projectSwitcherScroll, 8)
-			return m, m.previewProjectTheme()
+			return m, m.moveProjectSwitcherCursor(0, -1)
 
 		case tea.KeyDown:
-			m.projectSwitcherCursor++
-			if m.projectSwitcherCursor >= len(projects) {
-				m.projectSwitcherCursor = len(projects) - 1
+			return m, m.moveProjectSwitcherCursor(0, 1)
+		}
+
+		// Horizontal arrows are the grid's spatial navigation. In the list they
+		// move the filter caret, which is why they are asked of the collection
+		// only when the grid is what is on screen.
+		if m.projectSwitcherEffectiveView() == projectlist.ViewGrid {
+			switch msg.String() {
+			case "left":
+				return m, m.moveProjectSwitcherCursor(-1, 0)
+			case "right":
+				return m, m.moveProjectSwitcherCursor(1, 0)
 			}
-			if m.projectSwitcherCursor < 0 {
-				m.projectSwitcherCursor = 0
-			}
-			m.projectSwitcherScroll = projectSwitcherEnsureCursorVisible(m.projectSwitcherCursor, m.projectSwitcherScroll, 8)
-			return m, m.previewProjectTheme()
 		}
 
 		// Handle non-text shortcuts
 		switch msg.String() {
 		case "ctrl+n":
-			m.projectSwitcherCursor++
-			if m.projectSwitcherCursor >= len(projects) {
-				m.projectSwitcherCursor = len(projects) - 1
-			}
-			if m.projectSwitcherCursor < 0 {
-				m.projectSwitcherCursor = 0
-			}
-			m.projectSwitcherScroll = projectSwitcherEnsureCursorVisible(m.projectSwitcherCursor, m.projectSwitcherScroll, 8)
-			return m, m.previewProjectTheme()
+			return m, m.moveProjectSwitcherCursor(0, 1)
 
 		case "ctrl+p":
-			m.projectSwitcherCursor--
-			if m.projectSwitcherCursor < 0 {
-				m.projectSwitcherCursor = 0
-			}
-			m.projectSwitcherScroll = projectSwitcherEnsureCursorVisible(m.projectSwitcherCursor, m.projectSwitcherScroll, 8)
-			return m, m.previewProjectTheme()
+			return m, m.moveProjectSwitcherCursor(0, -1)
 
 		case "ctrl+a":
 			m.initProjectAdd()
@@ -2621,27 +2616,9 @@ func (m *Model) handleProjectSwitcherMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd
 	// Handle scroll wheel for project list navigation
 	switch msg.Mouse().Button {
 	case tea.MouseWheelUp:
-		m.projectSwitcherCursor--
-		if m.projectSwitcherCursor < 0 {
-			m.projectSwitcherCursor = 0
-		}
-		m.projectSwitcherScroll = projectSwitcherEnsureCursorVisible(
-			m.projectSwitcherCursor, m.projectSwitcherScroll, 8)
-		m.clearProjectSwitcherModal()
-		return m, m.previewProjectTheme()
+		return m, m.wheelProjectSwitcherCursor(-1)
 	case tea.MouseWheelDown:
-		projects := m.projectSwitcherFiltered
-		m.projectSwitcherCursor++
-		if m.projectSwitcherCursor >= len(projects) {
-			m.projectSwitcherCursor = len(projects) - 1
-		}
-		if m.projectSwitcherCursor < 0 {
-			m.projectSwitcherCursor = 0
-		}
-		m.projectSwitcherScroll = projectSwitcherEnsureCursorVisible(
-			m.projectSwitcherCursor, m.projectSwitcherScroll, 8)
-		m.clearProjectSwitcherModal()
-		return m, m.previewProjectTheme()
+		return m, m.wheelProjectSwitcherCursor(1)
 	}
 
 	if handled, cmd := m.projectSwitcherBarEvent(msg); handled {
@@ -2663,11 +2640,13 @@ func (m *Model) handleProjectSwitcherMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd
 		return m, nil
 	}
 
+	// Toolbar controls and the sort menu answer through the same functions the
+	// keyboard uses, so a pointer and a keypress cannot mean different things.
+	if handled, cmd := m.applyProjectSwitcherToolbarAction(action); handled {
+		return m, cmd
+	}
+
 	switch action {
-	case projectSwitcherAddButtonID:
-		m.projectSwitcherAddFocused = false
-		m.initProjectAdd()
-		return m, nil
 	case "cancel":
 		cmd := m.resetProjectSwitcher()
 		m.updateContext()

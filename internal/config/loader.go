@@ -164,6 +164,7 @@ type rawProjectConfig struct {
 	LastOpenInApp string               `json:"lastOpenInApp,omitempty"`
 	OpenIn        string               `json:"openIn,omitempty"`
 	WorktreeSetup *WorktreeSetupConfig `json:"worktreeSetup,omitempty"`
+	AddedAt       *time.Time           `json:"addedAt,omitempty"`
 }
 
 type rawPluginsConfig struct {

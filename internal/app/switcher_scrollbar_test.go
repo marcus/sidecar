@@ -97,8 +97,8 @@ func TestProjectSwitcherScrollbarDragThroughActiveModalDispatch(t *testing.T) {
 	params := ui.ScrollbarParams{
 		TotalItems:   len(m.projectSwitcherFiltered),
 		ScrollOffset: m.projectSwitcherScroll,
-		VisibleItems: projectSwitcherMaxVisible,
-		TrackHeight:  projectSwitcherMaxVisible,
+		VisibleItems: m.projectSwitcherVisibleRows(),
+		TrackHeight:  m.projectSwitcherVisibleRows(),
 	}
 
 	grabY := thumb.Rect.Y + thumb.Rect.H/2
@@ -121,9 +121,9 @@ func TestProjectSwitcherScrollbarDragThroughActiveModalDispatch(t *testing.T) {
 	}
 	// ...and the cursor stays inside the visible window so Enter still acts on
 	// a row the viewport shows.
-	if m.projectSwitcherCursor < m.projectSwitcherScroll ||
-		m.projectSwitcherCursor >= m.projectSwitcherScroll+projectSwitcherMaxVisible {
-		t.Errorf("cursor %d outside window [%d,%d)", m.projectSwitcherCursor, m.projectSwitcherScroll, m.projectSwitcherScroll+projectSwitcherMaxVisible)
+	if visible := m.projectSwitcherVisibleRows(); m.projectSwitcherCursor < m.projectSwitcherScroll ||
+		m.projectSwitcherCursor >= m.projectSwitcherScroll+visible {
+		t.Errorf("cursor %d outside window [%d,%d)", m.projectSwitcherCursor, m.projectSwitcherScroll, m.projectSwitcherScroll+visible)
 	}
 
 	if _, _ = m.handleProjectSwitcherMouse(switcherRelease(0, 0)); h.IsDragging() {
@@ -143,7 +143,8 @@ func TestProjectSwitcherTrackClickAnchorsAndContinues(t *testing.T) {
 	clickRow := thumb.Rect.Y + thumb.Rect.H + 2
 	m.handleProjectSwitcherMouse(switcherClick(track.Rect.X, clickRow))
 
-	want := scroll.OffsetAtRow(len(m.projectSwitcherFiltered), projectSwitcherMaxVisible, projectSwitcherMaxVisible, clickRow-track.Rect.Y)
+	visible := m.projectSwitcherVisibleRows()
+	want := scroll.OffsetAtRow(len(m.projectSwitcherFiltered), visible, visible, clickRow-track.Rect.Y)
 	if m.projectSwitcherScroll != want {
 		t.Fatalf("track click must jump so the grabbed point anchors: scroll = %d, want %d", m.projectSwitcherScroll, want)
 	}
@@ -153,7 +154,7 @@ func TestProjectSwitcherTrackClickAnchorsAndContinues(t *testing.T) {
 
 	further := clickRow + 3
 	m.handleProjectSwitcherMouse(switcherDragMotion(track.Rect.X, further))
-	want = scroll.OffsetAtRow(len(m.projectSwitcherFiltered), projectSwitcherMaxVisible, projectSwitcherMaxVisible, further-track.Rect.Y)
+	want = scroll.OffsetAtRow(len(m.projectSwitcherFiltered), visible, visible, further-track.Rect.Y)
 	if m.projectSwitcherScroll != want {
 		t.Errorf("post-jump drag: scroll = %d, want %d", m.projectSwitcherScroll, want)
 	}
@@ -190,12 +191,17 @@ func TestSwitcherBarInertWhenContentFits(t *testing.T) {
 func TestSubModalOpenCancelsParentBarGestureThroughRealUpdate(t *testing.T) {
 	m := routerTestModel(t, newRouterPlugin())
 	projects := manyProjects(20)
-	// A theme only proj-12 resolves: if the abandoned drag ever spends its
-	// preview, the app visibly recolours to it.
-	projects[12].Theme = &config.ThemeConfig{Name: "zenburn"}
 	m.cfg.Projects.List = projects
 	m.ui.WorkDir = "/tmp/proj-00"
 	m.showProjectSwitcher = true
+	m.initProjectSwitcher()
+	// A theme only the project the drag will land on resolves: if the
+	// abandoned drag ever spends its preview, the app visibly recolours to it.
+	// The landing row is the top of the bottom window, which follows the
+	// terminal's height rather than a fixed row count.
+	themed := len(projects) - m.projectSwitcherVisibleRows()
+	projects[themed].Theme = &config.ThemeConfig{Name: "zenburn"}
+	m.cfg.Projects.List = projects
 	m.initProjectSwitcher()
 	m.renderProjectSwitcherOverlay("bg")
 	before := styles.GetCurrentTheme().Name
@@ -224,11 +230,11 @@ func TestSubModalOpenCancelsParentBarGestureThroughRealUpdate(t *testing.T) {
 		t.Fatal("thumb press did not arm the drag")
 	}
 	mu = step(mu, switcherDragMotion(track.Rect.X, track.Rect.Y+track.Rect.H-1))
-	if mu.projectSwitcherScroll != len(projects)-projectSwitcherMaxVisible || !mu.projectSwitcherBar.moved {
+	if mu.projectSwitcherScroll != len(projects)-mu.projectSwitcherVisibleRows() || !mu.projectSwitcherBar.moved {
 		t.Fatalf("drag precondition: scroll=%d moved=%v", mu.projectSwitcherScroll, mu.projectSwitcherBar.moved)
 	}
-	if mu.projectSwitcherCursor != 12 {
-		t.Fatalf("cursor = %d, want 12 (the themed project)", mu.projectSwitcherCursor)
+	if mu.projectSwitcherCursor != themed {
+		t.Fatalf("cursor = %d, want %d (the themed project)", mu.projectSwitcherCursor, themed)
 	}
 
 	// ctrl+a interrupts the live drag; the sub-flow takes the pointer away.

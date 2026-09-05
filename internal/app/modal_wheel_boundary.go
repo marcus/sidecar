@@ -112,8 +112,9 @@ func (m *Model) updateModalWheelAtBoundary(msg tea.MouseWheelMsg) bool {
 	return modalWheelAtBoundary(m.updateModal, m.updateMouseHandler, msg)
 }
 
-// projectSwitcherMaxVisible mirrors the visible-row count handleProjectSwitcherMouse
-// passes to projectSwitcherEnsureCursorVisible.
+// projectSwitcherMaxVisible is the visible-row count used when the terminal's
+// height is not yet known. The live count comes from
+// Model.projectSwitcherVisibleRows, which follows the window.
 const projectSwitcherMaxVisible = 8
 
 // projectSwitcherWheelAtBoundary answers for the project switcher, whose wheel
@@ -146,7 +147,8 @@ func (m *Model) projectSwitcherWheelAtBoundary(msg tea.MouseWheelMsg) bool {
 	}
 	// The cursor cannot move; the list offset must be stable too, otherwise the
 	// same event would still scroll the visible window.
-	scrollAfter := projectSwitcherEnsureCursorVisible(cursor, m.projectSwitcherScroll, projectSwitcherMaxVisible)
+	pinned := m.projectSwitcherPinnedCount()
+	scrollAfter := projectSwitcherEnsureCursorVisible(max(0, cursor-pinned), m.projectSwitcherScroll, m.projectSwitcherVisibleRows())
 	return scrollAfter == m.projectSwitcherScroll
 }
 

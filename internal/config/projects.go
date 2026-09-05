@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 )
 
 // Project mutations live here so every surface that adds, renames, removes, or
@@ -85,6 +86,14 @@ func AddProject(project ProjectConfig) (ProjectConfig, error) {
 	}
 	if message := ValidateProject(cfg.Projects.List, project.Name, project.Path, -1); message != "" {
 		return ProjectConfig{}, fmt.Errorf("%s", message)
+	}
+	// Registration is the one date Sidecar can state truthfully, and this is the
+	// single boundary every surface adds a project through, so stamping it here
+	// covers the TUI and `sidecar project add` without either knowing about it.
+	// A caller that supplied its own value keeps it.
+	if project.AddedAt == nil {
+		now := time.Now().UTC()
+		project.AddedAt = &now
 	}
 	cfg.Projects.List = append(cfg.Projects.List, project)
 	if err := Save(cfg); err != nil {

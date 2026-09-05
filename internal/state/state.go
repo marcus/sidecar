@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"time"
 )
 
 // State holds persistent user preferences.
@@ -126,6 +127,29 @@ type State struct {
 	// AgentAutoApprove is the last auto-approve checkbox value per agent type.
 	// A missing key is treated as false.
 	AgentAutoApprove map[string]bool `json:"agentAutoApprove,omitempty"`
+
+	// ProjectActivity is the latest recorded Sidecar activity per project,
+	// keyed by the project's cleaned absolute path. It is written when Sidecar
+	// binds a project, which is the one path both the switcher and
+	// `sidecar project switch` go through.
+	//
+	// It records events Sidecar observed; it is not a measurement of the
+	// directory. A project with no entry has had no recorded activity and reads
+	// "Unknown" rather than being given a plausible date, and nothing here is
+	// ever backfilled from a file time or a commit time.
+	ProjectActivity map[string]time.Time `json:"projectActivity,omitempty"`
+
+	// The project switcher's remembered view controls, stored as display
+	// labels for the same reason WorkspaceListSort is: the file reads plainly
+	// and the enums can be reordered without invalidating anyone's state. An
+	// unrecognised or empty value falls back to the surface's own default.
+	//
+	// They are deliberately not keyed by working directory. The switcher spans
+	// every configured project, so "I like the grid" is not a fact about the
+	// checkout Sidecar happened to launch in.
+	ProjectSwitcherSort  string `json:"projectSwitcherSort,omitempty"`
+	ProjectSwitcherOrder string `json:"projectSwitcherOrder,omitempty"`
+	ProjectSwitcherView  string `json:"projectSwitcherView,omitempty"`
 
 	// SeenDefaultThemeNotice records that the one-time "the default theme
 	// changed" toast has been shown.
@@ -1497,6 +1521,120 @@ func SetAgentAutoApprove(agent string, on bool) error {
 		current.AgentAutoApprove = make(map[string]bool)
 	}
 	current.AgentAutoApprove[agent] = on
+	mu.Unlock()
+	return Save()
+}
+
+// projectActivityKey is the map key for a project root: cleaned, so the same
+// project reached by two spellings of its path is one entry.
+func projectActivityKey(projectPath string) string {
+	if projectPath == "" {
+		return ""
+	}
+	return filepath.Clean(projectPath)
+}
+
+// GetProjectActivity returns the recorded activity times for every project, by
+// cleaned path. A project absent from the map has no recorded activity, which
+// the switcher shows as Unknown rather than guessing.
+func GetProjectActivity() map[string]time.Time {
+	mu.RLock()
+	defer mu.RUnlock()
+	if current == nil || len(current.ProjectActivity) == 0 {
+		return nil
+	}
+	out := make(map[string]time.Time, len(current.ProjectActivity))
+	for key, when := range current.ProjectActivity {
+		out[key] = when
+	}
+	return out
+}
+
+// RecordProjectActivity stamps a project as active now. It is a no-op for an
+// empty path, and a no-op when the recorded time is already this second, so
+// repeated binds within one interaction do not rewrite the state file.
+func RecordProjectActivity(projectPath string, when time.Time) error {
+	key := projectActivityKey(projectPath)
+	if key == "" || when.IsZero() {
+		return nil
+	}
+	when = when.UTC()
+	mu.Lock()
+	if current == nil {
+		current = &State{}
+	}
+	if existing, ok := current.ProjectActivity[key]; ok && !when.After(existing.Add(time.Second)) {
+		mu.Unlock()
+		return nil
+	}
+	if current.ProjectActivity == nil {
+		current.ProjectActivity = make(map[string]time.Time)
+	}
+	current.ProjectActivity[key] = when
+	mu.Unlock()
+	return Save()
+}
+
+// GetProjectSwitcherSort returns the switcher's saved sort label, or "" when
+// the user has never chosen one.
+func GetProjectSwitcherSort() string {
+	mu.RLock()
+	defer mu.RUnlock()
+	if current == nil {
+		return ""
+	}
+	return current.ProjectSwitcherSort
+}
+
+// GetProjectSwitcherOrder returns the switcher's saved sort direction label.
+func GetProjectSwitcherOrder() string {
+	mu.RLock()
+	defer mu.RUnlock()
+	if current == nil {
+		return ""
+	}
+	return current.ProjectSwitcherOrder
+}
+
+// SetProjectSwitcherSort saves the switcher's chosen order and direction. They
+// are written together because a direction means nothing without the mode it
+// applies to.
+func SetProjectSwitcherSort(sortLabel, orderLabel string) error {
+	mu.Lock()
+	if current == nil {
+		current = &State{}
+	}
+	if current.ProjectSwitcherSort == sortLabel && current.ProjectSwitcherOrder == orderLabel {
+		mu.Unlock()
+		return nil
+	}
+	current.ProjectSwitcherSort = sortLabel
+	current.ProjectSwitcherOrder = orderLabel
+	mu.Unlock()
+	return Save()
+}
+
+// GetProjectSwitcherView returns the switcher's saved layout label.
+func GetProjectSwitcherView() string {
+	mu.RLock()
+	defer mu.RUnlock()
+	if current == nil {
+		return ""
+	}
+	return current.ProjectSwitcherView
+}
+
+// SetProjectSwitcherView saves the switcher's chosen layout.
+func SetProjectSwitcherView(label string) error {
+	mu.Lock()
+	if current == nil {
+		current = &State{}
+	}
+	if current.ProjectSwitcherView == label {
+		mu.Unlock()
+		return nil
+	}
+	current.ProjectSwitcherView = label
 	mu.Unlock()
 	return Save()
 }
