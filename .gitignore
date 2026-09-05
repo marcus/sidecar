@@ -83,3 +83,9 @@ screenshots/
 # belongs in a commit.
 __pycache__/
 *.pyc
+
+# graphify knowledge graph cache (rebuilt by clara-home bin/graphify-refresh)
+graphify-out/
+
+# local semantic-search index caches, rebuilt on demand
+.zvec-grep/
