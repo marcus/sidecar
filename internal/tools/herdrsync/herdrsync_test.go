@@ -1036,6 +1036,96 @@ func TestASkippedComparisonIsNamedInTheReport(t *testing.T) {
 	}
 }
 
+// TestARenderedReportNeverCallsAPortedProviderUnported is the guard the hooks
+// lane needed and did not have.
+//
+// The port column is derived from PortedFromRecords() at render time, so the
+// next sync prints the truth whatever the committed report.md says -- and the
+// committed one is stale by construction, because it is written only by a real
+// sync run and fifteen ports have landed since the last one. That makes the
+// derivation the only thing standing between a reviewer and a report claiming
+// Sidecar has not ported a provider it ships an adapter for, and nothing was
+// asserting it.
+//
+// The join is by UpstreamID against the lock's provider id, which is the part
+// that can silently go wrong: Herdr's directory name and its agent id disagree
+// for Antigravity (antigravity_cli is agy), so a record naming the directory
+// would match no provider, render nothing, and leave the row reading "not
+// ported" with every other test still green.
+//
+// It reads the embedded lock rather than running a sync, so it needs no Herdr
+// checkout and no network, which is what makes it run in ordinary CI.
+func TestARenderedReportNeverCallsAPortedProviderUnported(t *testing.T) {
+	lock, err := agentintegration.LoadUpstreamLock()
+	if err != nil {
+		t.Fatalf("load the embedded upstream lock: %v", err)
+	}
+	records := agentintegration.PortedFromRecords()
+	if len(records) == 0 {
+		t.Fatal("no ported-from records; this test would assert nothing")
+	}
+
+	// PreviousIntegration is the same lock, so every row reads "unchanged" and
+	// the bumps section -- whose prose also contains the words "not ported" --
+	// stays empty. The rows are what this test reads either way.
+	report := &syncReport{
+		IntegrationOut:      "internal/agentintegration",
+		Integration:         lock,
+		PreviousIntegration: lock,
+	}
+	var b strings.Builder
+	report.renderIntegrationAssets(&b)
+
+	rows := map[string]string{}
+	for _, line := range strings.Split(b.String(), "\n") {
+		if !strings.HasPrefix(line, "| `") {
+			continue
+		}
+		id, _, ok := strings.Cut(strings.TrimPrefix(line, "| `"), "`")
+		if !ok {
+			continue
+		}
+		rows[id] = line
+	}
+	if len(rows) != len(lock.Providers) {
+		t.Fatalf("the table rendered %d rows for %d vendored providers", len(rows), len(lock.Providers))
+	}
+
+	ported := map[string]bool{}
+	for _, record := range records {
+		if _, ok := lock.Provider(record.UpstreamID); !ok {
+			t.Errorf("%s records UpstreamID %q, which names no provider in upstream.lock.json; "+
+				"the sync report would call it unported. The lock is keyed by Herdr's agent id, "+
+				"not by its asset directory name (%q).",
+				record.Provider, record.UpstreamID, record.UpstreamDir)
+			continue
+		}
+		ported[record.UpstreamID] = true
+		row := rows[record.UpstreamID]
+		if strings.Contains(row, "not ported") {
+			t.Errorf("the report calls %s unported although portedFrom records it:\n%s",
+				record.UpstreamID, row)
+		}
+		if !strings.Contains(row, "`"+record.Provider+"` from version "+record.Version) {
+			t.Errorf("%s's row does not name the Sidecar provider and version it was ported from:\n%s",
+				record.UpstreamID, row)
+		}
+	}
+
+	// The other direction, so the guard cannot be satisfied by a renderer that
+	// stopped saying "not ported" at all: a vendored provider with no record is
+	// still named as one nobody has ported.
+	for _, provider := range lock.Providers {
+		if ported[provider.ID] {
+			continue
+		}
+		if !strings.Contains(rows[provider.ID], "not ported") {
+			t.Errorf("%s has no portedFrom record and the report does not say so:\n%s",
+				provider.ID, rows[provider.ID])
+		}
+	}
+}
+
 // TestGitReadsSeparateAnAbsentFileFromAFailedRead is the source-level half of
 // the rule above, against a real checkout.
 func TestGitReadsSeparateAnAbsentFileFromAFailedRead(t *testing.T) {
