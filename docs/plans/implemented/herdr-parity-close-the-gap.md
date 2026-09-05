@@ -1,6 +1,6 @@
 # Herdr parity: close the remaining gap
 
-**Status:** In progress, opened 2026-09-02, scope settled 2026-09-03. This is the controlling plan for the work that remains after [Herdr detection parity](herdr-detection-parity.md) Phases 0 through 5 landed. That plan owns the screen lane and is finished except for its Phase 6, which this document replaces and expands. **Slices 1 and 3 are implemented** (see their result sections). Slices 2 and 4 are confirmed in full, and Slices 5 through 7 were added on 2026-09-03 for the user-facing half of the same goal: every agent Sidecar can recognise is one it can also start, and the surface that installs an integration reads as a table rather than an accordion.
+**Status:** Implemented, opened 2026-09-02, scope settled 2026-09-03, completed 2026-09-04. Every slice shipped and is reviewed; the result subsections record what each one measured. Six session-identity entries remain untraced because their providers need an account or credentials this machine does not carry (devin, droid, qodercli, antigravity, cursor, copilot); each promotes with one capture, and `.claude/skills/port-herdr-integration/SKILL.md` is the procedure for that and for every future Herdr bump. This is the controlling plan for the work that remains after [Herdr detection parity](../active/herdr-detection-parity.md) Phases 0 through 5 landed. That plan owns the screen lane and is finished except for its Phase 6, which this document replaces and expands. **Slices 1 and 3 are implemented** (see their result sections). Slices 2 and 4 are confirmed in full, and Slices 5 through 7 were added on 2026-09-03 for the user-facing half of the same goal: every agent Sidecar can recognise is one it can also start, and the surface that installs an integration reads as a table rather than an accordion.
 
 ## Decisions, 2026-09-03
 
@@ -606,6 +606,6 @@ Three assertions had to widen to be true of the four newly covered providers, an
 
 ## Related plans
 
-- [Herdr detection parity](herdr-detection-parity.md) owns the screen lane, the manifest engine, the sync tooling, the overlays, and the opt-in runtime fetch. Implemented through Phase 5. Its Phase 6 is superseded by this document.
-- [Deterministic agent lifecycle hooks](notification-agent-lifecycle-hooks.md) owns the report contract, authority arbitration, the capability matrix and the evidence tiers. This plan adds providers to that matrix; it does not change its rules.
-- [Herdr agent control and session restore](herdr-agent-control-and-session-restore.md) owns `sidecar agent start/prompt/wait/read`. Those verbs consume `agentactivity.Result` and inherit anything this plan improves. Slice 1's exit gate names one of its failures.
+- [Herdr detection parity](../active/herdr-detection-parity.md) owns the screen lane, the manifest engine, the sync tooling, the overlays, and the opt-in runtime fetch. Implemented through Phase 5. Its Phase 6 is superseded by this document.
+- [Deterministic agent lifecycle hooks](../active/notification-agent-lifecycle-hooks.md) owns the report contract, authority arbitration, the capability matrix and the evidence tiers. This plan adds providers to that matrix; it does not change its rules.
+- [Herdr agent control and session restore](../active/herdr-agent-control-and-session-restore.md) owns `sidecar agent start/prompt/wait/read`. Those verbs consume `agentactivity.Result` and inherit anything this plan improves. Slice 1's exit gate names one of its failures.

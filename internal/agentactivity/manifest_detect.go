@@ -77,7 +77,7 @@ func HerdrAgentLabel(agent string) string {
 // detector consults Detect and nothing else, so it never saw a state to be
 // ready on. The screen lane answered `idle` for the very same capture the
 // moment the gate let it through, which is how we know the gate was the whole
-// of that defect. See docs/plans/active/herdr-parity-close-the-gap.md, Slice 1's
+// of that defect. See docs/plans/implemented/herdr-parity-close-the-gap.md, Slice 1's
 // result.
 //
 // The open direction cost worse than a missing badge. Four of the launchable

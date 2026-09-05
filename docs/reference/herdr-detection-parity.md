@@ -110,7 +110,7 @@ Generic runtimes: Herdr's list is `sh bash zsh fish tmux node bun cmd powershell
 
 ## Process-tree scoring and the launch hint
 
-Ported in Slice 3 of [the parity plan](../plans/active/herdr-parity-close-the-gap.md); `process_tree.go` is Herdr's `identify_agent_in_job` chain at `d08e4468`, function by function with a citation each. Sidecar matched `argv[0]` basenames only before it, so an agent installed as a plain `#!/usr/bin/env node` shim left the interpreter in `argv[0]`, tmux reported `node`, and the pane was never claimed.
+Ported in Slice 3 of [the parity plan](../plans/implemented/herdr-parity-close-the-gap.md); `process_tree.go` is Herdr's `identify_agent_in_job` chain at `d08e4468`, function by function with a citation each. Sidecar matched `argv[0]` basenames only before it, so an agent installed as a plain `#!/usr/bin/env node` shim left the interpreter in `argv[0]`, tmux reported `node`, and the pane was never claimed.
 
 The scan prefers the foreground process group leader and otherwise takes the best-scoring member, where the ladder is: 3 when unwrapping a runtime's argv renamed the process, 2 for a non-runtime, 1 for a runtime. The platform seam carries pid, ppid, comm, `argv[0]` and full argv, read in the same single process-table walk that previously produced `argv[0]` alone.
 

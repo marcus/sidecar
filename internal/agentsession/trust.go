@@ -26,7 +26,7 @@ import (
 // had was a hook somebody wrote by hand, and trusting one of those is exactly
 // the "resume a conversation nobody proved was the right one" the paragraph
 // above refuses. Both were retracted, and Pi is back here now that the port in
-// docs/plans/active/herdr-parity-close-the-gap.md, Slice 1, has shipped
+// docs/plans/implemented/herdr-parity-close-the-gap.md, Slice 1, has shipped
 // PiAdapter and internal/agentintegration/assets/pi/sidecar-lifecycle.js, which
 // is what does the reporting.
 //

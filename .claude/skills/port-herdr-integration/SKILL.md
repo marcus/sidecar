@@ -205,7 +205,7 @@ A port is not done until every one of these carries it. Sibling lanes port other
 | Capability entry | `internal/agentlifecycle/capabilities.json` | `TestCapabilityMatrixCannotClaimUnearnedAuthority` |
 | Trace provenance row | `internal/agentlifecycle/testdata/README.md` | `hooktrace_test.go` |
 | Capability matrix prose | `docs/reference/agent-lifecycle-capability-matrix.md` | reviewer |
-| Plan result subsection | `docs/plans/active/herdr-parity-close-the-gap.md`, under Slice 2 or Slice 4 | reviewer |
+| Plan result subsection | `docs/plans/implemented/herdr-parity-close-the-gap.md`, under Slice 2 or Slice 4 | reviewer |
 | Changelog bullet | `CHANGELOG.md`, under `## [Unreleased]` | reviewer |
 
 Shape C needs no argv-corpus entry of its own: `SessionHookArgvCorpus()` discovers the group by the promoted `sessionHookIntegrationData()` method, so a registered session-hook adapter is covered without being named. The same discovery drives `sessionHookAdapters` in `sessionhook_test.go`, so your provider joins nine shared tests the moment it is in `DefaultAdapters()`. Check that it did: if your provider does not appear as a subtest of `TestASessionHookInstallsAndUninstallsCleanly`, something about the embedding is wrong. That helper used to be a type switch naming four providers while the group had grown to eight, and four ports sat outside every assertion in the file until it was fixed.
@@ -346,4 +346,4 @@ Go through this before handing the port off.
 
 **Not ported yet:** nothing. Every Herdr integration with a counterpart in Sidecar's catalog is ported. What is left is not porting work: it is a capture for each of the six untraced entries above, and subscription for the providers whose ceiling is higher than what their asset asks for.
 
-Read `docs/plans/active/herdr-parity-close-the-gap.md` for the current state; its result subsections record what each port measured and are the reason most of this file exists.
+Read `docs/plans/implemented/herdr-parity-close-the-gap.md` for the current state; its result subsections record what each port measured and are the reason most of this file exists.

@@ -274,7 +274,7 @@ var (
 // Herdr's own wrapper, so trusting it over evidence is trusting itself.
 // Sidecar's `SIDECAR_AGENT` is a bare environment variable that Sidecar reads
 // and never writes (see the Slice 3 result in
-// docs/plans/active/herdr-parity-close-the-gap.md), so anything in the session
+// docs/plans/implemented/herdr-parity-close-the-gap.md), so anything in the session
 // can set it. Under upstream's order, `export SIDECAR_AGENT=codex` in a Claude
 // pane would relabel that pane — the display-side echo of exactly the failure
 // the resolver split exists to prevent, and the hint's only observable effect on
