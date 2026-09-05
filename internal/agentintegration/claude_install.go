@@ -241,8 +241,18 @@ func entryAssetStatus(dir, file FileState, scan hookTreeScan, spec hookEntrySpec
 		return agentlifecycle.StatusNeedsRepair, name + " could not be interpreted (" + scan.parseErr + "), so the integration state is unknown; Sidecar will not modify the file", ""
 	case len(scan.owned) == 0:
 		return agentlifecycle.StatusNotInstalled, "", ""
-	case len(scan.owned) > wanted:
+	case len(scan.owned) > wanted && wanted == 1:
 		return agentlifecycle.StatusNeedsRepair, "more than one Sidecar report-session entry is installed in " + name + ", so every session would be reported twice; repair converges on exactly one", versionOf(scan)
+	case len(scan.owned) > wanted:
+		// A multi-event integration gets its own sentence, because the
+		// single-event one above is wrong for it in both halves: six of Devin's
+		// entries are not a surplus, and repair converges on one per event
+		// rather than on one. Offering a repair that does something other than
+		// what the sentence says is the failure worth a second branch.
+		surplus := strconv.Itoa(len(scan.owned)) + " Sidecar report-session entries are installed in " + name +
+			", more than the " + strconv.Itoa(wanted) + " hook events they belong under, so some events would " +
+			"report more than once; repair converges on one under each"
+		return agentlifecycle.StatusNeedsRepair, surplus, versionOf(scan)
 	case len(scan.owned) < wanted:
 		// Only a multi-event integration can reach this, and it is the shape a
 		// half-finished hand edit leaves: some of the provider's events carry

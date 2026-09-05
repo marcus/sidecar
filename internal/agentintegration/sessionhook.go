@@ -153,11 +153,12 @@ func (a sessionHookAdapter) Source() string   { return a.integration.source }
 
 // Assets returns the one entry asset this integration installs.
 //
-// It is OwnsEntry for all four, including grok, whose file Sidecar is the only
-// writer of. Declaring OwnsFile there would say "every byte here is Sidecar's",
-// and the consequence of that claim is that uninstall deletes the file: a user
-// who added a hook of their own beside Sidecar's, in a file named after
-// Sidecar, would lose it. The entry rule costs nothing and cannot do that.
+// It is OwnsEntry for every one of them, including grok, whose file Sidecar is
+// the only writer of. Declaring OwnsFile there would say "every byte here is
+// Sidecar's", and the consequence of that claim is that uninstall deletes the
+// file: a user who added a hook of their own beside Sidecar's, in a file named
+// after Sidecar, would lose it. The entry rule costs nothing and cannot do
+// that.
 func (a sessionHookAdapter) Assets() []Asset {
 	return []Asset{{
 		Name:          a.integration.fileName,
