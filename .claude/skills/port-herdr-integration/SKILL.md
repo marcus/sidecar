@@ -56,15 +56,9 @@ Use it when Herdr's knowledge is a table in its Rust rather than in a shipped sc
 
 Reference: `internal/agentintegration/kimi_install.go` with `kimi.go` and `kimi_test.go`. Twelve rows, a fenced marker region in `config.toml`, a TOML parser used as a read-only oracle at both ends of every edit, and a golden checksum taken over the **rendered block** because there is no asset file. `TestKimiFiresExactlyOneHookPerEvent` exists because Kimi runs every matching hook in parallel, so two rows matching one event would be two report processes racing.
 
-The second reference is Mastra Code, in `lane/mastracode` until it merges. Read it without checking anything out:
+The second reference is Mastra Code, merged and on `main`: `internal/agentintegration/mastracode_install.go` with `mastracode.go` and `mastracode_test.go`, and its fixtures under `internal/agentintegration/testdata/mastracode/`. Eleven rows into `~/.mastracode/hooks.json`, a millisecond timeout, `|| true` on the three blocking events, and one row whose event moved because the live proof found upstream binding on a payload that carries a constructor placeholder rather than a thread id.
 
-```bash
-git show lane/mastracode:internal/agentintegration/mastracode_install.go
-git show lane/mastracode:internal/agentintegration/mastracode.go
-git diff c6b019e3...lane/mastracode --stat
-```
-
-That diffstat is the most compact list there is of what a port touches.
+For the most compact list there is of what a port touches, run `git log --stat` over the mastracode commits (`git log --stat --grep mastracode`) and read the file names rather than the diff.
 
 ### Shape B: a dropped file the provider loads
 
@@ -78,7 +72,7 @@ References, and each directory has the same five parts:
 | Pi | `assets/pi/sidecar-lifecycle.js` | `pi_install.go` | `<agent dir>/extensions` plus project-local `.pi/extensions` | `PI_CODING_AGENT_DIR`, tilde-expanded |
 | Kilo | `assets/kilo/sidecar-lifecycle.js` | `kilo_install.go` | `$XDG_CONFIG_HOME/kilo/plugin/` and `plugins/` | `KILO_CONFIG_DIR`, and see the isolation trap in step 8 |
 | OMP | `assets/omp/sidecar-omp-lifecycle.js` | `omp_install.go` | the same directory Pi reads, which is why it has a collision refusal | `PI_CONFIG_DIR` names the directory, `OMP_PROFILE`/`PI_PROFILE` insert a segment and suppress the agent-dir override, `PI_CODING_AGENT_DIR` is `path.resolve`d and **not** tilde-expanded |
-| Hermes (not ported) | `upstream/hermes/__init__.py` and `plugin.yaml` | none yet | `<hermes dir>/plugins/<plugin name>/` | `HERMES_HOME`, tilde-expanded |
+| Hermes | `assets/hermes/__init__.py` and `plugin.yaml` | `hermes_install.go` | `<hermes dir>/plugins/<plugin name>/`, and inert until the plugin is named in `plugins.enabled` in the user's `config.yaml` | `HERMES_HOME`, tilde-expanded |
 
 The five parts of an asset directory:
 
@@ -90,9 +84,11 @@ The five parts of an asset directory:
 
 The fixtures are `.tsv` files under `internal/agentintegration/testdata/<provider>/`, one file per branch, each with a `README.md` saying what the columns mean. One fixture drives **both** implementations and they are compared action for action, which is the whole point of keeping a Go mirror: a divergence is a test failure rather than a field bug. OMP is the reference for a mapping that needs a clock, because a pure mapping may not call `setTimeout`: `mapEvent` emits `schedule` and `cancel` actions, the runtime owns the timer, and a fired timer re-enters the mapping as an ordinary event, so the `.tsv` can drive the debounce deterministically through both sides.
 
-**When the asset is not JavaScript.** All four shipped assets are JS, and the harnesses are `.mjs` because node is what runs them; `SIDECAR_REQUIRE_NODE=1` turns the skip into a failure in CI. Upstream's Hermes asset is a Python package, and a Python asset needs the same three things under a different runtime: the Go mirror is written the same way, the replay and exports harnesses become `.py` invoked through the interpreter the provider itself uses, and the test skips when that interpreter is absent exactly as the node ones do. What must not change is the argv corpus, which has no runtime at all in that case: follow `KimiHookArgvCorpus()` and export a Go function returning every argv the asset can spawn, read out of the mirror rather than rebuilt beside it. `TestBundledAssetsSpawnArgvTheShippedCLIAccepts` takes either source.
+**When the asset is not JavaScript. Hermes is the reference.** Four of the shipped assets are JS and their harnesses are `.mjs` because node is what runs them; `SIDECAR_REQUIRE_NODE=1` turns the skip into a failure in CI. Hermes is a Python package, and it is what a non-JS asset looks like when it is done: `assets/hermes/__init__.py` with `plugin.yaml` beside it, a Go mirror in `hermes.go` written exactly the way the JS mirrors are, and the harnesses as `.py` invoked through the interpreter the provider itself uses. `assets/hermes/replay-harness.py` drives the real `register()` over a fixture and reports the argv each spawn would have built, `assets/hermes/argv-harness.py` is the one that really spawns and feeds `internal/cli`'s corpus, and both skip when `python3` is absent unless `SIDECAR_REQUIRE_PYTHON=1` says the run is one where a skip would hide a break. Read `hermes_test.go` for how the two halves are compared element for element.
 
-**When the asset is more than one file, or is a file plus a config edit.** Every shipped shape B port drops exactly one file, and Hermes is the case that is neither: upstream writes `__init__.py` and `plugin.yaml` into `<hermes dir>/plugins/<name>/` **and** appends the plugin to an `enabled` list in the user's `config.yaml`. That is shape B and shape A at once, and it needs three things nothing in the tree has yet: an `Assets()` returning more than one entry, a fenced or token-preserving YAML edit with a read-only parser as its oracle at both ends (Kimi's TOML editor is the model), and an uninstall that removes the directory it created only when nothing of the user's is in it while separately removing its own line from `config.yaml`. Do not approximate any of it by rewriting the whole config file. If you are the first to hit this, say so in the plan's result subsection.
+**When the asset is more than one file, or is a file plus a config edit. Hermes is the reference for that too.** The other shape B ports drop exactly one file; Hermes writes `__init__.py` and `plugin.yaml` into `<hermes dir>/plugins/sidecar-agent-state/` **and** adds one item to the `plugins.enabled` list in the user's `config.yaml`, which is shape B and shape A at once. Read `hermes_install.go` for the `Assets()` that returns three entries with two ownerships in it, `hermes_config.go` for the YAML line surgery, and `hermes_test.go` for what the suite has to prove.
+
+Three things in that pair are the parts worth copying. The config edit is line surgery with a YAML parser used as a read-only oracle at both ends and never as a serializer, so the user's comments, anchors, quoting and key order survive byte for byte and a composed image that will not verify becomes a refusal with an empty op list rather than a partial write. Ownership of that line is its **value** rather than a marker comment, because `hermes config set`, `hermes plugins enable` and the setup wizard all round-trip the file through `yaml.dump` and drop every comment in it. And a half install reports nothing while looking present, so a state with the files but not the line is `needs-repair` rather than a lesser install. Only the shapes Hermes itself writes are edited: a flow sequence and a bare `plugins` list are both refused and named, because rewriting them would edit bytes outside Sidecar's own entry. Do not approximate any of it by rewriting the whole config file.
 
 ### Shape C: a session-identity entry through the shared generic
 
@@ -344,10 +340,10 @@ Go through this before handing the port off.
 
 **No Herdr integration exists at all**, so there is nothing to port: `amp`, `muse`, `cline`, `kiro`, `maki`, `gemini`. (`gemini` is additionally a declared-out family: Antigravity replaced it.)
 
-**Ported and traced:** `opencode` (`full`), `pi`, `kilo`, `kimi`, `omp` (all `advisory`, all at their ceiling), `grok` and `qwen` (`session-identity`, `real-trace`).
+**Ported and traced:** `opencode` (`full`), `pi`, `kilo`, `kimi`, `omp`, `mastracode` (all `advisory`, all at their ceiling), `grok`, `qwen` and `hermes` (`session-identity`, `real-trace`).
 
 **Ported and untraced, each pending an account or credentials this environment does not carry:** `devin`, `droid`, `qodercli` (all at `screen-fallback` on `docs-only`; one `SessionStart` capture promotes each and nothing else changes), and `antigravity`, `cursor`, `copilot` (at `session-identity` on `docs-only`). cursor-agent stops at "Press any key to log in" once `HOME` moves and its hook loader has no override; agy opens a browser OAuth flow that times out; copilot is not installed anywhere Sidecar has surveyed.
 
-**Not ported yet:** `hermes` (shape B, a Python package: `upstream/hermes/__init__.py` plus `plugin.yaml`, at `HERDR_INTEGRATION_VERSION=5`) and `mastracode` (shape A, in `lane/mastracode` until it merges).
+**Not ported yet:** nothing. Every Herdr integration with a counterpart in Sidecar's catalog is ported. What is left is not porting work: it is a capture for each of the six untraced entries above, and subscription for the providers whose ceiling is higher than what their asset asks for.
 
 Read `docs/plans/active/herdr-parity-close-the-gap.md` for the current state; its result subsections record what each port measured and are the reason most of this file exists.
