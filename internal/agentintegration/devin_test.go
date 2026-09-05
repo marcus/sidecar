@@ -480,3 +480,50 @@ func TestDevinEntriesPiledOnOneEventReadAsDamage(t *testing.T) {
 		t.Fatalf("status after repair = %q (%s)", got.Status, got.Message)
 	}
 }
+
+// TestDevinSaysWhatARepairOfASeventhEntryWouldDo is about the sentence rather
+// than the status.
+//
+// The over-count branch is shared with every single-event integration, and its
+// sentence was written for one: "repair converges on exactly one". Said to a
+// Devin user with a seventh entry it names six of their six correct entries as
+// the surplus and promises a repair that would break the integration -- the
+// repair does the right thing, so nothing failed, and only the user reading the
+// status was misled. A refusal or a repair a surface describes wrongly is the
+// one kind of bug tests do not catch by accident.
+func TestDevinSaysWhatARepairOfASeventhEntryWouldDo(t *testing.T) {
+	svc, _, paths := devinFixture(t)
+	devinSetUp(t, paths)
+	applyTo(t, svc, DevinProvider, ActionInstall)
+	installed := readFileForTest(t, paths.File)
+
+	// A seventh entry, piled onto Stop beside the one that belongs there.
+	top := mustParseAny(t, installed).(map[string]any)
+	hooks := top["hooks"].(map[string]any)
+	stop := hooks["Stop"].([]any)
+	hooks["Stop"] = append(stop, stop[0])
+	edited, err := json.Marshal(top)
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeFileForTest(t, paths.File, string(edited))
+
+	st := devinStatus(t, svc)
+	if st.Status != agentlifecycle.StatusNeedsRepair {
+		t.Fatalf("status = %q, want needs-repair with a seventh entry installed", st.Status)
+	}
+	if strings.Contains(st.Message, "exactly one") {
+		t.Fatalf("the status promises a repair that converges on exactly one entry, "+
+			"which for six events would remove five that belong: %q", st.Message)
+	}
+	for _, want := range []string{"7", "6"} {
+		if !strings.Contains(st.Message, want) {
+			t.Fatalf("the status does not say %s of anything, so it cannot say which entries are the surplus: %q", want, st.Message)
+		}
+	}
+
+	applyTo(t, svc, DevinProvider, ActionRepair)
+	if got := readFileForTest(t, paths.File); got != installed {
+		t.Fatalf("repair did not converge back on the six entries it promised:\n%s", got)
+	}
+}
