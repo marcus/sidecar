@@ -151,7 +151,7 @@
       "lifecycle_authority": "hooks",
       "state_authority": "lifecycle plugin when installed; otherwise screen manifest",
       "integration_role": "state and session",
-      "integration_version": 10,
+      "integration_version": 11,
       "integration_asset_dir": "opencode"
     },
     "pi": {
