@@ -1,13 +1,13 @@
 # Herdr detection sync report
 
-Generated 2026-09-02T14:03:03Z by `go run ./internal/tools/herdrsync`.
+Generated 2026-09-07T12:35:22Z by `go run ./internal/tools/herdrsync`.
 
 | Field | Value |
 | --- | --- |
 | Herdr repository | https://github.com/herdrdev/herdr |
 | Ref vendored | `master` |
-| Commit | `d08e44686d8b19bd9555cc99ec9068d9fde05f16` |
-| Pinned release for the differential harness | `preview-2026-08-31-b1ff4582e968` |
+| Commit | `482818130407691154d1635d4029b95d0e730104` |
+| Pinned release for the differential harness | `preview-2026-09-06-9e9bc8a14466` |
 | Catalog | https://herdr.dev/agent-detection/index.toml |
 | Catalog ETag | `W/"d78b183cb570f3f343ba80777bbf579d"` |
 | Sidecar manifest engine version | 3 |
@@ -15,11 +15,17 @@ Generated 2026-09-02T14:03:03Z by `go run ./internal/tools/herdrsync`.
 
 ## Version changes
 
-No manifest version changed since the previous lock.
+| Agent | Before | After | Change |
+| --- | --- | --- | --- |
+| `claude` | 2026.08.29.1 | 2026.09.04.1 | bumped |
+| `codex` | 2026.08.28.1 | 2026.09.05.1 | bumped |
 
 ## File changes
 
-0 file(s) changed, 21 unchanged.
+2 file(s) changed, 19 unchanged.
+
+- `upstream/claude.toml` (2026.09.04.1, 6718 bytes, 16 rules)
+- `upstream/codex.toml` (2026.09.05.1, 2440 bytes, 9 rules)
 
 ## Published versus bundled
 
@@ -29,9 +35,9 @@ Each row is the copy a Herdr client would load, and why.
 | --- | --- | --- | --- | --- |
 | `agy` | published | 2026.06.24.1 | 2026.06.24.1 | published and bundled are both 2026.06.24.1; a Herdr client prefers the remote copy |
 | `amp` | published | 2026.07.09.1 | 2026.07.09.1 | published and bundled are both 2026.07.09.1; a Herdr client prefers the remote copy |
-| `claude` | published | 2026.08.29.1 | 2026.08.29.1 | published and bundled are both 2026.08.29.1; a Herdr client prefers the remote copy |
+| `claude` | published | 2026.09.04.1 | 2026.09.04.1 | published and bundled are both 2026.09.04.1; a Herdr client prefers the remote copy |
 | `cline` | published | 2026.06.10.1 | 2026.06.10.1 | published and bundled are both 2026.06.10.1; a Herdr client prefers the remote copy |
-| `codex` | published | 2026.08.28.1 | 2026.08.28.1 | published and bundled are both 2026.08.28.1; a Herdr client prefers the remote copy |
+| `codex` | published | 2026.09.05.1 | 2026.09.05.1 | published and bundled are both 2026.09.05.1; a Herdr client prefers the remote copy |
 | `copilot` | published | 2026.08.29.1 | 2026.08.29.1 | published and bundled are both 2026.08.29.1; a Herdr client prefers the remote copy |
 | `cursor` | published | 2026.08.03.1 | 2026.08.03.1 | published and bundled are both 2026.08.03.1; a Herdr client prefers the remote copy |
 | `devin` | published | 2026.06.15.1 | 2026.06.15.1 | published and bundled are both 2026.06.15.1; a Herdr client prefers the remote copy |
@@ -76,29 +82,29 @@ Herdr's published authority is a *target*. Sidecar tiers are earned by traces an
 
 | Agent | Herdr authority | Sidecar tier | Below target |
 | --- | --- | --- | --- |
-| `agy` | session_identity | screen-fallback |  |
+| `agy` | session_identity | session-identity |  |
 | `amp` | none | screen-fallback |  |
 | `claude` | session_identity | session-identity |  |
 | `cline` | none | — |  |
 | `codex` | session_identity | session-identity |  |
-| `copilot` | session_identity | screen-fallback |  |
-| `cursor` | session_identity | screen-fallback |  |
-| `devin` | session_identity | — |  |
-| `droid` | session_identity | — |  |
+| `copilot` | session_identity | session-identity |  |
+| `cursor` | session_identity | session-identity |  |
+| `devin` | session_identity | screen-fallback |  |
+| `droid` | session_identity | screen-fallback |  |
 | `gemini` | none | — |  |
-| `grok` | session_identity | screen-fallback |  |
-| `hermes` | session_identity | — |  |
-| `kilo` | hooks | — | yes |
-| `kimi` | hooks | — | yes |
+| `grok` | session_identity | session-identity |  |
+| `hermes` | session_identity | session-identity |  |
+| `kilo` | hooks | advisory | yes |
+| `kimi` | hooks | advisory | yes |
 | `kiro` | none | — |  |
 | `maki` | none | — |  |
-| `mastracode` | hooks | — | yes |
+| `mastracode` | hooks | advisory | yes |
 | `muse` | none | screen-fallback |  |
-| `omp` | hooks | — | yes |
+| `omp` | hooks | advisory | yes |
 | `opencode` | hooks | full |  |
-| `pi` | hooks | session-identity | yes |
-| `qodercli` | session_identity | — |  |
-| `qwen` | session_identity | — |  |
+| `pi` | hooks | advisory | yes |
+| `qodercli` | session_identity | screen-fallback |  |
+| `qwen` | session_identity | session-identity |  |
 
 ## Integration assets
 
@@ -106,23 +112,23 @@ Vendored verbatim from `src/integration/assets` into `internal/agentintegration/
 
 | Agent | Asset directory | Version | Previous | Change | Sidecar port |
 | --- | --- | --- | --- | --- | --- |
-| `agy` | `antigravity_cli` | 3 | 3 | unchanged | not ported |
+| `agy` | `antigravity_cli` | 3 | 3 | unchanged | `antigravity` from version 3 |
 | `claude` | `claude` | 9 | 9 | unchanged | `claude` from version 9 |
 | `codex` | `codex` | 8 | 8 | unchanged | `codex` from version 8 |
-| `copilot` | `copilot` | 3 | 3 | unchanged | not ported |
-| `cursor` | `cursor` | 1 | 1 | unchanged | not ported |
-| `devin` | `devin` | 2 | 2 | unchanged | not ported |
-| `droid` | `droid` | 3 | 3 | unchanged | not ported |
-| `grok` | `grok` | 1 | 1 | unchanged | not ported |
-| `hermes` | `hermes` | 5 | 5 | unchanged | not ported |
-| `kilo` | `kilo` | 4 | 4 | unchanged | not ported |
-| `kimi` | `kimi` | 7 | 7 | unchanged | not ported |
-| `mastracode` | `mastracode` | 2 | 2 | unchanged | not ported |
-| `omp` | `omp` | 9 | 9 | unchanged | not ported |
-| `opencode` | `opencode` | 10 | 10 | unchanged | `opencode` from version 10 |
-| `pi` | `pi` | 8 | 8 | unchanged | not ported |
-| `qodercli` | `qodercli` | 3 | 3 | unchanged | not ported |
-| `qwen` | `qwen` | 1 | 1 | unchanged | not ported |
+| `copilot` | `copilot` | 3 | 3 | unchanged | `copilot` from version 3 |
+| `cursor` | `cursor` | 1 | 1 | unchanged | `cursor` from version 1 |
+| `devin` | `devin` | 2 | 2 | unchanged | `devin` from version 2 |
+| `droid` | `droid` | 3 | 3 | unchanged | `droid` from version 3 |
+| `grok` | `grok` | 1 | 1 | unchanged | `grok` from version 1 |
+| `hermes` | `hermes` | 5 | 5 | unchanged | `hermes` from version 5 |
+| `kilo` | `kilo` | 4 | 4 | unchanged | `kilo` from version 4 |
+| `kimi` | `kimi` | 7 | 7 | unchanged | `kimi` from version 7 |
+| `mastracode` | `mastracode` | 2 | 2 | unchanged | `mastracode` from version 2 |
+| `omp` | `omp` | 9 | 9 | unchanged | `omp` from version 9 |
+| `opencode` | `opencode` | 11 | 10 | **bumped** | `opencode` from version 10 |
+| `pi` | `pi` | 8 | 8 | unchanged | `pi` from version 8 |
+| `qodercli` | `qodercli` | 3 | 3 | unchanged | `qodercli` from version 3 |
+| `qwen` | `qwen` | 1 | 1 | unchanged | `qwen` from version 1 |
 
 ### Upstream changes since each Sidecar port
 
@@ -130,9 +136,131 @@ Vendored verbatim from `src/integration/assets` into `internal/agentintegration/
 
 #### `opencode` — ported from herdr `opencode` version 10
 
-Compared against `4a3b04f5`; upstream is now at version 10.
+Compared against `4a3b04f5`; upstream is now at version 11.
 
-No upstream change: all 4 compared file(s) are byte-identical to the copy this port was written against. Nothing to re-port.
+`upstream/opencode/herdr-agent-state.js` (diff):
+
+```diff
+--- src/integration/assets/opencode/herdr-agent-state.js @ 4a3b04f5
++++ src/integration/assets/opencode/herdr-agent-state.js @ 48281813
+@@
+ // managed by herdr; reinstalling or updating the integration overwrites this file.
+ // add custom hooks/plugins beside this file instead of editing it.
+ // HERDR_INTEGRATION_ID=opencode
+-// HERDR_INTEGRATION_VERSION=10
++// HERDR_INTEGRATION_VERSION=11
+ 
+ import net from "node:net";
+ 
+@@
+ let reportedRootSessionID;
+ 
+ // Track child sessions so their events cannot replace the pane's root session.
+-// Their user prompts still project state without attaching the child session id.
+-const childSessions = new Set();
++// User prompts carry the root id to preserve its identity and cross-talk guard.
++const childSessions = new Map();
+ const CHILD_EVENT_STATES = new Map([
+   ["permission.asked", "blocked"],
+   ["question.asked", "blocked"],
+@@
+ 
+       const info = properties.info;
+       if (info?.id && info.parentID) {
+-        childSessions.add(info.id);
++        childSessions.set(info.id, info.parentID);
+       }
+       if (sessionID && childSessions.has(sessionID)) {
+         const state = CHILD_EVENT_STATES.get(type);
+         if (state) {
+-          await reportState(state);
++          let rootSessionID = sessionID;
++          while (childSessions.has(rootSessionID)) {
++            rootSessionID = childSessions.get(rootSessionID);
++          }
++          await reportState(state, rootSessionID);
+         }
+         return;
+       }
+```
+
+`upstream/opencode/herdr-agent-state.test.ts` (diff):
+
+```diff
+--- src/integration/assets/opencode/herdr-agent-state.test.ts @ 4a3b04f5
++++ src/integration/assets/opencode/herdr-agent-state.test.ts @ 48281813
+@@
+     event: {
+       type: "session.created",
+       properties: {
+-        sessionID: "child-session",
+         info: { id: "child-session", parentID: "root-session" },
+       },
+     },
+@@
+     "working",
+   ]);
+   expect(requests.map(requestSessionID)).toEqual([
+-    undefined,
+-    undefined,
+-    undefined,
+-    undefined,
+-    undefined,
++    "root-session",
++    "root-session",
++    "root-session",
++    "root-session",
++    "root-session",
+   ]);
+ });
+ 
++test("routes nested child prompts to their own root, not the last active root", async () => {
++  const plugin = await loadPlugin();
++  for (const info of [
++    { id: "child-session", parentID: "root-session" },
++    { id: "nested-session", parentID: "child-session" },
++  ]) {
++    await plugin.event({ event: { type: "session.created", properties: { info } } });
++  }
++  await plugin["chat.message"]({ sessionID: "other-root" });
++  await plugin.event({
++    event: { type: "permission.asked", properties: { sessionID: "nested-session" } },
++  });
++  await plugin.event({
++    event: { type: "permission.replied", properties: { sessionID: "nested-session" } },
++  });
++  await plugin.event({
++    event: { type: "session.idle", properties: { sessionID: "nested-session" } },
++  });
++  await plugin["chat.message"]({ sessionID: "nested-session" });
++
++  expect(requests.map(requestState)).toEqual(["working", "blocked", "working"]);
++  expect(requests.map(requestSessionID)).toEqual([
++    "other-root",
++    "root-session",
++    "root-session",
++  ]);
++});
++
+ function requestMethod(request: unknown): unknown {
+   return isRecord(request) ? request.method : undefined;
+ }
+```
+
+`upstream/opencode/herdr-tui-session.js` (diff):
+
+```diff
+--- src/integration/assets/opencode/herdr-tui-session.js @ 4a3b04f5
++++ src/integration/assets/opencode/herdr-tui-session.js @ 48281813
+ // installed by herdr
+ // managed by herdr; reinstalling or updating the integration overwrites this file.
+ // HERDR_INTEGRATION_ID=opencode-tui
+-// HERDR_INTEGRATION_VERSION=10
++// HERDR_INTEGRATION_VERSION=11
+ 
+ import net from "node:net";
+ 
+```
 
 #### `codex` — ported from herdr `codex` version 8
 
@@ -143,6 +271,90 @@ No upstream change: all 2 compared file(s) are byte-identical to the copy this p
 #### `claude` — ported from herdr `claude` version 9
 
 Compared against `4a3b04f5`; upstream is now at version 9.
+
+No upstream change: all 2 compared file(s) are byte-identical to the copy this port was written against. Nothing to re-port.
+
+#### `pi` — ported from herdr `pi` version 8
+
+Compared against `d08e4468`; upstream is now at version 8.
+
+No upstream change: all 1 compared file(s) are byte-identical to the copy this port was written against. Nothing to re-port.
+
+#### `kilo` — ported from herdr `kilo` version 4
+
+Compared against `d08e4468`; upstream is now at version 4.
+
+No upstream change: all 1 compared file(s) are byte-identical to the copy this port was written against. Nothing to re-port.
+
+#### `kimi` — ported from herdr `kimi` version 7
+
+Compared against `d08e4468`; upstream is now at version 7.
+
+No upstream change: all 2 compared file(s) are byte-identical to the copy this port was written against. Nothing to re-port.
+
+#### `omp` — ported from herdr `omp` version 9
+
+Compared against `d08e4468`; upstream is now at version 9.
+
+No upstream change: all 1 compared file(s) are byte-identical to the copy this port was written against. Nothing to re-port.
+
+#### `antigravity` — ported from herdr `agy` version 3
+
+Compared against `d08e4468`; upstream is now at version 3.
+
+No upstream change: all 2 compared file(s) are byte-identical to the copy this port was written against. Nothing to re-port.
+
+#### `copilot` — ported from herdr `copilot` version 3
+
+Compared against `d08e4468`; upstream is now at version 3.
+
+No upstream change: all 2 compared file(s) are byte-identical to the copy this port was written against. Nothing to re-port.
+
+#### `cursor` — ported from herdr `cursor` version 1
+
+Compared against `d08e4468`; upstream is now at version 1.
+
+No upstream change: all 2 compared file(s) are byte-identical to the copy this port was written against. Nothing to re-port.
+
+#### `grok` — ported from herdr `grok` version 1
+
+Compared against `d08e4468`; upstream is now at version 1.
+
+No upstream change: all 2 compared file(s) are byte-identical to the copy this port was written against. Nothing to re-port.
+
+#### `devin` — ported from herdr `devin` version 2
+
+Compared against `d08e4468`; upstream is now at version 2.
+
+No upstream change: all 2 compared file(s) are byte-identical to the copy this port was written against. Nothing to re-port.
+
+#### `droid` — ported from herdr `droid` version 3
+
+Compared against `d08e4468`; upstream is now at version 3.
+
+No upstream change: all 2 compared file(s) are byte-identical to the copy this port was written against. Nothing to re-port.
+
+#### `qodercli` — ported from herdr `qodercli` version 3
+
+Compared against `d08e4468`; upstream is now at version 3.
+
+No upstream change: all 2 compared file(s) are byte-identical to the copy this port was written against. Nothing to re-port.
+
+#### `qwen` — ported from herdr `qwen` version 1
+
+Compared against `d08e4468`; upstream is now at version 1.
+
+No upstream change: all 2 compared file(s) are byte-identical to the copy this port was written against. Nothing to re-port.
+
+#### `mastracode` — ported from herdr `mastracode` version 2
+
+Compared against `d08e4468`; upstream is now at version 2.
+
+No upstream change: all 2 compared file(s) are byte-identical to the copy this port was written against. Nothing to re-port.
+
+#### `hermes` — ported from herdr `hermes` version 5
+
+Compared against `d08e4468`; upstream is now at version 5.
 
 No upstream change: all 2 compared file(s) are byte-identical to the copy this port was written against. Nothing to re-port.
 
