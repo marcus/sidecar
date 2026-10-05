@@ -1,12 +1,12 @@
 # Herdr detection sync report
 
-Generated 2026-09-30T14:15:06Z by `go run ./internal/tools/herdrsync`.
+Generated 2026-10-05T14:42:36Z by `go run ./internal/tools/herdrsync`.
 
 | Field | Value |
 | --- | --- |
 | Herdr repository | https://github.com/herdrdev/herdr |
 | Ref vendored | `master` |
-| Commit | `331775c3e51e8cca4d122468180738101bd9e6b0` |
+| Commit | `b06480673bee704d143f48962c288aa1512c316d` |
 | Pinned release for the differential harness | `v0.9.3` |
 | Catalog | https://herdr.dev/agent-detection/index.toml |
 | Catalog ETag | `W/"e73307bc29c98eec95cac5cf610317c7"` |
@@ -17,25 +17,15 @@ Generated 2026-09-30T14:15:06Z by `go run ./internal/tools/herdrsync`.
 
 | Agent | Before | After | Change |
 | --- | --- | --- | --- |
-| `claude` | 2026.08.29.1 | 2026.09.11.1 | bumped |
-| `cline` | 2026.06.10.1 | 2026.09.11.1 | bumped |
-| `codex` | 2026.08.28.1 | 2026.09.23.1 | bumped |
-| `grok` | 2026.07.16.2 | 2026.09.18.2 | bumped |
-| `kiro` | 2026.08.01.1 | 2026.09.19.1 | bumped |
-| `letta` | — | 2026.08.24.1 | added |
-| `pi` | 2026.06.10.1 | 2026.09.14.1 | bumped |
+| `codex` | 2026.09.23.1 | 2026.10.01.1 | bumped |
+| `pi` | 2026.09.14.1 | 2026.10.01.1 | bumped |
 
 ## File changes
 
-7 file(s) changed, 15 unchanged.
+2 file(s) changed, 20 unchanged.
 
-- `upstream/claude.toml` (2026.09.11.1, 6726 bytes, 16 rules)
-- `upstream/cline.toml` (2026.09.11.1, 1527 bytes, 6 rules)
-- `upstream/codex.toml` (2026.09.23.1, 3309 bytes, 8 rules)
-- `upstream/grok.toml` (2026.09.18.2, 5401 bytes, 15 rules)
-- `upstream/kiro.toml` (2026.09.19.1, 2861 bytes, 8 rules)
-- `upstream/letta.toml` (2026.08.24.1, 2328 bytes, 10 rules)
-- `upstream/pi.toml` (2026.09.14.1, 456 bytes, 2 rules)
+- `upstream/codex.toml` (2026.10.01.1, 3851 bytes, 9 rules)
+- `upstream/pi.toml` (2026.10.01.1, 624 bytes, 2 rules)
 
 ## Published versus bundled
 
@@ -47,7 +37,7 @@ Each row is the copy a Herdr client would load, and why.
 | `amp` | published | 2026.07.09.1 | 2026.07.09.1 | published and bundled are both 2026.07.09.1; a Herdr client prefers the remote copy |
 | `claude` | published | 2026.09.11.1 | 2026.09.11.1 | published and bundled are both 2026.09.11.1; a Herdr client prefers the remote copy |
 | `cline` | published | 2026.09.11.1 | 2026.09.11.1 | published and bundled are both 2026.09.11.1; a Herdr client prefers the remote copy |
-| `codex` | published | 2026.09.23.1 | 2026.09.23.1 | published and bundled are both 2026.09.23.1; a Herdr client prefers the remote copy |
+| `codex` | published | 2026.10.01.1 | 2026.10.01.1 | published and bundled are both 2026.10.01.1; a Herdr client prefers the remote copy |
 | `copilot` | published | 2026.08.29.1 | 2026.08.29.1 | published and bundled are both 2026.08.29.1; a Herdr client prefers the remote copy |
 | `cursor` | published | 2026.08.03.1 | 2026.08.03.1 | published and bundled are both 2026.08.03.1; a Herdr client prefers the remote copy |
 | `devin` | published | 2026.06.15.1 | 2026.06.15.1 | published and bundled are both 2026.06.15.1; a Herdr client prefers the remote copy |
@@ -62,7 +52,7 @@ Each row is the copy a Herdr client would load, and why.
 | `maki` | published | 2026.07.09.2 | 2026.07.09.2 | published and bundled are both 2026.07.09.2; a Herdr client prefers the remote copy |
 | `muse` | published | 2026.08.26.1 | 2026.08.26.1 | published and bundled are both 2026.08.26.1; a Herdr client prefers the remote copy |
 | `opencode` | published | 2026.06.10.1 | 2026.06.10.1 | published and bundled are both 2026.06.10.1; a Herdr client prefers the remote copy |
-| `pi` | published | 2026.09.14.1 | 2026.09.14.1 | published and bundled are both 2026.09.14.1; a Herdr client prefers the remote copy |
+| `pi` | published | 2026.10.01.1 | 2026.10.01.1 | published and bundled are both 2026.10.01.1; a Herdr client prefers the remote copy |
 | `qodercli` | published | 2026.06.10.1 | 2026.06.10.1 | published and bundled are both 2026.06.10.1; a Herdr client prefers the remote copy |
 | `qwen` | published | 2026.08.14.1 | 2026.08.14.1 | published and bundled are both 2026.08.14.1; a Herdr client prefers the remote copy |
 
@@ -123,27 +113,23 @@ Vendored verbatim from `src/integration/assets` into `internal/agentintegration/
 | Agent | Asset directory | Version | Previous | Change | Sidecar port |
 | --- | --- | --- | --- | --- | --- |
 | `agy` | `antigravity_cli` | 3 | 3 | unchanged | `antigravity` from version 3 |
-| `claude` | `claude` | 10 | 9 | **bumped** | `claude` from version 9 |
-| `codex` | `codex` | 9 | 8 | **bumped** | `codex` from version 8 |
+| `claude` | `claude` | 10 | 10 | unchanged | `claude` from version 9 |
+| `codex` | `codex` | 9 | 9 | unchanged | `codex` from version 8 |
 | `copilot` | `copilot` | 3 | 3 | unchanged | `copilot` from version 3 |
 | `cursor` | `cursor` | 1 | 1 | unchanged | `cursor` from version 1 |
 | `devin` | `devin` | 2 | 2 | unchanged | `devin` from version 2 |
 | `droid` | `droid` | 3 | 3 | unchanged | `droid` from version 3 |
-| `grok` | `grok` | 2 | 1 | **bumped** | `grok` from version 1 |
+| `grok` | `grok` | 2 | 2 | unchanged | `grok` from version 1 |
 | `hermes` | `hermes` | 5 | 5 | unchanged | `hermes` from version 5 |
 | `kilo` | `kilo` | 4 | 4 | unchanged | `kilo` from version 4 |
 | `kimi` | `kimi` | 7 | 7 | unchanged | `kimi` from version 7 |
-| `letta` | `letta` | 1 | — | added | not ported |
+| `letta` | `letta` | 1 | 1 | unchanged | not ported |
 | `mastracode` | `mastracode` | 2 | 2 | unchanged | `mastracode` from version 2 |
-| `omp` | `omp` | 10 | 9 | **bumped** | `omp` from version 9 |
-| `opencode` | `opencode` | 13 | 10 | **bumped** | `opencode` from version 10 |
-| `pi` | `pi` | 9 | 8 | **bumped** | `pi` from version 8 |
+| `omp` | `omp` | 10 | 10 | unchanged | `omp` from version 9 |
+| `opencode` | `opencode` | 13 | 13 | unchanged | `opencode` from version 10 |
+| `pi` | `pi` | 9 | 9 | unchanged | `pi` from version 8 |
 | `qodercli` | `qodercli` | 3 | 3 | unchanged | `qodercli` from version 3 |
 | `qwen` | `qwen` | 1 | 1 | unchanged | `qwen` from version 1 |
-
-### Bumps for providers Sidecar has not ported
-
-- `letta` now ships an integration at version 1.
 
 ### Upstream changes since each Sidecar port
 
@@ -157,7 +143,7 @@ Compared against `4a3b04f5`; upstream is now at version 13.
 
 ```diff
 --- src/integration/assets/opencode/herdr-agent-state.js @ 4a3b04f5
-+++ src/integration/assets/opencode/herdr-agent-state.js @ 331775c3
++++ src/integration/assets/opencode/herdr-agent-state.js @ b0648067
 @@
  // managed by herdr; reinstalling or updating the integration overwrites this file.
  // add custom hooks/plugins beside this file instead of editing it.
@@ -239,7 +225,7 @@ Compared against `4a3b04f5`; upstream is now at version 13.
 
 ```diff
 --- src/integration/assets/opencode/herdr-agent-state.test.ts @ 4a3b04f5
-+++ src/integration/assets/opencode/herdr-agent-state.test.ts @ 331775c3
++++ src/integration/assets/opencode/herdr-agent-state.test.ts @ b0648067
 -import { beforeEach, expect, mock, test } from "bun:test";
 +import { afterEach, beforeEach, expect, mock, test } from "bun:test";
  
@@ -354,7 +340,7 @@ Compared against `4a3b04f5`; upstream is now at version 13.
 
 ```diff
 --- src/integration/assets/opencode/herdr-tui-session.js @ 4a3b04f5
-+++ src/integration/assets/opencode/herdr-tui-session.js @ 331775c3
++++ src/integration/assets/opencode/herdr-tui-session.js @ b0648067
  // installed by herdr
  // managed by herdr; reinstalling or updating the integration overwrites this file.
  // HERDR_INTEGRATION_ID=opencode-tui
@@ -480,7 +466,7 @@ Compared against `4a3b04f5`; upstream is now at version 13.
 
 ```diff
 --- src/integration/assets/opencode/herdr-tui-session.test.ts @ 4a3b04f5
-+++ src/integration/assets/opencode/herdr-tui-session.test.ts @ 331775c3
++++ src/integration/assets/opencode/herdr-tui-session.test.ts @ b0648067
 @@
  const requests: unknown[] = [];
  const activeDisposers: Array<() => void> = [];
@@ -616,7 +602,7 @@ Compared against `4a3b04f5`; upstream is now at version 9.
 
 ```diff
 --- src/integration/assets/codex/herdr-agent-state.ps1 @ 4a3b04f5
-+++ src/integration/assets/codex/herdr-agent-state.ps1 @ 331775c3
++++ src/integration/assets/codex/herdr-agent-state.ps1 @ b0648067
 @@
  # managed by herdr; reinstalling or updating the integration overwrites this file.
  # add custom hooks beside this file instead of editing it.
@@ -670,7 +656,7 @@ Compared against `4a3b04f5`; upstream is now at version 9.
 
 ```diff
 --- src/integration/assets/codex/herdr-agent-state.sh @ 4a3b04f5
-+++ src/integration/assets/codex/herdr-agent-state.sh @ 331775c3
++++ src/integration/assets/codex/herdr-agent-state.sh @ b0648067
 @@
  # managed by herdr; reinstalling or updating the integration overwrites this file.
  # add custom hooks beside this file instead of editing it.
@@ -747,7 +733,7 @@ Compared against `4a3b04f5`; upstream is now at version 10.
 
 ```diff
 --- src/integration/assets/claude/herdr-agent-state.ps1 @ 4a3b04f5
-+++ src/integration/assets/claude/herdr-agent-state.ps1 @ 331775c3
++++ src/integration/assets/claude/herdr-agent-state.ps1 @ b0648067
 @@
  # managed by herdr; reinstalling or updating the integration overwrites this file.
  # add custom hooks beside this file instead of editing it.
@@ -763,7 +749,7 @@ Compared against `4a3b04f5`; upstream is now at version 10.
 
 ```diff
 --- src/integration/assets/claude/herdr-agent-state.sh @ 4a3b04f5
-+++ src/integration/assets/claude/herdr-agent-state.sh @ 331775c3
++++ src/integration/assets/claude/herdr-agent-state.sh @ b0648067
 @@
  # managed by herdr; reinstalling or updating the integration overwrites this file.
  # add custom hooks beside this file instead of editing it.
@@ -783,7 +769,7 @@ Compared against `d08e4468`; upstream is now at version 9.
 
 ```diff
 --- src/integration/assets/pi/herdr-agent-state.ts @ d08e4468
-+++ src/integration/assets/pi/herdr-agent-state.ts @ 331775c3
++++ src/integration/assets/pi/herdr-agent-state.ts @ b0648067
 @@
  // managed by herdr; reinstalling or updating the integration overwrites this file.
  // add custom hooks/plugins beside this file instead of editing it.
@@ -831,7 +817,7 @@ Compared against `d08e4468`; upstream is now at version 10.
 
 ```diff
 --- src/integration/assets/omp/herdr-agent-state.ts @ d08e4468
-+++ src/integration/assets/omp/herdr-agent-state.ts @ 331775c3
++++ src/integration/assets/omp/herdr-agent-state.ts @ b0648067
 @@
  // managed by herdr; reinstalling or updating the integration overwrites this file.
 ... truncated at 4 of 26 lines; run `git diff` between the two commits named above in a Herdr checkout for the rest.
@@ -903,18 +889,13 @@ No upstream change: all 2 compared file(s) are byte-identical to the copy this p
 
 Every fixture in `internal/agentactivity/testdata` with a `screen:` block, classified against the manifests this sync replaced and against the ones it wrote. A verdict is the state, the matched rule id, and the fallback reason: the same triple `scripts/herdr-diff.sh` compares. The Sidecar overlays are applied to **both** sides, because a sync never touches them and applying them to one side would report every overlay rule as a flip. Sidecar's process gate is not applied: it reads the pane's process name and never the manifest, so its answer is the same on both sides and it cannot create or hide a flip.
 
-**8 of 61 fixture(s) changed verdict.** Each row is a screen Sidecar now reads differently. Read the manifest diff above for the rule that moved, and decide per row whether the new verdict is the better one.
+**3 of 61 fixture(s) changed verdict.** Each row is a screen Sidecar now reads differently. Read the manifest diff above for the rule that moved, and decide per row whether the new verdict is the better one.
 
 | Agent | Fixture | Before | After |
 | --- | --- | --- | --- |
-| `codex` | `background_terminal.txt` | idle via `osc_title_idle` | working via `screen_working_fallback` |
-| `codex` | `completed.txt` | idle via `osc_title_idle` | idle via `sidecar.composer_idle` |
-| `codex` | `interrupted.txt` | idle via `osc_title_idle` | idle via `sidecar.composer_idle` |
-| `codex` | `startup_idle.txt` | idle via `osc_title_idle` | idle via `sidecar.composer_idle` |
-| `codex` | `tool_running_composer.txt` | idle via `osc_title_idle` | working via `screen_working_fallback` |
-| `grok` | `background_subagent.txt` | idle via `osc_title_idle` | working via `background_status_working` |
-| `grok` | `working.txt` | working via `sidecar.working_footer` | working via `spinner_status_working` |
-| `kiro` | `live_working_footer.txt` | working via `kiro_working_marker` | working via `live_working_footer` |
+| `codex` | `completed.txt` | idle via `sidecar.composer_idle` | idle via `osc_title_idle` |
+| `codex` | `interrupted.txt` | idle via `sidecar.composer_idle` | idle via `osc_title_idle` |
+| `codex` | `startup_idle.txt` | idle via `sidecar.composer_idle` | idle via `osc_title_idle` |
 
 ## Overlay rules
 
@@ -933,7 +914,7 @@ A rule carrying an **upstream** id is not in that bucket and is never a deletion
 | `claude` | `sidecar.background_agents_waiting` | addition | **changes nothing: deletion candidate**; without it working via `sidecar.background_agents_footer_working` |
 | `claude` | `sidecar.background_agents_footer_working` | addition | changes 1 fixture(s): `background_agents_footer.txt` |
 | `claude` | `legacy_no_prompt_blocker` | replaces upstream | changes 1 fixture(s): `legacy_permission_wait.txt` |
-| `codex` | `sidecar.composer_idle` | addition | changes 3 fixture(s): `completed.txt`, `interrupted.txt`, `startup_idle.txt` |
+| `codex` | `sidecar.composer_idle` | addition | **no fixture matches this rule**; nothing here proves what it is for |
 | `codex` | `sidecar.approval_blocker` | addition | changes 1 fixture(s): `approval_prompt.txt` |
 | `codex` | `weak_blocker` | replaces upstream | changes 1 fixture(s): `weak_blocker.txt` |
 | `cursor` | `spinner_working` | replaces upstream | changes 1 fixture(s): `working_spinner.txt` |
@@ -946,5 +927,5 @@ A rule carrying an **upstream** id is not in that bucket and is never a deletion
 | `muse` | `sidecar.thinking_working` | addition | changes 1 fixture(s): `thinking.txt` |
 | `qodercli` | `spinner_working` | replaces upstream | changes 1 fixture(s): `spinner_working.txt` |
 
-1 overlay rule(s) changed no fixture verdict. Delete the rule, or record why it stays and add the fixture that proves it. Deleting one is a separate change with a fixture attached, so this report flags it rather than making it.
+2 overlay rule(s) changed no fixture verdict. Delete the rule, or record why it stays and add the fixture that proves it. Deleting one is a separate change with a fixture attached, so this report flags it rather than making it.
 
