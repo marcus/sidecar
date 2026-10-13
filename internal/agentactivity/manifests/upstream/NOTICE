@@ -7,7 +7,7 @@ manifests from Herdr.
 Project:    Herdr
 Repository: https://github.com/herdrdev/herdr
 Ref:        master
-Commit:     331775c3e51e8cca4d122468180738101bd9e6b0
+Commit:     b06480673bee704d143f48962c288aa1512c316d
 Catalog:    https://herdr.dev/agent-detection/index.toml
 License:    Apache License, Version 2.0 (see LICENSE in this directory)
 
