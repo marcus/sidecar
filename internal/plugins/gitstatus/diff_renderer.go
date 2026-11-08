@@ -7,7 +7,7 @@ import (
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/marcus/sidecar/internal/styles"
-	"github.com/mattn/go-runewidth"
+	"github.com/rivo/uniseg"
 )
 
 // DiffViewMode specifies the diff rendering mode.
@@ -903,12 +903,23 @@ func clipToWidth(s string, maxWidth int) (string, bool) {
 	if strings.IndexByte(s, 0x1b) >= 0 {
 		return s, lipgloss.Width(s) > maxWidth
 	}
+	// Step a grapheme cluster at a time, measured the way lipgloss.Width above
+	// and padRight below measure. A cluster is what a terminal draws as one
+	// character and may be several runes: a flag, an emoji carrying a skin
+	// tone, a family joined by zero-width joiners. Added up rune by rune a
+	// family counts as eight columns where it occupies two, so the clip and
+	// the pad disagree about the same line, and a cut between its runes
+	// leaves a dangling joiner.
 	width := 0
-	for i, r := range s {
+	rest := s
+	state := -1
+	for len(rest) > 0 {
 		if width > maxWidth {
-			return s[:i], true
+			return s[:len(s)-len(rest)], true
 		}
-		width += runewidth.RuneWidth(r)
+		var cluster string
+		cluster, rest, _, state = uniseg.FirstGraphemeClusterInString(rest, state)
+		width += ansi.StringWidth(cluster)
 	}
 	return s, width > maxWidth
 }

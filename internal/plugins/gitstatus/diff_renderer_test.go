@@ -3,6 +3,8 @@ package gitstatus
 import (
 	"strings"
 	"testing"
+
+	"github.com/rivo/uniseg"
 )
 
 func TestRenderLineDiff_EmptyDiff(t *testing.T) {
@@ -204,6 +206,42 @@ func TestPadRight(t *testing.T) {
 			got := padRight(tc.input, tc.width)
 			if got != tc.want {
 				t.Errorf("padRight(%q, %d) = %q, want %q", tc.input, tc.width, got, tc.want)
+			}
+		})
+	}
+}
+
+// A terminal draws each of these as one character, out of several runes.
+var multiRuneGlyphs = map[string]string{
+	"family":    "\U0001F468\u200d\U0001F469\u200d\U0001F467\u200d\U0001F466",
+	"rainbow":   "\U0001F3F3\ufe0f\u200d\U0001F308",
+	"skin tone": "\U0001F44D\U0001F3FD",
+	"flag":      "\U0001F1EF\U0001F1F5",
+}
+
+// clipToWidth cuts a line to fit a column. Cutting between the runes of one
+// glyph leaves a dangling zero-width joiner or a lone regional indicator at
+// the end of the line.
+func TestClipToWidth_KeepsGlyphsWhole(t *testing.T) {
+	for name, glyph := range multiRuneGlyphs {
+		t.Run(name, func(t *testing.T) {
+			line := "+ " + strings.Repeat(glyph, 8) + " end"
+
+			boundaries := map[int]bool{0: true}
+			for g := uniseg.NewGraphemes(line); g.Next(); {
+				_, to := g.Positions()
+				boundaries[to] = true
+			}
+
+			for width := 1; width <= 20; width++ {
+				got, _ := clipToWidth(line, width)
+				if !strings.HasPrefix(line, got) {
+					t.Fatalf("clipToWidth(line, %d) is not a prefix of the line", width)
+				}
+				if !boundaries[len(got)] {
+					t.Errorf("clipToWidth(line, %d) cut at byte %d, inside a glyph: %q",
+						width, len(got), got)
+				}
 			}
 		})
 	}
